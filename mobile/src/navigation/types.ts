@@ -11,4 +11,6 @@ export type OrgSetupStackParamList = {
 
 export type MainStackParamList = {
   OrgHome: undefined;
+  Profile: undefined;
+  MemberProfile: { userId: string; name: string };
 };
