@@ -1,0 +1,38 @@
+{
+  "name": "mobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "private": true,
+  "scripts": {
+    "start": "APP_ENV=development expo start",
+    "start:stage": "APP_ENV=stage expo start",
+    "start:prod": "APP_ENV=production expo start",
+    "android": "APP_ENV=development expo start --android",
+    "ios": "APP_ENV=development expo start --ios",
+    "web": "APP_ENV=development WEB_API_BASE_URL=http://localhost:3000 expo start --web"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~4.0.1",
+    "@react-native-async-storage/async-storage": "1.23.1",
+    "@react-navigation/native": "^6.1.18",
+    "@react-navigation/native-stack": "^6.11.0",
+    "axios": "^1.7.9",
+    "expo": "~52.0.11",
+    "expo-asset": "~11.0.1",
+    "expo-auth-session": "~6.0.0",
+    "expo-constants": "~17.0.3",
+    "expo-status-bar": "~2.0.0",
+    "expo-web-browser": "~14.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-native": "0.76.3",
+    "react-native-safe-area-context": "4.12.0",
+    "react-native-screens": "~4.1.0",
+    "react-native-web": "~0.19.13"
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.12",
+    "typescript": "~5.3.3",
+    "dotenv": "^16.4.7"
+  }
+}

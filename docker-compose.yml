@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: team-coach-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: team_coach
+      POSTGRES_PASSWORD: team_coach_local_pw
+      POSTGRES_DB: team_coach
+    ports:
+      - "5432:5432"
+    volumes:
+      - team_coach_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  team_coach_postgres_data:
