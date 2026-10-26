@@ -112,6 +112,10 @@ export interface ScrimEventInput {
   notes?: string;
 }
 
+export type VoiceConfig =
+  | { mode: 'self' }
+  | { mode: 'hosted'; url: string; token: string };
+
 export type ExtractionStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED';
 
 export interface ExtractionRow {

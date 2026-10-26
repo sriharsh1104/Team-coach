@@ -28,19 +28,26 @@ const expoConfig: ExpoConfig = {
   scheme: 'teamcoach',
   ios: {
     supportsTablet: true,
+    bundleIdentifier: 'com.teamcoach.app',
+    infoPlist: {
+      NSMicrophoneUsageDescription:
+        'Team Coach needs microphone access for team voice channels.',
+    },
   },
   android: {
+    package: 'com.teamcoach.app',
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/android-icon-foreground.png',
       backgroundImage: './assets/android-icon-background.png',
       monochromeImage: './assets/android-icon-monochrome.png',
     },
+    permissions: ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'],
   },
   web: {
     favicon: './assets/favicon.png',
   },
-  plugins: ['@react-native-community/datetimepicker'],
+  plugins: ['@react-native-community/datetimepicker', '@livekit/react-native-expo-plugin'],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
     appEnv,
