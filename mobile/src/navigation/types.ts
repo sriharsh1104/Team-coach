@@ -1,3 +1,5 @@
+import { ScrimEvent } from '../api/types';
+
 export type AuthStackParamList = {
   Login: undefined;
   Signup: undefined;
@@ -16,4 +18,6 @@ export type MainStackParamList = {
   MediaFeed: undefined;
   UploadMedia: undefined;
   Chat: undefined;
+  Scrims: undefined;
+  AddEditScrim: { scrim?: ScrimEvent } | undefined;
 };

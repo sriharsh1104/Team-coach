@@ -90,3 +90,24 @@ export interface OrgDetail {
   myRole: MembershipRole;
   members: OrgMember[];
 }
+
+export type ScrimEventType = 'SCRIM' | 'TOURNAMENT';
+
+export interface ScrimEvent {
+  id: string;
+  type: ScrimEventType;
+  title: string;
+  scheduledAt: string;
+  platform: string | null;
+  notes: string | null;
+  createdById: string;
+  createdByName: string;
+}
+
+export interface ScrimEventInput {
+  type: ScrimEventType;
+  title: string;
+  scheduledAt: string;
+  platform?: string;
+  notes?: string;
+}

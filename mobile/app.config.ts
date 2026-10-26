@@ -40,6 +40,7 @@ const expoConfig: ExpoConfig = {
   web: {
     favicon: './assets/favicon.png',
   },
+  plugins: ['@react-native-community/datetimepicker'],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
     appEnv,
