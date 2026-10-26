@@ -23,4 +23,5 @@ export type MainStackParamList = {
   Stats: undefined;
   ExtractionReview: { extraction: StatExtraction };
   PlayerStats: { userId: string; name: string };
+  Voice: undefined;
 };

@@ -19,6 +19,7 @@ import { AddEditScrimScreen } from '../screens/scrims/AddEditScrimScreen';
 import { StatsHomeScreen } from '../screens/stats/StatsHomeScreen';
 import { ExtractionReviewScreen } from '../screens/stats/ExtractionReviewScreen';
 import { PlayerStatsScreen } from '../screens/stats/PlayerStatsScreen';
+import { VoiceChannelScreen } from '../screens/voice/VoiceChannelScreen';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -109,6 +110,11 @@ export function RootNavigator() {
             name="PlayerStats"
             component={PlayerStatsScreen}
             options={({ route }) => ({ title: route.params.name })}
+          />
+          <MainStack.Screen
+            name="Voice"
+            component={VoiceChannelScreen}
+            options={{ title: 'Team Voice' }}
           />
         </MainStack.Navigator>
       )}
