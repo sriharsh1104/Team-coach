@@ -13,6 +13,7 @@ import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
 import { MediaFeedScreen } from '../screens/media/MediaFeedScreen';
 import { UploadMediaScreen } from '../screens/media/UploadMediaScreen';
+import { ChatScreen } from '../screens/chat/ChatScreen';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -73,6 +74,11 @@ export function RootNavigator() {
             name="UploadMedia"
             component={UploadMediaScreen}
             options={{ title: 'Upload' }}
+          />
+          <MainStack.Screen
+            name="Chat"
+            component={ChatScreen}
+            options={{ title: 'Team Chat' }}
           />
         </MainStack.Navigator>
       )}
