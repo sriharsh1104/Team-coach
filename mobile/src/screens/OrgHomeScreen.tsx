@@ -39,6 +39,12 @@ export function OrgHomeScreen({ navigation }: Props) {
       )}
       <Pressable
         style={sharedStyles.button}
+        onPress={() => navigation.navigate('MediaFeed')}
+      >
+        <Text style={sharedStyles.buttonText}>Media</Text>
+      </Pressable>
+      <Pressable
+        style={sharedStyles.button}
         onPress={() => navigation.navigate('Profile')}
       >
         <Text style={sharedStyles.buttonText}>Edit My Profile</Text>

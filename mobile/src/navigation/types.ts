@@ -13,4 +13,6 @@ export type MainStackParamList = {
   OrgHome: undefined;
   Profile: undefined;
   MemberProfile: { userId: string; name: string };
+  MediaFeed: undefined;
+  UploadMedia: undefined;
 };

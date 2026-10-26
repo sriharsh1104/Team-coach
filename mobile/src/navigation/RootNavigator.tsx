@@ -11,6 +11,8 @@ import { JoinOrgScreen } from '../screens/JoinOrgScreen';
 import { OrgHomeScreen } from '../screens/OrgHomeScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
+import { MediaFeedScreen } from '../screens/media/MediaFeedScreen';
+import { UploadMediaScreen } from '../screens/media/UploadMediaScreen';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -61,6 +63,16 @@ export function RootNavigator() {
             name="MemberProfile"
             component={MemberProfileScreen}
             options={({ route }) => ({ title: route.params.name })}
+          />
+          <MainStack.Screen
+            name="MediaFeed"
+            component={MediaFeedScreen}
+            options={{ title: 'Media' }}
+          />
+          <MainStack.Screen
+            name="UploadMedia"
+            component={UploadMediaScreen}
+            options={{ title: 'Upload' }}
           />
         </MainStack.Navigator>
       )}

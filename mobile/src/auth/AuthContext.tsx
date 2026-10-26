@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TOKEN_STORAGE_KEY } from '../api/client';
 import * as authApi from '../api/auth';
 import { AuthUser, OrgSummary } from '../api/types';
+import { registerPushTokenWithBackend } from '../notifications/registerPushToken';
 
 interface AuthContextValue {
   isLoading: boolean;
@@ -45,6 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           avatarUrl: me.avatarUrl,
         });
         setOrgState(me.org);
+        registerPushTokenWithBackend();
       } catch {
         await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
       } finally {
@@ -58,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(TOKEN_STORAGE_KEY, response.accessToken);
       setUser(response.user);
       setOrgState(response.org);
+      registerPushTokenWithBackend();
     },
     [],
   );
