@@ -9,7 +9,9 @@
     "start:prod": "APP_ENV=production expo start",
     "android": "APP_ENV=development expo start --android",
     "ios": "APP_ENV=development expo start --ios",
-    "web": "APP_ENV=development WEB_API_BASE_URL=http://localhost:3000 expo start --web --port 8090"
+    "web": "APP_ENV=development WEB_API_BASE_URL=http://localhost:3000 expo start --web --port 8090",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
@@ -42,8 +44,17 @@
   },
   "devDependencies": {
     "@livekit/react-native-expo-plugin": "^1.1.0",
+    "@testing-library/react-native": "^13.3.3",
+    "@types/jest": "^30.0.0",
     "@types/react": "~18.3.12",
     "dotenv": "^16.4.7",
+    "jest": "~29.7.0",
+    "jest-expo": "~52.0.6",
+    "react-test-renderer": "^18.3.1",
     "typescript": "~5.3.3"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "setupFilesAfterEnv": ["<rootDir>/jest.setup.ts"]
   }
 }
