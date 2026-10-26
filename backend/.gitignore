@@ -1,0 +1,16 @@
+node_modules
+dist
+coverage
+*.log
+
+# Keep environment variables out of version control.
+# .env.example is committed; the filled-in files stay on your machine.
+.env
+.env.local
+.env.development
+.env.stage
+.env.production
+.env*.local
+
+/generated/prisma
+*.tsbuildinfo
