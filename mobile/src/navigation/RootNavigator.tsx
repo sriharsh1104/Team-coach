@@ -9,6 +9,8 @@ import { OrgChoiceScreen } from '../screens/OrgChoiceScreen';
 import { CreateOrgScreen } from '../screens/CreateOrgScreen';
 import { JoinOrgScreen } from '../screens/JoinOrgScreen';
 import { OrgHomeScreen } from '../screens/OrgHomeScreen';
+import { ProfileScreen } from '../screens/profile/ProfileScreen';
+import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -44,8 +46,22 @@ export function RootNavigator() {
           <OrgSetupStack.Screen name="JoinOrg" component={JoinOrgScreen} />
         </OrgSetupStack.Navigator>
       ) : (
-        <MainStack.Navigator screenOptions={{ headerShown: false }}>
-          <MainStack.Screen name="OrgHome" component={OrgHomeScreen} />
+        <MainStack.Navigator>
+          <MainStack.Screen
+            name="OrgHome"
+            component={OrgHomeScreen}
+            options={{ headerShown: false }}
+          />
+          <MainStack.Screen
+            name="Profile"
+            component={ProfileScreen}
+            options={{ title: 'My Profile' }}
+          />
+          <MainStack.Screen
+            name="MemberProfile"
+            component={MemberProfileScreen}
+            options={({ route }) => ({ title: route.params.name })}
+          />
         </MainStack.Navigator>
       )}
     </NavigationContainer>

@@ -26,6 +26,36 @@ export interface OrgMember {
   role: MembershipRole;
 }
 
+export interface Device {
+  id: string;
+  name: string;
+  model: string;
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  roles: string[];
+  inGameName: string | null;
+  inGameUid: string | null;
+  whatsappUrl: string | null;
+  instagramUrl: string | null;
+  discordUrl: string | null;
+  youtubeUrl: string | null;
+  devices: Device[];
+}
+
+export interface UpdateProfileInput {
+  roles?: string[];
+  inGameName?: string;
+  inGameUid?: string;
+  whatsappUrl?: string;
+  instagramUrl?: string;
+  discordUrl?: string;
+  youtubeUrl?: string;
+}
+
 export interface OrgCreateJoinResponse {
   id: string;
   name: string;
