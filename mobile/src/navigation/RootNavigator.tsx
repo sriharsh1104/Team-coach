@@ -14,6 +14,8 @@ import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
 import { MediaFeedScreen } from '../screens/media/MediaFeedScreen';
 import { UploadMediaScreen } from '../screens/media/UploadMediaScreen';
 import { ChatScreen } from '../screens/chat/ChatScreen';
+import { ScrimsListScreen } from '../screens/scrims/ScrimsListScreen';
+import { AddEditScrimScreen } from '../screens/scrims/AddEditScrimScreen';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -79,6 +81,16 @@ export function RootNavigator() {
             name="Chat"
             component={ChatScreen}
             options={{ title: 'Team Chat' }}
+          />
+          <MainStack.Screen
+            name="Scrims"
+            component={ScrimsListScreen}
+            options={{ title: 'Scrims & Tournaments' }}
+          />
+          <MainStack.Screen
+            name="AddEditScrim"
+            component={AddEditScrimScreen}
+            options={{ title: 'Scrim / Tournament' }}
           />
         </MainStack.Navigator>
       )}
