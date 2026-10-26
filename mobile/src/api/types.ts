@@ -26,6 +26,16 @@ export interface OrgMember {
   role: MembershipRole;
 }
 
+export interface MediaPost {
+  id: string;
+  type: 'IMAGE' | 'VIDEO';
+  url: string;
+  caption: string | null;
+  createdAt: string;
+  uploaderId: string;
+  uploaderName: string;
+}
+
 export interface Device {
   id: string;
   name: string;

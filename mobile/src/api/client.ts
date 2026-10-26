@@ -2,7 +2,7 @@ import axios from 'axios';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const apiBaseUrl =
+export const apiBaseUrl =
   (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ??
   'http://localhost:3000';
 

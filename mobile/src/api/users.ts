@@ -19,6 +19,10 @@ export function removeDevice(deviceId: string) {
   return apiClient.delete(`/users/me/devices/${deviceId}`);
 }
 
+export function setPushToken(token: string) {
+  return apiClient.patch('/users/me/push-token', { token });
+}
+
 export function getMemberProfile(userId: string) {
   return apiClient
     .get<Profile>(`/users/${userId}/profile`)
