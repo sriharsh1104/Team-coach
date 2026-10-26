@@ -15,4 +15,5 @@ export type MainStackParamList = {
   MemberProfile: { userId: string; name: string };
   MediaFeed: undefined;
   UploadMedia: undefined;
+  Chat: undefined;
 };

@@ -26,6 +26,14 @@ export interface OrgMember {
   role: MembershipRole;
 }
 
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface MediaPost {
   id: string;
   type: 'IMAGE' | 'VIDEO';
