@@ -7,11 +7,13 @@ import {
   Pressable,
   RefreshControl,
   Linking,
+  Alert,
   StyleSheet,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as mediaApi from '../../api/media';
 import * as orgApi from '../../api/org';
+import * as statsApi from '../../api/stats';
 import { apiBaseUrl } from '../../api/client';
 import { MediaPost, OrgMember } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
@@ -49,6 +51,25 @@ export function MediaFeedScreen({ navigation }: Props) {
     setIsRefreshing(true);
     await Promise.all([loadMembers(), loadPosts(selectedUploaderId)]);
     setIsRefreshing(false);
+  };
+
+  const onExtractStats = async (post: MediaPost) => {
+    try {
+      const extraction = await statsApi.requestExtraction(post.id);
+      navigation.navigate('ExtractionReview', { extraction });
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        Alert.alert(
+          'Already extracted',
+          'This screenshot already has a stat extraction — check Stats > Pending Review.',
+        );
+      } else {
+        Alert.alert(
+          'Could not extract stats',
+          err?.response?.data?.message?.toString() ?? 'Please try again.',
+        );
+      }
+    }
   };
 
   return (
@@ -115,6 +136,11 @@ export function MediaFeedScreen({ navigation }: Props) {
               <Text style={{ color: '#888', fontSize: 12 }}>
                 {new Date(item.createdAt).toLocaleString()}
               </Text>
+              {item.type === 'IMAGE' && (
+                <Pressable onPress={() => onExtractStats(item)}>
+                  <Text style={styles.extractLink}>Extract Stats</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         )}
@@ -149,4 +175,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f1f1',
   },
   videoThumb: { alignItems: 'center', justifyContent: 'center' },
+  extractLink: { color: '#2563eb', fontSize: 13, marginTop: 4, fontWeight: '600' },
 });

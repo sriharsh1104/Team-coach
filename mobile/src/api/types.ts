@@ -111,3 +111,46 @@ export interface ScrimEventInput {
   platform?: string;
   notes?: string;
 }
+
+export type ExtractionStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED';
+
+export interface ExtractionRow {
+  rawName: string;
+  matchedUserId: string | null;
+  kills: number;
+  deaths: number;
+  assists: number;
+}
+
+export interface StatExtraction {
+  id: string;
+  status: ExtractionStatus;
+  rows: ExtractionRow[];
+  createdAt: string;
+  reviewedAt: string | null;
+  mediaPostId: string;
+  mediaUrl?: string;
+}
+
+export interface LeaderboardRow {
+  userId: string;
+  name: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  matches: number;
+}
+
+export interface PlayerStatEntry {
+  id: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  recordedAt: string;
+}
+
+export interface PlayerStatsResponse {
+  totals: { kills: number; deaths: number; assists: number };
+  matches: number;
+  entries: PlayerStatEntry[];
+}

@@ -16,6 +16,9 @@ import { UploadMediaScreen } from '../screens/media/UploadMediaScreen';
 import { ChatScreen } from '../screens/chat/ChatScreen';
 import { ScrimsListScreen } from '../screens/scrims/ScrimsListScreen';
 import { AddEditScrimScreen } from '../screens/scrims/AddEditScrimScreen';
+import { StatsHomeScreen } from '../screens/stats/StatsHomeScreen';
+import { ExtractionReviewScreen } from '../screens/stats/ExtractionReviewScreen';
+import { PlayerStatsScreen } from '../screens/stats/PlayerStatsScreen';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -91,6 +94,21 @@ export function RootNavigator() {
             name="AddEditScrim"
             component={AddEditScrimScreen}
             options={{ title: 'Scrim / Tournament' }}
+          />
+          <MainStack.Screen
+            name="Stats"
+            component={StatsHomeScreen}
+            options={{ title: 'Stats' }}
+          />
+          <MainStack.Screen
+            name="ExtractionReview"
+            component={ExtractionReviewScreen}
+            options={{ title: 'Review Stats' }}
+          />
+          <MainStack.Screen
+            name="PlayerStats"
+            component={PlayerStatsScreen}
+            options={({ route }) => ({ title: route.params.name })}
           />
         </MainStack.Navigator>
       )}
