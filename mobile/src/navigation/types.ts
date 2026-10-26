@@ -1,4 +1,4 @@
-import { ScrimEvent } from '../api/types';
+import { ScrimEvent, StatExtraction } from '../api/types';
 
 export type AuthStackParamList = {
   Login: undefined;
@@ -20,4 +20,7 @@ export type MainStackParamList = {
   Chat: undefined;
   Scrims: undefined;
   AddEditScrim: { scrim?: ScrimEvent } | undefined;
+  Stats: undefined;
+  ExtractionReview: { extraction: StatExtraction };
+  PlayerStats: { userId: string; name: string };
 };
