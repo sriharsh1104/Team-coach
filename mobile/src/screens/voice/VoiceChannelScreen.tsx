@@ -84,6 +84,10 @@ export function VoiceChannelScreen() {
   useEffect(() => {
     Promise.all([voiceApi.getVoiceConfig(), AsyncStorage.getItem(TOKEN_STORAGE_KEY)])
       .then(([cfg, token]) => {
+        if (!token) {
+          setError('You are signed out. Please log in again to use voice channels.');
+          return;
+        }
         setConfig(cfg);
         setAuthToken(token);
       })
