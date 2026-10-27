@@ -11,7 +11,7 @@ export function VoiceChannelScreen() {
   return (
     <View style={sharedStyles.container}>
       <Text style={sharedStyles.title}>Team Voice</Text>
-      <Text style={{ textAlign: 'center', color: '#888' }}>
+      <Text style={{ textAlign: 'center', color: '#9aa0a6' }}>
         Voice channels need the native Android/iOS app — they're not available in this
         web preview.
       </Text>

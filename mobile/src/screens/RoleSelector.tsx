@@ -35,15 +35,16 @@ export function RoleSelector({ value, onChange }: Props) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
   pill: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#5f6368',
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
-  pillActive: { backgroundColor: '#111', borderColor: '#111' },
-  pillText: { color: '#111' },
-  pillTextActive: { color: '#fff' },
+  // Chrome accent to match Sacred auth chrome buttons
+  pillActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
+  pillText: { color: '#e8eaed' },
+  pillTextActive: { color: '#0a0a0c', fontWeight: '700' },
 });

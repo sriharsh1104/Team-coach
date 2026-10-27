@@ -14,3 +14,7 @@ coverage
 
 /generated/prisma
 *.tsbuildinfo
+
+# Uploaded media stays on this machine, not in version control.
+/uploads/*
+!/uploads/.gitkeep

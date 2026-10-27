@@ -28,9 +28,11 @@ function createFakeSocket() {
   };
 }
 
-async function pressAndSettle(text: string) {
+async function pressAndSettle(label: string) {
   await act(async () => {
-    fireEvent.press(screen.getByText(text));
+    fireEvent.press(
+      screen.queryByText(label) ?? screen.getByLabelText(label),
+    );
   });
 }
 
@@ -40,6 +42,7 @@ beforeEach(() => {
     user: { id: 'user-1', email: 'me@example.com', name: 'Me', avatarUrl: null },
   });
   mockedChatApi.getChatHistory.mockResolvedValue([]);
+  mockedChatApi.markChatRead = jest.fn().mockResolvedValue({ unreadCount: 0 });
 });
 
 describe('ChatScreen', () => {
@@ -104,6 +107,57 @@ describe('ChatScreen', () => {
     expect(screen.queryByText('Me')).toBeNull();
   });
 
+  it("shows the sender's role next to their name for other members' messages, never for my own", async () => {
+    mockedChatApi.getChatHistory.mockResolvedValue([
+      {
+        id: 'm1',
+        senderId: 'user-2',
+        senderName: 'Owner Coach',
+        senderRole: 'COACH',
+        senderIsOwner: true,
+        text: 'gg',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'm2',
+        senderId: 'user-1',
+        senderName: 'Me',
+        senderRole: 'PLAYER',
+        senderIsOwner: false,
+        text: 'nice game',
+        createdAt: '2026-01-01T00:01:00.000Z',
+      },
+    ] as any);
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
+    mockedChatApi.connectChatSocket.mockReturnValue(createFakeSocket() as any);
+
+    render(<ChatScreen />);
+
+    await screen.findByText('Owner Coach · Coach (Owner)');
+    // My own message never gets a name/role label, regardless of my role.
+    expect(screen.queryByText('Me · Player')).toBeNull();
+  });
+
+  it('falls back to the plain name when the sender has since left the org (no current role)', async () => {
+    mockedChatApi.getChatHistory.mockResolvedValue([
+      {
+        id: 'm1',
+        senderId: 'user-2',
+        senderName: 'Former Member',
+        senderRole: null,
+        senderIsOwner: false,
+        text: 'see ya',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ] as any);
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
+    mockedChatApi.connectChatSocket.mockReturnValue(createFakeSocket() as any);
+
+    render(<ChatScreen />);
+
+    await screen.findByText('Former Member');
+  });
+
   it('appends an incoming message:new event to the list', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();
@@ -134,9 +188,12 @@ describe('ChatScreen', () => {
     await pressAndSettle('Send');
     expect(fakeSocket.emit).not.toHaveBeenCalled();
 
-    fireEvent.changeText(screen.getByPlaceholderText('Message your team…'), '   ');
+    fireEvent.changeText(screen.getByPlaceholderText('Message…'), '   ');
     await pressAndSettle('Send');
-    expect(fakeSocket.emit).not.toHaveBeenCalled();
+    expect(fakeSocket.emit).not.toHaveBeenCalledWith(
+      'message:send',
+      expect.anything(),
+    );
   });
 
   it('sends a trimmed message and clears the draft', async () => {
@@ -147,11 +204,14 @@ describe('ChatScreen', () => {
     render(<ChatScreen />);
     await waitFor(() => expect(mockedChatApi.connectChatSocket).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Message your team…');
+    const input = screen.getByPlaceholderText('Message…');
     fireEvent.changeText(input, '  gl hf  ');
     await pressAndSettle('Send');
 
-    expect(fakeSocket.emit).toHaveBeenCalledWith('message:send', { text: 'gl hf' });
+    expect(fakeSocket.emit).toHaveBeenCalledWith('message:send', {
+      channelKey: 'org',
+      text: 'gl hf',
+    });
     expect(input.props.value).toBe('');
   });
 

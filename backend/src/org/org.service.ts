@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,8 +10,20 @@ import { MembershipRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { JoinOrgDto } from './dto/join-org.dto';
+import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
+import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
+import { RemoveMemberDto } from './dto/remove-member.dto';
 
-const MAX_PLAYERS_PER_ORG = 5;
+// Independent per-role caps. The org owner's own functional role still
+// counts against whichever of these it is (owner is a flag, not a 4th
+// seat). Roster shape the product targets: 1 owner + up to 2 coaches +
+// 1 analyst + 5 players. Joiners always enter as PLAYER; only the owner
+// can promote/demote (see changeMemberRole).
+const ROLE_CAPS: Partial<Record<MembershipRole, number>> = {
+  [MembershipRole.COACH]: 2,
+  [MembershipRole.ANALYST]: 1,
+  [MembershipRole.PLAYER]: 5,
+};
 
 // Unambiguous uppercase alphabet (no 0/O/1/I) for a code players type by hand.
 const generateOrgCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
@@ -36,13 +49,13 @@ export class OrgService {
       });
 
       await tx.membership.create({
-        data: { userId, orgId: createdOrg.id, role: dto.role },
+        data: { userId, orgId: createdOrg.id, role: dto.role, isOwner: true },
       });
 
       return createdOrg;
     });
 
-    return this.toOrgResponse(org, dto.role);
+    return this.toOrgResponse(org, dto.role, true);
   }
 
   async joinOrg(userId: string, dto: JoinOrgDto) {
@@ -63,24 +76,27 @@ export class OrgService {
       throw new NotFoundException('No org found for that code or link');
     }
 
+    // Joiners never pick their own elevated role — always PLAYER. The
+    // owner promotes to COACH / ANALYST from the roster afterwards.
+    const role = MembershipRole.PLAYER;
+
     await this.prisma.$transaction(async (tx) => {
-      if (dto.role === MembershipRole.PLAYER) {
-        const playerCount = await tx.membership.count({
-          where: { orgId: org.id, role: MembershipRole.PLAYER },
-        });
-        if (playerCount >= MAX_PLAYERS_PER_ORG) {
-          throw new ConflictException(
-            `This org already has the maximum of ${MAX_PLAYERS_PER_ORG} players`,
-          );
-        }
+      const cap = ROLE_CAPS[role]!;
+      const currentCount = await tx.membership.count({
+        where: { orgId: org.id, role },
+      });
+      if (currentCount >= cap) {
+        throw new ConflictException(
+          `This org already has the maximum of ${cap} players`,
+        );
       }
 
       await tx.membership.create({
-        data: { userId, orgId: org.id, role: dto.role },
+        data: { userId, orgId: org.id, role },
       });
     });
 
-    return this.toOrgResponse(org, dto.role);
+    return this.toOrgResponse(org, role, false);
   }
 
   async getMyOrgWithMembers(userId: string) {
@@ -102,13 +118,129 @@ export class OrgService {
       orgCode: membership.org.orgCode,
       referralLink: membership.org.referralToken,
       myRole: membership.role,
+      isOwner: membership.isOwner,
       members: membership.org.memberships.map((m) => ({
         userId: m.user.id,
         name: m.user.name,
         avatarUrl: m.user.avatarUrl,
         role: m.role,
+        isOwner: m.isOwner,
       })),
     };
+  }
+
+  async changeMemberRole(currentUserId: string, dto: UpdateMemberRoleDto) {
+    const current = await this.prisma.membership.findFirst({
+      where: { userId: currentUserId },
+    });
+    if (!current) {
+      throw new NotFoundException('You are not part of an org yet');
+    }
+    if (!current.isOwner) {
+      throw new ForbiddenException('Only the org owner can change member roles');
+    }
+
+    const target = await this.prisma.membership.findFirst({
+      where: { userId: dto.targetUserId, orgId: current.orgId },
+    });
+    if (!target) {
+      throw new NotFoundException('That user is not a member of your org');
+    }
+    if (target.role === dto.role) {
+      return { userId: target.userId, role: target.role };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const cap = ROLE_CAPS[dto.role];
+      if (cap !== undefined) {
+        const currentCount = await tx.membership.count({
+          where: {
+            orgId: current.orgId,
+            role: dto.role,
+            // Don't count the target against the new role's cap — they're
+            // leaving their old seat.
+            userId: { not: target.userId },
+          },
+        });
+        if (currentCount >= cap) {
+          throw new ConflictException(
+            `This org already has the maximum of ${cap} ${dto.role.toLowerCase()}(s)`,
+          );
+        }
+      }
+
+      await tx.membership.update({
+        where: { id: target.id },
+        data: { role: dto.role },
+      });
+    });
+
+    return {
+      userId: target.userId,
+      role: dto.role,
+    };
+  }
+
+  async transferOwnership(currentUserId: string, dto: TransferOwnershipDto) {
+    const current = await this.prisma.membership.findFirst({
+      where: { userId: currentUserId },
+    });
+    if (!current) {
+      throw new NotFoundException('You are not part of an org yet');
+    }
+    if (!current.isOwner) {
+      throw new ForbiddenException('Only the current owner can transfer ownership');
+    }
+    if (current.userId === dto.targetUserId) {
+      throw new BadRequestException('You already own this org');
+    }
+
+    const target = await this.prisma.membership.findFirst({
+      where: { userId: dto.targetUserId, orgId: current.orgId },
+    });
+    if (!target) {
+      throw new NotFoundException('That user is not a member of your org');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.membership.update({
+        where: { id: current.id },
+        data: { isOwner: false },
+      }),
+      this.prisma.membership.update({
+        where: { id: target.id },
+        data: { isOwner: true },
+      }),
+    ]);
+  }
+
+  async removeMember(currentUserId: string, dto: RemoveMemberDto) {
+    const current = await this.prisma.membership.findFirst({
+      where: { userId: currentUserId },
+    });
+    if (!current) {
+      throw new NotFoundException('You are not part of an org yet');
+    }
+    if (!current.isOwner) {
+      throw new ForbiddenException('Only the org owner can remove members');
+    }
+    if (current.userId === dto.targetUserId) {
+      throw new BadRequestException(
+        'You cannot remove yourself — transfer ownership first',
+      );
+    }
+
+    const target = await this.prisma.membership.findFirst({
+      where: { userId: dto.targetUserId, orgId: current.orgId },
+    });
+    if (!target) {
+      throw new NotFoundException('That user is not a member of your org');
+    }
+
+    // No soft-delete concept anywhere in this schema — a hard delete here
+    // stays consistent with that. Chat/scrim/stat history referencing this
+    // user stays intact (those rows key off User.id, not Membership).
+    await this.prisma.membership.delete({ where: { id: target.id } });
   }
 
   private async assertUserHasNoOrg(userId: string) {
@@ -125,6 +257,7 @@ export class OrgService {
   private toOrgResponse(
     org: { id: string; name: string; orgCode: string; referralToken: string },
     role: MembershipRole,
+    isOwner: boolean,
   ) {
     return {
       id: org.id,
@@ -132,6 +265,7 @@ export class OrgService {
       orgCode: org.orgCode,
       referralLink: org.referralToken,
       myRole: role,
+      isOwner,
     };
   }
 }

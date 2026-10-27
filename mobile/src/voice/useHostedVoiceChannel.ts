@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Room, RoomEvent, RemoteParticipant, Track } from 'livekit-client';
+import { Room, RoomEvent, RemoteParticipant } from 'livekit-client';
 import { VoiceChannelController, VoiceChannelStatus, VoiceParticipant } from './types';
 
 export function useHostedVoiceChannel(
@@ -26,12 +26,6 @@ export function useHostedVoiceChannel(
   const applyLocalMute = useCallback((participant: RemoteParticipant, muted: boolean) => {
     // Volume 0 = silent for this client only; they keep talking to everyone else.
     participant.setVolume(muted ? 0 : 1);
-    for (const pub of participant.audioTrackPublications.values()) {
-      const track = pub.track;
-      if (track && track.kind === Track.Kind.Audio) {
-        track.setVolume(muted ? 0 : 1);
-      }
-    }
   }, []);
 
   const join = useCallback(async () => {

@@ -1,27 +1,36 @@
 import React from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { BrandWatermark } from '../brand/BrandWatermark';
 
-// Wraps a short form (Login/Signup/CreateOrg/JoinOrg) so the keyboard never
-// covers the field being edited or the submit button below it — those
-// screens previously used a bare, non-scrolling, vertically-centered View,
-// which clips content on short phones once the keyboard opens.
+// Wraps auth / org-setup forms so the keyboard never covers fields, and
+// paints the Sacred eSports watermark on a dark chrome-friendly backdrop.
 export function FormScreen({ children }: { children: React.ReactNode }) {
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
+    <View style={styles.root}>
+      <BrandWatermark variant="auth" />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {children}
-      </ScrollView>
-    </KeyboardAvoidingView>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#fff' },
+  root: { flex: 1, backgroundColor: '#0a0a0c' },
+  flex: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center', padding: 24 },
 });

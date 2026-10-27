@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
-import { TOKEN_STORAGE_KEY } from '../../api/client';
+import { getToken } from '../../storage/tokenStorage';
 import * as voiceApi from '../../api/voice';
 import { VoiceConfig } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { useHostedVoiceChannel } from '../../voice/useHostedVoiceChannel';
 import { useSelfHostedVoiceChannel } from '../../voice/useSelfHostedVoiceChannel';
 import { VoiceChannelController } from '../../voice/types';
+import { Screen } from '../../brand/Screen';
+import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles } from '../shared';
 
 function HostedVoiceChannel({ config }: { config: Extract<VoiceConfig, { mode: 'hosted' }> }) {
@@ -25,6 +26,7 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
   const inChannel = voice.status === 'connected';
 
   return (
+    <Screen>
     <View style={styles.screen}>
       <View style={styles.channelCard}>
         <Text style={styles.channelLabel}>VOICE CHANNEL</Text>
@@ -39,7 +41,9 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
 
         {voice.status === 'idle' && (
           <Pressable style={styles.joinButton} onPress={voice.join}>
-            <Text style={styles.joinButtonText}>Join Voice Channel</Text>
+            <ButtonLabel icon="mic" color="#fff">
+              Join Voice Channel
+            </ButtonLabel>
           </Pressable>
         )}
 
@@ -53,7 +57,9 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
           <>
             <Text style={styles.errorText}>{voice.errorMessage}</Text>
             <Pressable style={styles.joinButton} onPress={voice.join}>
-              <Text style={styles.joinButtonText}>Try Again</Text>
+              <ButtonLabel icon="refresh" color="#fff">
+                Try Again
+              </ButtonLabel>
             </Pressable>
           </>
         )}
@@ -61,7 +67,7 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
 
       {inChannel && (
         <>
-          <Text style={styles.sectionTitle}>In channel</Text>
+          <Text style={styles.sectionTitle}>In Channel</Text>
           <FlatList
             data={[
               {
@@ -117,20 +123,26 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
               style={[styles.barButton, voice.isMuted && styles.barButtonDanger]}
               onPress={voice.toggleMute}
             >
-              <Text style={styles.barButtonText}>
+              <ButtonLabel
+                icon={voice.isMuted ? 'mic-off' : 'mic'}
+                color={voice.isMuted ? '#fff' : '#0a0a0c'}
+              >
                 {voice.isMuted ? 'Unmute Mic' : 'Mute Mic'}
-              </Text>
+              </ButtonLabel>
             </Pressable>
             <Pressable
               style={[styles.barButton, styles.barButtonDanger]}
               onPress={voice.leave}
             >
-              <Text style={styles.barButtonText}>Disconnect</Text>
+              <ButtonLabel icon="call" color="#fff">
+                Disconnect
+              </ButtonLabel>
             </Pressable>
           </View>
         </>
       )}
     </View>
+    </Screen>
   );
 }
 
@@ -140,7 +152,7 @@ export function VoiceChannelScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([voiceApi.getVoiceConfig(), SecureStore.getItemAsync(TOKEN_STORAGE_KEY)])
+    Promise.all([voiceApi.getVoiceConfig(), getToken()])
       .then(([cfg, token]) => {
         if (!token) {
           setError('You are signed out. Please log in again to use voice channels.');
@@ -156,17 +168,21 @@ export function VoiceChannelScreen() {
 
   if (error) {
     return (
-      <View style={sharedStyles.container}>
-        <Text style={sharedStyles.error}>{error}</Text>
-      </View>
+      <Screen>
+        <View style={sharedStyles.container}>
+          <Text style={sharedStyles.error}>{error}</Text>
+        </View>
+      </Screen>
     );
   }
 
   if (!config || !authToken) {
     return (
-      <View style={sharedStyles.container}>
-        <ActivityIndicator />
-      </View>
+      <Screen>
+        <View style={sharedStyles.container}>
+          <ActivityIndicator color="#c9ccd1" />
+        </View>
+      </Screen>
     );
   }
 
@@ -178,7 +194,7 @@ export function VoiceChannelScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#fff' },
+  screen: { flex: 1, backgroundColor: 'transparent' },
   channelCard: {
     margin: 16,
     padding: 20,
@@ -200,14 +216,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
-  joinButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   connectingBlock: { alignItems: 'center', paddingVertical: 8 },
   errorText: { color: '#f23f43', marginBottom: 12 },
   sectionTitle: {
     marginHorizontal: 16,
     marginBottom: 8,
-    color: '#555',
+    color: '#9aa0a6',
     fontWeight: '600',
+    textTransform: 'capitalize',
   },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
   participantRow: {
@@ -216,7 +232,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#3a3d44',
   },
   participantInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
   avatar: {
@@ -228,32 +244,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: '#fff', fontWeight: '700' },
-  participantName: { fontSize: 16, color: '#111' },
-  mutedHint: { fontSize: 12, color: '#888', marginTop: 2 },
+  participantName: { fontSize: 16, color: '#f2f3f5' },
+  mutedHint: { fontSize: 12, color: '#9aa0a6', marginTop: 2 },
   smallButton: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#5f6368',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  smallButtonActive: { backgroundColor: '#111', borderColor: '#111' },
-  smallButtonText: { fontWeight: '600', color: '#111' },
-  smallButtonTextActive: { color: '#fff' },
+  smallButtonActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
+  smallButtonText: { fontWeight: '600', color: '#f2f3f5' },
+  smallButtonTextActive: { color: '#0a0a0c' },
   bottomBar: {
     flexDirection: 'row',
     gap: 10,
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: '#3a3d44',
   },
   barButton: {
     flex: 1,
-    backgroundColor: '#111',
+    backgroundColor: '#c9ccd1',
     borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
   },
   barButtonDanger: { backgroundColor: '#dc2626' },
-  barButtonText: { color: '#fff', fontWeight: '700' },
 });

@@ -19,27 +19,29 @@ if (process.env.WEB_API_BASE_URL) {
 }
 
 const expoConfig: ExpoConfig = {
-  name: 'Team Coach',
+  name: 'Sacred Team Coach',
   slug: 'team-coach',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
-  userInterfaceStyle: 'light',
+  userInterfaceStyle: 'automatic',
   scheme: 'teamcoach',
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.teamcoach.app',
     infoPlist: {
       NSMicrophoneUsageDescription:
-        'Team Coach needs microphone access for team voice channels.',
+        'Sacred Team Coach needs microphone access for team voice channels.',
     },
   },
   android: {
     package: 'com.teamcoach.app',
     adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
+      // Solid black only — foreground is the Sacred emblem with transparent
+      // background so Android's circular/squircle mask doesn't show a nested
+      // black square plate behind the logo.
+      backgroundColor: '#000000',
       foregroundImage: './assets/android-icon-foreground.png',
-      backgroundImage: './assets/android-icon-background.png',
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     permissions: ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'],

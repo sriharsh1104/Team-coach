@@ -1,0 +1,27 @@
+---
+description: Sacred dark UI + Title Case for all mobile screens
+globs: mobile/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Sacred Platform UI
+
+The whole app (auth + in-app) uses the dark Sacred theme from `src/theme.ts`:
+
+- Background `#0a0a0c`, chrome buttons `#c9ccd1`, text `#f2f3f5`, links `#a8b0ff`
+- Use `sharedStyles` / `Screen` / `BrandWatermark` — do not reintroduce white page backgrounds
+- Prefer `colors` from `src/theme.ts` over hard-coded hex
+
+## Title Case
+
+Every **screen title**, **nav header**, and **section heading** must capitalize the first letter of each word.
+
+```tsx
+// ❌ BAD
+<Text style={sharedStyles.title}>Create your account</Text>
+
+// ✅ GOOD
+<Text style={sharedStyles.title}>Create Your Account</Text>
+```
+
+`sharedStyles.title` already sets `textTransform: 'capitalize'`.

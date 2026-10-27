@@ -31,7 +31,7 @@ beforeEach(() => {
 describe('ProfileScreen', () => {
   it('loads and pre-fills every field from the current profile', async () => {
     render(<ProfileScreen />);
-    await screen.findByText('My Profile');
+    await screen.findByText('Role(s)');
 
     expect(screen.getByDisplayValue('ShadowStrike')).toBeTruthy();
     expect(screen.getByDisplayValue('UID-0001')).toBeTruthy();
@@ -41,9 +41,9 @@ describe('ProfileScreen', () => {
 
   it('copies the IGN field value when its Copy button is pressed', async () => {
     render(<ProfileScreen />);
-    await screen.findByText('My Profile');
+    await screen.findByText('Role(s)');
 
-    const copyButtons = screen.getAllByText('Copy');
+    const copyButtons = screen.getAllByLabelText('Copy');
     await act(async () => {
       fireEvent.press(copyButtons[0]); // IGN is the first copy row
     });
@@ -54,7 +54,7 @@ describe('ProfileScreen', () => {
   it('saves with roles toggled and empty fields sent as undefined, not empty strings', async () => {
     mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
     render(<ProfileScreen />);
-    await screen.findByText('My Profile');
+    await screen.findByText('Role(s)');
 
     fireEvent.press(screen.getByText('Sniper')); // add a second role
     await act(async () => {
@@ -78,7 +78,7 @@ describe('ProfileScreen', () => {
       response: { data: { message: 'Invalid role' } },
     });
     render(<ProfileScreen />);
-    await screen.findByText('My Profile');
+    await screen.findByText('Role(s)');
 
     await act(async () => {
       fireEvent.press(screen.getByText('Save Profile'));
@@ -89,7 +89,7 @@ describe('ProfileScreen', () => {
 
   it('blocks adding a device until both name and model are filled', async () => {
     render(<ProfileScreen />);
-    await screen.findByText('My Profile');
+    await screen.findByText('Role(s)');
 
     await act(async () => {
       fireEvent.press(screen.getByText('Add Device'));
@@ -117,7 +117,7 @@ describe('ProfileScreen', () => {
       });
 
     render(<ProfileScreen />);
-    await screen.findByText('My Profile');
+    await screen.findByText('Role(s)');
 
     fireEvent.changeText(screen.getByPlaceholderText('Device name (e.g. Main rig)'), 'Backup');
     fireEvent.changeText(screen.getByPlaceholderText('Device model (e.g. ROG Phone 8)'), 'iPhone 15');
@@ -137,7 +137,7 @@ describe('ProfileScreen', () => {
       .mockResolvedValueOnce({ ...baseProfile, devices: [] });
 
     render(<ProfileScreen />);
-    await screen.findByText('My Profile');
+    await screen.findByText('Role(s)');
 
     await act(async () => {
       fireEvent.press(screen.getByText('Remove'));

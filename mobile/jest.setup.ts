@@ -7,6 +7,16 @@
 // present — true on web too, which is why VoiceChannelScreen has a .web.tsx
 // stub; Jest has the identical problem and needs the identical treatment).
 
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const inset = { top: 0, right: 0, bottom: 0, left: 0 };
+  return {
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+    SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
+    useSafeAreaInsets: () => inset,
+  };
+});
+
 // expo-secure-store has no real native backing under Jest — an in-memory
 // map mirrors its get/set/delete shape closely enough for tests that seed or
 // clear a stored token (e.g. the access token in AuthContext/ChatScreen/

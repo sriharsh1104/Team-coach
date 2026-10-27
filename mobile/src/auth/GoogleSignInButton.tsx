@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
-import { Pressable, Text, StyleSheet, Alert } from 'react-native';
+import { Pressable, StyleSheet, Alert } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import { useAuth } from './AuthContext';
+import { ButtonLabel } from '../ui/ButtonLabel';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -44,16 +45,18 @@ export function GoogleSignInButton() {
         promptAsync();
       }}
     >
-      <Text style={styles.text}>Continue with Google</Text>
+      <ButtonLabel icon="google" color="#e8eaed">
+        Continue with Google
+      </ButtonLabel>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#5f6368',
     borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',
@@ -61,9 +64,5 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
-  },
-  text: {
-    fontWeight: '600',
-    color: '#111',
   },
 });

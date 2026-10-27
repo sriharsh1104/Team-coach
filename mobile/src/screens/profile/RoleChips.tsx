@@ -36,13 +36,13 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#5f6368',
     borderRadius: 20,
     paddingVertical: 6,
     paddingHorizontal: 14,
     marginBottom: 8,
   },
-  pillActive: { backgroundColor: '#111', borderColor: '#111' },
-  pillText: { color: '#111' },
-  pillTextActive: { color: '#fff' },
+  pillActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
+  pillText: { color: '#f2f3f5' },
+  pillTextActive: { color: '#0a0a0c' },
 });

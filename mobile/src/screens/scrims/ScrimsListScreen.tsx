@@ -15,6 +15,8 @@ import * as scrimsApi from '../../api/scrims';
 import { useAuth } from '../../auth/AuthContext';
 import { ScrimEvent } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
+import { Screen } from '../../brand/Screen';
+import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles } from '../shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Scrims'>;
@@ -73,6 +75,7 @@ export function ScrimsListScreen({ navigation }: Props) {
   ].filter((s) => s.data.length > 0);
 
   return (
+    <Screen>
     <View style={sharedStyles.container}>
       <Text style={sharedStyles.title}>Scrims & Tournaments</Text>
 
@@ -80,7 +83,7 @@ export function ScrimsListScreen({ navigation }: Props) {
         style={sharedStyles.button}
         onPress={() => navigation.navigate('AddEditScrim')}
       >
-        <Text style={sharedStyles.buttonText}>Add Scrim / Tournament</Text>
+        <ButtonLabel icon="calendar">Add Scrim / Tournament</ButtonLabel>
       </Pressable>
 
       <SectionList
@@ -90,7 +93,7 @@ export function ScrimsListScreen({ navigation }: Props) {
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
         ListEmptyComponent={
-          <Text style={{ textAlign: 'center', color: '#888', marginTop: 24 }}>
+          <Text style={{ textAlign: 'center', color: '#9aa0a6', marginTop: 24 }}>
             Nothing scheduled yet.
           </Text>
         }
@@ -113,6 +116,9 @@ export function ScrimsListScreen({ navigation }: Props) {
             <Text style={styles.meta}>
               {new Date(item.scheduledAt).toLocaleString()} · by{' '}
               {item.createdByName}
+              {item.rounds?.length
+                ? ` · ${item.rounds.length} Round(s)`
+                : ''}
             </Text>
             {item.platform && (
               <Pressable onPress={() => Linking.openURL(item.platform!)}>
@@ -136,6 +142,7 @@ export function ScrimsListScreen({ navigation }: Props) {
         )}
       />
     </View>
+    </Screen>
   );
 }
 
@@ -145,11 +152,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 16,
     marginBottom: 8,
+    textTransform: 'capitalize',
+    color: '#e8eaed',
   },
   row: {
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#3a3d44',
   },
   badge: {
     fontSize: 11,
@@ -163,10 +172,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   badgeTournament: { backgroundColor: '#b45309' },
-  title: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
-  meta: { color: '#888', fontSize: 12, marginTop: 4 },
-  link: { color: '#2563eb', marginTop: 4 },
-  notes: { color: '#444', marginTop: 4 },
+  title: { fontSize: 16, fontWeight: '600', flexShrink: 1, color: '#f2f3f5' },
+  meta: { color: '#9aa0a6', fontSize: 12, marginTop: 4 },
+  link: { color: '#a8b0ff', marginTop: 4 },
+  notes: { color: '#9aa0a6', marginTop: 4 },
   actionsRow: { flexDirection: 'row', gap: 16, marginTop: 8 },
-  action: { color: '#2563eb', fontWeight: '600' },
+  action: { color: '#a8b0ff', fontWeight: '600' },
 });

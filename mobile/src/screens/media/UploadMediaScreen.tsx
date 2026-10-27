@@ -12,6 +12,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as mediaApi from '../../api/media';
 import { MainStackParamList } from '../../navigation/types';
+import { Screen } from '../../brand/Screen';
+import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles } from '../shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'UploadMedia'>;
@@ -78,6 +80,7 @@ export function UploadMediaScreen({ navigation }: Props) {
   };
 
   return (
+    <Screen>
     <View style={sharedStyles.container}>
       <Text style={sharedStyles.title}>Upload</Text>
 
@@ -86,20 +89,21 @@ export function UploadMediaScreen({ navigation }: Props) {
       )}
       {asset?.type === 'VIDEO' && (
         <View style={[styles.preview, styles.videoPlaceholder]}>
-          <Text>🎬 {asset.fileName}</Text>
+          <Text style={{ color: '#f2f3f5' }}>{asset.fileName}</Text>
         </View>
       )}
 
       <Pressable style={sharedStyles.button} onPress={() => pick(false)}>
-        <Text style={sharedStyles.buttonText}>Choose from Gallery</Text>
+        <ButtonLabel icon="images">Choose From Gallery</ButtonLabel>
       </Pressable>
       <Pressable style={sharedStyles.button} onPress={() => pick(true)}>
-        <Text style={sharedStyles.buttonText}>Use Camera</Text>
+        <ButtonLabel icon="camera">Use Camera</ButtonLabel>
       </Pressable>
 
       <TextInput
         style={sharedStyles.input}
         placeholder="Caption (optional)"
+        placeholderTextColor="#8b8f97"
         value={caption}
         onChangeText={setCaption}
       />
@@ -112,11 +116,12 @@ export function UploadMediaScreen({ navigation }: Props) {
         disabled={!asset || isUploading}
         onPress={onUpload}
       >
-        <Text style={sharedStyles.buttonText}>
+        <ButtonLabel icon="upload">
           {isUploading ? 'Uploading…' : 'Upload'}
-        </Text>
+        </ButtonLabel>
       </Pressable>
     </View>
+    </Screen>
   );
 }
 
@@ -126,7 +131,7 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 8,
     marginBottom: 16,
-    backgroundColor: '#f1f1f1',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   videoPlaceholder: {
     alignItems: 'center',

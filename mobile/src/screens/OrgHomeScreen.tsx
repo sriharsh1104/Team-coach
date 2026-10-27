@@ -1,20 +1,30 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Text, View, FlatList, Pressable, RefreshControl, Alert, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Text, View, StyleSheet, Pressable } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
-import { MembershipRole, OrgDetail, OrgMember } from '../api/types';
+import { OrgDetail } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
-import { sharedStyles } from './shared';
+import { Screen } from '../brand/Screen';
+import { colors } from '../theme';
+import { MenuButton, SideDrawer } from '../ui/SideDrawer';
+import { Toast, useToast } from '../ui/Toast';
+import { ChatHubScreen } from './chat/ChatHubScreen';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgHome'>;
 
-const ASSIGNABLE_ROLES: MembershipRole[] = ['PLAYER', 'COACH', 'ANALYST'];
-
 export function OrgHomeScreen({ navigation }: Props) {
-  const { logout, org, refreshOrg } = useAuth();
+  const { logout, org, user } = useAuth();
   const [detail, setDetail] = useState<OrgDetail | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { message: toastMessage, showToast } = useToast();
+
+  const copyOrgCode = async () => {
+    if (!detail?.orgCode) return;
+    await Clipboard.setStringAsync(detail.orgCode);
+    showToast('Org code copied');
+  };
 
   const load = useCallback(async () => {
     const data = await orgApi.getMyOrg();
@@ -25,166 +35,154 @@ export function OrgHomeScreen({ navigation }: Props) {
     load();
   }, [load]);
 
-  const onRefresh = async () => {
-    setIsRefreshing(true);
-    await load();
-    setIsRefreshing(false);
-  };
-
-  const onChangeRole = (member: OrgMember) => {
-    Alert.alert(
-      `Change role — ${member.name}`,
-      `Currently ${member.role}. Pick a new role (max 5 players, 2 coaches, 1 analyst).`,
-      [
-        ...ASSIGNABLE_ROLES.filter((role) => role !== member.role).map((role) => ({
-          text: role.charAt(0) + role.slice(1).toLowerCase(),
-          onPress: async () => {
-            try {
-              await orgApi.changeMemberRole(member.userId, role);
-              await refreshOrg();
-              await load();
-            } catch (err: any) {
-              Alert.alert(
-                'Could not change role',
-                err?.response?.data?.message ?? 'Please try again.',
-              );
-            }
-          },
-        })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ],
-    );
-  };
-
-  const onMakeOwner = (member: OrgMember) => {
-    Alert.alert(
-      'Make owner',
-      `Make ${member.name} the org owner? You will no longer be the owner.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Make Owner',
-          onPress: async () => {
-            try {
-              await orgApi.transferOwnership(member.userId);
-              await refreshOrg();
-              await load();
-            } catch (err: any) {
-              Alert.alert(
-                'Could not transfer ownership',
-                err?.response?.data?.message ?? 'Please try again.',
-              );
-            }
-          },
+  const drawerItems = useMemo(
+    () => [
+      {
+        key: 'chat',
+        label: 'Chats',
+        icon: 'chat' as const,
+        onPress: () => {
+          // Already on OrgHome which embeds the chat hub.
         },
-      ],
-    );
-  };
+      },
+      {
+        key: 'voice',
+        label: 'Team Voice',
+        icon: 'mic' as const,
+        onPress: () => navigation.navigate('Voice'),
+      },
+      {
+        key: 'media',
+        label: 'Media',
+        icon: 'images' as const,
+        onPress: () => navigation.navigate('MediaFeed'),
+      },
+      {
+        key: 'scrims',
+        label: 'Scrims & Tournaments',
+        icon: 'trophy' as const,
+        onPress: () => navigation.navigate('Scrims'),
+      },
+      {
+        key: 'stats',
+        label: 'Stats',
+        icon: 'stats' as const,
+        onPress: () => navigation.navigate('Stats'),
+      },
+      {
+        key: 'members',
+        label: 'Team Members',
+        icon: 'people' as const,
+        onPress: () => navigation.navigate('Members'),
+      },
+      ...(org?.isOwner
+        ? [
+            {
+              key: 'orgSettings',
+              label: 'Org Settings',
+              icon: 'settings' as const,
+              onPress: () => navigation.navigate('OrgSettings'),
+            },
+          ]
+        : []),
+      {
+        key: 'profile',
+        label: 'Edit My Profile',
+        icon: 'person' as const,
+        onPress: () => navigation.navigate('Profile'),
+      },
+    ],
+    [navigation, org?.isOwner],
+  );
 
-  // Rendered as the FlatList's own header rather than wrapped around it —
-  // letting the single FlatList own all scrolling avoids the old bug where
-  // several full-width buttons plus a centered container clipped the member
-  // list on short Android screens.
-  const header = (
-    <View>
-      <Text style={sharedStyles.title}>{org?.name ?? detail?.name}</Text>
-      {detail && (
-        <Text style={styles.subtitle}>
-          Org code: {detail.orgCode} · {detail.members.length} member(s)
-        </Text>
-      )}
-      <Pressable style={sharedStyles.button} onPress={() => navigation.navigate('Chat')}>
-        <Text style={sharedStyles.buttonText}>Team Chat</Text>
-      </Pressable>
-      <Pressable style={sharedStyles.button} onPress={() => navigation.navigate('Voice')}>
-        <Text style={sharedStyles.buttonText}>Team Voice</Text>
-      </Pressable>
-      <Pressable style={sharedStyles.button} onPress={() => navigation.navigate('MediaFeed')}>
-        <Text style={sharedStyles.buttonText}>Media</Text>
-      </Pressable>
-      <Pressable style={sharedStyles.button} onPress={() => navigation.navigate('Scrims')}>
-        <Text style={sharedStyles.buttonText}>Scrims & Tournaments</Text>
-      </Pressable>
-      <Pressable style={sharedStyles.button} onPress={() => navigation.navigate('Stats')}>
-        <Text style={sharedStyles.buttonText}>Stats</Text>
-      </Pressable>
-      <Pressable style={sharedStyles.button} onPress={() => navigation.navigate('Profile')}>
-        <Text style={sharedStyles.buttonText}>Edit My Profile</Text>
-      </Pressable>
-    </View>
+  const footerItems = useMemo(
+    () => [
+      {
+        key: 'logout',
+        label: 'Log Out',
+        icon: 'logout' as const,
+        danger: true,
+        onPress: () => logout(),
+      },
+    ],
+    [logout],
   );
 
   return (
-    <View style={styles.screen}>
-      <FlatList
-        data={detail?.members ?? []}
-        keyExtractor={(item) => item.userId}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-        }
-        ListHeaderComponent={header}
-        contentContainerStyle={styles.listContent}
-        ListFooterComponent={
-          <Pressable style={sharedStyles.link} onPress={logout}>
-            <Text style={sharedStyles.link}>Log out</Text>
-          </Pressable>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.memberRow}>
-            <Pressable
-              style={styles.memberInfo}
-              onPress={() =>
-                navigation.navigate('MemberProfile', {
-                  userId: item.userId,
-                  name: item.name,
-                })
-              }
-            >
-              <Text style={styles.memberName}>
-                {item.name}
-                {item.isOwner ? ' (Owner)' : ''}
+    <Screen>
+      <View style={styles.topBar}>
+        <MenuButton onPress={() => setMenuOpen(true)} />
+        <View style={styles.topBarTitleBlock}>
+          <Text style={styles.orgTitle} numberOfLines={1}>
+            {org?.name ?? detail?.name ?? 'Team Chat'}
+          </Text>
+          {detail && (
+            <View style={styles.subtitleRow}>
+              <Pressable
+                onPress={copyOrgCode}
+                accessibilityRole="button"
+                accessibilityLabel="Copy Org Code"
+                hitSlop={6}
+              >
+                <Text style={styles.orgCode}>Org Code: {detail.orgCode}</Text>
+              </Pressable>
+              <Text style={styles.subtitle}>
+                {' '}
+                · {detail.members.length} Member(s)
               </Text>
-              <Text style={styles.memberRole}>{item.role}</Text>
-            </Pressable>
-            {org?.isOwner && (
-              <View style={styles.ownerActions}>
-                <Pressable onPress={() => onChangeRole(item)}>
-                  <Text style={styles.actionLink}>Change Role</Text>
-                </Pressable>
-                {!item.isOwner && (
-                  <Pressable onPress={() => onMakeOwner(item)}>
-                    <Text style={styles.actionLink}>Make Owner</Text>
-                  </Pressable>
-                )}
-              </View>
-            )}
-          </View>
-        )}
-      />
-    </View>
+            </View>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.chat}>
+        <ChatHubScreen onLoadError={() => showToast('Could not load chats')} />
+      </View>
+
+      {menuOpen ? (
+        <SideDrawer
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          title={user?.name ?? 'Menu'}
+          subtitle={org?.name ?? detail?.name}
+          items={drawerItems}
+          footerItems={footerItems}
+        />
+      ) : null}
+
+      <Toast message={toastMessage} />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#fff' },
-  listContent: { padding: 24 },
-  subtitle: { textAlign: 'center', marginBottom: 16, color: '#555' },
-  memberRow: {
+  topBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    gap: 8,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
-  memberInfo: {
-    flex: 1,
+  topBarTitleBlock: { flex: 1, minWidth: 0 },
+  orgTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    textTransform: 'capitalize',
+  },
+  subtitleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: 2,
   },
-  memberName: { fontSize: 16 },
-  memberRole: { color: '#888' },
-  ownerActions: { alignItems: 'flex-end', gap: 6 },
-  actionLink: { color: '#2563eb', fontWeight: '600' },
+  orgCode: {
+    color: colors.link,
+    fontSize: 12,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  subtitle: { color: colors.textMuted, fontSize: 12 },
+  chat: { flex: 1 },
 });

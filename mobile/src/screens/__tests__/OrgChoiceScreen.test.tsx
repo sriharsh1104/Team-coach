@@ -35,7 +35,7 @@ describe('OrgChoiceScreen', () => {
     mockedUseAuth.mockReturnValue({ user: { name: 'Player One' }, logout });
     render(<OrgChoiceScreen navigation={navigation} route={{} as any} />);
 
-    fireEvent.press(screen.getByText('Log out'));
+    fireEvent.press(screen.getByText('Log Out'));
     expect(logout).toHaveBeenCalledTimes(1);
   });
 });

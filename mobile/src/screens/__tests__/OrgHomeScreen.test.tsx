@@ -1,12 +1,24 @@
 import React from 'react';
-import { Alert } from 'react-native';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
+import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { OrgHomeScreen } from '../OrgHomeScreen';
 import * as orgApi from '../../api/org';
 import { useAuth } from '../../auth/AuthContext';
 
 jest.mock('../../api/org');
 jest.mock('../../auth/AuthContext');
+jest.mock('../chat/ChatHubScreen', () => ({
+  ChatHubScreen: ({ onLoadError }: { onLoadError?: (err: unknown) => void }) => {
+    const { Text, Pressable } = require('react-native');
+    return (
+      <>
+        <Text>Embedded Team Chat</Text>
+        <Pressable onPress={() => onLoadError?.(new Error('boom'))}>
+          <Text>Simulate Chat Load Error</Text>
+        </Pressable>
+      </>
+    );
+  },
+}));
 
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
 const mockedUseAuth = useAuth as jest.Mock;
@@ -30,165 +42,105 @@ const refreshOrg = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockedOrgApi.getMyOrg.mockResolvedValue(detail as any);
   mockedUseAuth.mockReturnValue({
     logout,
     refreshOrg,
+    user: { id: 'user-1', name: 'Owner Coach', email: 'a@b.com' },
     org: { id: 'org-1', name: 'Alpha Squad', role: 'COACH', isOwner: true },
   });
 });
 
 describe('OrgHomeScreen', () => {
-  it('shows org name, code, member count, and every nav button', async () => {
+  it('defaults to the embedded team chat and shows org header', async () => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
 
-    await screen.findByText('Org code: 75HCP3 · 2 member(s)');
-    expect(screen.getByText('Team Chat')).toBeTruthy();
+    await screen.findByText('Org Code: 75HCP3');
+    expect(screen.getByText(/2 Member\(s\)/)).toBeTruthy();
+    expect(screen.getByText('Alpha Squad')).toBeTruthy();
+    expect(screen.getByText('Embedded Team Chat')).toBeTruthy();
+    expect(screen.queryByText('Team Voice')).toBeNull();
+    expect(screen.queryByText('Log Out')).toBeNull();
+  });
+
+  it('copies the org code and shows a toast when the org code label is pressed', async () => {
+    const Clipboard = require('expo-clipboard');
+    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Org Code: 75HCP3');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Copy Org Code'));
+    });
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('75HCP3');
+    expect(screen.getByText('Org code copied')).toBeTruthy();
+  });
+
+  it('opens the sidebar with all nav options (including owner-only Org Settings) and Log Out pinned at the bottom', async () => {
+    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Alpha Squad');
+
+    fireEvent.press(screen.getByLabelText('Open Menu'));
+
+    expect(screen.getByText('Chats')).toBeTruthy();
     expect(screen.getByText('Team Voice')).toBeTruthy();
     expect(screen.getByText('Media')).toBeTruthy();
     expect(screen.getByText('Scrims & Tournaments')).toBeTruthy();
     expect(screen.getByText('Stats')).toBeTruthy();
+    expect(screen.getByText('Team Members')).toBeTruthy();
+    expect(screen.getByText('Org Settings')).toBeTruthy();
     expect(screen.getByText('Edit My Profile')).toBeTruthy();
+    expect(screen.getByText('Log Out')).toBeTruthy();
+  });
+
+  it('hides Org Settings from the sidebar when I am not the owner', async () => {
+    mockedUseAuth.mockReturnValue({
+      logout,
+      refreshOrg,
+      user: { id: 'user-2', name: 'Teammate', email: 'a@b.com' },
+      org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false },
+    });
+    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Alpha Squad');
+
+    fireEvent.press(screen.getByLabelText('Open Menu'));
+    expect(screen.queryByText('Org Settings')).toBeNull();
   });
 
   it.each([
-    ['Team Chat', 'Chat'],
     ['Team Voice', 'Voice'],
     ['Media', 'MediaFeed'],
     ['Scrims & Tournaments', 'Scrims'],
     ['Stats', 'Stats'],
+    ['Team Members', 'Members'],
+    ['Org Settings', 'OrgSettings'],
     ['Edit My Profile', 'Profile'],
-  ])('navigates to %s -> %s', async (buttonText, routeName) => {
+  ])('navigates from sidebar %s -> %s', async (label, routeName) => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');
 
-    fireEvent.press(screen.getByText(buttonText));
+    fireEvent.press(screen.getByLabelText('Open Menu'));
+    fireEvent.press(screen.getByText(label));
     expect(navigation.navigate).toHaveBeenCalledWith(routeName);
   });
 
-  it('shows "(Owner)" next to the owner, and not next to other members', async () => {
-    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
-
-    await screen.findByText('Owner Coach (Owner)');
-    expect(screen.getByText('Teammate')).toBeTruthy();
-    expect(screen.queryByText('Teammate (Owner)')).toBeNull();
-  });
-
-  it('navigates to MemberProfile when a member row is pressed', async () => {
-    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    fireEvent.press(screen.getByText('Teammate'));
-    expect(navigation.navigate).toHaveBeenCalledWith('MemberProfile', {
-      userId: 'user-2',
-      name: 'Teammate',
-    });
-  });
-
-  it('shows Change Role for every member and Make Owner only for non-owners, when I am the owner', async () => {
-    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    expect(screen.getAllByText('Change Role')).toHaveLength(2);
-    expect(screen.getAllByText('Make Owner')).toHaveLength(1);
-  });
-
-  it('never shows owner actions when I am not the owner', async () => {
-    mockedUseAuth.mockReturnValue({
-      logout,
-      refreshOrg,
-      org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false },
-    });
-    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    expect(screen.queryByText('Make Owner')).toBeNull();
-    expect(screen.queryByText('Change Role')).toBeNull();
-  });
-
-  it('changes a member role after the owner picks one, then refreshes', async () => {
-    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const coach = buttons?.find((b) => b.text === 'Coach');
-      coach?.onPress?.(undefined as any);
-    });
-    mockedOrgApi.changeMemberRole.mockResolvedValue({ userId: 'user-2', role: 'COACH' });
-    mockedOrgApi.getMyOrg
-      .mockResolvedValueOnce(detail as any)
-      .mockResolvedValueOnce({
-        ...detail,
-        members: [
-          { userId: 'user-1', name: 'Owner Coach', avatarUrl: null, role: 'COACH', isOwner: true },
-          { userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'COACH', isOwner: false },
-        ],
-      } as any);
-    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    await act(async () => {
-      fireEvent.press(screen.getAllByText('Change Role')[1]);
-    });
-
-    expect(mockedOrgApi.changeMemberRole).toHaveBeenCalledWith('user-2', 'COACH');
-    expect(refreshOrg).toHaveBeenCalled();
-    await waitFor(() => expect(screen.getAllByText('COACH')).toHaveLength(2));
-  });
-
-  it('transfers ownership after confirming, then refreshes the org and roster', async () => {
-    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const confirm = buttons?.find((b) => b.text === 'Make Owner');
-      confirm?.onPress?.(undefined as any);
-    });
-    mockedOrgApi.transferOwnership.mockResolvedValue(undefined);
-    mockedOrgApi.getMyOrg
-      .mockResolvedValueOnce(detail as any)
-      .mockResolvedValueOnce({
-        ...detail,
-        isOwner: false,
-        members: [
-          { userId: 'user-1', name: 'Owner Coach', avatarUrl: null, role: 'COACH', isOwner: false },
-          { userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'PLAYER', isOwner: true },
-        ],
-      } as any);
-    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('Make Owner'));
-    });
-
-    expect(mockedOrgApi.transferOwnership).toHaveBeenCalledWith('user-2');
-    expect(refreshOrg).toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByText('Teammate (Owner)')).toBeTruthy());
-  });
-
-  it('shows an error alert when the transfer fails', async () => {
-    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const confirm = buttons?.find((b) => b.text === 'Make Owner');
-      confirm?.onPress?.(undefined as any);
-    });
-    mockedOrgApi.transferOwnership.mockRejectedValue({
-      response: { data: { message: 'Only the current owner can transfer ownership' } },
-    });
-    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('Make Owner'));
-    });
-
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Could not transfer ownership',
-      'Only the current owner can transfer ownership',
-    );
-    expect(refreshOrg).not.toHaveBeenCalled();
-  });
-
-  it('calls logout when "Log out" is pressed', async () => {
+  it('calls logout from the sidebar footer', async () => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');
 
-    fireEvent.press(screen.getByText('Log out'));
+    fireEvent.press(screen.getByLabelText('Open Menu'));
+    fireEvent.press(screen.getByText('Log Out'));
     expect(logout).toHaveBeenCalled();
+  });
+
+  it('shows a toast when the embedded chat hub fails to load', async () => {
+    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Embedded Team Chat');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Simulate Chat Load Error'));
+    });
+
+    expect(screen.getByText('Could not load chats')).toBeTruthy();
   });
 });

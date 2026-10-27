@@ -2,18 +2,20 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   Pressable,
   ScrollView,
   Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
 import { RoleOption } from '../../api/roles';
 import { RoleChips } from './RoleChips';
+import { CopyableInput } from './CopyableInput';
+import { CopyButton } from './CopyButton';
+import { Screen } from '../../brand/Screen';
+import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles } from '../shared';
 
 export function ProfileScreen() {
@@ -54,11 +56,6 @@ export function ProfileScreen() {
     setRoles((prev) =>
       prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
     );
-  };
-
-  const copy = async (value: string) => {
-    if (!value) return;
-    await Clipboard.setStringAsync(value);
   };
 
   const onSave = async () => {
@@ -107,127 +104,109 @@ export function ProfileScreen() {
 
   if (isLoading || !profile) {
     return (
-      <View style={sharedStyles.container}>
-        <ActivityIndicator />
-      </View>
+      <Screen>
+        <View style={sharedStyles.container}>
+          <ActivityIndicator color="#c9ccd1" />
+        </View>
+      </Screen>
     );
   }
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: '#fff' }}
-      contentContainerStyle={{ padding: 24 }}
-    >
-      <Text style={sharedStyles.title}>My Profile</Text>
+    <Screen>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+        contentContainerStyle={{ padding: 24 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.sectionLabel}>Role(s)</Text>
+        <RoleChips selected={roles} onToggle={toggleRole} />
 
-      <Text style={styles.sectionLabel}>Role(s)</Text>
-      <RoleChips selected={roles} onToggle={toggleRole} />
-
-      <Text style={styles.sectionLabel}>In-game name (IGN)</Text>
-      <View style={styles.inputRow}>
-        <TextInput
-          style={[sharedStyles.input, { flex: 1, marginBottom: 0 }]}
+        <Text style={styles.sectionLabel}>In-Game Name (IGN)</Text>
+        <CopyableInput
           placeholder="Your in-game name"
           value={inGameName}
           onChangeText={setInGameName}
         />
-        <Pressable style={styles.copyBtn} onPress={() => copy(inGameName)}>
-          <Text style={styles.copyBtnText}>Copy</Text>
-        </Pressable>
-      </View>
 
-      <Text style={styles.sectionLabel}>UID</Text>
-      <View style={styles.inputRow}>
-        <TextInput
-          style={[sharedStyles.input, { flex: 1, marginBottom: 0 }]}
+        <Text style={styles.sectionLabel}>UID</Text>
+        <CopyableInput
           placeholder="Your in-game UID"
           value={inGameUid}
           onChangeText={setInGameUid}
         />
-        <Pressable style={styles.copyBtn} onPress={() => copy(inGameUid)}>
-          <Text style={styles.copyBtnText}>Copy</Text>
+
+        <Text style={styles.sectionLabel}>Social Links</Text>
+        <CopyableInput
+          placeholder="WhatsApp URL"
+          autoCapitalize="none"
+          value={whatsappUrl}
+          onChangeText={setWhatsappUrl}
+        />
+        <CopyableInput
+          placeholder="Instagram URL"
+          autoCapitalize="none"
+          value={instagramUrl}
+          onChangeText={setInstagramUrl}
+        />
+        <CopyableInput
+          placeholder="Discord URL"
+          autoCapitalize="none"
+          value={discordUrl}
+          onChangeText={setDiscordUrl}
+        />
+        <CopyableInput
+          placeholder="YouTube URL"
+          autoCapitalize="none"
+          value={youtubeUrl}
+          onChangeText={setYoutubeUrl}
+        />
+
+        <Pressable
+          style={[sharedStyles.button, isSaving && sharedStyles.buttonDisabled]}
+          disabled={isSaving}
+          onPress={onSave}
+        >
+          <ButtonLabel icon="save">
+            {isSaving ? 'Saving…' : 'Save Profile'}
+          </ButtonLabel>
         </Pressable>
-      </View>
 
-      <Text style={styles.sectionLabel}>Social links</Text>
-      <TextInput
-        style={sharedStyles.input}
-        placeholder="WhatsApp URL"
-        autoCapitalize="none"
-        value={whatsappUrl}
-        onChangeText={setWhatsappUrl}
-      />
-      <TextInput
-        style={sharedStyles.input}
-        placeholder="Instagram URL"
-        autoCapitalize="none"
-        value={instagramUrl}
-        onChangeText={setInstagramUrl}
-      />
-      <TextInput
-        style={sharedStyles.input}
-        placeholder="Discord URL"
-        autoCapitalize="none"
-        value={discordUrl}
-        onChangeText={setDiscordUrl}
-      />
-      <TextInput
-        style={sharedStyles.input}
-        placeholder="YouTube URL"
-        autoCapitalize="none"
-        value={youtubeUrl}
-        onChangeText={setYoutubeUrl}
-      />
-
-      <Pressable
-        style={[sharedStyles.button, isSaving && sharedStyles.buttonDisabled]}
-        disabled={isSaving}
-        onPress={onSave}
-      >
-        <Text style={sharedStyles.buttonText}>
-          {isSaving ? 'Saving…' : 'Save Profile'}
-        </Text>
-      </Pressable>
-
-      <Text style={styles.sectionLabel}>My devices</Text>
-      {profile.devices.map((device) => (
-        <View key={device.id} style={styles.deviceRow}>
-          <Text style={{ flex: 1 }}>
-            {device.name} — {device.model}
-          </Text>
-          <Pressable onPress={() => onRemoveDevice(device.id)}>
-            <Text style={{ color: '#dc2626' }}>Remove</Text>
-          </Pressable>
-        </View>
-      ))}
-      <View style={styles.inputRow}>
-        <TextInput
-          style={[sharedStyles.input, { flex: 1, marginBottom: 0 }]}
+        <Text style={styles.sectionLabel}>My Devices</Text>
+        {profile.devices.map((device) => (
+          <View key={device.id} style={styles.deviceRow}>
+            <Text style={{ flex: 1, color: '#f2f3f5' }}>
+              {device.name} — {device.model}
+            </Text>
+            <CopyButton value={`${device.name} — ${device.model}`} />
+            <Pressable onPress={() => onRemoveDevice(device.id)} hitSlop={8}>
+              <Text style={{ color: '#f87171' }}>Remove</Text>
+            </Pressable>
+          </View>
+        ))}
+        <CopyableInput
           placeholder="Device name (e.g. Main rig)"
           value={deviceName}
           onChangeText={setDeviceName}
         />
-      </View>
-      <View style={styles.inputRow}>
-        <TextInput
-          style={[sharedStyles.input, { flex: 1, marginBottom: 0 }]}
+        <CopyableInput
           placeholder="Device model (e.g. ROG Phone 8)"
           value={deviceModel}
           onChangeText={setDeviceModel}
         />
-      </View>
-      <Pressable
-        style={[
-          sharedStyles.button,
-          (!deviceName || !deviceModel || isAddingDevice) &&
-            sharedStyles.buttonDisabled,
-        ]}
-        disabled={!deviceName || !deviceModel || isAddingDevice}
-        onPress={onAddDevice}
-      >
-        <Text style={sharedStyles.buttonText}>Add Device</Text>
-      </Pressable>
-    </ScrollView>
+        <Pressable
+          style={[
+            sharedStyles.button,
+            (!deviceName || !deviceModel || isAddingDevice) &&
+              sharedStyles.buttonDisabled,
+          ]}
+          disabled={!deviceName || !deviceModel || isAddingDevice}
+          onPress={onAddDevice}
+        >
+          <ButtonLabel icon="phone">Add Device</ButtonLabel>
+        </Pressable>
+      </ScrollView>
+    </Screen>
   );
 }
 
@@ -236,26 +215,15 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 8,
     fontWeight: '600',
-    color: '#333',
+    color: '#e8eaed',
+    textTransform: 'capitalize',
   },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  copyBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#f1f1f1',
-  },
-  copyBtnText: { fontWeight: '600', color: '#111' },
   deviceRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#3a3d44',
   },
 });

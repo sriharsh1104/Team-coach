@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { CopyButton } from './CopyButton';
 
 export function CopyableField({
   label,
@@ -9,23 +9,13 @@ export function CopyableField({
   label: string;
   value: string;
 }) {
-  const [justCopied, setJustCopied] = useState(false);
-
-  const onCopy = async () => {
-    await Clipboard.setStringAsync(value);
-    setJustCopied(true);
-    setTimeout(() => setJustCopied(false), 1500);
-  };
-
   return (
     <View style={styles.row}>
       <View style={{ flex: 1 }}>
         <Text style={styles.label}>{label}</Text>
         <Text style={styles.value}>{value}</Text>
       </View>
-      <Pressable onPress={onCopy} style={styles.copyButton} hitSlop={10}>
-        <Text style={styles.copyText}>{justCopied ? 'Copied' : 'Copy'}</Text>
-      </Pressable>
+      <CopyButton value={value} />
     </View>
   );
 }
@@ -36,15 +26,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#3a3d44',
   },
-  label: { color: '#888', fontSize: 12 },
-  value: { fontSize: 16, marginTop: 2 },
-  copyButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#f1f1f1',
-  },
-  copyText: { fontSize: 13, fontWeight: '600', color: '#111' },
+  label: { color: '#9aa0a6', fontSize: 12 },
+  value: { fontSize: 16, marginTop: 2, color: '#f2f3f5' },
 });

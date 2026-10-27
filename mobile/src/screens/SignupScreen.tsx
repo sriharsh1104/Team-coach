@@ -3,9 +3,11 @@ import { Text, TextInput, Pressable, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
 import { GoogleSignInButton } from '../auth/GoogleSignInButton';
+import { BrandMark } from '../brand/BrandMark';
 import { AuthStackParamList } from '../navigation/types';
-import { sharedStyles } from './shared';
+import { authStyles } from './shared';
 import { FormScreen } from './FormScreen';
+import { ButtonLabel } from '../ui/ButtonLabel';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Signup'>;
 
@@ -34,40 +36,44 @@ export function SignupScreen({ navigation }: Props) {
 
   return (
     <FormScreen>
-      <Text style={sharedStyles.title}>Create your account</Text>
+      <BrandMark />
+      <Text style={authStyles.title}>Create Your Account</Text>
       <TextInput
-        style={sharedStyles.input}
+        style={authStyles.input}
         placeholder="Full name"
+        placeholderTextColor="#8b8f97"
         value={name}
         onChangeText={setName}
       />
       <TextInput
-        style={sharedStyles.input}
+        style={authStyles.input}
         placeholder="Email"
+        placeholderTextColor="#8b8f97"
         autoCapitalize="none"
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
       />
       <TextInput
-        style={sharedStyles.input}
+        style={authStyles.input}
         placeholder="Password (min 8 characters)"
+        placeholderTextColor="#8b8f97"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
       />
       <Pressable
         style={[
-          sharedStyles.button,
-          (isSubmitting || !canSubmit) && sharedStyles.buttonDisabled,
+          authStyles.button,
+          (isSubmitting || !canSubmit) && authStyles.buttonDisabled,
         ]}
         disabled={isSubmitting || !canSubmit}
         onPress={onSubmit}
       >
-        <Text style={sharedStyles.buttonText}>Sign Up</Text>
+        <ButtonLabel icon="person-add">Sign Up</ButtonLabel>
       </Pressable>
       <GoogleSignInButton />
-      <Text style={sharedStyles.link} onPress={() => navigation.navigate('Login')}>
+      <Text style={authStyles.link} onPress={() => navigation.navigate('Login')}>
         Already have an account? Log in
       </Text>
     </FormScreen>

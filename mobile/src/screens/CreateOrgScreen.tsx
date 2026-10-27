@@ -5,9 +5,10 @@ import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
 import { MembershipRole } from '../api/types';
 import { OrgSetupStackParamList } from '../navigation/types';
-import { sharedStyles } from './shared';
+import { authStyles } from './shared';
 import { RoleSelector } from './RoleSelector';
 import { FormScreen } from './FormScreen';
+import { ButtonLabel } from '../ui/ButtonLabel';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'CreateOrg'>;
 
@@ -38,10 +39,11 @@ export function CreateOrgScreen({}: Props) {
 
   return (
     <FormScreen>
-      <Text style={sharedStyles.title}>Create an Org</Text>
+      <Text style={authStyles.title}>Create an Org</Text>
       <TextInput
-        style={sharedStyles.input}
+        style={authStyles.input}
         placeholder="Org / team name"
+        placeholderTextColor="#8b8f97"
         value={name}
         onChangeText={setName}
       />
@@ -49,18 +51,18 @@ export function CreateOrgScreen({}: Props) {
       <RoleSelector value={role} onChange={setRole} />
       <Pressable
         style={[
-          sharedStyles.button,
-          (isSubmitting || !name) && sharedStyles.buttonDisabled,
+          authStyles.button,
+          (isSubmitting || !name) && authStyles.buttonDisabled,
         ]}
         disabled={isSubmitting || !name}
         onPress={onSubmit}
       >
-        <Text style={sharedStyles.buttonText}>Create Org</Text>
+        <ButtonLabel icon="add-circle">Create Org</ButtonLabel>
       </Pressable>
     </FormScreen>
   );
 }
 
 const roleStyles = StyleSheet.create({
-  label: { marginBottom: 8, color: '#444' },
+  label: { marginBottom: 8, color: '#9aa0a6' },
 });

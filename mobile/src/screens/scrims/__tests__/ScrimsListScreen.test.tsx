@@ -4,6 +4,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-
 import { ScrimsListScreen } from '../ScrimsListScreen';
 import * as scrimsApi from '../../../api/scrims';
 import { useAuth } from '../../../auth/AuthContext';
+import { ScrimEvent } from '../../../api/types';
 
 jest.mock('../../../api/scrims');
 jest.mock('../../../auth/AuthContext');
@@ -18,7 +19,7 @@ const mockedScrimsApi = scrimsApi as jest.Mocked<typeof scrimsApi>;
 const mockedUseAuth = useAuth as jest.Mock;
 const navigation = { navigate: jest.fn() } as any;
 
-function scrim(overrides: Partial<any> = {}) {
+function scrim(overrides: Partial<ScrimEvent> = {}): ScrimEvent {
   return {
     id: 's1',
     type: 'SCRIM',
@@ -28,6 +29,9 @@ function scrim(overrides: Partial<any> = {}) {
     notes: null,
     createdById: 'user-2',
     createdByName: 'Coach Dana',
+    remind30: true,
+    remind10: true,
+    rounds: [{ roundNumber: 1, scheduledAt: '2030-01-01T18:00:00.000Z', result: 'PENDING' }],
     ...overrides,
   };
 }

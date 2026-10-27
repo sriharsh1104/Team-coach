@@ -6,6 +6,6 @@ export class CreateOrgDto {
   @MinLength(2)
   name: string;
 
-  @IsIn([MembershipRole.PLAYER, MembershipRole.COACH])
+  @IsIn([MembershipRole.PLAYER, MembershipRole.COACH, MembershipRole.ANALYST])
   role: MembershipRole;
 }

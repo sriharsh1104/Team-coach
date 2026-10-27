@@ -22,6 +22,16 @@ const existingScrim = {
   notes: 'Bring backup headset',
   createdById: 'user-1',
   createdByName: 'Me',
+  remind30: true,
+  remind10: true,
+  rounds: [
+    {
+      id: 'r1',
+      roundNumber: 1,
+      scheduledAt: '2030-06-15T14:30:00.000Z',
+      result: 'PENDING',
+    },
+  ],
 };
 
 async function pressAndSettle(text: string) {
@@ -40,7 +50,7 @@ describe('AddEditScrimScreen', () => {
     render(<AddEditScrimScreen navigation={navigation} route={{ params: {} } as any} />);
 
     expect(screen.getByText('Add Scrim / Tournament')).toBeTruthy();
-    expect(screen.queryByText('Delete entry')).toBeNull();
+    expect(screen.queryByText('Delete Entry')).toBeNull();
   });
 
   it('pre-fills fields and shows "Edit Entry" / delete option when editing', () => {
@@ -55,7 +65,66 @@ describe('AddEditScrimScreen', () => {
     expect(screen.getByDisplayValue('Regional Finals')).toBeTruthy();
     expect(screen.getByDisplayValue('https://discord.gg/example')).toBeTruthy();
     expect(screen.getByDisplayValue('Bring backup headset')).toBeTruthy();
-    expect(screen.getByText('Delete entry')).toBeTruthy();
+    expect(screen.getByText('Delete Entry')).toBeTruthy();
+    expect(screen.getByText('Rounds')).toBeTruthy();
+    expect(screen.getByText('Round 1')).toBeTruthy();
+  });
+
+  it('SCRIM has no rounds/qualification UI at all — just a single Date & Time field', () => {
+    render(<AddEditScrimScreen navigation={navigation} route={{ params: {} } as any} />);
+
+    // SCRIM is the default type.
+    expect(screen.queryByText('Rounds')).toBeNull();
+    expect(screen.queryByText('Round 1')).toBeNull();
+    expect(screen.queryByText('+ Add Round')).toBeNull();
+    expect(screen.queryByText('Qualified')).toBeNull();
+    expect(screen.getByText('Date & Time')).toBeTruthy();
+  });
+
+  it('switching to TOURNAMENT reveals the Rounds UI; switching back to SCRIM hides it again', async () => {
+    render(<AddEditScrimScreen navigation={navigation} route={{ params: {} } as any} />);
+
+    fireEvent.press(screen.getByText('Tournament'));
+    expect(screen.getByText('Rounds')).toBeTruthy();
+    expect(screen.getByText('Round 1')).toBeTruthy();
+    expect(screen.getByText('Qualified')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Scrim'));
+    expect(screen.queryByText('Rounds')).toBeNull();
+    expect(screen.queryByText('Qualified')).toBeNull();
+  });
+
+  it("defaults a brand-new entry's time to PM, even if the real clock is in the AM", () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 0, 1, 9, 30)); // 9:30 AM
+
+    render(<AddEditScrimScreen navigation={navigation} route={{ params: {} } as any} />);
+
+    expect(screen.getByText(/09:30 PM/)).toBeTruthy();
+
+    jest.useRealTimers();
+  });
+
+  it("switching back to SCRIM after adding extra tournament rounds collapses to a single round on save", async () => {
+    mockedScrimsApi.createScrim.mockResolvedValue(existingScrim as any);
+    render(<AddEditScrimScreen navigation={navigation} route={{ params: {} } as any} />);
+
+    fireEvent.press(screen.getByText('Tournament'));
+    fireEvent.press(screen.getByText('+ Add Round'));
+    expect(screen.getByText('Round 2')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Scrim'));
+    fireEvent.changeText(
+      screen.getByPlaceholderText('Title (e.g. Practice vs Team Beta)'),
+      'Practice Match',
+    );
+    await pressAndSettle('Save');
+
+    expect(mockedScrimsApi.createScrim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'SCRIM',
+        rounds: [expect.objectContaining({ roundNumber: 1, result: 'PENDING' })],
+      }),
+    );
   });
 
   it('blocks saving until a title is entered', async () => {
@@ -138,7 +207,7 @@ describe('AddEditScrimScreen', () => {
       />,
     );
 
-    await pressAndSettle('Delete entry');
+    await pressAndSettle('Delete Entry');
 
     expect(mockedScrimsApi.deleteScrim).toHaveBeenCalledWith('scrim-1');
     expect(navigation.goBack).toHaveBeenCalled();

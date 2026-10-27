@@ -1,0 +1,263 @@
+import { INestApplication } from '@nestjs/common';
+import * as request from 'supertest';
+import { Socket } from 'socket.io-client';
+import {
+  createTestApp,
+  getPrisma,
+  resetDatabase,
+  listenOnEphemeralPort,
+} from './utils/test-app';
+import { signup, createOrgAs, joinOrgAs } from './utils/fixtures';
+import {
+  connectSocket,
+  connectAndExpectRejection,
+  connectViaQueryTokenAndExpectRejection,
+  emitAck,
+  waitForEvent,
+  assertNoEvent,
+} from './utils/socket-helpers';
+import { PrismaService } from '../src/prisma/prisma.service';
+
+describe('Phase 1D — Chat (e2e)', () => {
+  let app: INestApplication;
+  let server: any;
+  let baseUrl: string;
+  let prisma: PrismaService;
+  const openSockets: Socket[] = [];
+
+  beforeAll(async () => {
+    app = await createTestApp();
+    server = app.getHttpServer();
+    baseUrl = await listenOnEphemeralPort(app);
+    prisma = getPrisma(app);
+  });
+
+  afterAll(async () => {
+    await resetDatabase(prisma);
+    await app.close();
+  });
+
+  afterEach(async () => {
+    for (const socket of openSockets) socket.disconnect();
+    openSockets.length = 0;
+    await resetDatabase(prisma);
+  });
+
+  async function setUpOrgWithPlayer() {
+    const coach = await signup(server, { name: 'Coach' });
+    const org = await createOrgAs(server, coach.accessToken, 'COACH');
+    const player = await signup(server, { name: 'Player' });
+    await joinOrgAs(server, player.accessToken, org.orgCode);
+    return { coach, org, player };
+  }
+
+  describe('GET /chat/messages', () => {
+    it('requires authentication', async () => {
+      await request(server).get('/chat/messages').expect(401);
+    });
+
+    it('404s for a user not in any org', async () => {
+      const outsider = await signup(server);
+      await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(404);
+    });
+
+    it('returns an empty list before anyone has said anything', async () => {
+      const { player } = await setUpOrgWithPlayer();
+      const res = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .expect(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it("includes the sender's current role and owner status on each message", async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken);
+      openSockets.push(coachSocket);
+      const received = waitForEvent(coachSocket, 'message:new');
+
+      const playerSocket = await connectSocket(baseUrl, player.accessToken);
+      openSockets.push(playerSocket);
+      playerSocket.emit('message:send', { text: 'hi team' });
+      await received;
+
+      const res = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].senderRole).toBe('PLAYER');
+      // The coach is the org creator in setUpOrgWithPlayer, not this sender.
+      expect(res.body[0].senderIsOwner).toBe(false);
+    });
+  });
+
+  // Regression coverage for a real incident: an unapplied migration left
+  // ChatMessage.channelKey / ChatReadState missing from the database, which
+  // made this endpoint throw — silently swallowed on the mobile side into a
+  // permanently-empty "No teammates yet." inbox despite the org having
+  // multiple members. This is the endpoint ChatHubScreen's inbox is built on.
+  describe('GET /chat/channels', () => {
+    it('requires authentication', async () => {
+      await request(server).get('/chat/channels').expect(401);
+    });
+
+    it('404s for a user not in any org', async () => {
+      const outsider = await signup(server);
+      await request(server)
+        .get('/chat/channels')
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(404);
+    });
+
+    it('always includes the org channel, and lists every other member as a DM-able teammate', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+
+      const res = await request(server)
+        .get('/chat/channels')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+
+      expect(res.body.channels).toHaveLength(1);
+      expect(res.body.channels[0]).toMatchObject({ channelKey: 'org', type: 'ORG' });
+      expect(res.body.teammates).toHaveLength(1);
+      expect(res.body.teammates[0].userId).toBe(player.user.id);
+      expect(res.body.teammates[0].channelKey).toMatch(/^dm:/);
+      expect(res.body.totalUnread).toBe(0);
+    });
+
+    it('surfaces an active DM channel once it has a message, with an unread count for the recipient', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken);
+      const playerSocket = await connectSocket(baseUrl, player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      const dmChannelKey = (
+        await request(server)
+          .get('/chat/channels')
+          .set('Authorization', `Bearer ${coach.accessToken}`)
+          .expect(200)
+      ).body.teammates[0].channelKey;
+
+      await emitAck(coachSocket, 'channel:join', { channelKey: dmChannelKey });
+      await emitAck(playerSocket, 'channel:join', { channelKey: dmChannelKey });
+      const received = waitForEvent(playerSocket, 'message:new');
+      coachSocket.emit('message:send', { channelKey: dmChannelKey, text: 'hey, got a sec?' });
+      await received;
+
+      const res = await request(server)
+        .get('/chat/channels')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .expect(200);
+      const dmEntry = res.body.channels.find((c: any) => c.channelKey === dmChannelKey);
+      expect(dmEntry).toBeDefined();
+      expect(dmEntry.unreadCount).toBe(1);
+      expect(dmEntry.lastPreview).toBe('hey, got a sec?');
+      expect(res.body.totalUnread).toBe(1);
+    });
+  });
+
+  describe('WebSocket connection', () => {
+    it('accepts a connection with a valid token', async () => {
+      const { player } = await setUpOrgWithPlayer();
+      const socket = await connectSocket(baseUrl, player.accessToken);
+      openSockets.push(socket);
+      expect(socket.connected).toBe(true);
+    });
+
+    it('rejects a connection with a garbage token', async () => {
+      await connectAndExpectRejection(baseUrl, 'not-a-real-jwt');
+    });
+
+    it('rejects a connection with no token at all', async () => {
+      await connectAndExpectRejection(baseUrl, '');
+    });
+
+    it('SECURITY: rejects a token sent only as a query-string param, even a valid one', async () => {
+      const { player } = await setUpOrgWithPlayer();
+      await connectViaQueryTokenAndExpectRejection(baseUrl, player.accessToken);
+    });
+  });
+
+  describe('message:send / message:new', () => {
+    it('broadcasts a message to everyone in the org, including the sender, and persists it', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken);
+      const playerSocket = await connectSocket(baseUrl, player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      const coachReceived = waitForEvent(coachSocket, 'message:new');
+      const senderReceived = waitForEvent(playerSocket, 'message:new');
+
+      playerSocket.emit('message:send', { text: 'Ready for scrim at 8pm?' });
+
+      const [fromCoach, fromSender] = await Promise.all([coachReceived, senderReceived]);
+      expect(fromCoach.text).toBe('Ready for scrim at 8pm?');
+      expect(fromCoach.senderName).toBe('Player');
+      expect(fromSender.id).toBe(fromCoach.id);
+
+      const history = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(history.body).toHaveLength(1);
+      expect(history.body[0].text).toBe('Ready for scrim at 8pm?');
+    });
+
+    it('SECURITY: never delivers a message to a socket in a different org', async () => {
+      const { player: playerA } = await setUpOrgWithPlayer();
+      const { player: playerB } = await setUpOrgWithPlayer();
+
+      const socketA = await connectSocket(baseUrl, playerA.accessToken);
+      const socketB = await connectSocket(baseUrl, playerB.accessToken);
+      openSockets.push(socketA, socketB);
+
+      const bShouldNotHear = assertNoEvent(socketB, 'message:new');
+      socketA.emit('message:send', { text: 'This is an org A secret' });
+      await bShouldNotHear;
+
+      const orgBHistory = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${playerB.accessToken}`)
+        .expect(200);
+      expect(orgBHistory.body).toHaveLength(0);
+    });
+
+    it('silently ignores an empty message (not persisted, no broadcast)', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken);
+      const playerSocket = await connectSocket(baseUrl, player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      const noEvent = assertNoEvent(coachSocket, 'message:new');
+      playerSocket.emit('message:send', { text: '   ' });
+      await noEvent;
+
+      const history = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(history.body).toHaveLength(0);
+    });
+
+    it('silently ignores a message over the 2000-character limit', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken);
+      const playerSocket = await connectSocket(baseUrl, player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      const noEvent = assertNoEvent(coachSocket, 'message:new');
+      playerSocket.emit('message:send', { text: 'x'.repeat(2001) });
+      await noEvent;
+
+      const history = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(history.body).toHaveLength(0);
+    });
+  });
+});
