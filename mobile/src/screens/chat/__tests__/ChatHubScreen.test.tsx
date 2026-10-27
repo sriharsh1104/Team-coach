@@ -94,6 +94,26 @@ describe('ChatHubScreen', () => {
     expect(screen.queryByText('Conversation: org')).toBeNull();
   });
 
+  it('BUG FIX: refetches the channel list when returning to the inbox, so a just-sent message is reflected immediately', async () => {
+    mockedChatApi.getChatChannels
+      .mockResolvedValueOnce(channelsResponse as any)
+      .mockResolvedValueOnce({
+        ...channelsResponse,
+        channels: [
+          { ...channelsResponse.channels[0], lastPreview: 'gg just now', unreadCount: 0 },
+        ],
+      } as any);
+    render(<ChatHubScreen />);
+    await screen.findByText('gg everyone');
+
+    fireEvent.press(screen.getByText('Team Chat'));
+    await screen.findByText('← Chats');
+    fireEvent.press(screen.getByText('← Chats'));
+
+    expect(mockedChatApi.getChatChannels).toHaveBeenCalledTimes(2);
+    await screen.findByText('gg just now');
+  });
+
   it('calls onLoadError instead of failing silently when the channel list fails to load', async () => {
     const onLoadError = jest.fn();
     mockedChatApi.getChatChannels.mockRejectedValue(new Error('network down'));

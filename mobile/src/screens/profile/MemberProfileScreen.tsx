@@ -7,7 +7,7 @@ import { RoleChips } from './RoleChips';
 import { CopyableField } from './CopyableField';
 import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
-import { sharedStyles } from '../shared';
+import { sharedStyles, formatRoleBadge } from '../shared';
 import { MainStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'MemberProfile'>;
@@ -55,6 +55,8 @@ export function MemberProfileScreen({ route }: Props) {
     );
   }
 
+  const roleBadge = formatRoleBadge(profile.role, profile.isOwner);
+
   return (
     <Screen>
     <ScrollView
@@ -62,6 +64,19 @@ export function MemberProfileScreen({ route }: Props) {
       contentContainerStyle={{ padding: 24 }}
     >
       <Text style={sharedStyles.title}>{name}</Text>
+      {roleBadge && (
+        <Text
+          style={{
+            color: '#a8b0ff',
+            fontWeight: '600',
+            textAlign: 'center',
+            marginTop: -16,
+            marginBottom: 16,
+          }}
+        >
+          {roleBadge}
+        </Text>
+      )}
 
       {profile.roles.length > 0 ? (
         <RoleChips

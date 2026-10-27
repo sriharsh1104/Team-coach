@@ -12,6 +12,7 @@ import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { User } from '@prisma/client';
+import { isProfileComplete } from '../users/users.service';
 
 const BCRYPT_SALT_ROUNDS = 12;
 
@@ -155,6 +156,8 @@ export class AuthService {
         email: user.email,
         name: user.name,
         avatarUrl: user.avatarUrl,
+        phone: user.phone,
+        profileComplete: isProfileComplete(user),
       },
       org: membership
         ? {

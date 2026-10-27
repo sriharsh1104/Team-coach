@@ -27,6 +27,8 @@ const fakeUser = {
   email: 'player1@example.com',
   name: 'Player 1',
   avatarUrl: null,
+  phone: null,
+  profileComplete: true,
 };
 
 beforeEach(() => {
@@ -198,6 +200,28 @@ describe('AuthContext', () => {
 
     expect(result.current.org).toEqual({ id: 'org-2', name: 'Newly Joined Org', role: 'PLAYER', isOwner: false });
     expect(result.current.user).toEqual(fakeUser);
+  });
+
+  it('refreshUser re-fetches the user object (e.g. after completing the profile gate)', async () => {
+    mockedAuthApi.login.mockResolvedValue({
+      accessToken: 'login-token',
+      user: { ...fakeUser, profileComplete: false },
+      org: null,
+    });
+
+    const { result } = renderAuth();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.login('player1@example.com', 'password123');
+    });
+    expect(result.current.user?.profileComplete).toBe(false);
+
+    mockedAuthApi.me.mockResolvedValue({ ...fakeUser, profileComplete: true, org: null });
+    await act(async () => {
+      await result.current.refreshUser();
+    });
+
+    expect(result.current.user?.profileComplete).toBe(true);
   });
 
   it('setOrg updates state directly without calling the API (used right after create/join)', async () => {

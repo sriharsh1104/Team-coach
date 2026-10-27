@@ -17,8 +17,18 @@ import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles } from '../shared';
+import { useAuth } from '../../auth/AuthContext';
 
-export function ProfileScreen() {
+// IGN, UID and phone are compulsory for every user — everything else
+// (socials) stays optional. Enforced here for both the one-time forced
+// post-login gate (mustComplete) and the regular "Edit My Profile" screen,
+// so the invariant can't be broken again by a later edit.
+function isFormComplete(inGameName: string, inGameUid: string, phone: string) {
+  return !!(inGameName.trim() && inGameUid.trim() && phone.trim());
+}
+
+export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean } = {}) {
+  const { refreshUser } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -26,6 +36,7 @@ export function ProfileScreen() {
   const [roles, setRoles] = useState<string[]>([]);
   const [inGameName, setInGameName] = useState('');
   const [inGameUid, setInGameUid] = useState('');
+  const [phone, setPhone] = useState('');
   const [whatsappUrl, setWhatsappUrl] = useState('');
   const [instagramUrl, setInstagramUrl] = useState('');
   const [discordUrl, setDiscordUrl] = useState('');
@@ -41,6 +52,7 @@ export function ProfileScreen() {
     setRoles(data.roles);
     setInGameName(data.inGameName ?? '');
     setInGameUid(data.inGameUid ?? '');
+    setPhone(data.phone ?? '');
     setWhatsappUrl(data.whatsappUrl ?? '');
     setInstagramUrl(data.instagramUrl ?? '');
     setDiscordUrl(data.discordUrl ?? '');
@@ -58,20 +70,28 @@ export function ProfileScreen() {
     );
   };
 
+  const formComplete = isFormComplete(inGameName, inGameUid, phone);
+
   const onSave = async () => {
+    if (!formComplete) return;
     setIsSaving(true);
     try {
       const updated = await usersApi.updateMyProfile({
         roles,
         inGameName: inGameName || undefined,
         inGameUid: inGameUid || undefined,
+        phone: phone || undefined,
         whatsappUrl: whatsappUrl || undefined,
         instagramUrl: instagramUrl || undefined,
         discordUrl: discordUrl || undefined,
         youtubeUrl: youtubeUrl || undefined,
       });
       setProfile(updated);
-      Alert.alert('Saved', 'Your profile was updated.');
+      if (mustComplete) {
+        await refreshUser();
+      } else {
+        Alert.alert('Saved', 'Your profile was updated.');
+      }
     } catch (err: any) {
       Alert.alert(
         'Could not save',
@@ -119,22 +139,37 @@ export function ProfileScreen() {
         contentContainerStyle={{ padding: 24 }}
         keyboardShouldPersistTaps="handled"
       >
+        {mustComplete && (
+          <Text style={styles.introText}>
+            Just a few required details before you continue.
+          </Text>
+        )}
+
         <Text style={styles.sectionLabel}>Role(s)</Text>
         <RoleChips selected={roles} onToggle={toggleRole} />
 
-        <Text style={styles.sectionLabel}>In-Game Name (IGN)</Text>
+        <Text style={styles.sectionLabel}>In-Game Name (IGN) *</Text>
         <CopyableInput
           placeholder="Your in-game name"
           value={inGameName}
           onChangeText={setInGameName}
         />
 
-        <Text style={styles.sectionLabel}>UID</Text>
+        <Text style={styles.sectionLabel}>UID *</Text>
         <CopyableInput
           placeholder="Your in-game UID"
           value={inGameUid}
           onChangeText={setInGameUid}
         />
+
+        <Text style={styles.sectionLabel}>Phone *</Text>
+        <CopyableInput
+          placeholder="Your phone number"
+          keyboardType="phone-pad"
+          value={phone}
+          onChangeText={setPhone}
+        />
+        <Text style={styles.requiredHint}>* Required</Text>
 
         <Text style={styles.sectionLabel}>Social Links</Text>
         <CopyableInput
@@ -163,15 +198,20 @@ export function ProfileScreen() {
         />
 
         <Pressable
-          style={[sharedStyles.button, isSaving && sharedStyles.buttonDisabled]}
-          disabled={isSaving}
+          style={[
+            sharedStyles.button,
+            (isSaving || !formComplete) && sharedStyles.buttonDisabled,
+          ]}
+          disabled={isSaving || !formComplete}
           onPress={onSave}
         >
           <ButtonLabel icon="save">
-            {isSaving ? 'Saving…' : 'Save Profile'}
+            {isSaving ? 'Saving…' : mustComplete ? 'Continue' : 'Save Profile'}
           </ButtonLabel>
         </Pressable>
 
+        {!mustComplete && (
+          <>
         <Text style={styles.sectionLabel}>My Devices</Text>
         {profile.devices.map((device) => (
           <View key={device.id} style={styles.deviceRow}>
@@ -205,6 +245,8 @@ export function ProfileScreen() {
         >
           <ButtonLabel icon="phone">Add Device</ButtonLabel>
         </Pressable>
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -225,5 +267,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#3a3d44',
+  },
+  introText: {
+    color: '#9aa0a6',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  requiredHint: {
+    color: '#9aa0a6',
+    fontSize: 12,
+    marginTop: -8,
+    marginBottom: 4,
   },
 });

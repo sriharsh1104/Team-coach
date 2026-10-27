@@ -40,6 +40,11 @@ export class UpdateProfileDto {
   inGameUid?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  phone?: string;
+
+  @IsOptional()
   @IsUrl()
   whatsappUrl?: string;
 

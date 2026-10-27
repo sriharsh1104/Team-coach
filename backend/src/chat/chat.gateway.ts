@@ -77,6 +77,50 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     return { ok: true, channelKey };
   }
 
+  // Mirrors onChannelJoin's shape — persists via the same markRead the REST
+  // POST /chat/read uses, then broadcasts so everyone else currently
+  // viewing this channel sees the "Seen" update live, the same way
+  // message:send already broadcasts message:new.
+  @SubscribeMessage('channel:read')
+  async onChannelRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { channelKey?: string },
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.orgId) return;
+    const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
+    const { lastReadAt } = await this.chatService.markRead(data.userId, channelKey);
+    this.server.to(this.roomFor(data.orgId, channelKey)).emit('chat:read', {
+      userId: data.userId,
+      userName: data.userName,
+      channelKey,
+      lastReadAt,
+    });
+  }
+
+  // Mirrors onChannelRead, but for the "delivered" (double grey tick) tier —
+  // the client emits this the instant its socket actually receives a
+  // channel's messages, separately from (and generally before) channel:read.
+  @SubscribeMessage('channel:delivered')
+  async onChannelDelivered(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { channelKey?: string },
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.orgId) return;
+    const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
+    const { lastDeliveredAt } = await this.chatService.markDelivered(
+      data.userId,
+      channelKey,
+    );
+    this.server.to(this.roomFor(data.orgId, channelKey)).emit('chat:delivered', {
+      userId: data.userId,
+      userName: data.userName,
+      channelKey,
+      lastDeliveredAt,
+    });
+  }
+
   @SubscribeMessage('message:send')
   async onMessageSend(
     @ConnectedSocket() client: Socket,

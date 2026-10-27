@@ -80,6 +80,17 @@ jest.mock('expo-clipboard', () => ({
   getStringAsync: jest.fn().mockResolvedValue(''),
 }));
 
+jest.mock('expo-av', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    Video: React.forwardRef((props: any, ref: any) =>
+      React.createElement(View, { ...props, ref, testID: props.testID ?? 'mock-video' }),
+    ),
+    ResizeMode: { CONTAIN: 'contain', COVER: 'cover', STRETCH: 'stretch' },
+  };
+});
+
 jest.mock('socket.io-client', () => ({
   io: jest.fn(() => ({
     on: jest.fn(),

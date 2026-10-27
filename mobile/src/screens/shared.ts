@@ -1,5 +1,18 @@
 import { StyleSheet } from 'react-native';
 import { colors } from '../theme';
+import { MembershipRole } from '../api/types';
+
+/** "Coach (Owner)" / "Player" — the shared org-role badge format, used by
+ * chat sender labels and member profile headers alike. Null when the
+ * member has no current org role to show. */
+export function formatRoleBadge(
+  role: MembershipRole | null,
+  isOwner: boolean,
+): string | null {
+  if (!role) return null;
+  const label = role.charAt(0) + role.slice(1).toLowerCase();
+  return `${label}${isOwner ? ' (Owner)' : ''}`;
+}
 
 /**
  * Platform-wide Sacred dark styles (org home, profile, lists, auth forms).

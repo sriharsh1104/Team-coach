@@ -52,11 +52,19 @@ export function ChatHubScreen({ onLoadError }: Props) {
     setShowInbox(false);
   };
 
+  const backToInbox = () => {
+    setShowInbox(true);
+    // The inbox was loaded once on mount — without this, returning from a
+    // conversation you just sent a message in still shows the stale
+    // "No messages yet" preview until a manual pull-to-refresh.
+    load().catch((err) => onLoadError?.(err));
+  };
+
   if (!showInbox) {
     return (
       <View style={styles.flex}>
         <View style={styles.chatHeader}>
-          <Pressable onPress={() => setShowInbox(true)} hitSlop={8}>
+          <Pressable onPress={backToInbox} hitSlop={8}>
             <Text style={styles.back}>← Chats</Text>
           </Pressable>
           <Text style={styles.chatTitle} numberOfLines={1}>

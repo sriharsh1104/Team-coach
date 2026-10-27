@@ -19,6 +19,7 @@ interface AuthContextValue {
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshOrg: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   setOrg: (org: OrgSummary) => void;
 }
 
@@ -43,6 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: me.email,
           name: me.name,
           avatarUrl: me.avatarUrl,
+          phone: me.phone,
+          profileComplete: me.profileComplete,
         });
         setOrgState(me.org);
         registerPushTokenWithBackend();
@@ -106,6 +109,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOrgState(me.org);
   }, []);
 
+  // Re-fetches the user object itself — used after completing the forced
+  // post-login profile gate, so `user.profileComplete` flips without
+  // requiring a full logout/login round trip.
+  const refreshUser = useCallback(async () => {
+    const me = await authApi.me();
+    setUser({
+      id: me.id,
+      email: me.email,
+      name: me.name,
+      avatarUrl: me.avatarUrl,
+      phone: me.phone,
+      profileComplete: me.profileComplete,
+    });
+    setOrgState(me.org);
+  }, []);
+
   const setOrg = useCallback((nextOrg: OrgSummary) => {
     setOrgState(nextOrg);
   }, []);
@@ -121,6 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loginWithGoogle,
         logout,
         refreshOrg,
+        refreshUser,
         setOrg,
       }}
     >

@@ -27,6 +27,18 @@ export class MediaService {
     fileKey: string,
     dto: UploadMediaDto,
   ) {
+    return this.createPost(userId, fileKey, dto.type, dto.caption);
+  }
+
+  // Shared by the /media upload endpoint and chat's media upload (which
+  // mirrors every chat image/video into the Media feed too, so Stats
+  // extraction keeps working now that /media has no dedicated upload UI).
+  async createPost(
+    userId: string,
+    fileKey: string,
+    type: 'IMAGE' | 'VIDEO',
+    caption?: string,
+  ) {
     const membership = await this.prisma.membership.findFirst({
       where: { userId },
       include: { user: true },
@@ -39,13 +51,13 @@ export class MediaService {
       data: {
         orgId: membership.orgId,
         uploaderId: userId,
-        type: dto.type,
+        type,
         fileKey,
-        caption: dto.caption,
+        caption: caption ?? null,
       },
     });
 
-    this.notifyCoaches(membership.orgId, userId, membership.user.name, dto.type).catch(
+    this.notifyCoaches(membership.orgId, userId, membership.user.name, type).catch(
       (err) => this.logger.warn(`Push notification failed: ${err.message}`),
     );
 

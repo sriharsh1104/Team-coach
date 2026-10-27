@@ -7,6 +7,7 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { isProfileComplete } from '../users/users.service';
 
 // Tighter than the app-wide default (20/60s) — these are the routes a
 // credential-stuffing/brute-force script would actually hammer. Relaxed in
@@ -61,6 +62,8 @@ export class AuthController {
       email: user.email,
       name: user.name,
       avatarUrl: user.avatarUrl,
+      phone: user.phone,
+      profileComplete: isProfileComplete(user),
       org: membership
         ? {
             id: membership.org.id,

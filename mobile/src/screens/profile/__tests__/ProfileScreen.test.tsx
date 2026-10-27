@@ -4,9 +4,12 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-
 import * as Clipboard from 'expo-clipboard';
 import { ProfileScreen } from '../ProfileScreen';
 import * as usersApi from '../../../api/users';
+import { useAuth } from '../../../auth/AuthContext';
 
 jest.mock('../../../api/users');
+jest.mock('../../../auth/AuthContext');
 const mockedUsersApi = usersApi as jest.Mocked<typeof usersApi>;
+const mockedUseAuth = useAuth as jest.Mock;
 
 const baseProfile = {
   id: 'user-1',
@@ -15,17 +18,23 @@ const baseProfile = {
   roles: ['IGL'],
   inGameName: 'ShadowStrike',
   inGameUid: 'UID-0001',
+  phone: '9999999999',
   whatsappUrl: null,
   instagramUrl: null,
   discordUrl: 'https://discord.gg/example',
   youtubeUrl: null,
   devices: [{ id: 'device-1', name: 'Main rig', model: 'ROG Phone 8' }],
+  role: 'PLAYER' as const,
+  isOwner: false,
 };
+
+const mockRefreshUser = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockedUsersApi.getMyProfile.mockResolvedValue(baseProfile);
+  mockedUseAuth.mockReturnValue({ refreshUser: mockRefreshUser });
 });
 
 describe('ProfileScreen', () => {
@@ -65,6 +74,7 @@ describe('ProfileScreen', () => {
       roles: ['IGL', 'SNIPER'],
       inGameName: 'ShadowStrike',
       inGameUid: 'UID-0001',
+      phone: '9999999999',
       whatsappUrl: undefined,
       instagramUrl: undefined,
       discordUrl: 'https://discord.gg/example',
@@ -145,5 +155,70 @@ describe('ProfileScreen', () => {
 
     expect(mockedUsersApi.removeDevice).toHaveBeenCalledWith('device-1');
     await waitFor(() => expect(screen.queryByText('Main rig — ROG Phone 8')).toBeNull());
+  });
+
+  describe('required fields (IGN / UID / Phone)', () => {
+    it('disables Save when phone is cleared, even though it was prefilled', async () => {
+      render(<ProfileScreen />);
+      await screen.findByText('Role(s)');
+
+      fireEvent.changeText(screen.getByDisplayValue('9999999999'), '');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save Profile'));
+      });
+
+      expect(mockedUsersApi.updateMyProfile).not.toHaveBeenCalled();
+    });
+
+    it('enables Save once IGN, UID, and phone are all filled', async () => {
+      mockedUsersApi.getMyProfile.mockResolvedValue({
+        ...baseProfile,
+        inGameName: null,
+        inGameUid: null,
+        phone: null,
+      });
+      mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
+      render(<ProfileScreen />);
+      await screen.findByText('Role(s)');
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save Profile'));
+      });
+      expect(mockedUsersApi.updateMyProfile).not.toHaveBeenCalled();
+
+      fireEvent.changeText(screen.getByPlaceholderText('Your in-game name'), 'ShadowStrike');
+      fireEvent.changeText(screen.getByPlaceholderText('Your in-game UID'), 'UID-0001');
+      fireEvent.changeText(screen.getByPlaceholderText('Your phone number'), '9999999999');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save Profile'));
+      });
+
+      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalled();
+    });
+  });
+
+  describe('mustComplete mode (forced post-login gate)', () => {
+    it('shows "Continue" instead of "Save Profile", and hides the Devices section', async () => {
+      render(<ProfileScreen mustComplete />);
+      await screen.findByText('Role(s)');
+
+      expect(screen.getByText('Continue')).toBeTruthy();
+      expect(screen.queryByText('Save Profile')).toBeNull();
+      expect(screen.queryByText('My Devices')).toBeNull();
+    });
+
+    it('calls refreshUser (not the "Saved" alert) once the required fields are saved', async () => {
+      mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
+      render(<ProfileScreen mustComplete />);
+      await screen.findByText('Role(s)');
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Continue'));
+      });
+
+      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalled();
+      expect(mockRefreshUser).toHaveBeenCalledTimes(1);
+      expect(Alert.alert).not.toHaveBeenCalledWith('Saved', expect.anything());
+    });
   });
 });

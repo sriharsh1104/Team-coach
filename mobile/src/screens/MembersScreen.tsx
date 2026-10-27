@@ -3,10 +3,16 @@ import { Text, View, FlatList, Pressable, RefreshControl, StyleSheet } from 'rea
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { OrgDetail } from '../api/types';
+import { ROLE_LABELS, RoleOption } from '../api/roles';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
 import { sharedStyles } from './shared';
+
+function formatInGameRoles(roles: string[]): string | null {
+  if (roles.length === 0) return null;
+  return roles.map((r) => ROLE_LABELS[r as RoleOption] ?? r).join(', ');
+}
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Members'>;
 
@@ -49,23 +55,31 @@ export function MembersScreen({ navigation }: Props) {
           <Text style={sharedStyles.title}>Team Members</Text>
         }
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <Pressable
-            style={styles.memberRow}
-            onPress={() =>
-              navigation.navigate('MemberProfile', {
-                userId: item.userId,
-                name: item.name,
-              })
-            }
-          >
-            <Text style={styles.memberName}>
-              {item.name}
-              {item.isOwner ? ' (Owner)' : ''}
-            </Text>
-            <Text style={styles.memberRole}>{item.role}</Text>
-          </Pressable>
-        )}
+        renderItem={({ item }) => {
+          const inGameRoles = formatInGameRoles(item.inGameRoles);
+          return (
+            <Pressable
+              style={styles.memberRow}
+              onPress={() =>
+                navigation.navigate('MemberProfile', {
+                  userId: item.userId,
+                  name: item.name,
+                })
+              }
+            >
+              <View style={styles.memberInfo}>
+                <Text style={styles.memberName}>
+                  {item.name}
+                  {item.isOwner ? ' (Owner)' : ''}
+                </Text>
+                {inGameRoles && (
+                  <Text style={styles.memberInGameRoles}>{inGameRoles}</Text>
+                )}
+              </View>
+              <Text style={styles.memberRole}>{item.role}</Text>
+            </Pressable>
+          );
+        }}
       />
     </Screen>
   );
@@ -83,6 +97,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     gap: 8,
   },
+  memberInfo: { flex: 1 },
   memberName: { fontSize: 16, color: colors.text },
+  memberInGameRoles: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   memberRole: { color: colors.textMuted },
 });
