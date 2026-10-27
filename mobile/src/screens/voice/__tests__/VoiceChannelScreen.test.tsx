@@ -54,14 +54,14 @@ describe('VoiceChannelScreen', () => {
     await screen.findByText('Voice is not configured for this org');
   });
 
-  it('SECURITY/LOGIC: never renders a voice channel without a stored auth token', async () => {
+  it('shows a sign-in-again error instead of hanging when there is no stored auth token', async () => {
     await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     render(<VoiceChannelScreen />);
 
-    await waitFor(() => expect(mockedVoiceApi.getVoiceConfig).toHaveBeenCalled());
+    await screen.findByText('You are signed out. Please log in again to use voice channels.');
     expect(screen.queryByText('Team Voice')).toBeNull();
-    expect(mockedUseSelfHosted).not.toHaveBeenCalledWith(expect.anything());
+    expect(mockedUseSelfHosted).not.toHaveBeenCalled();
   });
 
   it('uses the self-hosted hook with the stored token when mode is "self"', async () => {

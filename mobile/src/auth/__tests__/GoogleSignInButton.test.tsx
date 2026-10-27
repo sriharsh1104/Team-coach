@@ -29,21 +29,17 @@ beforeEach(() => {
 });
 
 describe('GoogleSignInButton', () => {
-  it('BUG: the "not configured" Pressable is disabled, so its own warning alert can never fire', async () => {
-    // onPress has an `if (!isConfigured) Alert.alert(...)` branch, but the
-    // Pressable's `disabled` prop is already `!request || !isConfigured` —
-    // so whenever that branch would fire, onPress never runs at all. The
-    // user sees a silently-disabled button with no explanation, not the
-    // intended "add your Google client ID" message. This documents the bug
-    // rather than fixing it, since the fix (which element should actually
-    // be disabled) is a product call.
+  it('warns instead of prompting when Google sign-in is not configured', async () => {
     render(<GoogleSignInButton />);
 
     await act(async () => {
       fireEvent.press(screen.getByText('Continue with Google'));
     });
 
-    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Google sign-in not configured',
+      'Add GOOGLE_WEB_CLIENT_ID / GOOGLE_ANDROID_CLIENT_ID to your mobile .env file.',
+    );
     expect(promptAsync).not.toHaveBeenCalled();
   });
 

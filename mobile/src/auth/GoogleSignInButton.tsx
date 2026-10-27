@@ -32,7 +32,7 @@ export function GoogleSignInButton() {
   return (
     <Pressable
       style={[styles.button, !isConfigured && styles.buttonDisabled]}
-      disabled={!request || !isConfigured}
+      disabled={isConfigured && !request}
       onPress={() => {
         if (!isConfigured) {
           Alert.alert(
