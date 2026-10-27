@@ -86,14 +86,15 @@ describe('OrgHomeScreen', () => {
     });
   });
 
-  it('shows "Make Owner" next to other members, but not next to the owner themselves, when I am the owner', async () => {
+  it('shows Change Role for every member and Make Owner only for non-owners, when I am the owner', async () => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Teammate');
 
+    expect(screen.getAllByText('Change Role')).toHaveLength(2);
     expect(screen.getAllByText('Make Owner')).toHaveLength(1);
   });
 
-  it('never shows "Make Owner" when I am not the owner', async () => {
+  it('never shows owner actions when I am not the owner', async () => {
     mockedUseAuth.mockReturnValue({
       logout,
       refreshOrg,
@@ -103,6 +104,34 @@ describe('OrgHomeScreen', () => {
     await screen.findByText('Teammate');
 
     expect(screen.queryByText('Make Owner')).toBeNull();
+    expect(screen.queryByText('Change Role')).toBeNull();
+  });
+
+  it('changes a member role after the owner picks one, then refreshes', async () => {
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
+      const coach = buttons?.find((b) => b.text === 'Coach');
+      coach?.onPress?.(undefined as any);
+    });
+    mockedOrgApi.changeMemberRole.mockResolvedValue({ userId: 'user-2', role: 'COACH' });
+    mockedOrgApi.getMyOrg
+      .mockResolvedValueOnce(detail as any)
+      .mockResolvedValueOnce({
+        ...detail,
+        members: [
+          { userId: 'user-1', name: 'Owner Coach', avatarUrl: null, role: 'COACH', isOwner: true },
+          { userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'COACH', isOwner: false },
+        ],
+      } as any);
+    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Teammate');
+
+    await act(async () => {
+      fireEvent.press(screen.getAllByText('Change Role')[1]);
+    });
+
+    expect(mockedOrgApi.changeMemberRole).toHaveBeenCalledWith('user-2', 'COACH');
+    expect(refreshOrg).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getAllByText('COACH')).toHaveLength(2));
   });
 
   it('transfers ownership after confirming, then refreshes the org and roster', async () => {

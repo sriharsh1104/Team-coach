@@ -25,15 +25,31 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
   const producerRef = useRef<mediasoupTypes.Producer | null>(null);
   const recvTransportRef = useRef<mediasoupTypes.Transport | null>(null);
   const consumersRef = useRef<Map<string, mediasoupTypes.Consumer>>(new Map());
-  // producerId -> who it belongs to, so a later 'producerClosed'/'peerLeft' can remove them from the list.
-  const producerOwnersRef = useRef<Map<string, VoiceParticipant>>(new Map());
+  // producerId -> who it belongs to
+  const producerOwnersRef = useRef<Map<string, { id: string; name: string }>>(new Map());
+  // userId -> consumerId for per-user local mute
+  const userConsumersRef = useRef<Map<string, string>>(new Map());
+  const localMutesRef = useRef<Set<string>>(new Set());
 
   const refreshParticipants = useCallback(() => {
-    setParticipants([...producerOwnersRef.current.values()]);
+    const byUser = new Map<string, VoiceParticipant>();
+    for (const owner of producerOwnersRef.current.values()) {
+      byUser.set(owner.id, {
+        id: owner.id,
+        name: owner.name,
+        isLocallyMuted: localMutesRef.current.has(owner.id),
+      });
+    }
+    setParticipants([...byUser.values()]);
   }, []);
 
   const consumeProducer = useCallback(
-    async (recvTransport: mediasoupTypes.Transport, socket: Socket, producerId: string) => {
+    async (
+      recvTransport: mediasoupTypes.Transport,
+      socket: Socket,
+      producerId: string,
+      ownerUserId: string,
+    ) => {
       const device = deviceRef.current;
       if (!device) return;
 
@@ -55,16 +71,21 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
         rtpParameters: params.rtpParameters as never,
       });
       consumersRef.current.set(consumer.id, consumer);
+      userConsumersRef.current.set(ownerUserId, consumer.id);
 
       await emitAsync(socket, 'resumeConsumer', { consumerId: consumer.id });
-      // Remote audio tracks play automatically once part of an active
-      // RTCPeerConnection — no <RTCView> needed for audio-only.
+
+      // Honour a mute that was already toggled before this track arrived.
+      if (localMutesRef.current.has(ownerUserId)) {
+        consumer.pause();
+      }
     },
     [],
   );
 
   const join = useCallback(async () => {
     setStatus('connecting');
+    localMutesRef.current.clear();
     try {
       const socket = connectVoiceSocket(authToken);
       socketRef.current = socket;
@@ -83,14 +104,23 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
         refreshParticipants();
         const recvTransport = recvTransportRef.current;
         if (recvTransport) {
-          consumeProducer(recvTransport, socket, payload.producerId).catch((err) =>
+          consumeProducer(recvTransport, socket, payload.producerId, payload.userId).catch((err) =>
             console.warn('Failed to consume new producer:', err),
           );
         }
       });
 
       socket.on('producerClosed', (payload: { producerId: string }) => {
+        const owner = producerOwnersRef.current.get(payload.producerId);
         producerOwnersRef.current.delete(payload.producerId);
+        if (owner) {
+          const consumerId = userConsumersRef.current.get(owner.id);
+          if (consumerId) {
+            consumersRef.current.get(consumerId)?.close();
+            consumersRef.current.delete(consumerId);
+            userConsumersRef.current.delete(owner.id);
+          }
+        }
         refreshParticipants();
       });
 
@@ -100,6 +130,13 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
             producerOwnersRef.current.delete(producerId);
           }
         }
+        const consumerId = userConsumersRef.current.get(payload.userId);
+        if (consumerId) {
+          consumersRef.current.get(consumerId)?.close();
+          consumersRef.current.delete(consumerId);
+          userConsumersRef.current.delete(payload.userId);
+        }
+        localMutesRef.current.delete(payload.userId);
         refreshParticipants();
       });
 
@@ -108,7 +145,6 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
       await device.load({ routerRtpCapabilities: routerRtpCapabilities as never });
       deviceRef.current = device;
 
-      // Send transport — for our own microphone.
       const sendParams = await emitAsync<mediasoupTypes.TransportOptions>(
         socket,
         'createTransport',
@@ -132,7 +168,6 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
           .catch(errback);
       });
 
-      // Recv transport — for everyone else's audio.
       const recvParams = await emitAsync<mediasoupTypes.TransportOptions>(
         socket,
         'createTransport',
@@ -149,9 +184,6 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
       recvTransportRef.current = recvTransport;
 
       const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
-      // @livekit/react-native-webrtc's MediaStreamTrack doesn't structurally
-      // match TS's DOM lib type (e.g. missing `contentHint`) — it's the same
-      // object mediasoup-client expects at runtime, so this cast is safe.
       const track = stream.getAudioTracks()[0] as unknown as MediaStreamTrack;
       const producer = await sendTransport.produce({ track });
       producerRef.current = producer;
@@ -164,9 +196,10 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
       }
       refreshParticipants();
       for (const p of existingProducers) {
-        await consumeProducer(recvTransport, socket, p.producerId);
+        await consumeProducer(recvTransport, socket, p.producerId, p.userId);
       }
 
+      setIsMuted(false);
       setStatus('connected');
     } catch (err: any) {
       setErrorMessage(err?.message ?? 'Could not join voice channel');
@@ -179,10 +212,13 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
     for (const consumer of consumersRef.current.values()) consumer.close();
     consumersRef.current.clear();
     producerOwnersRef.current.clear();
+    userConsumersRef.current.clear();
+    localMutesRef.current.clear();
     recvTransportRef.current = null;
     socketRef.current?.disconnect();
     socketRef.current = null;
     setParticipants([]);
+    setIsMuted(false);
     setStatus('idle');
   }, []);
 
@@ -198,5 +234,31 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
     }
   }, []);
 
-  return { status, errorMessage, participants, isMuted, join, leave, toggleMute };
+  const toggleParticipantMute = useCallback(
+    (participantId: string) => {
+      const nextMuted = !localMutesRef.current.has(participantId);
+      if (nextMuted) localMutesRef.current.add(participantId);
+      else localMutesRef.current.delete(participantId);
+
+      const consumerId = userConsumersRef.current.get(participantId);
+      const consumer = consumerId ? consumersRef.current.get(consumerId) : undefined;
+      if (consumer) {
+        if (nextMuted) consumer.pause();
+        else consumer.resume();
+      }
+      refreshParticipants();
+    },
+    [refreshParticipants],
+  );
+
+  return {
+    status,
+    errorMessage,
+    participants,
+    isMuted,
+    join,
+    leave,
+    toggleMute,
+    toggleParticipantMute,
+  };
 }

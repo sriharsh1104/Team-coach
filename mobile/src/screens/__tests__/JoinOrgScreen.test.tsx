@@ -32,63 +32,20 @@ describe('JoinOrgScreen', () => {
     expect(mockedOrgApi.joinOrg).not.toHaveBeenCalled();
   });
 
-  it('defaults to joining as Player', async () => {
+  it('does not offer a role picker — joiners are always players', async () => {
     mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
-    mockedOrgApi.joinOrg.mockResolvedValue({
-      id: 'org-1',
-      name: 'Alpha Squad',
-      orgCode: '75HCP3',
-      referralLink: 'token',
-      myRole: 'PLAYER',
-      isOwner: false,
-    });
     render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
 
-    fireEvent.changeText(screen.getByPlaceholderText('Org code (e.g. 75HCP3)'), '75HCP3');
-    await pressAndSettle('Join');
-
-    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith('PLAYER', { orgCode: '75HCP3' });
+    expect(screen.queryByText('Coach')).toBeNull();
+    expect(screen.queryByText('Analyst')).toBeNull();
+    expect(
+      screen.getByText(
+        'You join as a Player. The org owner can promote you to Coach or Analyst.',
+      ),
+    ).toBeTruthy();
   });
 
-  it('switches role when Coach or Analyst is tapped', async () => {
-    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
-    mockedOrgApi.joinOrg.mockResolvedValue({
-      id: 'org-1',
-      name: 'Alpha Squad',
-      orgCode: '75HCP3',
-      referralLink: 'token',
-      myRole: 'COACH',
-      isOwner: false,
-    });
-    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
-
-    fireEvent.press(screen.getByText('Coach'));
-    fireEvent.changeText(screen.getByPlaceholderText('Org code (e.g. 75HCP3)'), '75HCP3');
-    await pressAndSettle('Join');
-
-    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith('COACH', { orgCode: '75HCP3' });
-  });
-
-  it('offers Analyst as a role option', async () => {
-    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
-    mockedOrgApi.joinOrg.mockResolvedValue({
-      id: 'org-1',
-      name: 'Alpha Squad',
-      orgCode: '75HCP3',
-      referralLink: 'token',
-      myRole: 'ANALYST',
-      isOwner: false,
-    });
-    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
-
-    fireEvent.press(screen.getByText('Analyst'));
-    fireEvent.changeText(screen.getByPlaceholderText('Org code (e.g. 75HCP3)'), '75HCP3');
-    await pressAndSettle('Join');
-
-    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith('ANALYST', { orgCode: '75HCP3' });
-  });
-
-  it('trims the org code and calls setOrg with the joined org on success', async () => {
+  it('joins with only the org code and calls setOrg on success', async () => {
     const setOrg = jest.fn();
     mockedUseAuth.mockReturnValue({ setOrg });
     mockedOrgApi.joinOrg.mockResolvedValue({
@@ -104,7 +61,7 @@ describe('JoinOrgScreen', () => {
     fireEvent.changeText(screen.getByPlaceholderText('Org code (e.g. 75HCP3)'), '  75HCP3  ');
     await pressAndSettle('Join');
 
-    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith('PLAYER', { orgCode: '75HCP3' });
+    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({ orgCode: '75HCP3' });
     expect(setOrg).toHaveBeenCalledWith({
       id: 'org-1',
       name: 'Alpha Squad',
@@ -113,7 +70,7 @@ describe('JoinOrgScreen', () => {
     });
   });
 
-  it('shows an alert and does not call setOrg on an invalid code (e.g. 5-player cap or unknown code)', async () => {
+  it('shows an alert and does not call setOrg on failure', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const setOrg = jest.fn();
     mockedUseAuth.mockReturnValue({ setOrg });

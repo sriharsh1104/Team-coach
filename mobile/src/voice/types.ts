@@ -3,6 +3,8 @@ export type VoiceChannelStatus = 'idle' | 'connecting' | 'connected' | 'error';
 export interface VoiceParticipant {
   id: string;
   name: string;
+  /** True when this client has locally muted (deafened) that participant. */
+  isLocallyMuted: boolean;
 }
 
 // Both the self-hosted (mediasoup) and hosted (LiveKit) implementations
@@ -16,4 +18,6 @@ export interface VoiceChannelController {
   join: () => Promise<void>;
   leave: () => void;
   toggleMute: () => void;
+  /** Mute/unmute another person in your own ears only (Discord-style). */
+  toggleParticipantMute: (participantId: string) => void;
 }

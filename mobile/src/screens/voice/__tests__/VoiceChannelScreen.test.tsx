@@ -5,18 +5,18 @@ import { VoiceChannelScreen } from '../VoiceChannelScreen';
 import * as voiceApi from '../../../api/voice';
 import { useHostedVoiceChannel } from '../../../voice/useHostedVoiceChannel';
 import { useSelfHostedVoiceChannel } from '../../../voice/useSelfHostedVoiceChannel';
+import { useAuth } from '../../../auth/AuthContext';
 import { TOKEN_STORAGE_KEY } from '../../../api/client';
 
 jest.mock('../../../api/voice');
-// The hooks own all the WebRTC/mediasoup/LiveKit wiring; VoiceChannelScreen's
-// own logic is just: pick a mode, then render idle/connecting/error/connected
-// off whatever the hook returns. Testing that doesn't need real signaling.
 jest.mock('../../../voice/useHostedVoiceChannel');
 jest.mock('../../../voice/useSelfHostedVoiceChannel');
+jest.mock('../../../auth/AuthContext');
 
 const mockedVoiceApi = voiceApi as jest.Mocked<typeof voiceApi>;
 const mockedUseHosted = useHostedVoiceChannel as jest.Mock;
 const mockedUseSelfHosted = useSelfHostedVoiceChannel as jest.Mock;
+const mockedUseAuth = useAuth as jest.Mock;
 
 function controller(overrides: Partial<any> = {}) {
   return {
@@ -27,12 +27,16 @@ function controller(overrides: Partial<any> = {}) {
     join: jest.fn(),
     leave: jest.fn(),
     toggleMute: jest.fn(),
+    toggleParticipantMute: jest.fn(),
     ...overrides,
   };
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockedUseAuth.mockReturnValue({
+    user: { id: 'me', name: 'Player One' },
+  });
   mockedUseHosted.mockReturnValue(controller());
   mockedUseSelfHosted.mockReturnValue(controller());
 });
@@ -88,16 +92,15 @@ describe('VoiceChannelScreen', () => {
     expect(mockedUseSelfHosted).not.toHaveBeenCalled();
   });
 
-  it('shows a Join button when idle, and calls join when pressed', async () => {
+  it('shows an empty channel with Join when idle', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     const joinSpy = jest.fn();
     mockedUseSelfHosted.mockReturnValue(controller({ join: joinSpy }));
     render(<VoiceChannelScreen />);
 
-    const joinButton = await screen.findByText('Join Voice Channel');
-    fireEvent.press(joinButton);
-
+    await screen.findByText('Empty — join to talk with your team');
+    fireEvent.press(screen.getByText('Join Voice Channel'));
     expect(joinSpy).toHaveBeenCalled();
   });
 
@@ -120,48 +123,62 @@ describe('VoiceChannelScreen', () => {
     render(<VoiceChannelScreen />);
 
     await screen.findByText('Microphone permission denied');
+    expect(screen.getByText('Try Again')).toBeTruthy();
   });
 
-  it('shows participants, mute toggle, and leave button when connected', async () => {
+  it('shows self + others, per-user mute, mic mute, and Disconnect when connected', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     const toggleMuteSpy = jest.fn();
+    const toggleParticipantMuteSpy = jest.fn();
     const leaveSpy = jest.fn();
     mockedUseSelfHosted.mockReturnValue(
       controller({
         status: 'connected',
-        participants: [{ id: 'p1', name: 'Teammate' }],
+        participants: [{ id: 'p1', name: 'Teammate', isLocallyMuted: false }],
         toggleMute: toggleMuteSpy,
+        toggleParticipantMute: toggleParticipantMuteSpy,
         leave: leaveSpy,
       }),
     );
     render(<VoiceChannelScreen />);
 
-    await screen.findByText('● Connected');
+    await screen.findByText('Disconnect');
+    expect(screen.getByText('2 connected')).toBeTruthy();
+    expect(screen.getByText('Player One (You)')).toBeTruthy();
     expect(screen.getByText('Teammate')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Mute'));
+    expect(toggleParticipantMuteSpy).toHaveBeenCalledWith('p1');
+
+    fireEvent.press(screen.getByText('Mute Mic'));
     expect(toggleMuteSpy).toHaveBeenCalled();
 
-    fireEvent.press(screen.getByText('Leave Channel'));
+    fireEvent.press(screen.getByText('Disconnect'));
     expect(leaveSpy).toHaveBeenCalled();
   });
 
-  it('shows "Unmute" when already muted', async () => {
+  it('shows Unmute Mic when already self-muted', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     mockedUseSelfHosted.mockReturnValue(controller({ status: 'connected', isMuted: true }));
     render(<VoiceChannelScreen />);
 
-    await screen.findByText('Unmute');
+    await screen.findByText('Unmute Mic');
   });
 
-  it('shows the empty-channel message when connected with no other participants', async () => {
+  it('shows "Muted for you" when a participant is locally muted', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
-    mockedUseSelfHosted.mockReturnValue(controller({ status: 'connected', participants: [] }));
+    mockedUseSelfHosted.mockReturnValue(
+      controller({
+        status: 'connected',
+        participants: [{ id: 'p1', name: 'Teammate', isLocallyMuted: true }],
+      }),
+    );
     render(<VoiceChannelScreen />);
 
-    await screen.findByText('No one else is in the channel yet.');
+    await screen.findByText('Muted for you');
+    expect(screen.getByText('Unmute')).toBeTruthy();
   });
 });
