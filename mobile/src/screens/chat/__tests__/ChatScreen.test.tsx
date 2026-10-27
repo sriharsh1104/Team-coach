@@ -1,5 +1,5 @@
 import React from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { ChatScreen } from '../ChatScreen';
 import * as chatApi from '../../../api/chat';
@@ -44,7 +44,7 @@ beforeEach(() => {
 
 describe('ChatScreen', () => {
   it('shows "Connecting…" until the socket connects, then hides it', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-123');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();
     mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
 
@@ -56,7 +56,7 @@ describe('ChatScreen', () => {
   });
 
   it('connects the socket with the stored token', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-123');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     mockedChatApi.connectChatSocket.mockReturnValue(createFakeSocket() as any);
 
     render(<ChatScreen />);
@@ -67,7 +67,7 @@ describe('ChatScreen', () => {
   });
 
   it('SECURITY/LOGIC: never connects a socket when no auth token is stored', async () => {
-    await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+    await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
 
     render(<ChatScreen />);
     await screen.findByText('Connecting…');
@@ -92,7 +92,7 @@ describe('ChatScreen', () => {
         createdAt: '2026-01-01T00:01:00.000Z',
       },
     ] as any);
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-123');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     mockedChatApi.connectChatSocket.mockReturnValue(createFakeSocket() as any);
 
     render(<ChatScreen />);
@@ -105,7 +105,7 @@ describe('ChatScreen', () => {
   });
 
   it('appends an incoming message:new event to the list', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-123');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();
     mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
 
@@ -124,7 +124,7 @@ describe('ChatScreen', () => {
   });
 
   it('blocks sending an empty or whitespace-only draft', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-123');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();
     mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
 
@@ -140,7 +140,7 @@ describe('ChatScreen', () => {
   });
 
   it('sends a trimmed message and clears the draft', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-123');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();
     mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
 
@@ -156,7 +156,7 @@ describe('ChatScreen', () => {
   });
 
   it('disconnects the socket on unmount', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-123');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();
     mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
 

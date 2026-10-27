@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Text, TextInput, Pressable, Alert, View } from 'react-native';
+import { Text, TextInput, Pressable, Alert, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
 import { MembershipRole } from '../api/types';
 import { OrgSetupStackParamList } from '../navigation/types';
 import { sharedStyles } from './shared';
+import { RoleSelector } from './RoleSelector';
+import { FormScreen } from './FormScreen';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
 
@@ -19,7 +21,7 @@ export function JoinOrgScreen({}: Props) {
     setIsSubmitting(true);
     try {
       const org = await orgApi.joinOrg(role, { orgCode: orgCode.trim() });
-      setOrg({ id: org.id, name: org.name, role: org.myRole });
+      setOrg({ id: org.id, name: org.name, role: org.myRole, isOwner: org.isOwner });
     } catch (err: any) {
       Alert.alert(
         'Could not join org',
@@ -31,7 +33,7 @@ export function JoinOrgScreen({}: Props) {
   };
 
   return (
-    <View style={sharedStyles.container}>
+    <FormScreen>
       <Text style={sharedStyles.title}>Join an Org</Text>
       <TextInput
         style={sharedStyles.input}
@@ -40,14 +42,8 @@ export function JoinOrgScreen({}: Props) {
         value={orgCode}
         onChangeText={setOrgCode}
       />
-      <Pressable
-        style={sharedStyles.button}
-        onPress={() => setRole(role === 'PLAYER' ? 'COACH' : 'PLAYER')}
-      >
-        <Text style={sharedStyles.buttonText}>
-          Joining as: {role === 'PLAYER' ? 'Player' : 'Coach'} (tap to switch)
-        </Text>
-      </Pressable>
+      <Text style={styles.label}>Joining as:</Text>
+      <RoleSelector value={role} onChange={setRole} />
       <Pressable
         style={[
           sharedStyles.button,
@@ -58,6 +54,10 @@ export function JoinOrgScreen({}: Props) {
       >
         <Text style={sharedStyles.buttonText}>Join</Text>
       </Pressable>
-    </View>
+    </FormScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  label: { marginBottom: 8, color: '#444' },
+});

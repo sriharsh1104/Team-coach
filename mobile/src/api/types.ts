@@ -1,4 +1,4 @@
-export type MembershipRole = 'PLAYER' | 'COACH';
+export type MembershipRole = 'PLAYER' | 'COACH' | 'ANALYST';
 
 export interface AuthUser {
   id: string;
@@ -11,6 +11,7 @@ export interface OrgSummary {
   id: string;
   name: string;
   role: MembershipRole;
+  isOwner: boolean;
 }
 
 export interface AuthResponse {
@@ -24,6 +25,7 @@ export interface OrgMember {
   name: string;
   avatarUrl: string | null;
   role: MembershipRole;
+  isOwner: boolean;
 }
 
 export interface ChatMessage {
@@ -80,6 +82,7 @@ export interface OrgCreateJoinResponse {
   orgCode: string;
   referralLink: string;
   myRole: MembershipRole;
+  isOwner: boolean;
 }
 
 export interface OrgDetail {
@@ -88,6 +91,7 @@ export interface OrgDetail {
   orgCode: string;
   referralLink: string;
   myRole: MembershipRole;
+  isOwner: boolean;
   members: OrgMember[];
 }
 

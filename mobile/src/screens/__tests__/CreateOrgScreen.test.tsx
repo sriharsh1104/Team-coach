@@ -40,6 +40,7 @@ describe('CreateOrgScreen', () => {
       orgCode: 'ABC123',
       referralLink: 'token123',
       myRole: 'PLAYER',
+      isOwner: true,
     });
     render(<CreateOrgScreen navigation={navigation} route={{} as any} />);
 
@@ -48,6 +49,25 @@ describe('CreateOrgScreen', () => {
     await pressAndSettle('Create Org');
 
     expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad', 'PLAYER');
+  });
+
+  it('offers Analyst as a third role option', async () => {
+    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
+    mockedOrgApi.createOrg.mockResolvedValue({
+      id: 'org-1',
+      name: 'Alpha Squad',
+      orgCode: 'ABC123',
+      referralLink: 'token123',
+      myRole: 'ANALYST',
+      isOwner: true,
+    });
+    render(<CreateOrgScreen navigation={navigation} route={{} as any} />);
+
+    fireEvent.changeText(screen.getByPlaceholderText('Org / team name'), 'Alpha Squad');
+    fireEvent.press(screen.getByText('Analyst'));
+    await pressAndSettle('Create Org');
+
+    expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad', 'ANALYST');
   });
 
   it('trims the org name and calls setOrg with the created org on success', async () => {
@@ -59,6 +79,7 @@ describe('CreateOrgScreen', () => {
       orgCode: 'ABC123',
       referralLink: 'token123',
       myRole: 'COACH',
+      isOwner: true,
     });
     render(<CreateOrgScreen navigation={navigation} route={{} as any} />);
 
@@ -66,7 +87,12 @@ describe('CreateOrgScreen', () => {
     await pressAndSettle('Create Org');
 
     expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad', 'COACH');
-    expect(setOrg).toHaveBeenCalledWith({ id: 'org-1', name: 'Alpha Squad', role: 'COACH' });
+    expect(setOrg).toHaveBeenCalledWith({
+      id: 'org-1',
+      name: 'Alpha Squad',
+      role: 'COACH',
+      isOwner: true,
+    });
   });
 
   it('shows an alert and does not call setOrg when creation fails', async () => {
