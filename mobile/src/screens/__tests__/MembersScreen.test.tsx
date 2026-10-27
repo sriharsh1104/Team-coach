@@ -16,8 +16,8 @@ const detail = {
   myRole: 'COACH',
   isOwner: true,
   members: [
-    { userId: 'user-1', name: 'Owner Coach', avatarUrl: null, role: 'COACH', isOwner: true },
-    { userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'PLAYER', isOwner: false },
+    { userId: 'user-1', name: 'Owner Coach', avatarUrl: null, role: 'COACH', isOwner: true, inGameRoles: ['IGL'] },
+    { userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'PLAYER', isOwner: false, inGameRoles: [] },
   ],
 };
 
@@ -41,6 +41,13 @@ describe('MembersScreen', () => {
     await screen.findByText('Teammate');
     expect(screen.getByText('COACH')).toBeTruthy();
     expect(screen.getByText('PLAYER')).toBeTruthy();
+  });
+
+  it('shows in-game role tags next to the org role, and nothing extra when a member has none set', async () => {
+    render(<MembersScreen navigation={navigation} route={{} as any} />);
+
+    await screen.findByText('Teammate');
+    expect(screen.getByText('IGL')).toBeTruthy();
   });
 
   it('navigates to MemberProfile when a member row is pressed', async () => {

@@ -18,7 +18,6 @@ import { apiBaseUrl } from '../../api/client';
 import { MediaPost, OrgMember } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
-import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles } from '../shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'MediaFeed'>;
@@ -78,13 +77,6 @@ export function MediaFeedScreen({ navigation }: Props) {
     <Screen>
     <View style={sharedStyles.container}>
       <Text style={sharedStyles.title}>Media</Text>
-
-      <Pressable
-        style={sharedStyles.button}
-        onPress={() => navigation.navigate('UploadMedia')}
-      >
-        <ButtonLabel icon="upload">Upload Screenshot / Clip</ButtonLabel>
-      </Pressable>
 
       <FlatList
         horizontal

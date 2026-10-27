@@ -5,6 +5,8 @@ export interface AuthUser {
   email: string;
   name: string;
   avatarUrl: string | null;
+  phone: string | null;
+  profileComplete: boolean;
 }
 
 export interface OrgSummary {
@@ -26,6 +28,8 @@ export interface OrgMember {
   avatarUrl: string | null;
   role: MembershipRole;
   isOwner: boolean;
+  // In-game role tags (IGL/Sniper/...) — separate from the org role above.
+  inGameRoles: string[];
 }
 
 export interface ChatMessage {
@@ -89,17 +93,22 @@ export interface Profile {
   roles: string[];
   inGameName: string | null;
   inGameUid: string | null;
+  phone: string | null;
   whatsappUrl: string | null;
   instagramUrl: string | null;
   discordUrl: string | null;
   youtubeUrl: string | null;
   devices: Device[];
+  // Org role/ownership — null when viewed somewhere with no org context.
+  role: MembershipRole | null;
+  isOwner: boolean;
 }
 
 export interface UpdateProfileInput {
   roles?: string[];
   inGameName?: string;
   inGameUid?: string;
+  phone?: string;
   whatsappUrl?: string;
   instagramUrl?: string;
   discordUrl?: string;

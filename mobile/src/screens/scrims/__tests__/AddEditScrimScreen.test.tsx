@@ -109,8 +109,9 @@ describe('AddEditScrimScreen', () => {
     render(<AddEditScrimScreen navigation={navigation} route={{ params: {} } as any} />);
 
     fireEvent.press(screen.getByText('Tournament'));
-    fireEvent.press(screen.getByText('+ Add Round'));
+    fireEvent.press(screen.getByText('Qualified'));
     expect(screen.getByText('Round 2')).toBeTruthy();
+    expect(screen.queryByText('+ Add Round')).toBeNull();
 
     fireEvent.press(screen.getByText('Scrim'));
     fireEvent.changeText(
@@ -125,6 +126,23 @@ describe('AddEditScrimScreen', () => {
         rounds: [expect.objectContaining({ roundNumber: 1, result: 'PENDING' })],
       }),
     );
+  });
+
+  it('BUG FIX: hides "+ Add Round" until the current round has a result — Eliminated does not unlock it, only Qualified does', () => {
+    render(<AddEditScrimScreen navigation={navigation} route={{ params: {} } as any} />);
+    fireEvent.press(screen.getByText('Tournament'));
+
+    expect(screen.queryByText('+ Add Round')).toBeNull();
+
+    fireEvent.press(screen.getByText('Eliminated'));
+    expect(screen.queryByText('+ Add Round')).toBeNull();
+    expect(screen.queryByText('Round 2')).toBeNull();
+
+    fireEvent.press(screen.getByText('Qualified'));
+    // Qualifying auto-adds the next round (PENDING), so the manual button
+    // stays hidden again until that new round is itself qualified.
+    expect(screen.getByText('Round 2')).toBeTruthy();
+    expect(screen.queryByText('+ Add Round')).toBeNull();
   });
 
   it('blocks saving until a title is entered', async () => {

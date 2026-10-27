@@ -125,6 +125,8 @@ export class OrgService {
         avatarUrl: m.user.avatarUrl,
         role: m.role,
         isOwner: m.isOwner,
+        // In-game role tags (IGL/Sniper/...), separate from the org role above.
+        inGameRoles: m.user.roles,
       })),
     };
   }

@@ -252,6 +252,36 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       expect(playerSeesCoach.body.id).toBe(coach.user.id);
     });
 
+    it('includes the viewed member\'s org role and owner status', async () => {
+      const coach = await signup(server, { name: 'Coach' });
+      const org = await createOrgAs(server, coach.accessToken, 'COACH');
+      const player = await signup(server, { name: 'Player' });
+      await joinOrgAs(server, player.accessToken, org.orgCode);
+
+      const coachSeesPlayer = await request(server)
+        .get(`/users/${player.user.id}/profile`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(coachSeesPlayer.body.role).toBe('PLAYER');
+      expect(coachSeesPlayer.body.isOwner).toBe(false);
+
+      const playerSeesCoach = await request(server)
+        .get(`/users/${coach.user.id}/profile`)
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .expect(200);
+      expect(playerSeesCoach.body.role).toBe('COACH');
+      expect(playerSeesCoach.body.isOwner).toBe(true);
+
+      // Self-view (no org yet) carries no role.
+      const outsider = await signup(server, { name: 'Outsider' });
+      const ownView = await request(server)
+        .get(`/users/${outsider.user.id}/profile`)
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(200);
+      expect(ownView.body.role).toBeNull();
+      expect(ownView.body.isOwner).toBe(false);
+    });
+
     it('SECURITY: refuses to show a profile across org boundaries (403, not the data)', async () => {
       const coachA = await signup(server, { name: 'Coach A' });
       const orgA = await createOrgAs(server, coachA.accessToken, 'COACH');

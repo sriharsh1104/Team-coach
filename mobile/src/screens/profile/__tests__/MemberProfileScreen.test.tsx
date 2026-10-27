@@ -23,11 +23,14 @@ describe('MemberProfileScreen', () => {
       roles: [],
       inGameName: null,
       inGameUid: null,
+      phone: null,
       whatsappUrl: null,
       instagramUrl: null,
       discordUrl: null,
       youtubeUrl: null,
       devices: [],
+      role: 'PLAYER',
+      isOwner: false,
     });
     render(<MemberProfileScreen route={route} navigation={navigation} />);
 
@@ -35,7 +38,7 @@ describe('MemberProfileScreen', () => {
     expect(screen.queryByText('Devices')).toBeNull();
   });
 
-  it('shows roles (read-only), IGN/UID, social links, and devices when all are set', async () => {
+  it('shows roles (read-only), IGN/UID, social links, devices, and the org role badge when all are set', async () => {
     mockedUsersApi.getMemberProfile.mockResolvedValue({
       id: 'user-2',
       name: 'Player 2',
@@ -43,11 +46,14 @@ describe('MemberProfileScreen', () => {
       roles: ['SNIPER'],
       inGameName: 'EagleEye',
       inGameUid: 'UID-9',
+      phone: null,
       whatsappUrl: null,
       instagramUrl: null,
       discordUrl: 'https://discord.gg/team',
       youtubeUrl: null,
       devices: [{ id: 'd1', name: 'Main rig', model: 'ROG Phone 8' }],
+      role: 'COACH',
+      isOwner: true,
     });
     render(<MemberProfileScreen route={route} navigation={navigation} />);
 
@@ -56,6 +62,7 @@ describe('MemberProfileScreen', () => {
     expect(screen.getByText('UID-9')).toBeTruthy();
     expect(screen.getByText('Discord: https://discord.gg/team')).toBeTruthy();
     expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();
+    expect(screen.getByText('Coach (Owner)')).toBeTruthy();
   });
 
   it('only renders social links that are actually set', async () => {
@@ -66,11 +73,14 @@ describe('MemberProfileScreen', () => {
       roles: [],
       inGameName: null,
       inGameUid: null,
+      phone: null,
       whatsappUrl: 'https://wa.me/123',
       instagramUrl: null,
       discordUrl: null,
       youtubeUrl: null,
       devices: [],
+      role: 'PLAYER',
+      isOwner: false,
     });
     render(<MemberProfileScreen route={route} navigation={navigation} />);
 
@@ -88,11 +98,14 @@ describe('MemberProfileScreen', () => {
       roles: [],
       inGameName: null,
       inGameUid: null,
+      phone: null,
       whatsappUrl: 'https://wa.me/123',
       instagramUrl: null,
       discordUrl: null,
       youtubeUrl: null,
       devices: [],
+      role: 'PLAYER',
+      isOwner: false,
     });
     render(<MemberProfileScreen route={route} navigation={navigation} />);
 

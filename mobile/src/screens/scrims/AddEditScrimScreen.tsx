@@ -275,9 +275,11 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
               </View>
             ))}
 
-            <Pressable style={styles.addRoundBtn} onPress={addRound}>
-              <Text style={styles.addRoundText}>+ Add Round</Text>
-            </Pressable>
+            {rounds[rounds.length - 1]?.result === 'QUALIFIED' && (
+              <Pressable style={styles.addRoundBtn} onPress={addRound}>
+                <Text style={styles.addRoundText}>+ Add Round</Text>
+              </Pressable>
+            )}
           </>
         )}
 

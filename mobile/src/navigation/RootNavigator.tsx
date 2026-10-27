@@ -14,7 +14,6 @@ import { OrgSettingsScreen } from '../screens/OrgSettingsScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
 import { MediaFeedScreen } from '../screens/media/MediaFeedScreen';
-import { UploadMediaScreen } from '../screens/media/UploadMediaScreen';
 import { ChatScreen } from '../screens/chat/ChatScreen';
 import { ScrimsListScreen } from '../screens/scrims/ScrimsListScreen';
 import { AddEditScrimScreen } from '../screens/scrims/AddEditScrimScreen';
@@ -25,6 +24,7 @@ import { VoiceChannelScreen } from '../screens/voice/VoiceChannelScreen';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
+  ProfileSetupStackParamList,
   MainStackParamList,
 } from './types';
 import { titleCase } from '../utils/titleCase';
@@ -32,6 +32,7 @@ import { colors } from '../theme';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
+const ProfileSetupStack = createNativeStackNavigator<ProfileSetupStackParamList>();
 const MainStack = createNativeStackNavigator<MainStackParamList>();
 
 const sacredNavTheme = {
@@ -80,6 +81,12 @@ export function RootNavigator() {
           <AuthStack.Screen name="Login" component={LoginScreen} />
           <AuthStack.Screen name="Signup" component={SignupScreen} />
         </AuthStack.Navigator>
+      ) : !user.profileComplete ? (
+        <ProfileSetupStack.Navigator screenOptions={{ headerShown: false }}>
+          <ProfileSetupStack.Screen name="CompleteProfile">
+            {() => <ProfileScreen mustComplete />}
+          </ProfileSetupStack.Screen>
+        </ProfileSetupStack.Navigator>
       ) : !org ? (
         <OrgSetupStack.Navigator screenOptions={{ headerShown: false }}>
           <OrgSetupStack.Screen name="OrgChoice" component={OrgChoiceScreen} />
@@ -117,11 +124,6 @@ export function RootNavigator() {
             name="MediaFeed"
             component={MediaFeedScreen}
             options={{ title: 'Media' }}
-          />
-          <MainStack.Screen
-            name="UploadMedia"
-            component={UploadMediaScreen}
-            options={{ title: 'Upload' }}
           />
           <MainStack.Screen
             name="Chat"

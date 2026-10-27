@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  SectionList,
+  FlatList,
   Pressable,
   RefreshControl,
   Linking,
@@ -21,10 +21,25 @@ import { sharedStyles } from '../shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Scrims'>;
 
+// The backend only orders rounds by roundNumber asc and never derives a
+// "last round" date onto the event itself — so "is this done, and when was
+// its last action" has to be computed client-side from the rounds array.
+function lastRelevantDate(event: ScrimEvent): number {
+  const last = event.rounds[event.rounds.length - 1];
+  return new Date(last ? last.scheduledAt : event.scheduledAt).getTime();
+}
+
+function isHistorical(event: ScrimEvent): boolean {
+  const last = event.rounds[event.rounds.length - 1];
+  if (last?.result === 'ELIMINATED') return true;
+  return lastRelevantDate(event) < Date.now();
+}
+
 export function ScrimsListScreen({ navigation }: Props) {
   const { user, org } = useAuth();
   const [events, setEvents] = useState<ScrimEvent[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [tab, setTab] = useState<'upcoming' | 'history'>('upcoming');
 
   const load = useCallback(async () => {
     const data = await scrimsApi.listScrims();
@@ -63,16 +78,13 @@ export function ScrimsListScreen({ navigation }: Props) {
   const canEdit = (event: ScrimEvent) =>
     event.createdById === user?.id || org?.role === 'COACH' || org?.isOwner === true;
 
-  const now = Date.now();
-  const upcoming = events.filter((e) => new Date(e.scheduledAt).getTime() >= now);
-  const past = events
-    .filter((e) => new Date(e.scheduledAt).getTime() < now)
-    .reverse();
-
-  const sections = [
-    { title: 'Upcoming', data: upcoming },
-    { title: 'Past', data: past },
-  ].filter((s) => s.data.length > 0);
+  const upcoming = events
+    .filter((e) => !isHistorical(e))
+    .sort((a, b) => lastRelevantDate(a) - lastRelevantDate(b));
+  const history = events
+    .filter(isHistorical)
+    .sort((a, b) => lastRelevantDate(b) - lastRelevantDate(a));
+  const data = tab === 'upcoming' ? upcoming : history;
 
   return (
     <Screen>
@@ -86,20 +98,36 @@ export function ScrimsListScreen({ navigation }: Props) {
         <ButtonLabel icon="calendar">Add Scrim / Tournament</ButtonLabel>
       </Pressable>
 
-      <SectionList
-        sections={sections}
+      <View style={styles.tabRow}>
+        {(
+          [
+            ['upcoming', 'Upcoming'],
+            ['history', 'History'],
+          ] as const
+        ).map(([value, label]) => (
+          <Pressable
+            key={value}
+            style={[styles.tab, tab === value && styles.tabActive]}
+            onPress={() => setTab(value)}
+          >
+            <Text style={tab === value ? styles.tabTextActive : styles.tabText}>
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <FlatList
+        data={data}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
         ListEmptyComponent={
           <Text style={{ textAlign: 'center', color: '#9aa0a6', marginTop: 24 }}>
-            Nothing scheduled yet.
+            {tab === 'upcoming' ? 'Nothing scheduled yet.' : 'No history yet.'}
           </Text>
         }
-        renderSectionHeader={({ section }) => (
-          <Text style={styles.sectionHeader}>{section.title}</Text>
-        )}
         renderItem={({ item }) => (
           <View style={styles.row}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -147,14 +175,22 @@ export function ScrimsListScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  sectionHeader: {
-    fontWeight: '700',
-    fontSize: 16,
-    marginTop: 16,
-    marginBottom: 8,
-    textTransform: 'capitalize',
-    color: '#e8eaed',
+  tabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    marginBottom: 4,
   },
+  tab: {
+    borderWidth: 1,
+    borderColor: '#5f6368',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  tabActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
+  tabText: { color: '#f2f3f5', fontWeight: '600' },
+  tabTextActive: { color: '#0a0a0c', fontWeight: '600' },
   row: {
     paddingVertical: 10,
     borderBottomWidth: 1,

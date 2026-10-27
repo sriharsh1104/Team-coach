@@ -28,6 +28,7 @@ model User {
 
   inGameName String?
   inGameUid  String?
+  phone      String?
 
   whatsappUrl  String?
   instagramUrl String?
@@ -43,12 +44,13 @@ model User {
   // only server-side way to invalidate outstanding tokens before they expire.
   tokenVersion Int @default(0)
 
-  memberships     Membership[]
-  devices         Device[]
-  mediaPosts      MediaPost[]
-  chatMessages    ChatMessage[]
-  chatReadStates  ChatReadState[]
-  scrimEvents     ScrimEvent[]
+  memberships        Membership[]
+  devices            Device[]
+  mediaPosts         MediaPost[]
+  chatMessages       ChatMessage[]
+  chatReadStates     ChatReadState[]
+  chatDeliveryStates ChatDeliveryState[]
+  scrimEvents        ScrimEvent[]
   statExtractions  StatExtraction[]
   playerStats     PlayerStat[]
 }
@@ -71,11 +73,12 @@ model Org {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  memberships     Membership[]
-  mediaPosts      MediaPost[]
-  chatMessages    ChatMessage[]
-  chatReadStates  ChatReadState[]
-  scrimEvents     ScrimEvent[]
+  memberships        Membership[]
+  mediaPosts         MediaPost[]
+  chatMessages       ChatMessage[]
+  chatReadStates     ChatReadState[]
+  chatDeliveryStates ChatDeliveryState[]
+  scrimEvents        ScrimEvent[]
   statExtractions StatExtraction[]
   playerStats     PlayerStat[]
 }
@@ -152,6 +155,20 @@ model ChatReadState {
   channelKey String
   lastReadAt DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId, channelKey])
+}
+
+model ChatDeliveryState {
+  id              String   @id @default(cuid())
+  userId          String
+  orgId           String
+  channelKey      String
+  lastDeliveredAt DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)

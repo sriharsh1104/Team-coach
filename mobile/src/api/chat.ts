@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { apiClient, apiBaseUrl } from './client';
 import { ChatChannelsResponse, ChatMessage } from './types';
+import { appendFileToFormData } from './uploadFile';
 
 export function getChatChannels() {
   return apiClient
@@ -28,17 +29,41 @@ export function getUnreadSummary() {
     .then((res) => res.data);
 }
 
+export interface ReadReceipt {
+  userId: string;
+  name: string;
+  lastReadAt: string;
+}
+
+export function getReadReceipts(channelKey = 'org') {
+  return apiClient
+    .get<ReadReceipt[]>('/chat/read-receipts', { params: { channelKey } })
+    .then((res) => res.data);
+}
+
+export interface DeliveryReceipt {
+  userId: string;
+  name: string;
+  lastDeliveredAt: string;
+}
+
+export function getDeliveryReceipts(channelKey = 'org') {
+  return apiClient
+    .get<DeliveryReceipt[]>('/chat/delivery-receipts', { params: { channelKey } })
+    .then((res) => res.data);
+}
+
 export async function uploadChatMedia(file: {
   uri: string;
   fileName: string;
   mimeType: string;
 }) {
   const form = new FormData();
-  form.append('file', {
+  await appendFileToFormData(form, {
     uri: file.uri,
     name: file.fileName,
     type: file.mimeType,
-  } as any);
+  });
   const res = await apiClient.post<{
     mediaUrl: string;
     mediaType: 'IMAGE' | 'VIDEO';

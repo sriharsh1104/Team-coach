@@ -7,7 +7,7 @@ import {
   resetDatabase,
   listenOnEphemeralPort,
 } from './utils/test-app';
-import { signup, createOrgAs, joinOrgAs } from './utils/fixtures';
+import { signup, createOrgAs, joinOrgAs, TINY_JPEG } from './utils/fixtures';
 import {
   connectSocket,
   connectAndExpectRejection,
@@ -50,6 +50,30 @@ describe('Phase 1D — Chat (e2e)', () => {
     await joinOrgAs(server, player.accessToken, org.orgCode);
     return { coach, org, player };
   }
+
+  describe('POST /chat/media (mirrors into the Media feed)', () => {
+    it('uploading an image in chat also creates a Media feed entry, reachable via GET /media', async () => {
+      const { coach } = await setUpOrgWithPlayer();
+
+      const upload = await request(server)
+        .post('/chat/media')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .expect(201);
+      expect(upload.body.mediaUrl).toContain('/chat/files/');
+
+      // Fire-and-forget on the server side — give it a tick to land.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const media = await request(server)
+        .get('/media')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(media.body).toHaveLength(1);
+      expect(media.body[0]).toMatchObject({ type: 'IMAGE', uploaderName: 'Coach' });
+      expect(media.body[0].url).toContain('/media/files/');
+    });
+  });
 
   describe('GET /chat/messages', () => {
     it('requires authentication', async () => {
@@ -258,6 +282,181 @@ describe('Phase 1D — Chat (e2e)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
       expect(history.body).toHaveLength(0);
+    });
+  });
+
+  describe('GET /chat/read-receipts', () => {
+    it('requires authentication', async () => {
+      await request(server).get('/chat/read-receipts').expect(401);
+    });
+
+    it('404s for a user not in any org', async () => {
+      const outsider = await signup(server);
+      await request(server)
+        .get('/chat/read-receipts')
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(404);
+    });
+
+    it('is empty before anyone has marked the channel read', async () => {
+      const { coach } = await setUpOrgWithPlayer();
+      const res = await request(server)
+        .get('/chat/read-receipts')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it('lists teammates who have read the channel, excluding the requester themselves', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      await request(server)
+        .post('/chat/read')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .send({})
+        .expect(201);
+
+      const res = await request(server)
+        .get('/chat/read-receipts')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({ userId: player.user.id, name: 'Player' });
+      expect(res.body[0].lastReadAt).toEqual(expect.any(String));
+
+      // The requester's own read-state is never included in their own list.
+      const playerView = await request(server)
+        .get('/chat/read-receipts')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .expect(200);
+      expect(playerView.body).toEqual([]);
+    });
+
+    it("SECURITY: never leaks a different org's read state", async () => {
+      const { coach: coachA, player: playerA } = await setUpOrgWithPlayer();
+      await request(server)
+        .post('/chat/read')
+        .set('Authorization', `Bearer ${playerA.accessToken}`)
+        .send({})
+        .expect(201);
+
+      const { coach: coachB } = await setUpOrgWithPlayer();
+      const res = await request(server)
+        .get('/chat/read-receipts')
+        .set('Authorization', `Bearer ${coachB.accessToken}`)
+        .expect(200);
+      expect(res.body).toEqual([]);
+    });
+  });
+
+  describe('GET /chat/delivery-receipts', () => {
+    it('requires authentication', async () => {
+      await request(server).get('/chat/delivery-receipts').expect(401);
+    });
+
+    it('404s for a user not in any org', async () => {
+      const outsider = await signup(server);
+      await request(server)
+        .get('/chat/delivery-receipts')
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(404);
+    });
+
+    it('is empty before anyone has had the channel delivered to them', async () => {
+      const { coach } = await setUpOrgWithPlayer();
+      const res = await request(server)
+        .get('/chat/delivery-receipts')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it("SECURITY: never leaks a different org's delivery state", async () => {
+      const { player: playerA } = await setUpOrgWithPlayer();
+      const socketA = await connectSocket(baseUrl, playerA.accessToken);
+      openSockets.push(socketA);
+      socketA.emit('channel:delivered', {});
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const { coach: coachB } = await setUpOrgWithPlayer();
+      const res = await request(server)
+        .get('/chat/delivery-receipts')
+        .set('Authorization', `Bearer ${coachB.accessToken}`)
+        .expect(200);
+      expect(res.body).toEqual([]);
+    });
+  });
+
+  describe('channel:delivered socket event (double grey tick)', () => {
+    it('persists the delivery-state and broadcasts chat:delivered to everyone else in the channel', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken);
+      const playerSocket = await connectSocket(baseUrl, player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      const coachSawDelivered = waitForEvent(coachSocket, 'chat:delivered');
+      playerSocket.emit('channel:delivered', {});
+      const event = await coachSawDelivered;
+
+      expect(event.userId).toBe(player.user.id);
+      expect(event.userName).toBe('Player');
+      expect(event.channelKey).toBe('org');
+      expect(event.lastDeliveredAt).toBeTruthy();
+
+      const receipts = await request(server)
+        .get('/chat/delivery-receipts')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(receipts.body).toHaveLength(1);
+      expect(receipts.body[0].userId).toBe(player.user.id);
+    });
+
+    it("SECURITY: never broadcasts a chat:delivered event to a socket in a different org", async () => {
+      const { player: playerA } = await setUpOrgWithPlayer();
+      const { player: playerB } = await setUpOrgWithPlayer();
+      const socketA = await connectSocket(baseUrl, playerA.accessToken);
+      const socketB = await connectSocket(baseUrl, playerB.accessToken);
+      openSockets.push(socketA, socketB);
+
+      const bShouldNotHear = assertNoEvent(socketB, 'chat:delivered');
+      socketA.emit('channel:delivered', {});
+      await bShouldNotHear;
+    });
+  });
+
+  describe('channel:read socket event ("Seen" live broadcast)', () => {
+    it('persists the read-state and broadcasts chat:read to everyone else in the channel', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken);
+      const playerSocket = await connectSocket(baseUrl, player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      const coachSawRead = waitForEvent(coachSocket, 'chat:read');
+      playerSocket.emit('channel:read', {});
+      const event = await coachSawRead;
+
+      expect(event.userId).toBe(player.user.id);
+      expect(event.userName).toBe('Player');
+      expect(event.channelKey).toBe('org');
+      expect(event.lastReadAt).toBeTruthy();
+
+      const receipts = await request(server)
+        .get('/chat/read-receipts')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(receipts.body).toHaveLength(1);
+      expect(receipts.body[0].userId).toBe(player.user.id);
+    });
+
+    it("SECURITY: never broadcasts a chat:read event to a socket in a different org", async () => {
+      const { player: playerA } = await setUpOrgWithPlayer();
+      const { player: playerB } = await setUpOrgWithPlayer();
+      const socketA = await connectSocket(baseUrl, playerA.accessToken);
+      const socketB = await connectSocket(baseUrl, playerB.accessToken);
+      openSockets.push(socketA, socketB);
+
+      const bShouldNotHear = assertNoEvent(socketB, 'chat:read');
+      socketA.emit('channel:read', {});
+      await bShouldNotHear;
     });
   });
 });

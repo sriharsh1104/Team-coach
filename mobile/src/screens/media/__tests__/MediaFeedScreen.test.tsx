@@ -81,12 +81,11 @@ describe('MediaFeedScreen', () => {
     expect(mockedMediaApi.listMedia).toHaveBeenLastCalledWith('user-2');
   });
 
-  it('navigates to UploadMedia when the upload button is pressed', async () => {
+  it('has no upload entry point — media now only arrives by being sent in chat', async () => {
     render(<MediaFeedScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Great round');
 
-    fireEvent.press(screen.getByText('Upload Screenshot / Clip'));
-    expect(navigation.navigate).toHaveBeenCalledWith('UploadMedia');
+    expect(screen.queryByText('Upload Screenshot / Clip')).toBeNull();
   });
 
   it('requests extraction and navigates to ExtractionReview on success', async () => {

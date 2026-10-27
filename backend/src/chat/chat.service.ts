@@ -212,6 +212,58 @@ export class ChatService {
     return { channelKey, lastReadAt: now, unreadCount: 0 };
   }
 
+  // Who else has read up to this channel's latest point — the backing data
+  // for a WhatsApp-style "Seen by" list. Excludes the requester themselves.
+  async getReadReceipts(userId: string, channelKey = ORG_CHANNEL) {
+    const orgId = await this.getOrgIdForUser(userId);
+    await this.assertChannelAccess(userId, orgId, channelKey);
+
+    const states = await this.prisma.chatReadState.findMany({
+      where: { orgId, channelKey, userId: { not: userId } },
+      include: { user: { select: { name: true } } },
+    });
+
+    return states.map((s) => ({
+      userId: s.userId,
+      name: s.user.name,
+      lastReadAt: s.lastReadAt,
+    }));
+  }
+
+  // Mirrors markRead exactly, but for the "delivered" (double grey tick) tier —
+  // marked the moment a client's socket actually receives a channel's messages,
+  // not when the user has necessarily looked at them (see markRead for "read").
+  async markDelivered(userId: string, channelKey = ORG_CHANNEL) {
+    const orgId = await this.getOrgIdForUser(userId);
+    await this.assertChannelAccess(userId, orgId, channelKey);
+    const now = new Date();
+    await this.prisma.chatDeliveryState.upsert({
+      where: {
+        userId_orgId_channelKey: { userId, orgId, channelKey },
+      },
+      create: { userId, orgId, channelKey, lastDeliveredAt: now },
+      update: { lastDeliveredAt: now },
+    });
+    return { channelKey, lastDeliveredAt: now };
+  }
+
+  // Mirrors getReadReceipts exactly, for the "delivered to" list.
+  async getDeliveryReceipts(userId: string, channelKey = ORG_CHANNEL) {
+    const orgId = await this.getOrgIdForUser(userId);
+    await this.assertChannelAccess(userId, orgId, channelKey);
+
+    const states = await this.prisma.chatDeliveryState.findMany({
+      where: { orgId, channelKey, userId: { not: userId } },
+      include: { user: { select: { name: true } } },
+    });
+
+    return states.map((s) => ({
+      userId: s.userId,
+      name: s.user.name,
+      lastDeliveredAt: s.lastDeliveredAt,
+    }));
+  }
+
   async getUnreadSummary(userId: string) {
     const summary = await this.listChannels(userId);
     return { totalUnread: summary.totalUnread, channels: summary.channels };

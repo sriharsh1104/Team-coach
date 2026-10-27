@@ -50,18 +50,52 @@ describe('ScrimsListScreen', () => {
     await screen.findByText('Nothing scheduled yet.');
   });
 
-  it('splits events into Upcoming and Past sections', async () => {
+  it('Upcoming tab shows future events; History tab (via a tab press, not a second section) shows past ones', async () => {
     mockedUseAuth.mockReturnValue({ user: { id: 'user-1' }, org: { role: 'PLAYER' } });
     mockedScrimsApi.listScrims.mockResolvedValue([
-      scrim({ id: 'future', title: 'Future match', scheduledAt: '2099-01-01T00:00:00.000Z' }),
-      scrim({ id: 'past', title: 'Old match', scheduledAt: '2000-01-01T00:00:00.000Z' }),
+      scrim({
+        id: 'future',
+        title: 'Future match',
+        scheduledAt: '2099-01-01T00:00:00.000Z',
+        rounds: [{ roundNumber: 1, scheduledAt: '2099-01-01T00:00:00.000Z', result: 'PENDING' }],
+      }),
+      scrim({
+        id: 'past',
+        title: 'Old match',
+        scheduledAt: '2000-01-01T00:00:00.000Z',
+        rounds: [{ roundNumber: 1, scheduledAt: '2000-01-01T00:00:00.000Z', result: 'PENDING' }],
+      }),
     ]);
     render(<ScrimsListScreen navigation={navigation} route={{} as any} />);
 
     await screen.findByText('Future match');
-    expect(screen.getByText('Upcoming')).toBeTruthy();
-    expect(screen.getByText('Past')).toBeTruthy();
-    expect(screen.getByText('Old match')).toBeTruthy();
+    expect(screen.queryByText('Old match')).toBeNull();
+
+    fireEvent.press(screen.getByText('History'));
+    await screen.findByText('Old match');
+    expect(screen.queryByText('Future match')).toBeNull();
+  });
+
+  it('a future-dated round marked ELIMINATED still counts as History, not Upcoming', async () => {
+    mockedUseAuth.mockReturnValue({ user: { id: 'user-1' }, org: { role: 'PLAYER' } });
+    mockedScrimsApi.listScrims.mockResolvedValue([
+      scrim({
+        id: 'eliminated',
+        title: 'Knocked out early',
+        type: 'TOURNAMENT',
+        scheduledAt: '2099-01-01T00:00:00.000Z',
+        rounds: [
+          { roundNumber: 1, scheduledAt: '2099-01-01T00:00:00.000Z', result: 'ELIMINATED' },
+        ],
+      }),
+    ]);
+    render(<ScrimsListScreen navigation={navigation} route={{} as any} />);
+
+    await screen.findByText('Nothing scheduled yet.');
+    expect(screen.queryByText('Knocked out early')).toBeNull();
+
+    fireEvent.press(screen.getByText('History'));
+    await screen.findByText('Knocked out early');
   });
 
   it('SECURITY/LOGIC: hides Edit/Delete for a player who neither created the event nor coaches', async () => {

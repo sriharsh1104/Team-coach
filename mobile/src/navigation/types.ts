@@ -11,6 +11,10 @@ export type OrgSetupStackParamList = {
   JoinOrg: undefined;
 };
 
+export type ProfileSetupStackParamList = {
+  CompleteProfile: undefined;
+};
+
 export type MainStackParamList = {
   OrgHome: undefined;
   Profile: undefined;
@@ -18,7 +22,6 @@ export type MainStackParamList = {
   OrgSettings: undefined;
   MemberProfile: { userId: string; name: string };
   MediaFeed: undefined;
-  UploadMedia: undefined;
   Chat: undefined;
   Scrims: undefined;
   AddEditScrim: { scrim?: ScrimEvent } | undefined;

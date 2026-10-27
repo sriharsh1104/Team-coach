@@ -59,6 +59,33 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       expect(user.user.passwordHash).toBeUndefined();
     });
 
+    it('profileComplete is false for a brand new user until IGN/UID/phone are all set', async () => {
+      const user = await signup();
+      expect(user.user.profileComplete).toBe(false);
+
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ inGameName: 'ShadowStrike', inGameUid: 'UID-1' })
+        .expect(200);
+      let me = await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(200);
+      expect(me.body.profileComplete).toBe(false);
+
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ phone: '9999999999' })
+        .expect(200);
+      me = await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(200);
+      expect(me.body.profileComplete).toBe(true);
+    });
+
     it('rejects a duplicate email with 409, not a generic 500', async () => {
       const email = uniqueEmail('dup');
       await signup({ email });
@@ -179,6 +206,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .expect(200);
       expect(res.body.name).toBe('Alice');
       expect(res.body.org).toBeNull();
+      expect(res.body.profileComplete).toBe(false);
     });
   });
 
@@ -449,6 +477,32 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const playerMember = res.body.members.find((m: any) => m.userId === player.user.id);
       expect(coachMember.isOwner).toBe(true);
       expect(playerMember.isOwner).toBe(false);
+    });
+
+    it('roster includes each member\'s in-game role tags alongside their org role', async () => {
+      const coach = await signup();
+      const org = await createOrgAs(coach.accessToken);
+      const player = await signup();
+      await request(server)
+        .post('/orgs/join')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .send({ orgCode: org.orgCode })
+        .expect(201);
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .send({ roles: ['SNIPER', 'IGL'] })
+        .expect(200);
+
+      const res = await request(server)
+        .get('/orgs/me')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+
+      const coachMember = res.body.members.find((m: any) => m.userId === coach.user.id);
+      const playerMember = res.body.members.find((m: any) => m.userId === player.user.id);
+      expect(coachMember.inGameRoles).toEqual([]);
+      expect(playerMember.inGameRoles).toEqual(['SNIPER', 'IGL']);
     });
   });
 

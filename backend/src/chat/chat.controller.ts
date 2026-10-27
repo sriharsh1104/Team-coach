@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   NotFoundException,
   Param,
   Post,
@@ -21,6 +22,7 @@ import { existsSync, mkdirSync } from 'fs';
 import { customAlphabet } from 'nanoid';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { MediaService } from '../media/media.service';
 import { ChatService, ORG_CHANNEL } from './chat.service';
 import { MarkReadDto } from './dto/mark-read.dto';
 
@@ -36,9 +38,12 @@ if (!existsSync(uploadDir)) {
 
 @Controller('chat')
 export class ChatController {
+  private readonly logger = new Logger(ChatController.name);
+
   constructor(
     private readonly chatService: ChatService,
     private readonly jwtService: JwtService,
+    private readonly mediaService: MediaService,
   ) {}
 
   @UseGuards(JwtAuthGuard)
@@ -66,6 +71,30 @@ export class ChatController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('read-receipts')
+  readReceipts(
+    @CurrentUser() user: { userId: string },
+    @Query('channelKey') channelKey?: string,
+  ) {
+    return this.chatService.getReadReceipts(
+      user.userId,
+      channelKey?.trim() || ORG_CHANNEL,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('delivery-receipts')
+  deliveryReceipts(
+    @CurrentUser() user: { userId: string },
+    @Query('channelKey') channelKey?: string,
+  ) {
+    return this.chatService.getDeliveryReceipts(
+      user.userId,
+      channelKey?.trim() || ORG_CHANNEL,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('read')
   markRead(
     @CurrentUser() user: { userId: string },
@@ -77,7 +106,6 @@ export class ChatController {
     );
   }
 
-  /** Chat-only media upload — does not create a MediaPost / coach notify. */
   @UseGuards(JwtAuthGuard)
   @Post('media')
   @UseInterceptors(
@@ -111,6 +139,16 @@ export class ChatController {
       { sub: user.userId, fileKey: file.filename, purpose: 'chat-file' },
       { expiresIn: '7d' },
     );
+
+    // Mirrors this upload into the Media feed (Stats extraction reads from
+    // there) — fire-and-forget, same as other non-critical side effects in
+    // this module, so a hiccup here never fails the chat upload itself.
+    this.mediaService
+      .createPost(user.userId, file.filename, mediaType)
+      .catch((err) =>
+        this.logger.warn(`Failed to mirror chat upload into Media feed: ${err.message}`),
+      );
+
     return {
       mediaUrl: `/chat/files/${file.filename}?token=${token}`,
       mediaType,
