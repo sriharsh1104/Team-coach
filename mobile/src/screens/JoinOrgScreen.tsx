@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { Text, TextInput, Pressable, Alert, StyleSheet } from 'react-native';
+import { Text, TextInput, Pressable, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
-import { MembershipRole } from '../api/types';
 import { OrgSetupStackParamList } from '../navigation/types';
 import { sharedStyles } from './shared';
-import { RoleSelector } from './RoleSelector';
 import { FormScreen } from './FormScreen';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
@@ -14,13 +12,14 @@ type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
 export function JoinOrgScreen({}: Props) {
   const { setOrg } = useAuth();
   const [orgCode, setOrgCode] = useState('');
-  const [role, setRole] = useState<MembershipRole>('PLAYER');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const onSubmit = async () => {
     setIsSubmitting(true);
     try {
-      const org = await orgApi.joinOrg(role, { orgCode: orgCode.trim() });
+      // Role is always PLAYER on join — the org owner promotes coaches /
+      // analysts from the roster afterwards.
+      const org = await orgApi.joinOrg({ orgCode: orgCode.trim() });
       setOrg({ id: org.id, name: org.name, role: org.myRole, isOwner: org.isOwner });
     } catch (err: any) {
       Alert.alert(
@@ -35,6 +34,9 @@ export function JoinOrgScreen({}: Props) {
   return (
     <FormScreen>
       <Text style={sharedStyles.title}>Join an Org</Text>
+      <Text style={{ textAlign: 'center', color: '#555', marginBottom: 16 }}>
+        You join as a Player. The org owner can promote you to Coach or Analyst.
+      </Text>
       <TextInput
         style={sharedStyles.input}
         placeholder="Org code (e.g. 75HCP3)"
@@ -42,8 +44,6 @@ export function JoinOrgScreen({}: Props) {
         value={orgCode}
         onChangeText={setOrgCode}
       />
-      <Text style={styles.label}>Joining as:</Text>
-      <RoleSelector value={role} onChange={setRole} />
       <Pressable
         style={[
           sharedStyles.button,
@@ -57,7 +57,3 @@ export function JoinOrgScreen({}: Props) {
     </FormScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  label: { marginBottom: 8, color: '#444' },
-});

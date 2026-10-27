@@ -3,11 +3,13 @@ import { Text, View, FlatList, Pressable, RefreshControl, Alert, StyleSheet } fr
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
-import { OrgDetail, OrgMember } from '../api/types';
+import { MembershipRole, OrgDetail, OrgMember } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
 import { sharedStyles } from './shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgHome'>;
+
+const ASSIGNABLE_ROLES: MembershipRole[] = ['PLAYER', 'COACH', 'ANALYST'];
 
 export function OrgHomeScreen({ navigation }: Props) {
   const { logout, org, refreshOrg } = useAuth();
@@ -27,6 +29,31 @@ export function OrgHomeScreen({ navigation }: Props) {
     setIsRefreshing(true);
     await load();
     setIsRefreshing(false);
+  };
+
+  const onChangeRole = (member: OrgMember) => {
+    Alert.alert(
+      `Change role — ${member.name}`,
+      `Currently ${member.role}. Pick a new role (max 5 players, 2 coaches, 1 analyst).`,
+      [
+        ...ASSIGNABLE_ROLES.filter((role) => role !== member.role).map((role) => ({
+          text: role.charAt(0) + role.slice(1).toLowerCase(),
+          onPress: async () => {
+            try {
+              await orgApi.changeMemberRole(member.userId, role);
+              await refreshOrg();
+              await load();
+            } catch (err: any) {
+              Alert.alert(
+                'Could not change role',
+                err?.response?.data?.message ?? 'Please try again.',
+              );
+            }
+          },
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
   };
 
   const onMakeOwner = (member: OrgMember) => {
@@ -119,10 +146,17 @@ export function OrgHomeScreen({ navigation }: Props) {
               </Text>
               <Text style={styles.memberRole}>{item.role}</Text>
             </Pressable>
-            {org?.isOwner && !item.isOwner && (
-              <Pressable onPress={() => onMakeOwner(item)}>
-                <Text style={styles.makeOwnerLink}>Make Owner</Text>
-              </Pressable>
+            {org?.isOwner && (
+              <View style={styles.ownerActions}>
+                <Pressable onPress={() => onChangeRole(item)}>
+                  <Text style={styles.actionLink}>Change Role</Text>
+                </Pressable>
+                {!item.isOwner && (
+                  <Pressable onPress={() => onMakeOwner(item)}>
+                    <Text style={styles.actionLink}>Make Owner</Text>
+                  </Pressable>
+                )}
+              </View>
             )}
           </View>
         )}
@@ -142,6 +176,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    gap: 8,
   },
   memberInfo: {
     flex: 1,
@@ -150,5 +185,6 @@ const styles = StyleSheet.create({
   },
   memberName: { fontSize: 16 },
   memberRole: { color: '#888' },
-  makeOwnerLink: { color: '#2563eb', fontWeight: '600', marginLeft: 12 },
+  ownerActions: { alignItems: 'flex-end', gap: 6 },
+  actionLink: { color: '#2563eb', fontWeight: '600' },
 });
