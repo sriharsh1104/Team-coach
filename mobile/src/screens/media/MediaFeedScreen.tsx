@@ -17,6 +17,8 @@ import * as statsApi from '../../api/stats';
 import { apiBaseUrl } from '../../api/client';
 import { MediaPost, OrgMember } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
+import { Screen } from '../../brand/Screen';
+import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles } from '../shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'MediaFeed'>;
@@ -73,6 +75,7 @@ export function MediaFeedScreen({ navigation }: Props) {
   };
 
   return (
+    <Screen>
     <View style={sharedStyles.container}>
       <Text style={sharedStyles.title}>Media</Text>
 
@@ -80,7 +83,7 @@ export function MediaFeedScreen({ navigation }: Props) {
         style={sharedStyles.button}
         onPress={() => navigation.navigate('UploadMedia')}
       >
-        <Text style={sharedStyles.buttonText}>Upload Screenshot / Clip</Text>
+        <ButtonLabel icon="upload">Upload Screenshot / Clip</ButtonLabel>
       </Pressable>
 
       <FlatList
@@ -111,7 +114,7 @@ export function MediaFeedScreen({ navigation }: Props) {
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
         ListEmptyComponent={
-          <Text style={{ textAlign: 'center', color: '#888', marginTop: 24 }}>
+          <Text style={{ textAlign: 'center', color: '#9aa0a6', marginTop: 24 }}>
             No uploads yet.
           </Text>
         }
@@ -131,9 +134,13 @@ export function MediaFeedScreen({ navigation }: Props) {
               </Pressable>
             )}
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={{ fontWeight: '600' }}>{item.uploaderName}</Text>
-              {item.caption && <Text numberOfLines={2}>{item.caption}</Text>}
-              <Text style={{ color: '#888', fontSize: 12 }}>
+              <Text style={{ fontWeight: '600', color: '#f2f3f5' }}>{item.uploaderName}</Text>
+              {item.caption && (
+                <Text numberOfLines={2} style={{ color: '#e8eaed' }}>
+                  {item.caption}
+                </Text>
+              )}
+              <Text style={{ color: '#9aa0a6', fontSize: 12 }}>
                 {new Date(item.createdAt).toLocaleString()}
               </Text>
               {item.type === 'IMAGE' && (
@@ -146,34 +153,35 @@ export function MediaFeedScreen({ navigation }: Props) {
         )}
       />
     </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   chip: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#5f6368',
     borderRadius: 20,
     paddingVertical: 6,
     paddingHorizontal: 14,
     marginRight: 8,
   },
-  chipActive: { backgroundColor: '#111', borderColor: '#111' },
-  chipText: { color: '#111' },
-  chipTextActive: { color: '#fff' },
+  chipActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
+  chipText: { color: '#f2f3f5' },
+  chipTextActive: { color: '#0a0a0c' },
   postRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#3a3d44',
   },
   thumb: {
     width: 64,
     height: 64,
     borderRadius: 8,
-    backgroundColor: '#f1f1f1',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   videoThumb: { alignItems: 'center', justifyContent: 'center' },
-  extractLink: { color: '#2563eb', fontSize: 13, marginTop: 4, fontWeight: '600' },
+  extractLink: { color: '#a8b0ff', fontSize: 13, marginTop: 4, fontWeight: '600' },
 });

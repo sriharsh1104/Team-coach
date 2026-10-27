@@ -3,9 +3,11 @@ import { Text, TextInput, Pressable, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
 import { GoogleSignInButton } from '../auth/GoogleSignInButton';
+import { BrandMark } from '../brand/BrandMark';
 import { AuthStackParamList } from '../navigation/types';
-import { sharedStyles } from './shared';
+import { authStyles } from './shared';
 import { FormScreen } from './FormScreen';
+import { ButtonLabel } from '../ui/ButtonLabel';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -31,34 +33,37 @@ export function LoginScreen({ navigation }: Props) {
 
   return (
     <FormScreen>
-      <Text style={sharedStyles.title}>Team Coach</Text>
+      <BrandMark />
+      <Text style={authStyles.title}>Sign In</Text>
       <TextInput
-        style={sharedStyles.input}
+        style={authStyles.input}
         placeholder="Email"
+        placeholderTextColor="#8b8f97"
         autoCapitalize="none"
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
       />
       <TextInput
-        style={sharedStyles.input}
+        style={authStyles.input}
         placeholder="Password"
+        placeholderTextColor="#8b8f97"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
       />
       <Pressable
         style={[
-          sharedStyles.button,
-          (isSubmitting || !email || !password) && sharedStyles.buttonDisabled,
+          authStyles.button,
+          (isSubmitting || !email || !password) && authStyles.buttonDisabled,
         ]}
         disabled={isSubmitting || !email || !password}
         onPress={onSubmit}
       >
-        <Text style={sharedStyles.buttonText}>Log In</Text>
+        <ButtonLabel icon="log-in">Log In</ButtonLabel>
       </Pressable>
       <GoogleSignInButton />
-      <Text style={sharedStyles.link} onPress={() => navigation.navigate('Signup')}>
+      <Text style={authStyles.link} onPress={() => navigation.navigate('Signup')}>
         New here? Create an account
       </Text>
     </FormScreen>

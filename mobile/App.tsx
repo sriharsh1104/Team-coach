@@ -1,10 +1,12 @@
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/auth/AuthContext';
+import { BrandWatermark } from './src/brand/BrandWatermark';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { colors } from './src/theme';
 
 // Needed by both voice paths (self-hosted mediasoup-client and hosted
 // LiveKit) — neither can create a WebRTC connection without it. Native only:
@@ -28,10 +30,20 @@ Notifications.setNotificationHandler({
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
-      <StatusBar style="auto" />
+      <View style={styles.shell}>
+        <BrandWatermark variant="subtle" />
+        <View style={styles.foreground}>
+          <AuthProvider>
+            <RootNavigator />
+          </AuthProvider>
+        </View>
+        <StatusBar style="light" />
+      </View>
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  shell: { flex: 1, backgroundColor: colors.bg },
+  foreground: { flex: 1 },
+});

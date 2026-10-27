@@ -10,6 +10,7 @@ datasource db {
 enum MembershipRole {
   PLAYER
   COACH
+  ANALYST
 }
 
 model User {
@@ -22,7 +23,44 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  memberships Membership[]
+  // In-game role tags, e.g. ["IGL", "SNIPER"]. A player can hold several.
+  roles String[] @default([])
+
+  inGameName String?
+  inGameUid  String?
+
+  whatsappUrl  String?
+  instagramUrl String?
+  discordUrl   String?
+  youtubeUrl   String?
+
+  // Expo push token for the device currently signed in. One per user is enough
+  // for Phase 1 testing; move to a per-device table if multi-device push matters later.
+  expoPushToken String?
+
+  // Bumped on logout; embedded in every JWT at sign time and checked against
+  // this column on every authenticated request (JwtStrategy.validate) — the
+  // only server-side way to invalidate outstanding tokens before they expire.
+  tokenVersion Int @default(0)
+
+  memberships     Membership[]
+  devices         Device[]
+  mediaPosts      MediaPost[]
+  chatMessages    ChatMessage[]
+  chatReadStates  ChatReadState[]
+  scrimEvents     ScrimEvent[]
+  statExtractions  StatExtraction[]
+  playerStats     PlayerStat[]
+}
+
+model Device {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String // e.g. "Main rig", "Travel laptop"
+  model     String // e.g. "iPhone 15 Pro", "ROG Phone 8"
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Org {
@@ -33,7 +71,158 @@ model Org {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  memberships Membership[]
+  memberships     Membership[]
+  mediaPosts      MediaPost[]
+  chatMessages    ChatMessage[]
+  chatReadStates  ChatReadState[]
+  scrimEvents     ScrimEvent[]
+  statExtractions StatExtraction[]
+  playerStats     PlayerStat[]
+}
+
+enum ScrimEventType {
+  SCRIM
+  TOURNAMENT
+}
+
+enum ScrimRoundResult {
+  PENDING
+  QUALIFIED
+  ELIMINATED
+}
+
+model ScrimEvent {
+  id          String         @id @default(cuid())
+  orgId       String
+  createdById String
+  type        ScrimEventType
+  title       String
+  scheduledAt DateTime
+  // Where it happens — a Discord link, a tournament platform URL, etc. Free text.
+  platform    String?
+  notes       String?
+  // Team-wide push reminders before scheduledAt / each round start.
+  remind30    Boolean        @default(true)
+  remind10    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  org       Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  rounds    ScrimRound[]
+}
+
+// Unlimited tournament (or scrim) rounds — Round 1 mirrors scheduledAt on create.
+model ScrimRound {
+  id          String           @id @default(cuid())
+  eventId     String
+  roundNumber Int
+  scheduledAt DateTime
+  result      ScrimRoundResult @default(PENDING)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  event ScrimEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, roundNumber])
+  @@index([eventId])
+}
+
+// channelKey: "org" for team group chat, or "dm:{sortedUserIdA}:{sortedUserIdB}" for 1:1.
+model ChatMessage {
+  id        String     @id @default(cuid())
+  orgId     String
+  channelKey String    @default("org")
+  senderId  String
+  text      String?
+  mediaUrl  String?
+  mediaType MediaType?
+  createdAt DateTime   @default(now())
+
+  org    Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, channelKey, createdAt])
+}
+
+model ChatReadState {
+  id         String   @id @default(cuid())
+  userId     String
+  orgId      String
+  channelKey String
+  lastReadAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId, channelKey])
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+model MediaPost {
+  id         String    @id @default(cuid())
+  orgId      String
+  uploaderId String
+  type       MediaType
+  // Filename under the uploads directory, randomly generated — not the original
+  // filename. Served as a static file; see backend/src/media for the access-control note.
+  fileKey    String    @unique
+  caption    String?
+  createdAt  DateTime  @default(now())
+
+  org      Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  statExtraction StatExtraction?
+}
+
+enum StatExtractionStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+// AI-suggested per-player stats read from a MediaPost screenshot. Nothing in
+// `rows` is trusted until a human confirms it — see backend/src/stats.
+model StatExtraction {
+  id            String               @id @default(cuid())
+  orgId         String
+  mediaPostId   String               @unique
+  requestedById String
+  status        StatExtractionStatus @default(PENDING)
+  // Array of { rawName, matchedUserId, kills, deaths, assists }, editable while PENDING.
+  rows          Json
+  createdAt     DateTime             @default(now())
+  reviewedAt    DateTime?
+
+  org         Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  mediaPost   MediaPost @relation(fields: [mediaPostId], references: [id], onDelete: Cascade)
+  requestedBy User      @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+
+  playerStats PlayerStat[]
+}
+
+// One confirmed row of stats for one player, created only once a human
+// confirms a StatExtraction.
+model PlayerStat {
+  id           String   @id @default(cuid())
+  userId       String
+  orgId        String
+  kills        Int
+  deaths       Int
+  assists      Int
+  recordedAt   DateTime @default(now())
+  extractionId String
+  createdAt    DateTime @default(now())
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org        Org            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  extraction StatExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
 }
 
 model Membership {
@@ -42,6 +231,14 @@ model Membership {
   userId    String
   orgId     String
   createdAt DateTime       @default(now())
+
+  // Exactly one membership per org should have this set — the org creator,
+  // by default, transferable via OrgService.transferOwnership. Orthogonal to
+  // `role`: the owner still holds one real functional role (COACH/ANALYST/
+  // PLAYER) alongside it, so e.g. "owner who is also a player" is isOwner:
+  // true, role: PLAYER. Enforced in application code (OrgService), not a DB
+  // constraint, consistent with how the player/coach/analyst caps work.
+  isOwner Boolean @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)

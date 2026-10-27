@@ -15,6 +15,8 @@ import * as orgApi from '../../api/org';
 import { apiBaseUrl } from '../../api/client';
 import { ExtractionRow, OrgMember } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
+import { Screen } from '../../brand/Screen';
+import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles } from '../shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'ExtractionReview'>;
@@ -67,9 +69,10 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#fff' }} contentContainerStyle={{ padding: 24 }}>
+    <Screen>
+    <ScrollView style={{ flex: 1, backgroundColor: 'transparent' }} contentContainerStyle={{ padding: 24 }}>
       <Text style={sharedStyles.title}>Review AI Stats</Text>
-      <Text style={{ color: '#888', marginBottom: 16, textAlign: 'center' }}>
+      <Text style={{ color: '#9aa0a6', marginBottom: 16, textAlign: 'center' }}>
         Check the AI's reading before saving. Tap a name to match it to a teammate.
       </Text>
 
@@ -148,35 +151,38 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
         disabled={isSaving}
         onPress={onConfirm}
       >
-        <Text style={sharedStyles.buttonText}>{isSaving ? 'Saving…' : 'Confirm & Save Stats'}</Text>
+        <ButtonLabel icon="check">
+          {isSaving ? 'Saving…' : 'Confirm & Save Stats'}
+        </ButtonLabel>
       </Pressable>
       <Pressable style={sharedStyles.link} onPress={onReject}>
-        <Text style={[sharedStyles.link, { color: '#dc2626' }]}>Discard this extraction</Text>
+        <Text style={[sharedStyles.link, { color: '#dc2626' }]}>Discard This Extraction</Text>
       </Pressable>
     </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  preview: { width: '100%', height: 220, marginBottom: 16, backgroundColor: '#f1f1f1' },
+  preview: { width: '100%', height: 220, marginBottom: 16, backgroundColor: 'rgba(255,255,255,0.08)' },
   card: {
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: '#3a3d44',
     borderRadius: 10,
     padding: 12,
     marginBottom: 16,
   },
-  label: { color: '#888', fontSize: 12, marginBottom: 6, marginTop: 4 },
+  label: { color: '#9aa0a6', fontSize: 12, marginBottom: 6, marginTop: 4 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   chip: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#5f6368',
     borderRadius: 16,
     paddingVertical: 4,
     paddingHorizontal: 10,
   },
-  chipActive: { backgroundColor: '#111', borderColor: '#111' },
-  chipText: { color: '#111', fontSize: 13 },
-  chipTextActive: { color: '#fff', fontSize: 13 },
+  chipActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
+  chipText: { color: '#f2f3f5', fontSize: 13 },
+  chipTextActive: { color: '#0a0a0c', fontSize: 13 },
   statRow: { flexDirection: 'row', gap: 8 },
 });

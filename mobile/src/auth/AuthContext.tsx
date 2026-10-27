@@ -5,8 +5,7 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import * as SecureStore from 'expo-secure-store';
-import { TOKEN_STORAGE_KEY } from '../api/client';
+import { deleteToken, getToken, setToken } from '../storage/tokenStorage';
 import * as authApi from '../api/auth';
 import { AuthUser, OrgSummary } from '../api/types';
 import { registerPushTokenWithBackend } from '../notifications/registerPushToken';
@@ -32,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const token = await SecureStore.getItemAsync(TOKEN_STORAGE_KEY);
+      const token = await getToken();
       if (!token) {
         setIsLoading(false);
         return;
@@ -48,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setOrgState(me.org);
         registerPushTokenWithBackend();
       } catch {
-        await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
+        await deleteToken();
       } finally {
         setIsLoading(false);
       }
@@ -57,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const applyAuthResponse = useCallback(
     async (response: { accessToken: string; user: AuthUser; org: OrgSummary | null }) => {
-      await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, response.accessToken);
+      await setToken(response.accessToken);
       setUser(response.user);
       setOrgState(response.org);
       registerPushTokenWithBackend();
@@ -97,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // otherwise fails, still clear the local token so the user isn't
       // stuck signed in on this device.
     }
-    await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
+    await deleteToken();
     setUser(null);
     setOrgState(null);
   }, []);

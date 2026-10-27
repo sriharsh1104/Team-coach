@@ -1,6 +1,10 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    // expo/tsconfig.base still sets "moduleResolution": "node" (alias of
+    // node10). That is deprecated in TypeScript 6 — Metro is a bundler, so
+    // "bundler" is the correct modern setting and silences TS5107.
+    "moduleResolution": "bundler"
   }
 }

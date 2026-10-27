@@ -50,7 +50,7 @@ describe('UploadMediaScreen', () => {
     } as any);
     render(<UploadMediaScreen navigation={navigation} route={{} as any} />);
 
-    await pressAndSettle('Choose from Gallery');
+    await pressAndSettle('Choose From Gallery');
 
     expect(Alert.alert).toHaveBeenCalledWith('Permission needed', 'Allow access to continue.');
     expect(mockedImagePicker.launchImageLibraryAsync).not.toHaveBeenCalled();
@@ -66,7 +66,7 @@ describe('UploadMediaScreen', () => {
     } as any);
     render(<UploadMediaScreen navigation={navigation} route={{} as any} />);
 
-    await pressAndSettle('Choose from Gallery');
+    await pressAndSettle('Choose From Gallery');
     await pressUpload();
 
     expect(mockedMediaApi.uploadMedia).not.toHaveBeenCalled();
@@ -85,7 +85,7 @@ describe('UploadMediaScreen', () => {
     mockedMediaApi.uploadMedia.mockResolvedValue({} as any);
     render(<UploadMediaScreen navigation={navigation} route={{} as any} />);
 
-    await pressAndSettle('Choose from Gallery');
+    await pressAndSettle('Choose From Gallery');
     fireEvent.changeText(screen.getByPlaceholderText('Caption (optional)'), 'Clutch play');
     await pressUpload();
 
@@ -136,7 +136,7 @@ describe('UploadMediaScreen', () => {
     });
     render(<UploadMediaScreen navigation={navigation} route={{} as any} />);
 
-    await pressAndSettle('Choose from Gallery');
+    await pressAndSettle('Choose From Gallery');
     await pressUpload();
 
     expect(Alert.alert).toHaveBeenCalledWith('Upload failed', 'File too large');

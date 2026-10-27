@@ -14,6 +14,8 @@ export type OrgSetupStackParamList = {
 export type MainStackParamList = {
   OrgHome: undefined;
   Profile: undefined;
+  Members: undefined;
+  OrgSettings: undefined;
   MemberProfile: { userId: string; name: string };
   MediaFeed: undefined;
   UploadMedia: undefined;

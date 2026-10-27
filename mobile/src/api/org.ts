@@ -32,3 +32,9 @@ export function transferOwnership(targetUserId: string) {
     .post('/orgs/transfer-ownership', { targetUserId })
     .then(() => undefined);
 }
+
+export function removeMember(targetUserId: string) {
+  return apiClient
+    .post('/orgs/members/remove', { targetUserId })
+    .then(() => undefined);
+}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -9,6 +9,8 @@ import { OrgChoiceScreen } from '../screens/OrgChoiceScreen';
 import { CreateOrgScreen } from '../screens/CreateOrgScreen';
 import { JoinOrgScreen } from '../screens/JoinOrgScreen';
 import { OrgHomeScreen } from '../screens/OrgHomeScreen';
+import { MembersScreen } from '../screens/MembersScreen';
+import { OrgSettingsScreen } from '../screens/OrgSettingsScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
 import { MediaFeedScreen } from '../screens/media/MediaFeedScreen';
@@ -25,24 +27,54 @@ import {
   OrgSetupStackParamList,
   MainStackParamList,
 } from './types';
+import { titleCase } from '../utils/titleCase';
+import { colors } from '../theme';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
 const MainStack = createNativeStackNavigator<MainStackParamList>();
+
+const sacredNavTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: colors.bg,
+    card: colors.bg,
+    text: colors.text,
+    border: colors.border,
+    primary: colors.chrome,
+    notification: colors.link,
+  },
+};
+
+const mainScreenOptions = {
+  headerStyle: { backgroundColor: colors.bg },
+  headerTintColor: colors.text,
+  headerTitleStyle: { fontWeight: '700' as const, color: colors.text },
+  headerShadowVisible: false,
+  contentStyle: { backgroundColor: colors.bg },
+};
 
 export function RootNavigator() {
   const { isLoading, user, org } = useAuth();
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: colors.bg,
+        }}
+      >
+        <ActivityIndicator color={colors.chrome} />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={sacredNavTheme}>
       {!user ? (
         <AuthStack.Navigator screenOptions={{ headerShown: false }}>
           <AuthStack.Screen name="Login" component={LoginScreen} />
@@ -55,7 +87,7 @@ export function RootNavigator() {
           <OrgSetupStack.Screen name="JoinOrg" component={JoinOrgScreen} />
         </OrgSetupStack.Navigator>
       ) : (
-        <MainStack.Navigator>
+        <MainStack.Navigator screenOptions={mainScreenOptions}>
           <MainStack.Screen
             name="OrgHome"
             component={OrgHomeScreen}
@@ -67,9 +99,19 @@ export function RootNavigator() {
             options={{ title: 'My Profile' }}
           />
           <MainStack.Screen
+            name="Members"
+            component={MembersScreen}
+            options={{ title: 'Team Members' }}
+          />
+          <MainStack.Screen
+            name="OrgSettings"
+            component={OrgSettingsScreen}
+            options={{ title: 'Org Settings' }}
+          />
+          <MainStack.Screen
             name="MemberProfile"
             component={MemberProfileScreen}
-            options={({ route }) => ({ title: route.params.name })}
+            options={({ route }) => ({ title: titleCase(route.params.name) })}
           />
           <MainStack.Screen
             name="MediaFeed"
@@ -109,7 +151,7 @@ export function RootNavigator() {
           <MainStack.Screen
             name="PlayerStats"
             component={PlayerStatsScreen}
-            options={({ route }) => ({ title: route.params.name })}
+            options={({ route }) => ({ title: titleCase(route.params.name) })}
           />
           <MainStack.Screen
             name="Voice"

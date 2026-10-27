@@ -121,7 +121,7 @@ describe('ExtractionReviewScreen', () => {
     mockedStatsApi.rejectExtraction.mockResolvedValue(undefined as any);
     render(<ExtractionReviewScreen navigation={navigation} route={route} />);
 
-    await pressAndSettle('Discard this extraction');
+    await pressAndSettle('Discard This Extraction');
 
     expect(mockedStatsApi.rejectExtraction).toHaveBeenCalledWith('ext-1');
     expect(navigation.goBack).toHaveBeenCalled();
