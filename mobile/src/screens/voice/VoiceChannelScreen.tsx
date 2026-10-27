@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { TOKEN_STORAGE_KEY } from '../../api/client';
 import * as voiceApi from '../../api/voice';
 import { VoiceConfig } from '../../api/types';
@@ -82,7 +82,7 @@ export function VoiceChannelScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([voiceApi.getVoiceConfig(), AsyncStorage.getItem(TOKEN_STORAGE_KEY)])
+    Promise.all([voiceApi.getVoiceConfig(), SecureStore.getItemAsync(TOKEN_STORAGE_KEY)])
       .then(([cfg, token]) => {
         if (!token) {
           setError('You are signed out. Please log in again to use voice channels.');

@@ -5,7 +5,7 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { TOKEN_STORAGE_KEY } from '../api/client';
 import * as authApi from '../api/auth';
 import { AuthUser, OrgSummary } from '../api/types';
@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const token = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
+      const token = await SecureStore.getItemAsync(TOKEN_STORAGE_KEY);
       if (!token) {
         setIsLoading(false);
         return;
@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setOrgState(me.org);
         registerPushTokenWithBackend();
       } catch {
-        await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+        await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
       } finally {
         setIsLoading(false);
       }
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const applyAuthResponse = useCallback(
     async (response: { accessToken: string; user: AuthUser; org: OrgSummary | null }) => {
-      await AsyncStorage.setItem(TOKEN_STORAGE_KEY, response.accessToken);
+      await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, response.accessToken);
       setUser(response.user);
       setOrgState(response.org);
       registerPushTokenWithBackend();
@@ -90,7 +90,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+    try {
+      await authApi.logout();
+    } catch {
+      // Best-effort server-side revocation — if we're offline or the call
+      // otherwise fails, still clear the local token so the user isn't
+      // stuck signed in on this device.
+    }
+    await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
     setUser(null);
     setOrgState(null);
   }, []);

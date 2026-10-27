@@ -24,3 +24,7 @@ export function me() {
     .get<AuthUser & { org: OrgSummary | null }>('/auth/me')
     .then((res) => res.data);
 }
+
+export function logout() {
+  return apiClient.post('/auth/logout').then(() => undefined);
+}

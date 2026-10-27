@@ -19,3 +19,9 @@ export function joinOrg(
 export function getMyOrg() {
   return apiClient.get<OrgDetail>('/orgs/me').then((res) => res.data);
 }
+
+export function transferOwnership(targetUserId: string) {
+  return apiClient
+    .post('/orgs/transfer-ownership', { targetUserId })
+    .then(() => undefined);
+}

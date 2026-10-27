@@ -59,7 +59,7 @@ export function ScrimsListScreen({ navigation }: Props) {
   };
 
   const canEdit = (event: ScrimEvent) =>
-    event.createdById === user?.id || org?.role === 'COACH';
+    event.createdById === user?.id || org?.role === 'COACH' || org?.isOwner === true;
 
   const now = Date.now();
   const upcoming = events.filter((e) => new Date(e.scheduledAt).getTime() >= now);

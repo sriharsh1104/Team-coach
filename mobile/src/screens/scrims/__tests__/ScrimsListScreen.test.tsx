@@ -96,6 +96,36 @@ describe('ScrimsListScreen', () => {
     expect(screen.getByText('Delete')).toBeTruthy();
   });
 
+  it('shows Edit/Delete for the org owner, even when their own role is PLAYER, on events they did not create', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1' },
+      org: { role: 'PLAYER', isOwner: true },
+    });
+    mockedScrimsApi.listScrims.mockResolvedValue([
+      scrim({ createdById: 'user-2', scheduledAt: '2099-01-01T00:00:00.000Z' }),
+    ]);
+    render(<ScrimsListScreen navigation={navigation} route={{} as any} />);
+
+    await screen.findByText('Practice vs Beta');
+    expect(screen.getByText('Edit')).toBeTruthy();
+    expect(screen.getByText('Delete')).toBeTruthy();
+  });
+
+  it('hides Edit/Delete for a PLAYER who is not the owner and not the creator', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'user-1' },
+      org: { role: 'PLAYER', isOwner: false },
+    });
+    mockedScrimsApi.listScrims.mockResolvedValue([
+      scrim({ createdById: 'user-2', scheduledAt: '2099-01-01T00:00:00.000Z' }),
+    ]);
+    render(<ScrimsListScreen navigation={navigation} route={{} as any} />);
+
+    await screen.findByText('Practice vs Beta');
+    expect(screen.queryByText('Edit')).toBeNull();
+    expect(screen.queryByText('Delete')).toBeNull();
+  });
+
   it('navigates to AddEditScrim with the event when Edit is pressed', async () => {
     mockedUseAuth.mockReturnValue({ user: { id: 'user-1' }, org: { role: 'COACH' } });
     const event = scrim({ scheduledAt: '2099-01-01T00:00:00.000Z' });

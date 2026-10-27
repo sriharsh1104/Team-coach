@@ -1,5 +1,5 @@
 import React from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 import { VoiceChannelScreen } from '../VoiceChannelScreen';
 import * as voiceApi from '../../../api/voice';
@@ -55,7 +55,7 @@ describe('VoiceChannelScreen', () => {
   });
 
   it('shows a sign-in-again error instead of hanging when there is no stored auth token', async () => {
-    await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+    await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     render(<VoiceChannelScreen />);
 
@@ -65,7 +65,7 @@ describe('VoiceChannelScreen', () => {
   });
 
   it('uses the self-hosted hook with the stored token when mode is "self"', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-abc');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     render(<VoiceChannelScreen />);
 
@@ -75,7 +75,7 @@ describe('VoiceChannelScreen', () => {
   });
 
   it('uses the hosted hook with the LiveKit url/token when mode is "hosted"', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-abc');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({
       mode: 'hosted',
       url: 'wss://livekit.example.com',
@@ -89,7 +89,7 @@ describe('VoiceChannelScreen', () => {
   });
 
   it('shows a Join button when idle, and calls join when pressed', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-abc');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     const joinSpy = jest.fn();
     mockedUseSelfHosted.mockReturnValue(controller({ join: joinSpy }));
@@ -102,7 +102,7 @@ describe('VoiceChannelScreen', () => {
   });
 
   it('shows a connecting indicator while status is "connecting"', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-abc');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     mockedUseSelfHosted.mockReturnValue(controller({ status: 'connecting' }));
     render(<VoiceChannelScreen />);
@@ -112,7 +112,7 @@ describe('VoiceChannelScreen', () => {
   });
 
   it('shows the hook\'s error message when status is "error"', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-abc');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     mockedUseSelfHosted.mockReturnValue(
       controller({ status: 'error', errorMessage: 'Microphone permission denied' }),
@@ -123,7 +123,7 @@ describe('VoiceChannelScreen', () => {
   });
 
   it('shows participants, mute toggle, and leave button when connected', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-abc');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     const toggleMuteSpy = jest.fn();
     const leaveSpy = jest.fn();
@@ -148,7 +148,7 @@ describe('VoiceChannelScreen', () => {
   });
 
   it('shows "Unmute" when already muted', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-abc');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     mockedUseSelfHosted.mockReturnValue(controller({ status: 'connected', isMuted: true }));
     render(<VoiceChannelScreen />);
@@ -157,7 +157,7 @@ describe('VoiceChannelScreen', () => {
   });
 
   it('shows the empty-channel message when connected with no other participants', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'token-abc');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     mockedUseSelfHosted.mockReturnValue(controller({ status: 'connected', participants: [] }));
     render(<VoiceChannelScreen />);

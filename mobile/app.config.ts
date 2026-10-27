@@ -43,11 +43,21 @@ const expoConfig: ExpoConfig = {
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     permissions: ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'],
+    // Lets the OS shrink the window when the keyboard opens (this is
+    // actually Expo's own default when unset — set explicitly so it's not
+    // left to an SDK default to document/rely on). ChatScreen's
+    // KeyboardAvoidingView only has a real `behavior` on iOS; on Android the
+    // window resize is what keeps the message input above the keyboard.
+    softwareKeyboardLayoutMode: 'resize',
   },
   web: {
     favicon: './assets/favicon.png',
   },
-  plugins: ['@react-native-community/datetimepicker', '@livekit/react-native-expo-plugin'],
+  plugins: [
+    '@react-native-community/datetimepicker',
+    '@livekit/react-native-expo-plugin',
+    'expo-secure-store',
+  ],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
     appEnv,

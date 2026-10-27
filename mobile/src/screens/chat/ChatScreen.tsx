@@ -9,7 +9,7 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { Socket } from 'socket.io-client';
 import { TOKEN_STORAGE_KEY } from '../../api/client';
 import * as chatApi from '../../api/chat';
@@ -33,7 +33,7 @@ export function ChatScreen() {
       if (cancelled) return;
       setMessages(history);
 
-      const token = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
+      const token = await SecureStore.getItemAsync(TOKEN_STORAGE_KEY);
       if (!token || cancelled) return;
 
       const socket = chatApi.connectChatSocket(token);

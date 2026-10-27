@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Text, TextInput, Pressable, Alert, View } from 'react-native';
+import { Text, TextInput, Pressable, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
 import { GoogleSignInButton } from '../auth/GoogleSignInButton';
 import { AuthStackParamList } from '../navigation/types';
 import { sharedStyles } from './shared';
+import { FormScreen } from './FormScreen';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -29,7 +30,7 @@ export function LoginScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={sharedStyles.container}>
+    <FormScreen>
       <Text style={sharedStyles.title}>Team Coach</Text>
       <TextInput
         style={sharedStyles.input}
@@ -60,6 +61,6 @@ export function LoginScreen({ navigation }: Props) {
       <Text style={sharedStyles.link} onPress={() => navigation.navigate('Signup')}>
         New here? Create an account
       </Text>
-    </View>
+    </FormScreen>
   );
 }

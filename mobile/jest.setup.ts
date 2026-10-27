@@ -7,9 +7,30 @@
 // present — true on web too, which is why VoiceChannelScreen has a .web.tsx
 // stub; Jest has the identical problem and needs the identical treatment).
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
+// expo-secure-store has no real native backing under Jest — an in-memory
+// map mirrors its get/set/delete shape closely enough for tests that seed or
+// clear a stored token (e.g. the access token in AuthContext/ChatScreen/
+// VoiceChannelScreen).
+// Jest hoists jest.mock() factories above module-scope consts, so the
+// backing store has to be named with a `mock` prefix — otherwise the
+// factory can't reference it ("out-of-scope variable").
+const mockSecureStoreMemory = new Map<string, string>();
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn((key: string) =>
+    Promise.resolve(mockSecureStoreMemory.get(key) ?? null),
+  ),
+  setItemAsync: jest.fn((key: string, value: string) => {
+    mockSecureStoreMemory.set(key, value);
+    return Promise.resolve();
+  }),
+  deleteItemAsync: jest.fn((key: string) => {
+    mockSecureStoreMemory.delete(key);
+    return Promise.resolve();
+  }),
+  // Not a real SecureStore API — a test-only convenience for resetting
+  // state between tests, mirroring @react-native-async-storage's mock.clear().
+  clear: () => mockSecureStoreMemory.clear(),
+}));
 
 jest.mock('@livekit/react-native-webrtc', () => ({
   mediaDevices: { getUserMedia: jest.fn() },

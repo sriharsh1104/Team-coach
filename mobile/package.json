@@ -17,7 +17,6 @@
     "@expo/metro-runtime": "~4.0.1",
     "@livekit/react-native": "^3.1.0",
     "@livekit/react-native-webrtc": "^150.1.0",
-    "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/datetimepicker": "8.2.0",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",
@@ -29,6 +28,7 @@
     "expo-constants": "~17.0.3",
     "expo-image-picker": "~16.0.6",
     "expo-notifications": "~0.29.14",
+    "expo-secure-store": "~14.0.1",
     "expo-status-bar": "~2.0.0",
     "expo-system-ui": "~4.0.9",
     "expo-web-browser": "~14.0.1",
@@ -55,6 +55,8 @@
   },
   "jest": {
     "preset": "jest-expo",
-    "setupFilesAfterEnv": ["<rootDir>/jest.setup.ts"]
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.ts"
+    ]
   }
 }

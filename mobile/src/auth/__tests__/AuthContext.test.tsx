@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { AuthProvider, useAuth } from '../AuthContext';
 import { TOKEN_STORAGE_KEY } from '../../api/client';
 import * as authApi from '../../api/auth';
@@ -31,7 +31,7 @@ const fakeUser = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  AsyncStorage.clear();
+  (SecureStore as any).clear();
 });
 
 describe('AuthContext', () => {
@@ -46,29 +46,29 @@ describe('AuthContext', () => {
   });
 
   it('restores the session from a stored token on mount', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'existing-token');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'existing-token');
     mockedAuthApi.me.mockResolvedValue({
       ...fakeUser,
-      org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER' },
+      org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false },
     });
 
     const { result } = renderAuth();
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.user).toEqual(fakeUser);
-    expect(result.current.org).toEqual({ id: 'org-1', name: 'Alpha Squad', role: 'PLAYER' });
+    expect(result.current.org).toEqual({ id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false });
     expect(registerPushTokenWithBackend).toHaveBeenCalledTimes(1);
   });
 
   it('clears a stored token that no longer verifies (expired/invalid) instead of getting stuck', async () => {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, 'stale-token');
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'stale-token');
     mockedAuthApi.me.mockRejectedValue(new Error('401'));
 
     const { result } = renderAuth();
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.user).toBeNull();
-    expect(await AsyncStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
+    expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBeNull();
   });
 
   it('signup persists the token and populates user/org from the response', async () => {
@@ -86,7 +86,7 @@ describe('AuthContext', () => {
     });
 
     expect(result.current.user).toEqual(fakeUser);
-    expect(await AsyncStorage.getItem(TOKEN_STORAGE_KEY)).toBe('new-token');
+    expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBe('new-token');
     expect(registerPushTokenWithBackend).toHaveBeenCalledTimes(1);
   });
 
@@ -94,7 +94,7 @@ describe('AuthContext', () => {
     mockedAuthApi.login.mockResolvedValue({
       accessToken: 'login-token',
       user: fakeUser,
-      org: { id: 'org-1', name: 'Alpha Squad', role: 'COACH' },
+      org: { id: 'org-1', name: 'Alpha Squad', role: 'COACH', isOwner: false },
     });
 
     const { result } = renderAuth();
@@ -124,14 +124,14 @@ describe('AuthContext', () => {
 
     expect(mockedAuthApi.googleLogin).toHaveBeenCalledWith('fake-id-token');
     expect(result.current.user).toEqual(fakeUser);
-    expect(await AsyncStorage.getItem(TOKEN_STORAGE_KEY)).toBe('google-token');
+    expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBe('google-token');
   });
 
   it('logout clears both the token and in-memory user/org state', async () => {
     mockedAuthApi.login.mockResolvedValue({
       accessToken: 'login-token',
       user: fakeUser,
-      org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER' },
+      org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false },
     });
 
     const { result } = renderAuth();
@@ -141,13 +141,37 @@ describe('AuthContext', () => {
     });
     expect(result.current.user).not.toBeNull();
 
+    mockedAuthApi.logout.mockResolvedValue(undefined);
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(mockedAuthApi.logout).toHaveBeenCalledTimes(1);
+    expect(result.current.user).toBeNull();
+    expect(result.current.org).toBeNull();
+    expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBeNull();
+  });
+
+  it('logout still clears local session state even if the server call fails (e.g. offline)', async () => {
+    mockedAuthApi.login.mockResolvedValue({
+      accessToken: 'login-token',
+      user: fakeUser,
+      org: null,
+    });
+    mockedAuthApi.logout.mockRejectedValue(new Error('Network error'));
+
+    const { result } = renderAuth();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.login('player1@example.com', 'password123');
+    });
+
     await act(async () => {
       await result.current.logout();
     });
 
     expect(result.current.user).toBeNull();
-    expect(result.current.org).toBeNull();
-    expect(await AsyncStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
+    expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBeNull();
   });
 
   it('refreshOrg updates only the org, leaving the user untouched', async () => {
@@ -166,13 +190,13 @@ describe('AuthContext', () => {
 
     mockedAuthApi.me.mockResolvedValue({
       ...fakeUser,
-      org: { id: 'org-2', name: 'Newly Joined Org', role: 'PLAYER' },
+      org: { id: 'org-2', name: 'Newly Joined Org', role: 'PLAYER', isOwner: false },
     });
     await act(async () => {
       await result.current.refreshOrg();
     });
 
-    expect(result.current.org).toEqual({ id: 'org-2', name: 'Newly Joined Org', role: 'PLAYER' });
+    expect(result.current.org).toEqual({ id: 'org-2', name: 'Newly Joined Org', role: 'PLAYER', isOwner: false });
     expect(result.current.user).toEqual(fakeUser);
   });
 
@@ -181,10 +205,10 @@ describe('AuthContext', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     act(() => {
-      result.current.setOrg({ id: 'org-3', name: 'Fresh Org', role: 'COACH' });
+      result.current.setOrg({ id: 'org-3', name: 'Fresh Org', role: 'COACH', isOwner: true });
     });
 
-    expect(result.current.org).toEqual({ id: 'org-3', name: 'Fresh Org', role: 'COACH' });
+    expect(result.current.org).toEqual({ id: 'org-3', name: 'Fresh Org', role: 'COACH', isOwner: true });
     expect(mockedAuthApi.me).not.toHaveBeenCalled();
   });
 });
