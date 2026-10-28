@@ -116,6 +116,64 @@ describe('AuthContext', () => {
     expect(registerPushTokenWithBackend).toHaveBeenCalledTimes(1);
   });
 
+  it('signup returns the challenge (without logging in) when the server requires email verification', async () => {
+    mockedAuthApi.signup.mockResolvedValue({
+      requiresEmailVerification: true,
+      challengeToken: 'challenge-token',
+    });
+
+    const { result } = renderAuth();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let signupResult: any;
+    await act(async () => {
+      signupResult = await result.current.signup(
+        'player1@example.com',
+        'Password123!',
+        'Player 1',
+      );
+    });
+
+    expect(signupResult).toEqual({
+      requiresEmailVerification: true,
+      challengeToken: 'challenge-token',
+    });
+    expect(result.current.user).toBeNull();
+  });
+
+  it('completeEmailVerification verifies the code then logs in', async () => {
+    mockedAuthApi.verifyEmailSignup.mockResolvedValue({
+      accessToken: 'verified-token',
+      user: fakeUser,
+      org: null,
+    });
+
+    const { result } = renderAuth();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.completeEmailVerification('challenge-token', '123456');
+    });
+
+    expect(mockedAuthApi.verifyEmailSignup).toHaveBeenCalledWith('challenge-token', '123456');
+    expect(result.current.user).toEqual(fakeUser);
+    expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBe('verified-token');
+  });
+
+  it('resendEmailVerification passes the challenge token through without changing auth state', async () => {
+    mockedAuthApi.resendEmailVerification.mockResolvedValue({ success: true });
+
+    const { result } = renderAuth();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.resendEmailVerification('challenge-token');
+    });
+
+    expect(mockedAuthApi.resendEmailVerification).toHaveBeenCalledWith('challenge-token');
+    expect(result.current.user).toBeNull();
+  });
+
   it('login persists the token and populates user/org', async () => {
     mockedAuthApi.login.mockResolvedValue({
       accessToken: 'login-token',

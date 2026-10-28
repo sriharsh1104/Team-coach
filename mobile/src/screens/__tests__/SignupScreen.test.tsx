@@ -22,23 +22,36 @@ async function pressAndSettle(text: string) {
   });
 }
 
+function fillForm({
+  name = 'Player One',
+  email = 'player1@example.com',
+  password = 'Password123!',
+}: { name?: string; email?: string; password?: string } = {}) {
+  fireEvent.changeText(screen.getByPlaceholderText('Full name'), name);
+  fireEvent.changeText(screen.getByPlaceholderText('Email'), email);
+  fireEvent.changeText(screen.getByPlaceholderText('Password'), password);
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
 });
 
 describe('SignupScreen', () => {
-  it('blocks submission until name, email, and an 8+ character password are all present', async () => {
+  it('blocks submission until name, email, and a strong password are all present', async () => {
     const signup = jest.fn();
     mockedUseAuth.mockReturnValue({ signup });
     renderScreen();
 
-    fireEvent.changeText(screen.getByPlaceholderText('Full name'), 'Player One');
-    fireEvent.changeText(screen.getByPlaceholderText('Email'), 'player1@example.com');
-    fireEvent.changeText(screen.getByPlaceholderText('Password (min 8 characters)'), 'short');
+    fillForm({ password: 'short' });
     await pressAndSettle('Sign Up');
     expect(signup).not.toHaveBeenCalled();
 
-    fireEvent.changeText(screen.getByPlaceholderText('Password (min 8 characters)'), 'password123');
+    // Long enough but missing an uppercase letter and a special character.
+    fillForm({ password: 'password123' });
+    await pressAndSettle('Sign Up');
+    expect(signup).not.toHaveBeenCalled();
+
+    fillForm({ password: 'Password123!' });
     await pressAndSettle('Sign Up');
     expect(signup).toHaveBeenCalledTimes(1);
   });
@@ -48,12 +61,26 @@ describe('SignupScreen', () => {
     mockedUseAuth.mockReturnValue({ signup });
     renderScreen();
 
-    fireEvent.changeText(screen.getByPlaceholderText('Full name'), '  Player One  ');
-    fireEvent.changeText(screen.getByPlaceholderText('Email'), '  player1@example.com  ');
-    fireEvent.changeText(screen.getByPlaceholderText('Password (min 8 characters)'), 'password123');
+    fillForm({ name: '  Player One  ', email: '  player1@example.com  ' });
     await pressAndSettle('Sign Up');
 
-    expect(signup).toHaveBeenCalledWith('player1@example.com', 'password123', 'Player One');
+    expect(signup).toHaveBeenCalledWith('player1@example.com', 'Password123!', 'Player One');
+  });
+
+  it('navigates to EmailVerification with the challenge token when the server requires it', async () => {
+    const signup = jest.fn().mockResolvedValue({
+      requiresEmailVerification: true,
+      challengeToken: 'challenge-token',
+    });
+    mockedUseAuth.mockReturnValue({ signup });
+    renderScreen();
+
+    fillForm();
+    await pressAndSettle('Sign Up');
+
+    expect(navigation.navigate).toHaveBeenCalledWith('EmailVerification', {
+      challengeToken: 'challenge-token',
+    });
   });
 
   it('shows an alert on signup failure (e.g. duplicate email)', async () => {
@@ -64,9 +91,7 @@ describe('SignupScreen', () => {
     mockedUseAuth.mockReturnValue({ signup });
     renderScreen();
 
-    fireEvent.changeText(screen.getByPlaceholderText('Full name'), 'Player One');
-    fireEvent.changeText(screen.getByPlaceholderText('Email'), 'player1@example.com');
-    fireEvent.changeText(screen.getByPlaceholderText('Password (min 8 characters)'), 'password123');
+    fillForm();
     await pressAndSettle('Sign Up');
 
     expect(alertSpy).toHaveBeenCalledWith(

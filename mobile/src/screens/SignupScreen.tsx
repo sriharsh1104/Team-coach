@@ -11,6 +11,10 @@ import { ButtonLabel } from '../ui/ButtonLabel';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Signup'>;
 
+// Mirrors the backend's PASSWORD_REGEX (auth/password.util.ts) for fast
+// client-side feedback — the server is still the source of truth.
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
 export function SignupScreen({ navigation }: Props) {
   const { signup } = useAuth();
   const [name, setName] = useState('');
@@ -18,12 +22,17 @@ export function SignupScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const canSubmit = name && email && password.length >= 8;
+  const canSubmit = name && email && PASSWORD_REGEX.test(password);
 
   const onSubmit = async () => {
     setIsSubmitting(true);
     try {
-      await signup(email.trim(), password, name.trim());
+      const result = await signup(email.trim(), password, name.trim());
+      if (result && 'requiresEmailVerification' in result) {
+        navigation.navigate('EmailVerification', {
+          challengeToken: result.challengeToken,
+        });
+      }
     } catch (err: any) {
       Alert.alert(
         'Signup failed',
@@ -56,12 +65,16 @@ export function SignupScreen({ navigation }: Props) {
       />
       <TextInput
         style={authStyles.input}
-        placeholder="Password (min 8 characters)"
+        placeholder="Password"
         placeholderTextColor="#8b8f97"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
       />
+      <Text style={{ color: '#9aa0a6', fontSize: 12, marginBottom: 12 }}>
+        At least 8 characters, with an uppercase letter, a lowercase letter, a
+        number, and a special character.
+      </Text>
       <Pressable
         style={[
           authStyles.button,

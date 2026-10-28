@@ -5,12 +5,21 @@ import { join } from 'path';
 import { rm } from 'fs/promises';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { MailerService } from '../../src/mailer/mailer.service';
+import { MockMailerService } from './mailer-mock';
 
 // Mirrors src/main.ts's bootstrap so e2e tests see exactly what production does.
 export async function createTestApp(): Promise<INestApplication> {
   const moduleFixture = await Test.createTestingModule({
     imports: [AppModule],
-  }).compile();
+  })
+    // Real MailerService would call out to Resend's network API on every
+    // signup/Google-login in the whole suite — override with an in-memory
+    // capture instead (see mailer-mock.ts), same idea as how Google e2e tests
+    // avoid a real OAuth round trip by constructing users directly.
+    .overrideProvider(MailerService)
+    .useClass(MockMailerService)
+    .compile();
 
   const app = moduleFixture.createNestApplication<NestExpressApplication>();
 

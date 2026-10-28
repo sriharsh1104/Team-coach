@@ -19,6 +19,7 @@ import {
   AuthUser,
   OrgSummary,
   TwoFactorChallengeResponse,
+  EmailVerificationChallengeResponse,
 } from '../api/types';
 import { registerPushTokenWithBackend } from '../notifications/registerPushToken';
 
@@ -44,7 +45,19 @@ interface AuthContextValue {
   needsBiometricUnlock: boolean;
   retryBiometricUnlock: () => Promise<void>;
   dismissBiometricLock: () => void;
-  signup: (email: string, password: string, name: string) => Promise<void>;
+  // Resolves to a challenge when a brand-new signup needs its email verified
+  // (see completeEmailVerification) — void means the server skipped the gate
+  // (shouldn't happen for a fresh signup, but keeps the type honest).
+  signup: (
+    email: string,
+    password: string,
+    name: string,
+  ) => Promise<EmailVerificationChallengeResponse | void>;
+  completeEmailVerification: (
+    challengeToken: string,
+    code: string,
+  ) => Promise<void>;
+  resendEmailVerification: (challengeToken: string) => Promise<void>;
   // Resolves to a challenge when the account has 2FA enabled — the caller
   // (LoginScreen) should navigate to the code-entry screen with it instead
   // of treating the login as complete. void means login finished normally.
@@ -139,11 +152,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signup = useCallback(
     async (email: string, password: string, name: string) => {
-      const response = await authApi.signup(email, password, name);
+      const result = await authApi.signup(email, password, name);
+      if ('requiresEmailVerification' in result) {
+        return result;
+      }
+      await applyAuthResponse(result);
+    },
+    [applyAuthResponse],
+  );
+
+  const completeEmailVerification = useCallback(
+    async (challengeToken: string, code: string) => {
+      const response = await authApi.verifyEmailSignup(challengeToken, code);
       await applyAuthResponse(response);
     },
     [applyAuthResponse],
   );
+
+  const resendEmailVerification = useCallback(async (challengeToken: string) => {
+    await authApi.resendEmailVerification(challengeToken);
+  }, []);
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -220,6 +248,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         retryBiometricUnlock,
         dismissBiometricLock,
         signup,
+        completeEmailVerification,
+        resendEmailVerification,
         login,
         loginWithGoogle,
         completeTwoFactorLogin,

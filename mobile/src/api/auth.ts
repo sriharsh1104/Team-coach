@@ -1,10 +1,23 @@
 import { apiClient } from './client';
-import { AuthResponse, AuthUser, OrgSummary, LoginResult } from './types';
+import { AuthResponse, AuthUser, OrgSummary, LoginResult, SignupResult } from './types';
 
-// A brand-new signup can never already have 2FA enabled, unlike login.
+// A brand-new signup is never usable immediately — it comes back as an
+// email-verification challenge instead of a session (see verifyEmailSignup).
 export function signup(email: string, password: string, name: string) {
   return apiClient
-    .post<AuthResponse>('/auth/signup', { email, password, name })
+    .post<SignupResult>('/auth/signup', { email, password, name })
+    .then((res) => res.data);
+}
+
+export function verifyEmailSignup(challengeToken: string, code: string) {
+  return apiClient
+    .post<AuthResponse>('/auth/verify-email', { challengeToken, code })
+    .then((res) => res.data);
+}
+
+export function resendEmailVerification(challengeToken: string) {
+  return apiClient
+    .post<{ success: boolean }>('/auth/resend-verification', { challengeToken })
     .then((res) => res.data);
 }
 

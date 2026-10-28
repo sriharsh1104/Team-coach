@@ -53,6 +53,13 @@ model User {
   twoFactorEnabled          Boolean  @default(false)
   twoFactorBackupCodeHashes String[] @default([])
 
+  // False until the signup OTP is verified (/auth/verify-email) — true from
+  // creation for Google accounts, since Google already requires a verified
+  // email before AuthService.googleLogin will even create the user.
+  emailVerified Boolean @default(false)
+
+  emailVerificationCode EmailVerificationCode?
+
   memberships        Membership[]
   devices            Device[]
   mediaPosts         MediaPost[]
@@ -62,6 +69,21 @@ model User {
   scrimEvents        ScrimEvent[]
   statExtractions  StatExtraction[]
   playerStats     PlayerStat[]
+}
+
+// One outstanding signup-verification code per user — a resend overwrites
+// this row rather than creating a new one. codeHash is bcrypt, same pattern
+// as User.twoFactorBackupCodeHashes. attempts caps wrong-code guesses before
+// the row is deleted and a fresh resend is required.
+model EmailVerificationCode {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Device {
