@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Text, View, StyleSheet, Pressable } from 'react-native';
+import { Text, View, StyleSheet, Pressable, Modal } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
@@ -18,7 +19,9 @@ export function OrgHomeScreen({ navigation }: Props) {
   const { logout, org, user } = useAuth();
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const { message: toastMessage, showToast } = useToast();
+  const insets = useSafeAreaInsets();
 
   const copyOrgCode = async () => {
     if (!detail?.orgCode) return;
@@ -40,7 +43,6 @@ export function OrgHomeScreen({ navigation }: Props) {
       {
         key: 'chat',
         label: 'Chats',
-        icon: 'chat' as const,
         onPress: () => {
           // Already on OrgHome which embeds the chat hub.
         },
@@ -48,31 +50,26 @@ export function OrgHomeScreen({ navigation }: Props) {
       {
         key: 'voice',
         label: 'Team Voice',
-        icon: 'mic' as const,
         onPress: () => navigation.navigate('Voice'),
       },
       {
         key: 'media',
         label: 'Media',
-        icon: 'images' as const,
         onPress: () => navigation.navigate('MediaFeed'),
       },
       {
         key: 'scrims',
         label: 'Scrims & Tournaments',
-        icon: 'trophy' as const,
         onPress: () => navigation.navigate('Scrims'),
       },
       {
         key: 'stats',
         label: 'Stats',
-        icon: 'stats' as const,
         onPress: () => navigation.navigate('Stats'),
       },
       {
         key: 'members',
         label: 'Team Members',
-        icon: 'people' as const,
         onPress: () => navigation.navigate('Members'),
       },
       ...(org?.isOwner
@@ -80,32 +77,17 @@ export function OrgHomeScreen({ navigation }: Props) {
             {
               key: 'orgSettings',
               label: 'Org Settings',
-              icon: 'settings' as const,
               onPress: () => navigation.navigate('OrgSettings'),
             },
           ]
         : []),
       {
         key: 'profile',
-        label: 'Edit My Profile',
-        icon: 'person' as const,
+        label: 'Profile',
         onPress: () => navigation.navigate('Profile'),
       },
     ],
     [navigation, org?.isOwner],
-  );
-
-  const footerItems = useMemo(
-    () => [
-      {
-        key: 'logout',
-        label: 'Log Out',
-        icon: 'logout' as const,
-        danger: true,
-        onPress: () => logout(),
-      },
-    ],
-    [logout],
   );
 
   return (
@@ -134,7 +116,7 @@ export function OrgHomeScreen({ navigation }: Props) {
           )}
         </View>
         <Pressable
-          onPress={() => navigation.navigate('AccountSettings')}
+          onPress={() => setSettingsMenuOpen(true)}
           accessibilityRole="button"
           accessibilityLabel="Account Settings"
           hitSlop={8}
@@ -155,9 +137,46 @@ export function OrgHomeScreen({ navigation }: Props) {
           title={user?.name ?? 'Menu'}
           subtitle={org?.name ?? detail?.name}
           items={drawerItems}
-          footerItems={footerItems}
         />
       ) : null}
+
+      <Modal
+        visible={settingsMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSettingsMenuOpen(false)}
+      >
+        <View style={styles.dropdownRoot}>
+          <Pressable
+            style={styles.dropdownBackdrop}
+            onPress={() => setSettingsMenuOpen(false)}
+            accessibilityLabel="Close Account Settings Menu"
+          />
+          <View style={[styles.dropdownPanel, { top: insets.top + 56 }]}>
+            <Pressable
+              style={styles.dropdownItem}
+              onPress={() => {
+                setSettingsMenuOpen(false);
+                navigation.navigate('AccountSettings');
+              }}
+            >
+              <Text style={styles.dropdownItemText}>Security</Text>
+            </Pressable>
+            <View style={styles.dropdownDivider} />
+            <Pressable
+              style={styles.dropdownItem}
+              onPress={() => {
+                setSettingsMenuOpen(false);
+                logout();
+              }}
+            >
+              <Text style={[styles.dropdownItemText, { color: colors.danger }]}>
+                Logout
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <Toast message={toastMessage} />
     </Screen>
@@ -200,5 +219,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   settingsIcon: { fontSize: 22, color: colors.text },
+  dropdownRoot: { flex: 1 },
+  dropdownBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  dropdownPanel: {
+    position: 'absolute',
+    right: 16,
+    minWidth: 180,
+    backgroundColor: '#121216',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 4,
+  },
+  dropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  dropdownItemText: {
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  dropdownDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 2,
+  },
   chat: { flex: 1 },
 });

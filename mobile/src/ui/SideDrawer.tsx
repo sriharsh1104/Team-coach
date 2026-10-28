@@ -11,14 +11,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
-import { AppIconName, ButtonLabel } from './ButtonLabel';
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.82);
 
 export type SideDrawerItem = {
   key: string;
   label: string;
-  icon: AppIconName;
   onPress: () => void;
   danger?: boolean;
 };
@@ -60,12 +58,9 @@ export function SideDrawer({
         item.onPress();
       }}
     >
-      <ButtonLabel
-        icon={item.icon}
-        color={item.danger ? colors.danger : colors.text}
-      >
+      <Text style={[styles.itemText, item.danger && { color: colors.danger }]}>
         {item.label}
-      </ButtonLabel>
+      </Text>
     </Pressable>
   );
 
@@ -193,6 +188,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 14,
     paddingHorizontal: 12,
+    alignItems: 'flex-start',
+  },
+  itemText: {
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 16,
   },
   itemDanger: {
     backgroundColor: 'rgba(248,113,113,0.12)',

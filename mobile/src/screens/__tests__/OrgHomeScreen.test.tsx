@@ -60,7 +60,7 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Alpha Squad')).toBeTruthy();
     expect(screen.getByText('Embedded Team Chat')).toBeTruthy();
     expect(screen.queryByText('Team Voice')).toBeNull();
-    expect(screen.queryByText('Log Out')).toBeNull();
+    expect(screen.queryByText('Security')).toBeNull();
   });
 
   it('copies the org code and shows a toast when the org code label is pressed', async () => {
@@ -76,7 +76,7 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Org code copied')).toBeTruthy();
   });
 
-  it('opens the sidebar with all nav options (including owner-only Org Settings) and Log Out pinned at the bottom', async () => {
+  it('opens the sidebar with all nav options (including owner-only Org Settings), with no Settings/Security or Logout in it', async () => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');
 
@@ -89,8 +89,10 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Stats')).toBeTruthy();
     expect(screen.getByText('Team Members')).toBeTruthy();
     expect(screen.getByText('Org Settings')).toBeTruthy();
-    expect(screen.getByText('Edit My Profile')).toBeTruthy();
-    expect(screen.getByText('Log Out')).toBeTruthy();
+    expect(screen.getByText('Profile')).toBeTruthy();
+    expect(screen.queryByText('Security')).toBeNull();
+    expect(screen.queryByText('Logout')).toBeNull();
+    expect(screen.queryByText('Log Out')).toBeNull();
   });
 
   it('hides Org Settings from the sidebar when I am not the owner', async () => {
@@ -114,7 +116,7 @@ describe('OrgHomeScreen', () => {
     ['Stats', 'Stats'],
     ['Team Members', 'Members'],
     ['Org Settings', 'OrgSettings'],
-    ['Edit My Profile', 'Profile'],
+    ['Profile', 'Profile'],
   ])('navigates from sidebar %s -> %s', async (label, routeName) => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');
@@ -124,13 +126,51 @@ describe('OrgHomeScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith(routeName);
   });
 
-  it('calls logout from the sidebar footer', async () => {
+  it('opens a dropdown from the gear icon with Security and Logout, separated by a divider', async () => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');
 
-    fireEvent.press(screen.getByLabelText('Open Menu'));
-    fireEvent.press(screen.getByText('Log Out'));
+    expect(screen.queryByText('Security')).toBeNull();
+    expect(screen.queryByText('Logout')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Account Settings'));
+
+    expect(screen.getByText('Security')).toBeTruthy();
+    expect(screen.getByText('Logout')).toBeTruthy();
+  });
+
+  it('navigates to AccountSettings and closes the dropdown when Security is pressed', async () => {
+    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Alpha Squad');
+
+    fireEvent.press(screen.getByLabelText('Account Settings'));
+    fireEvent.press(screen.getByText('Security'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('AccountSettings');
+    expect(screen.queryByText('Logout')).toBeNull();
+  });
+
+  it('calls logout and closes the dropdown when Logout is pressed', async () => {
+    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Alpha Squad');
+
+    fireEvent.press(screen.getByLabelText('Account Settings'));
+    fireEvent.press(screen.getByText('Logout'));
+
     expect(logout).toHaveBeenCalled();
+    expect(screen.queryByText('Security')).toBeNull();
+  });
+
+  it('closes the dropdown when the backdrop is pressed, without navigating or logging out', async () => {
+    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Alpha Squad');
+
+    fireEvent.press(screen.getByLabelText('Account Settings'));
+    fireEvent.press(screen.getByLabelText('Close Account Settings Menu'));
+
+    expect(screen.queryByText('Security')).toBeNull();
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(logout).not.toHaveBeenCalled();
   });
 
   it('shows a toast when the embedded chat hub fails to load', async () => {

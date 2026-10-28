@@ -19,6 +19,7 @@ import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles, formatRoleBadge } from '../shared';
 import { useAuth } from '../../auth/AuthContext';
+import { colors } from '../../theme';
 
 // IGN, UID and phone are compulsory for every user — everything else
 // (socials) stays optional. Enforced here for both the one-time forced
@@ -161,8 +162,16 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
             </Text>
           )}
 
-          <Pressable style={sharedStyles.button} onPress={() => setIsEditing(true)}>
-            <ButtonLabel icon="edit">Edit</ButtonLabel>
+          <Pressable
+            style={({ pressed }) => [
+              styles.editButton,
+              pressed && styles.editButtonPressed,
+            ]}
+            onPress={() => setIsEditing(true)}
+          >
+            <ButtonLabel icon="edit" color={colors.link}>
+              Edit
+            </ButtonLabel>
           </Pressable>
 
           {profile.roles.length > 0 ? (
@@ -363,5 +372,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: -8,
     marginBottom: 4,
+  },
+  // Outlined + tinted in the app's own highlight color (the same periwinkle
+  // used for the role badge above it) instead of the plain grey chrome
+  // button shared by every other action — Edit reads as a distinct, lighter
+  // action from a hard commit like Save. `pressed` gives instant tactile
+  // feedback without an Animated timer (see Toast.tsx for why timers are
+  // avoided here: they outlive unmounts in tests).
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: colors.link,
+    backgroundColor: 'rgba(168,176,255,0.12)',
+    paddingVertical: 12,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  editButtonPressed: {
+    backgroundColor: 'rgba(168,176,255,0.26)',
+    transform: [{ scale: 0.98 }],
   },
 });

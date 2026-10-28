@@ -5,7 +5,14 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import { deleteToken, getToken, setToken } from '../storage/tokenStorage';
+import { Platform } from 'react-native';
+import {
+  deleteToken,
+  getBiometricEnabled,
+  getToken,
+  setToken,
+} from '../storage/tokenStorage';
+import { isBiometricAvailable, promptBiometricAuth } from './biometrics';
 import * as authApi from '../api/auth';
 import {
   AuthResponse,
@@ -32,6 +39,11 @@ interface AuthContextValue {
   isLoading: boolean;
   user: AuthUser | null;
   org: OrgSummary | null;
+  // True when a saved session exists but biometric unlock (enabled by the
+  // user in Account Settings) hasn't been passed yet this app open.
+  needsBiometricUnlock: boolean;
+  retryBiometricUnlock: () => Promise<void>;
+  dismissBiometricLock: () => void;
   signup: (email: string, password: string, name: string) => Promise<void>;
   // Resolves to a challenge when the account has 2FA enabled — the caller
   // (LoginScreen) should navigate to the code-entry screen with it instead
@@ -63,25 +75,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [org, setOrgState] = useState<OrgSummary | null>(null);
+  const [needsBiometricUnlock, setNeedsBiometricUnlock] = useState(false);
+
+  // Restores a saved session on app open. Pulled out of the effect so
+  // retryBiometricUnlock can re-run the exact same sequence after a failed
+  // or cancelled prompt, without duplicating the token/me() logic.
+  const bootstrap = useCallback(async () => {
+    const token = await getToken();
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (Platform.OS !== 'web' && (await getBiometricEnabled())) {
+      const available = await isBiometricAvailable();
+      if (available) {
+        const unlocked = await promptBiometricAuth('Unlock Team Coach');
+        if (!unlocked) {
+          // Don't touch the stored token — just block resuming the session
+          // until the user either retries or falls back to password login.
+          setNeedsBiometricUnlock(true);
+          setIsLoading(false);
+          return;
+        }
+      }
+      // If the hardware/enrollment went away since enabling (e.g. Face ID
+      // turned off in OS settings), fall through and resume normally rather
+      // than locking the user out permanently.
+    }
+
+    try {
+      const me = await authApi.me();
+      setUser(toAuthUser(me));
+      setOrgState(me.org);
+      registerPushTokenWithBackend();
+    } catch {
+      await deleteToken();
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      const token = await getToken();
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-      try {
-        const me = await authApi.me();
-        setUser(toAuthUser(me));
-        setOrgState(me.org);
-        registerPushTokenWithBackend();
-      } catch {
-        await deleteToken();
-      } finally {
-        setIsLoading(false);
-      }
-    })();
+    bootstrap();
+  }, [bootstrap]);
+
+  const retryBiometricUnlock = useCallback(async () => {
+    setNeedsBiometricUnlock(false);
+    setIsLoading(true);
+    await bootstrap();
+  }, [bootstrap]);
+
+  const dismissBiometricLock = useCallback(() => {
+    setNeedsBiometricUnlock(false);
   }, []);
 
   const applyAuthResponse = useCallback(async (response: AuthResponse) => {
@@ -170,6 +216,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         user,
         org,
+        needsBiometricUnlock,
+        retryBiometricUnlock,
+        dismissBiometricLock,
         signup,
         login,
         loginWithGoogle,

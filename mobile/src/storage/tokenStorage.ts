@@ -40,3 +40,30 @@ export async function deleteToken(): Promise<void> {
   const SecureStore = nativeSecureStore();
   await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
 }
+
+// Opt-in preference for gating app-open with Face ID / Touch ID / fingerprint
+// — stored as the string 'true'/absent rather than a real boolean since
+// SecureStore only holds strings.
+export const BIOMETRIC_ENABLED_KEY = 'team-coach.biometricEnabled';
+
+export async function getBiometricEnabled(): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem(BIOMETRIC_ENABLED_KEY) === 'true';
+  }
+  const SecureStore = nativeSecureStore();
+  return (await SecureStore.getItemAsync(BIOMETRIC_ENABLED_KEY)) === 'true';
+}
+
+export async function setBiometricEnabled(enabled: boolean): Promise<void> {
+  if (Platform.OS === 'web') {
+    if (enabled) localStorage.setItem(BIOMETRIC_ENABLED_KEY, 'true');
+    else localStorage.removeItem(BIOMETRIC_ENABLED_KEY);
+    return;
+  }
+  const SecureStore = nativeSecureStore();
+  if (enabled) {
+    await SecureStore.setItemAsync(BIOMETRIC_ENABLED_KEY, 'true');
+  } else {
+    await SecureStore.deleteItemAsync(BIOMETRIC_ENABLED_KEY);
+  }
+}
