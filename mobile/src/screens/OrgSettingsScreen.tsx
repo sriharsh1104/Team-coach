@@ -5,6 +5,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  Switch,
   Alert,
   StyleSheet,
 } from 'react-native';
@@ -92,6 +93,22 @@ export function OrgSettingsScreen({ navigation }: Props) {
     );
   };
 
+  const onToggleHistory = async (value: boolean) => {
+    setDetail((prev) => (prev ? { ...prev, historyVisibleToNewMembers: value } : prev));
+    try {
+      await orgApi.updateOrgSettings(value);
+      showToast(
+        value ? 'New members can now see full chat history' : 'New members only see chat from when they join',
+      );
+    } catch (err: any) {
+      setDetail((prev) => (prev ? { ...prev, historyVisibleToNewMembers: !value } : prev));
+      Alert.alert(
+        'Could not update setting',
+        err?.response?.data?.message ?? 'Please try again.',
+      );
+    }
+  };
+
   const onRemove = (member: OrgMember) => {
     Alert.alert(
       'Remove Member',
@@ -132,7 +149,25 @@ export function OrgSettingsScreen({ navigation }: Props) {
           />
         }
         ListHeaderComponent={
-          <Text style={sharedStyles.title}>Org Settings</Text>
+          <>
+            <Text style={sharedStyles.title}>Org Settings</Text>
+            {detail && (
+              <View style={styles.settingRow}>
+                <View style={styles.settingTextCol}>
+                  <Text style={styles.settingLabel}>Chat history for new members</Text>
+                  <Text style={styles.settingHint}>
+                    Let a new member see Team Chat messages from before they joined.
+                  </Text>
+                </View>
+                <Switch
+                  accessibilityLabel="Chat history for new members"
+                  value={detail.historyVisibleToNewMembers}
+                  onValueChange={onToggleHistory}
+                />
+              </View>
+            )}
+            <Text style={styles.sectionHeader}>Members</Text>
+          </>
         }
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
@@ -168,6 +203,24 @@ export function OrgSettingsScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   list: { flex: 1, backgroundColor: 'transparent' },
   listContent: { padding: 24 },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  settingTextCol: { flex: 1 },
+  settingLabel: { fontSize: 15, fontWeight: '600', color: colors.text },
+  settingHint: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  sectionHeader: {
+    marginTop: 16,
+    marginBottom: 4,
+    fontWeight: '700',
+    fontSize: 16,
+    color: colors.text,
+  },
   memberCard: {
     paddingVertical: 14,
     borderBottomWidth: 1,

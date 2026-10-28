@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -11,10 +12,25 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { TwoFactorEnableDto } from './dto/two-factor-enable.dto';
+import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
+import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
 import { User } from '@prisma/client';
 import { isProfileComplete } from '../users/users.service';
+import {
+  generateBackupCodes,
+  generateQrCodeDataUrl,
+  generateTwoFactorSecret,
+  verifyTwoFactorCode,
+} from './two-factor.util';
 
 const BCRYPT_SALT_ROUNDS = 12;
+
+interface TwoFactorChallengePayload {
+  sub: string;
+  purpose: '2fa-challenge';
+}
 
 @Injectable()
 export class AuthService {
@@ -62,7 +78,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    return this.buildAuthResponse(user);
+    return this.completeLoginOrChallenge(user);
   }
 
   async googleLogin(dto: GoogleLoginDto) {
@@ -124,7 +140,148 @@ export class AuthService {
       }
     }
 
-    return this.buildAuthResponse(user);
+    return this.completeLoginOrChallenge(user);
+  }
+
+  // 2FA is a property of the account, not the login method — applies the
+  // same way whether credentials came from a password or Google.
+  private async completeLoginOrChallenge(user: User) {
+    if (!user.twoFactorEnabled) {
+      return this.buildAuthResponse(user);
+    }
+    const payload: TwoFactorChallengePayload = {
+      sub: user.id,
+      purpose: '2fa-challenge',
+    };
+    const challengeToken = await this.jwtService.signAsync(payload, {
+      expiresIn: '5m',
+    });
+    return { requiresTwoFactor: true as const, challengeToken };
+  }
+
+  async verifyTwoFactorLogin(dto: TwoFactorVerifyDto) {
+    let payload: TwoFactorChallengePayload;
+    try {
+      payload = await this.jwtService.verifyAsync<TwoFactorChallengePayload>(
+        dto.challengeToken,
+      );
+    } catch {
+      throw new UnauthorizedException('That login challenge has expired — please log in again');
+    }
+    if (payload.purpose !== '2fa-challenge') {
+      throw new UnauthorizedException('Invalid login challenge');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user || !user.twoFactorEnabled) {
+      throw new UnauthorizedException('Invalid login challenge');
+    }
+
+    if (dto.code) {
+      const valid = user.twoFactorSecret
+        ? verifyTwoFactorCode(user.twoFactorSecret, dto.code)
+        : false;
+      if (!valid) throw new UnauthorizedException('Invalid code');
+      return this.buildAuthResponse(user);
+    }
+
+    if (dto.backupCode) {
+      const remaining: string[] = [];
+      let matched = false;
+      for (const hash of user.twoFactorBackupCodeHashes) {
+        if (!matched && (await bcrypt.compare(dto.backupCode, hash))) {
+          matched = true; // consume exactly one — one-time use
+          continue;
+        }
+        remaining.push(hash);
+      }
+      if (!matched) throw new UnauthorizedException('Invalid backup code');
+      const updated = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { twoFactorBackupCodeHashes: remaining },
+      });
+      return this.buildAuthResponse(updated);
+    }
+
+    throw new BadRequestException('A code or backup code is required');
+  }
+
+  async setupTwoFactor(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const { base32: secret, otpauthUrl } = generateTwoFactorSecret(user.email);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorSecret: secret },
+    });
+    const qrCodeDataUrl = await generateQrCodeDataUrl(otpauthUrl);
+    return { secret, qrCodeDataUrl };
+  }
+
+  async enableTwoFactor(userId: string, dto: TwoFactorEnableDto) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.twoFactorSecret) {
+      throw new BadRequestException('Call /auth/2fa/setup first');
+    }
+    const valid = verifyTwoFactorCode(user.twoFactorSecret, dto.code);
+    if (!valid) {
+      throw new UnauthorizedException('Invalid code');
+    }
+
+    const backupCodes = generateBackupCodes();
+    const hashes = await Promise.all(
+      backupCodes.map((code) => bcrypt.hash(code, BCRYPT_SALT_ROUNDS)),
+    );
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorEnabled: true, twoFactorBackupCodeHashes: hashes },
+    });
+
+    return { backupCodes };
+  }
+
+  async disableTwoFactor(userId: string, dto: TwoFactorDisableDto) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.passwordHash) {
+      throw new BadRequestException('This account has no password set');
+    }
+    const matches = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!matches) {
+      throw new UnauthorizedException('Incorrect password');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        twoFactorSecret: null,
+        twoFactorEnabled: false,
+        twoFactorBackupCodeHashes: [],
+      },
+    });
+    return { success: true };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account signs in with Google and has no password to change',
+      );
+    }
+    const matches = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!matches) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_SALT_ROUNDS);
+    // Bumping tokenVersion invalidates every other session — same mechanism
+    // logout() uses — but buildAuthResponse below mints a fresh token for
+    // THIS session so the caller stays logged in.
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    });
+
+    return this.buildAuthResponse(updated);
   }
 
   async logout(userId: string) {
@@ -158,6 +315,8 @@ export class AuthService {
         avatarUrl: user.avatarUrl,
         phone: user.phone,
         profileComplete: isProfileComplete(user),
+        hasPassword: !!user.passwordHash,
+        twoFactorEnabled: user.twoFactorEnabled,
       },
       org: membership
         ? {

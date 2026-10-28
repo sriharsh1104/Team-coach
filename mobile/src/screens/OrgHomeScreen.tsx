@@ -133,6 +133,15 @@ export function OrgHomeScreen({ navigation }: Props) {
             </View>
           )}
         </View>
+        <Pressable
+          onPress={() => navigation.navigate('AccountSettings')}
+          accessibilityRole="button"
+          accessibilityLabel="Account Settings"
+          hitSlop={8}
+          style={styles.settingsBtn}
+        >
+          <Text style={styles.settingsIcon}>⚙</Text>
+        </Pressable>
       </View>
 
       <View style={styles.chat}>
@@ -184,5 +193,12 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   subtitle: { color: colors.textMuted, fontSize: 12 },
+  settingsBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsIcon: { fontSize: 22, color: colors.text },
   chat: { flex: 1 },
 });

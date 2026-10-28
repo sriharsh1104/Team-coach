@@ -13,10 +13,11 @@ import { Profile } from '../../api/types';
 import { RoleOption } from '../../api/roles';
 import { RoleChips } from './RoleChips';
 import { CopyableInput } from './CopyableInput';
+import { CopyableField } from './CopyableField';
 import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
-import { sharedStyles } from '../shared';
+import { sharedStyles, formatRoleBadge } from '../shared';
 import { useAuth } from '../../auth/AuthContext';
 
 // IGN, UID and phone are compulsory for every user — everything else
@@ -32,6 +33,10 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  // The forced post-login gate always starts (and stays) in edit mode —
+  // there's nothing to view yet. The normal "Edit My Profile" entry shows a
+  // read-only view first, with an Edit button to reach this same form.
+  const [isEditing, setIsEditing] = useState(mustComplete);
 
   const [roles, setRoles] = useState<string[]>([]);
   const [inGameName, setInGameName] = useState('');
@@ -90,6 +95,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
       if (mustComplete) {
         await refreshUser();
       } else {
+        setIsEditing(false);
         Alert.alert('Saved', 'Your profile was updated.');
       }
     } catch (err: any) {
@@ -128,6 +134,85 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
         <View style={sharedStyles.container}>
           <ActivityIndicator color="#c9ccd1" />
         </View>
+      </Screen>
+    );
+  }
+
+  if (!isEditing) {
+    const roleBadge = formatRoleBadge(profile.role, profile.isOwner);
+    return (
+      <Screen>
+        <ScrollView
+          style={{ flex: 1, backgroundColor: 'transparent' }}
+          contentContainerStyle={{ padding: 24 }}
+        >
+          <Text style={sharedStyles.title}>{profile.name}</Text>
+          {roleBadge && (
+            <Text
+              style={{
+                color: '#a8b0ff',
+                fontWeight: '600',
+                textAlign: 'center',
+                marginTop: -16,
+                marginBottom: 16,
+              }}
+            >
+              {roleBadge}
+            </Text>
+          )}
+
+          <Pressable style={sharedStyles.button} onPress={() => setIsEditing(true)}>
+            <ButtonLabel icon="edit">Edit</ButtonLabel>
+          </Pressable>
+
+          {profile.roles.length > 0 ? (
+            <RoleChips selected={profile.roles} editable={false} />
+          ) : (
+            <Text style={{ color: '#9aa0a6', marginTop: 12, marginBottom: 12 }}>
+              No role set yet
+            </Text>
+          )}
+
+          {profile.inGameName && (
+            <CopyableField label="In-Game Name (IGN)" value={profile.inGameName} />
+          )}
+          {profile.inGameUid && <CopyableField label="UID" value={profile.inGameUid} />}
+          {profile.phone && <CopyableField label="Phone" value={profile.phone} />}
+
+          <Text style={styles.sectionLabel}>Social Links</Text>
+          {profile.whatsappUrl && (
+            <CopyableField label="WhatsApp" value={profile.whatsappUrl} />
+          )}
+          {profile.instagramUrl && (
+            <CopyableField label="Instagram" value={profile.instagramUrl} />
+          )}
+          {profile.discordUrl && (
+            <CopyableField label="Discord" value={profile.discordUrl} />
+          )}
+          {profile.youtubeUrl && (
+            <CopyableField label="YouTube" value={profile.youtubeUrl} />
+          )}
+          {!profile.whatsappUrl &&
+            !profile.instagramUrl &&
+            !profile.discordUrl &&
+            !profile.youtubeUrl && (
+              <Text style={{ color: '#9aa0a6' }}>No social links set yet</Text>
+            )}
+
+          {profile.devices.length > 0 && (
+            <>
+              <Text style={styles.sectionLabel}>My Devices</Text>
+              {profile.devices.map((device) => (
+                <View key={device.id} style={styles.deviceRow}>
+                  <Text style={{ flex: 1, color: '#f2f3f5' }}>
+                    {device.name} — {device.model}
+                  </Text>
+                  <CopyButton value={`${device.name} — ${device.model}`} />
+                </View>
+              ))}
+            </>
+          )}
+        </ScrollView>
       </Screen>
     );
   }

@@ -38,6 +38,21 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       expect(res.body.roles).toEqual([]);
       expect(res.body.inGameName).toBeNull();
       expect(res.body.devices).toEqual([]);
+      // No org yet, so no org role to report.
+      expect(res.body.role).toBeNull();
+      expect(res.body.isOwner).toBe(false);
+    });
+
+    it('BUG FIX: includes the org role and owner status once you have one (same shape as the member-profile route)', async () => {
+      const coach = await signup(server, { name: 'Coach' });
+      await createOrgAs(server, coach.accessToken, 'COACH');
+
+      const res = await request(server)
+        .get('/users/me')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(res.body.role).toBe('COACH');
+      expect(res.body.isOwner).toBe(true);
     });
 
     it('never leaks passwordHash, email, or googleId in the profile response', async () => {

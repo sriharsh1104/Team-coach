@@ -44,6 +44,15 @@ model User {
   // only server-side way to invalidate outstanding tokens before they expire.
   tokenVersion Int @default(0)
 
+  // Two-factor authentication (TOTP). twoFactorSecret is written at
+  // /auth/2fa/setup but twoFactorEnabled only flips true once the user
+  // proves they can generate a valid code at /auth/2fa/enable — never
+  // enabled on the strength of setup alone. Backup codes are bcrypt-hashed,
+  // one-time use (removed from the array on use).
+  twoFactorSecret           String?
+  twoFactorEnabled          Boolean  @default(false)
+  twoFactorBackupCodeHashes String[] @default([])
+
   memberships        Membership[]
   devices            Device[]
   mediaPosts         MediaPost[]
@@ -72,6 +81,11 @@ model Org {
   referralToken String   @unique // long token embedded in a shareable join link
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  // Owner-controlled: whether a member can see Team Chat messages from
+  // before they joined. Chat history itself is always kept in full either
+  // way — this only controls what's displayed to a given member.
+  historyVisibleToNewMembers Boolean @default(true)
 
   memberships        Membership[]
   mediaPosts         MediaPost[]

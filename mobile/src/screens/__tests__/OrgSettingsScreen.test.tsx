@@ -19,6 +19,7 @@ const detail = {
   referralLink: 'token',
   myRole: 'COACH',
   isOwner: true,
+  historyVisibleToNewMembers: true,
   members: [
     { userId: 'user-1', name: 'Owner Coach', avatarUrl: null, role: 'COACH', isOwner: true },
     { userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'PLAYER', isOwner: false },
@@ -47,6 +48,38 @@ describe('OrgSettingsScreen', () => {
     // Only the non-owner row gets Make Owner / Remove.
     expect(screen.getAllByText('Make Owner')).toHaveLength(1);
     expect(screen.getAllByText('Remove')).toHaveLength(1);
+  });
+
+  it('shows the chat-history switch reflecting the current setting, and flips it on toggle', async () => {
+    mockedOrgApi.updateOrgSettings.mockResolvedValue({ historyVisibleToNewMembers: false });
+    render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Teammate');
+
+    const toggle = screen.getByLabelText('Chat history for new members');
+    expect(toggle.props.value).toBe(true);
+
+    await act(async () => {
+      fireEvent(toggle, 'valueChange', false);
+    });
+
+    expect(mockedOrgApi.updateOrgSettings).toHaveBeenCalledWith(false);
+    await screen.findByText('New members only see chat from when they join');
+    expect(screen.getByLabelText('Chat history for new members').props.value).toBe(false);
+  });
+
+  it('reverts the chat-history switch and shows an alert if saving the setting fails', async () => {
+    mockedOrgApi.updateOrgSettings.mockRejectedValue({
+      response: { data: { message: 'Please try again.' } },
+    });
+    render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Teammate');
+
+    await act(async () => {
+      fireEvent(screen.getByLabelText('Chat history for new members'), 'valueChange', false);
+    });
+
+    expect(Alert.alert).toHaveBeenCalledWith('Could not update setting', 'Please try again.');
+    expect(screen.getByLabelText('Chat history for new members').props.value).toBe(true);
   });
 
   it('bounces a non-owner straight back out', async () => {

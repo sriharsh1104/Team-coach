@@ -2,9 +2,14 @@ import React from 'react';
 import { Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as Google from 'expo-auth-session/providers/google';
+import * as ReactNavigation from '@react-navigation/native';
 import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { GoogleSignInButton } from '../GoogleSignInButton';
 import { useAuth } from '../AuthContext';
+
+function renderButton() {
+  return render(<GoogleSignInButton />);
+}
 
 jest.mock('expo-web-browser', () => ({ maybeCompleteAuthSession: jest.fn() }));
 jest.mock('expo-auth-session/providers/google', () => ({
@@ -12,13 +17,19 @@ jest.mock('expo-auth-session/providers/google', () => ({
 }));
 jest.mock('expo-constants', () => ({ expoConfig: { extra: {} } }));
 jest.mock('../AuthContext');
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: jest.fn(),
+}));
 
 const mockedUseIdTokenAuthRequest = Google.useIdTokenAuthRequest as jest.Mock;
 const mockedUseAuth = useAuth as jest.Mock;
+const mockedUseNavigation = ReactNavigation.useNavigation as jest.Mock;
 const mockedConstants = Constants as unknown as { expoConfig: { extra: Record<string, unknown> } };
 
 const promptAsync = jest.fn();
 const loginWithGoogle = jest.fn();
+const navigate = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -26,11 +37,12 @@ beforeEach(() => {
   mockedConstants.expoConfig = { extra: {} };
   mockedUseAuth.mockReturnValue({ loginWithGoogle });
   mockedUseIdTokenAuthRequest.mockReturnValue([{}, null, promptAsync]);
+  mockedUseNavigation.mockReturnValue({ navigate });
 });
 
 describe('GoogleSignInButton', () => {
   it('warns instead of prompting when Google sign-in is not configured', async () => {
-    render(<GoogleSignInButton />);
+    renderButton();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Continue with Google'));
@@ -46,7 +58,7 @@ describe('GoogleSignInButton', () => {
   it('does not prompt while the auth request is not yet ready, even if configured', async () => {
     mockedConstants.expoConfig = { extra: { googleWebClientId: 'web-client-id' } };
     mockedUseIdTokenAuthRequest.mockReturnValue([null, null, promptAsync]);
-    render(<GoogleSignInButton />);
+    renderButton();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Continue with Google'));
@@ -58,7 +70,7 @@ describe('GoogleSignInButton', () => {
   it('prompts the Google auth flow when configured and ready', async () => {
     mockedConstants.expoConfig = { extra: { googleWebClientId: 'web-client-id' } };
     mockedUseIdTokenAuthRequest.mockReturnValue([{}, null, promptAsync]);
-    render(<GoogleSignInButton />);
+    renderButton();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Continue with Google'));
@@ -76,11 +88,33 @@ describe('GoogleSignInButton', () => {
       { type: 'success', params: { id_token: 'id-token-123' } },
       promptAsync,
     ]);
-    render(<GoogleSignInButton />);
+    renderButton();
 
     await act(async () => {});
 
     expect(loginWithGoogle).toHaveBeenCalledWith('id-token-123');
+  });
+
+  it('navigates to TwoFactorChallenge when loginWithGoogle reports 2FA is required', async () => {
+    mockedConstants.expoConfig = { extra: { googleWebClientId: 'web-client-id' } };
+    loginWithGoogle.mockResolvedValue({
+      requiresTwoFactor: true,
+      challengeToken: 'challenge-token',
+    });
+    mockedUseIdTokenAuthRequest.mockReturnValue([
+      {},
+      { type: 'success', params: { id_token: 'id-token-123' } },
+      promptAsync,
+    ]);
+    renderButton();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(navigate).toHaveBeenCalledWith('TwoFactorChallenge', {
+      challengeToken: 'challenge-token',
+    });
   });
 
   it('shows an alert when loginWithGoogle rejects after a successful response', async () => {
@@ -91,7 +125,7 @@ describe('GoogleSignInButton', () => {
       { type: 'success', params: { id_token: 'id-token-123' } },
       promptAsync,
     ]);
-    render(<GoogleSignInButton />);
+    renderButton();
 
     await act(async () => {
       await Promise.resolve();
@@ -103,7 +137,7 @@ describe('GoogleSignInButton', () => {
   it('shows an alert when the auth flow itself errors', async () => {
     mockedConstants.expoConfig = { extra: { googleWebClientId: 'web-client-id' } };
     mockedUseIdTokenAuthRequest.mockReturnValue([{}, { type: 'error' }, promptAsync]);
-    render(<GoogleSignInButton />);
+    renderButton();
 
     await act(async () => {});
 

@@ -21,14 +21,18 @@ export class ChatService {
     private readonly pushNotifications: PushNotificationService,
   ) {}
 
-  async getOrgIdForUser(userId: string): Promise<string> {
+  async getMembershipForUser(userId: string) {
     const membership = await this.prisma.membership.findFirst({
       where: { userId },
     });
     if (!membership) {
       throw new NotFoundException('You are not part of an org yet');
     }
-    return membership.orgId;
+    return membership;
+  }
+
+  async getOrgIdForUser(userId: string): Promise<string> {
+    return (await this.getMembershipForUser(userId)).orgId;
   }
 
   /** Sorted DM channel key so either side resolves the same room. */
@@ -125,11 +129,30 @@ export class ChatService {
   }
 
   async listMessages(userId: string, channelKey = ORG_CHANNEL) {
-    const orgId = await this.getOrgIdForUser(userId);
+    const membership = await this.getMembershipForUser(userId);
+    const orgId = membership.orgId;
     await this.assertChannelAccess(userId, orgId, channelKey);
 
+    // The group channel's history can be capped to "since I joined" per-org
+    // — a DM only ever has messages from after it started anyway, so this
+    // never applies there.
+    let historyCutoff: Date | undefined;
+    if (channelKey === ORG_CHANNEL) {
+      const org = await this.prisma.org.findUnique({
+        where: { id: orgId },
+        select: { historyVisibleToNewMembers: true },
+      });
+      if (org && !org.historyVisibleToNewMembers) {
+        historyCutoff = membership.createdAt;
+      }
+    }
+
     const messages = await this.prisma.chatMessage.findMany({
-      where: { orgId, channelKey },
+      where: {
+        orgId,
+        channelKey,
+        ...(historyCutoff ? { createdAt: { gte: historyCutoff } } : {}),
+      },
       include: { sender: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
       take: HISTORY_LIMIT,

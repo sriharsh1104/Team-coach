@@ -3,6 +3,7 @@ import { ScrimEvent, StatExtraction } from '../api/types';
 export type AuthStackParamList = {
   Login: undefined;
   Signup: undefined;
+  TwoFactorChallenge: { challengeToken: string };
 };
 
 export type OrgSetupStackParamList = {
@@ -20,6 +21,8 @@ export type MainStackParamList = {
   Profile: undefined;
   Members: undefined;
   OrgSettings: undefined;
+  AccountSettings: undefined;
+  TwoFactorSetup: undefined;
   MemberProfile: { userId: string; name: string };
   MediaFeed: undefined;
   Chat: undefined;

@@ -1,9 +1,13 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { TwoFactorEnableDto } from './dto/two-factor-enable.dto';
+import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
+import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -39,11 +43,50 @@ export class AuthController {
     return this.authService.googleLogin(dto);
   }
 
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60000 } })
+  @Post('2fa/verify')
+  verifyTwoFactor(@Body() dto: TwoFactorVerifyDto) {
+    return this.authService.verifyTwoFactorLogin(dto);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   async logout(@CurrentUser() currentUser: { userId: string }) {
     await this.authService.logout(currentUser.userId);
     return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('password')
+  changePassword(
+    @CurrentUser() currentUser: { userId: string },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(currentUser.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/setup')
+  setupTwoFactor(@CurrentUser() currentUser: { userId: string }) {
+    return this.authService.setupTwoFactor(currentUser.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/enable')
+  enableTwoFactor(
+    @CurrentUser() currentUser: { userId: string },
+    @Body() dto: TwoFactorEnableDto,
+  ) {
+    return this.authService.enableTwoFactor(currentUser.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/disable')
+  disableTwoFactor(
+    @CurrentUser() currentUser: { userId: string },
+    @Body() dto: TwoFactorDisableDto,
+  ) {
+    return this.authService.disableTwoFactor(currentUser.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -64,6 +107,8 @@ export class AuthController {
       avatarUrl: user.avatarUrl,
       phone: user.phone,
       profileComplete: isProfileComplete(user),
+      hasPassword: !!user.passwordHash,
+      twoFactorEnabled: user.twoFactorEnabled,
       org: membership
         ? {
             id: membership.org.id,

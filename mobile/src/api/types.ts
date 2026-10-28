@@ -7,6 +7,8 @@ export interface AuthUser {
   avatarUrl: string | null;
   phone: string | null;
   profileComplete: boolean;
+  hasPassword: boolean;
+  twoFactorEnabled: boolean;
 }
 
 export interface OrgSummary {
@@ -21,6 +23,13 @@ export interface AuthResponse {
   user: AuthUser;
   org: OrgSummary | null;
 }
+
+export interface TwoFactorChallengeResponse {
+  requiresTwoFactor: true;
+  challengeToken: string;
+}
+
+export type LoginResult = AuthResponse | TwoFactorChallengeResponse;
 
 export interface OrgMember {
   userId: string;
@@ -131,6 +140,7 @@ export interface OrgDetail {
   referralLink: string;
   myRole: MembershipRole;
   isOwner: boolean;
+  historyVisibleToNewMembers: boolean;
   members: OrgMember[];
 }
 

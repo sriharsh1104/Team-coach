@@ -20,7 +20,12 @@ export function LoginScreen({ navigation }: Props) {
   const onSubmit = async () => {
     setIsSubmitting(true);
     try {
-      await login(email.trim(), password);
+      const result = await login(email.trim(), password);
+      if (result && 'requiresTwoFactor' in result) {
+        navigation.navigate('TwoFactorChallenge', {
+          challengeToken: result.challengeToken,
+        });
+      }
     } catch (err: any) {
       Alert.alert(
         'Login failed',

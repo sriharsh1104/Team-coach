@@ -38,3 +38,11 @@ export function removeMember(targetUserId: string) {
     .post('/orgs/members/remove', { targetUserId })
     .then(() => undefined);
 }
+
+export function updateOrgSettings(historyVisibleToNewMembers: boolean) {
+  return apiClient
+    .patch<{ historyVisibleToNewMembers: boolean }>('/orgs/settings', {
+      historyVisibleToNewMembers,
+    })
+    .then((res) => res.data);
+}

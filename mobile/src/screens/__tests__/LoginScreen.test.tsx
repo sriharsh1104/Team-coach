@@ -76,6 +76,23 @@ describe('LoginScreen', () => {
     expect(alertSpy).toHaveBeenCalledWith('Login failed', 'Invalid email or password');
   });
 
+  it('navigates to TwoFactorChallenge instead of completing login when the account has 2FA enabled', async () => {
+    const login = jest.fn().mockResolvedValue({
+      requiresTwoFactor: true,
+      challengeToken: 'challenge-token',
+    });
+    mockedUseAuth.mockReturnValue({ login });
+    renderScreen();
+
+    fireEvent.changeText(screen.getByPlaceholderText('Email'), 'player1@example.com');
+    fireEvent.changeText(screen.getByPlaceholderText('Password'), 'password123');
+    await pressAndSettle('Log In');
+
+    expect(navigation.navigate).toHaveBeenCalledWith('TwoFactorChallenge', {
+      challengeToken: 'challenge-token',
+    });
+  });
+
   it('navigates to Signup when the link is pressed', () => {
     mockedUseAuth.mockReturnValue({ login: jest.fn() });
     renderScreen();
