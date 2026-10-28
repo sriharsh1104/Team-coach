@@ -8,6 +8,8 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { TwoFactorEnableDto } from './dto/two-factor-enable.dto';
 import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
 import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendEmailVerificationDto } from './dto/resend-email-verification.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,6 +19,11 @@ import { isProfileComplete } from '../users/users.service';
 // credential-stuffing/brute-force script would actually hammer. Relaxed in
 // tests the same way as the global limit (see app.module.ts).
 const authThrottleLimit = () => (process.env.NODE_ENV === 'test' ? 100000 : 5);
+
+// Resend is specifically an email-spam vector, not just a brute-force one —
+// tighter than the other auth routes.
+const resendVerificationThrottleLimit = () =>
+  process.env.NODE_ENV === 'test' ? 100000 : 3;
 
 @Controller('auth')
 export class AuthController {
@@ -47,6 +54,18 @@ export class AuthController {
   @Post('2fa/verify')
   verifyTwoFactor(@Body() dto: TwoFactorVerifyDto) {
     return this.authService.verifyTwoFactorLogin(dto);
+  }
+
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60000 } })
+  @Post('verify-email')
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmailSignup(dto);
+  }
+
+  @Throttle({ default: { limit: resendVerificationThrottleLimit, ttl: 60000 } })
+  @Post('resend-verification')
+  resendVerification(@Body() dto: ResendEmailVerificationDto) {
+    return this.authService.resendEmailVerification(dto);
   }
 
   @UseGuards(JwtAuthGuard)

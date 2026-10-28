@@ -31,6 +31,13 @@ export interface TwoFactorChallengeResponse {
 
 export type LoginResult = AuthResponse | TwoFactorChallengeResponse;
 
+export interface EmailVerificationChallengeResponse {
+  requiresEmailVerification: true;
+  challengeToken: string;
+}
+
+export type SignupResult = AuthResponse | EmailVerificationChallengeResponse;
+
 export interface OrgMember {
   userId: string;
   name: string;

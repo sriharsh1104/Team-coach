@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import * as speakeasy from 'speakeasy';
 import { createTestApp, getPrisma, resetDatabase, uniqueEmail } from './utils/test-app';
+import { sentOtps } from './utils/mailer-mock';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Phase 1A — Auth + Org (e2e)', () => {
@@ -27,10 +28,15 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
   async function signup(overrides: Partial<{ email: string; password: string; name: string }> = {}) {
     const body = {
       email: overrides.email ?? uniqueEmail('user'),
-      password: overrides.password ?? 'password123',
+      password: overrides.password ?? 'Password123!',
       name: overrides.name ?? 'Test User',
     };
-    const res = await request(server).post('/auth/signup').send(body).expect(201);
+    const signupRes = await request(server).post('/auth/signup').send(body).expect(201);
+    const code = sentOtps.get(body.email);
+    const res = await request(server)
+      .post('/auth/verify-email')
+      .send({ challengeToken: signupRes.body.challengeToken, code })
+      .expect(201);
     return { ...res.body, email: body.email, password: body.password };
   }
 
@@ -92,14 +98,14 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await signup({ email });
       await request(server)
         .post('/auth/signup')
-        .send({ email, password: 'password123', name: 'Second' })
+        .send({ email, password: 'Password123!', name: 'Second' })
         .expect(409);
     });
 
     it('rejects an invalid email format', async () => {
       await request(server)
         .post('/auth/signup')
-        .send({ email: 'not-an-email', password: 'password123', name: 'X' })
+        .send({ email: 'not-an-email', password: 'Password123!', name: 'X' })
         .expect(400);
     });
 
@@ -116,7 +122,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .post('/auth/signup')
         .send({
           email: uniqueEmail('mass'),
-          password: 'password123',
+          password: 'Password123!',
           name: 'X',
           isAdmin: true,
           id: 'attacker-chosen-id',
@@ -135,10 +141,97 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
 
       const stillWorks = await request(server).post('/auth/signup').send({
         email: uniqueEmail('after-injection'),
-        password: 'password123',
+        password: 'Password123!',
         name: 'Still Works',
       });
       expect(stillWorks.status).toBe(201);
+    });
+  });
+
+  describe('Email verification (signup OTP)', () => {
+    async function rawSignup(overrides: Partial<{ email: string; password: string; name: string }> = {}) {
+      const body = {
+        email: overrides.email ?? uniqueEmail('verify'),
+        password: overrides.password ?? 'Password123!',
+        name: overrides.name ?? 'Verify Me',
+      };
+      const res = await request(server).post('/auth/signup').send(body).expect(201);
+      return { ...body, challengeToken: res.body.challengeToken };
+    }
+
+    it('signup returns a challenge, not a usable session', async () => {
+      const res = await request(server).post('/auth/signup').send({
+        email: uniqueEmail('nosession'),
+        password: 'Password123!',
+        name: 'No Session',
+      });
+      expect(res.body.requiresEmailVerification).toBe(true);
+      expect(res.body.challengeToken).toEqual(expect.any(String));
+      expect(res.body.accessToken).toBeUndefined();
+    });
+
+    it('verifying the correct code logs the user in', async () => {
+      const { email, challengeToken } = await rawSignup();
+      const code = sentOtps.get(email);
+
+      const res = await request(server)
+        .post('/auth/verify-email')
+        .send({ challengeToken, code })
+        .expect(201);
+
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${res.body.accessToken}`)
+        .expect(200);
+    });
+
+    it('rejects an incorrect code without granting a session', async () => {
+      const { challengeToken } = await rawSignup();
+
+      const res = await request(server)
+        .post('/auth/verify-email')
+        .send({ challengeToken, code: '000000' })
+        .expect(401);
+      expect(res.body.accessToken).toBeUndefined();
+    });
+
+    it('rejects a code for a challenge that has expired', async () => {
+      const { email, challengeToken } = await rawSignup();
+      const code = sentOtps.get(email);
+      await prisma.emailVerificationCode.updateMany({
+        where: { user: { email } },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+
+      await request(server)
+        .post('/auth/verify-email')
+        .send({ challengeToken, code })
+        .expect(401);
+    });
+
+    it('resend issues a fresh working code', async () => {
+      const { email, challengeToken } = await rawSignup();
+      const firstCode = sentOtps.get(email);
+
+      await request(server)
+        .post('/auth/resend-verification')
+        .send({ challengeToken })
+        .expect(201);
+      const secondCode = sentOtps.get(email);
+      expect(secondCode).toEqual(expect.any(String));
+
+      // The old code is no longer valid — only the resent one is.
+      if (firstCode !== secondCode) {
+        await request(server)
+          .post('/auth/verify-email')
+          .send({ challengeToken, code: firstCode })
+          .expect(401);
+      }
+      await request(server)
+        .post('/auth/verify-email')
+        .send({ challengeToken, code: secondCode })
+        .expect(201);
     });
   });
 
@@ -863,12 +956,12 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
     it('requires authentication', async () => {
       await request(server)
         .patch('/auth/password')
-        .send({ currentPassword: 'password123', newPassword: 'newpassword123' })
+        .send({ currentPassword: 'Password123!', newPassword: 'newpassword123' })
         .expect(401);
     });
 
     it('rejects the wrong current password', async () => {
-      const user = await signup({ password: 'password123' });
+      const user = await signup({ password: 'Password123!' });
       await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
@@ -877,21 +970,21 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
     });
 
     it('rejects a new password shorter than 8 characters', async () => {
-      const user = await signup({ password: 'password123' });
+      const user = await signup({ password: 'Password123!' });
       await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ currentPassword: 'password123', newPassword: 'short' })
+        .send({ currentPassword: 'Password123!', newPassword: 'short' })
         .expect(400);
     });
 
     it('changes the password, invalidates the old session token, and returns a fresh working one', async () => {
-      const user = await signup({ email: 'changeme@example.com', password: 'password123' });
+      const user = await signup({ email: 'changeme@example.com', password: 'Password123!' });
 
       const res = await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ currentPassword: 'password123', newPassword: 'newpassword123' })
+        .send({ currentPassword: 'Password123!', newPassword: 'newpassword123' })
         .expect(200);
       const freshToken = res.body.accessToken;
       expect(freshToken).toEqual(expect.any(String));
@@ -911,7 +1004,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       // The old password no longer logs in; the new one does.
       await request(server)
         .post('/auth/login')
-        .send({ email: 'changeme@example.com', password: 'password123' })
+        .send({ email: 'changeme@example.com', password: 'Password123!' })
         .expect(401);
       await request(server)
         .post('/auth/login')
@@ -924,7 +1017,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       // a Google-only account is just a User row with passwordHash: null —
       // simulate that directly via a real signup, then strip the hash,
       // exactly as a Google-only account looks in the database.
-      const user = await signup({ password: 'password123' });
+      const user = await signup({ password: 'Password123!' });
       await prisma.user.update({
         where: { id: user.user.id },
         data: { passwordHash: null, googleId: `google-${user.user.id}` },
@@ -933,7 +1026,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ currentPassword: 'password123', newPassword: 'newpassword123' })
+        .send({ currentPassword: 'Password123!', newPassword: 'newpassword123' })
         .expect(400);
     });
   });

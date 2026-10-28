@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { TwoFactorChallengeScreen } from '../screens/TwoFactorChallengeScreen';
+import { EmailVerificationScreen } from '../screens/EmailVerificationScreen';
 import { BiometricLockScreen } from '../screens/BiometricLockScreen';
 import { OrgChoiceScreen } from '../screens/OrgChoiceScreen';
 import { CreateOrgScreen } from '../screens/CreateOrgScreen';
@@ -91,6 +92,10 @@ export function RootNavigator() {
           <AuthStack.Screen
             name="TwoFactorChallenge"
             component={TwoFactorChallengeScreen}
+          />
+          <AuthStack.Screen
+            name="EmailVerification"
+            component={EmailVerificationScreen}
           />
         </AuthStack.Navigator>
       ) : !user.profileComplete ? (

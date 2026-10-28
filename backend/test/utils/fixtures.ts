@@ -1,16 +1,26 @@
 import * as request from 'supertest';
 import { uniqueEmail } from './test-app';
+import { sentOtps } from './mailer-mock';
 
+// Signup now only returns a challenge (full verification required — see
+// phase-1a-auth-org.e2e-spec.ts's dedicated tests for that flow); this helper
+// transparently completes it with the code MockMailerService captured so
+// every existing caller keeps getting back a usable session, unchanged.
 export async function signup(
   server: any,
   overrides: Partial<{ email: string; password: string; name: string }> = {},
 ) {
   const body = {
     email: overrides.email ?? uniqueEmail('user'),
-    password: overrides.password ?? 'password123',
+    password: overrides.password ?? 'Password123!',
     name: overrides.name ?? 'Test User',
   };
-  const res = await request(server).post('/auth/signup').send(body).expect(201);
+  const signupRes = await request(server).post('/auth/signup').send(body).expect(201);
+  const code = sentOtps.get(body.email);
+  const res = await request(server)
+    .post('/auth/verify-email')
+    .send({ challengeToken: signupRes.body.challengeToken, code })
+    .expect(201);
   return { ...res.body, email: body.email, password: body.password };
 }
 
