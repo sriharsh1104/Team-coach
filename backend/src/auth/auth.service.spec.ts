@@ -107,7 +107,7 @@ describe('AuthService (unit)', () => {
           }),
         }),
       );
-      expect(result.accessToken).toBe('signed-jwt');
+      expect('accessToken' in result && result.accessToken).toBe('signed-jwt');
     });
 
     it('links googleId onto an existing password account with the same verified email, without creating a duplicate', async () => {

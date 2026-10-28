@@ -29,6 +29,8 @@ const fakeUser = {
   avatarUrl: null,
   phone: null,
   profileComplete: true,
+  hasPassword: true,
+  twoFactorEnabled: false,
 };
 
 beforeEach(() => {
@@ -108,6 +110,45 @@ describe('AuthContext', () => {
 
     expect(result.current.user).toEqual(fakeUser);
     expect(result.current.org?.role).toBe('COACH');
+  });
+
+  it('login returns the challenge (without logging in) when the account has 2FA enabled', async () => {
+    mockedAuthApi.login.mockResolvedValue({
+      requiresTwoFactor: true,
+      challengeToken: 'challenge-token',
+    });
+
+    const { result } = renderAuth();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let loginResult: any;
+    await act(async () => {
+      loginResult = await result.current.login('player1@example.com', 'password123');
+    });
+
+    expect(loginResult).toEqual({ requiresTwoFactor: true, challengeToken: 'challenge-token' });
+    expect(result.current.user).toBeNull();
+  });
+
+  it('completeTwoFactorLogin verifies the code then logs in', async () => {
+    mockedAuthApi.verifyTwoFactor.mockResolvedValue({
+      accessToken: 'verified-token',
+      user: fakeUser,
+      org: null,
+    });
+
+    const { result } = renderAuth();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.completeTwoFactorLogin('challenge-token', { code: '123456' });
+    });
+
+    expect(mockedAuthApi.verifyTwoFactor).toHaveBeenCalledWith('challenge-token', {
+      code: '123456',
+    });
+    expect(result.current.user).toEqual(fakeUser);
+    expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBe('verified-token');
   });
 
   it('loginWithGoogle goes through the same apply-response path as email login', async () => {

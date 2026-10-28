@@ -42,19 +42,34 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async updateMyProfile(userId: string, dto: UpdateProfileDto) {
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: dto,
-      select: PROFILE_SELECT,
-    });
-    return updated;
+    const [updated, membership] = await Promise.all([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: dto,
+        select: PROFILE_SELECT,
+      }),
+      this.prisma.membership.findFirst({ where: { userId } }),
+    ]);
+    return {
+      ...updated,
+      role: membership?.role ?? null,
+      isOwner: membership?.isOwner ?? false,
+    };
   }
 
   async getMyProfile(userId: string) {
-    return this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: PROFILE_SELECT,
-    });
+    const [profile, membership] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: PROFILE_SELECT,
+      }),
+      this.prisma.membership.findFirst({ where: { userId } }),
+    ]);
+    return {
+      ...profile,
+      role: membership?.role ?? null,
+      isOwner: membership?.isOwner ?? false,
+    };
   }
 
   async listMyDevices(userId: string) {
@@ -89,15 +104,7 @@ export class UsersService {
 
   async getMemberProfile(requesterId: string, targetUserId: string) {
     if (requesterId === targetUserId) {
-      const [profile, ownMembership] = await Promise.all([
-        this.getMyProfile(requesterId),
-        this.prisma.membership.findFirst({ where: { userId: requesterId } }),
-      ]);
-      return {
-        ...profile,
-        role: ownMembership?.role ?? null,
-        isOwner: ownMembership?.isOwner ?? false,
-      };
+      return this.getMyProfile(requesterId);
     }
 
     const [requesterMembership, targetMembership] = await Promise.all([

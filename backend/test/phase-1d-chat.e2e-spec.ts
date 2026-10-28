@@ -51,6 +51,103 @@ describe('Phase 1D — Chat (e2e)', () => {
     return { coach, org, player };
   }
 
+  describe('GET /chat/messages respects the org\'s historyVisibleToNewMembers setting', () => {
+    it('hides messages from before a member joined once the owner turns history off, and restores them when turned back on', async () => {
+      const coach = await signup(server, { name: 'Coach' });
+      const org = await createOrgAs(server, coach.accessToken, 'COACH');
+
+      const beforeMessage = await prisma.chatMessage.create({
+        data: {
+          orgId: org.id,
+          channelKey: 'org',
+          senderId: coach.user.id,
+          text: 'before you joined',
+        },
+      });
+
+      await request(server)
+        .patch('/orgs/settings')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ historyVisibleToNewMembers: false })
+        .expect(200);
+
+      const player = await signup(server, { name: 'Player' });
+      await joinOrgAs(server, player.accessToken, org.orgCode);
+
+      const afterMessage = await prisma.chatMessage.create({
+        data: {
+          orgId: org.id,
+          channelKey: 'org',
+          senderId: coach.user.id,
+          text: 'after you joined',
+        },
+      });
+
+      const restricted = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .expect(200);
+      const restrictedIds = restricted.body.map((m: any) => m.id);
+      expect(restrictedIds).not.toContain(beforeMessage.id);
+      expect(restrictedIds).toContain(afterMessage.id);
+
+      // The coach (who was there from the start) always sees everything —
+      // the cutoff is relative to each member's own join date.
+      const coachView = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      const coachIds = coachView.body.map((m: any) => m.id);
+      expect(coachIds).toContain(beforeMessage.id);
+      expect(coachIds).toContain(afterMessage.id);
+
+      await request(server)
+        .patch('/orgs/settings')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ historyVisibleToNewMembers: true })
+        .expect(200);
+
+      const restored = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .expect(200);
+      const restoredIds = restored.body.map((m: any) => m.id);
+      expect(restoredIds).toContain(beforeMessage.id);
+      expect(restoredIds).toContain(afterMessage.id);
+    });
+
+    it('never restricts a DM channel, even when the org setting is off', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const org = await request(server)
+        .get('/orgs/me')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      await request(server)
+        .patch('/orgs/settings')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ historyVisibleToNewMembers: false })
+        .expect(200);
+
+      const dmChannelKey = [coach.user.id, player.user.id].sort().join(':');
+      const message = await prisma.chatMessage.create({
+        data: {
+          orgId: org.body.id,
+          channelKey: `dm:${dmChannelKey}`,
+          senderId: coach.user.id,
+          text: 'old dm message',
+          createdAt: new Date(Date.now() - 60 * 60 * 1000),
+        },
+      });
+
+      const res = await request(server)
+        .get('/chat/messages')
+        .query({ channelKey: `dm:${dmChannelKey}` })
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .expect(200);
+      expect(res.body.map((m: any) => m.id)).toContain(message.id);
+    });
+  });
+
   describe('POST /chat/media (mirrors into the Media feed)', () => {
     it('uploading an image in chat also creates a Media feed entry, reachable via GET /media', async () => {
       const { coach } = await setUpOrgWithPlayer();

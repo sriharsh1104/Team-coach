@@ -8,6 +8,7 @@ import { JoinOrgDto } from './dto/join-org.dto';
 import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 import { RemoveMemberDto } from './dto/remove-member.dto';
+import { UpdateOrgSettingsDto } from './dto/update-org-settings.dto';
 
 // A 6-character org code is guessable by brute force without a limit here —
 // tighter than the app-wide default. Relaxed in tests, see app.module.ts.
@@ -61,5 +62,16 @@ export class OrgController {
   ) {
     await this.orgService.removeMember(user.userId, dto);
     return { success: true };
+  }
+
+  @Patch('settings')
+  updateSettings(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: UpdateOrgSettingsDto,
+  ) {
+    return this.orgService.updateHistorySetting(
+      user.userId,
+      dto.historyVisibleToNewMembers,
+    );
   }
 }

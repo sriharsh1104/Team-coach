@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
+import * as speakeasy from 'speakeasy';
 import { createTestApp, getPrisma, resetDatabase, uniqueEmail } from './utils/test-app';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -788,5 +789,300 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .send({ targetUserId: 'whoever' })
         .expect(404);
     });
+  });
+
+  describe('PATCH /orgs/settings', () => {
+    it('requires authentication', async () => {
+      await request(server)
+        .patch('/orgs/settings')
+        .send({ historyVisibleToNewMembers: false })
+        .expect(401);
+    });
+
+    it('lets the owner flip historyVisibleToNewMembers, reflected on GET /orgs/me', async () => {
+      const owner = await signup();
+      await createOrgAs(owner.accessToken);
+
+      await request(server)
+        .patch('/orgs/settings')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ historyVisibleToNewMembers: false })
+        .expect(200);
+
+      const res = await request(server)
+        .get('/orgs/me')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200);
+      expect(res.body.historyVisibleToNewMembers).toBe(false);
+    });
+
+    it('defaults to true for a brand new org', async () => {
+      const owner = await signup();
+      await createOrgAs(owner.accessToken);
+
+      const res = await request(server)
+        .get('/orgs/me')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200);
+      expect(res.body.historyVisibleToNewMembers).toBe(true);
+    });
+
+    it('SECURITY: refuses a non-owner, even a coach', async () => {
+      const owner = await signup();
+      const org = await createOrgAs(owner.accessToken);
+      const coach = await signup();
+      await request(server)
+        .post('/orgs/join')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ orgCode: org.orgCode })
+        .expect(201);
+      await request(server)
+        .patch('/orgs/members/role')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ targetUserId: coach.user.id, role: 'COACH' })
+        .expect(200);
+
+      await request(server)
+        .patch('/orgs/settings')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ historyVisibleToNewMembers: false })
+        .expect(403);
+    });
+
+    it('404s for a caller not in any org', async () => {
+      const outsider = await signup();
+      await request(server)
+        .patch('/orgs/settings')
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .send({ historyVisibleToNewMembers: false })
+        .expect(404);
+    });
+  });
+
+  describe('PATCH /auth/password', () => {
+    it('requires authentication', async () => {
+      await request(server)
+        .patch('/auth/password')
+        .send({ currentPassword: 'password123', newPassword: 'newpassword123' })
+        .expect(401);
+    });
+
+    it('rejects the wrong current password', async () => {
+      const user = await signup({ password: 'password123' });
+      await request(server)
+        .patch('/auth/password')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ currentPassword: 'wrong-password', newPassword: 'newpassword123' })
+        .expect(401);
+    });
+
+    it('rejects a new password shorter than 8 characters', async () => {
+      const user = await signup({ password: 'password123' });
+      await request(server)
+        .patch('/auth/password')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ currentPassword: 'password123', newPassword: 'short' })
+        .expect(400);
+    });
+
+    it('changes the password, invalidates the old session token, and returns a fresh working one', async () => {
+      const user = await signup({ email: 'changeme@example.com', password: 'password123' });
+
+      const res = await request(server)
+        .patch('/auth/password')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ currentPassword: 'password123', newPassword: 'newpassword123' })
+        .expect(200);
+      const freshToken = res.body.accessToken;
+      expect(freshToken).toEqual(expect.any(String));
+
+      // The OLD token (from signup) is now invalid — tokenVersion bumped.
+      await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(401);
+
+      // The FRESH token from the response still works.
+      await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${freshToken}`)
+        .expect(200);
+
+      // The old password no longer logs in; the new one does.
+      await request(server)
+        .post('/auth/login')
+        .send({ email: 'changeme@example.com', password: 'password123' })
+        .expect(401);
+      await request(server)
+        .post('/auth/login')
+        .send({ email: 'changeme@example.com', password: 'newpassword123' })
+        .expect(201);
+    });
+
+    it('rejects changing the password on a Google-only account (no password set)', async () => {
+      // Signing up for real via Google requires mocking the OAuth client;
+      // a Google-only account is just a User row with passwordHash: null —
+      // simulate that directly via a real signup, then strip the hash,
+      // exactly as a Google-only account looks in the database.
+      const user = await signup({ password: 'password123' });
+      await prisma.user.update({
+        where: { id: user.user.id },
+        data: { passwordHash: null, googleId: `google-${user.user.id}` },
+      });
+
+      await request(server)
+        .patch('/auth/password')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ currentPassword: 'password123', newPassword: 'newpassword123' })
+        .expect(400);
+    });
+  });
+
+  describe('Two-factor authentication', () => {
+    async function signupAndGetSecret() {
+      const user = await signup();
+      const setup = await request(server)
+        .post('/auth/2fa/setup')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(201);
+      return { user, secret: setup.body.secret, qrCodeDataUrl: setup.body.qrCodeDataUrl };
+    }
+
+    function codeFor(secret: string) {
+      return speakeasy.totp({ secret, encoding: 'base32' });
+    }
+
+    it('POST /auth/2fa/setup requires authentication and returns a secret + QR code', async () => {
+      await request(server).post('/auth/2fa/setup').expect(401);
+
+      const { secret, qrCodeDataUrl } = await signupAndGetSecret();
+      expect(secret).toEqual(expect.any(String));
+      expect(qrCodeDataUrl).toMatch(/^data:image\/png;base64,/);
+    });
+
+    it('POST /auth/2fa/enable rejects a wrong code and accepts a valid one, returning backup codes once', async () => {
+      const { user, secret } = await signupAndGetSecret();
+
+      await request(server)
+        .post('/auth/2fa/enable')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ code: '000000' })
+        .expect(401);
+
+      const res = await request(server)
+        .post('/auth/2fa/enable')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ code: codeFor(secret) })
+        .expect(201);
+      expect(res.body.backupCodes).toHaveLength(8);
+
+      const me = await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(200);
+      expect(me.body.twoFactorEnabled).toBe(true);
+    });
+
+    it('login returns requiresTwoFactor + a challengeToken once 2FA is enabled, instead of a session token', async () => {
+      const { user, secret } = await signupAndGetSecret();
+      await request(server)
+        .post('/auth/2fa/enable')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ code: codeFor(secret) })
+        .expect(201);
+
+      const res = await request(server)
+        .post('/auth/login')
+        .send({ email: user.email, password: user.password })
+        .expect(201);
+      expect(res.body.requiresTwoFactor).toBe(true);
+      expect(res.body.challengeToken).toEqual(expect.any(String));
+      expect(res.body.accessToken).toBeUndefined();
+    });
+
+    it('POST /auth/2fa/verify completes login with a valid code, rejects a bad one', async () => {
+      const { user, secret } = await signupAndGetSecret();
+      await request(server)
+        .post('/auth/2fa/enable')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ code: codeFor(secret) })
+        .expect(201);
+      const login = await request(server)
+        .post('/auth/login')
+        .send({ email: user.email, password: user.password })
+        .expect(201);
+      const { challengeToken } = login.body;
+
+      await request(server)
+        .post('/auth/2fa/verify')
+        .send({ challengeToken, code: '000000' })
+        .expect(401);
+
+      const res = await request(server)
+        .post('/auth/2fa/verify')
+        .send({ challengeToken, code: codeFor(secret) })
+        .expect(201);
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      expect(res.body.user.id).toBe(user.user.id);
+    });
+
+    it('a backup code logs in once, then is rejected on a second attempt', async () => {
+      const { user, secret } = await signupAndGetSecret();
+      const enable = await request(server)
+        .post('/auth/2fa/enable')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ code: codeFor(secret) })
+        .expect(201);
+      const backupCode = enable.body.backupCodes[0];
+
+      const login = await request(server)
+        .post('/auth/login')
+        .send({ email: user.email, password: user.password })
+        .expect(201);
+      const { challengeToken } = login.body;
+
+      await request(server)
+        .post('/auth/2fa/verify')
+        .send({ challengeToken, backupCode })
+        .expect(201);
+
+      // Second login attempt, same backup code — already consumed.
+      const login2 = await request(server)
+        .post('/auth/login')
+        .send({ email: user.email, password: user.password })
+        .expect(201);
+      await request(server)
+        .post('/auth/2fa/verify')
+        .send({ challengeToken: login2.body.challengeToken, backupCode })
+        .expect(401);
+    }, 15000);
+
+    it('POST /auth/2fa/disable requires the correct password, then turns 2FA off', async () => {
+      const { user, secret } = await signupAndGetSecret();
+      await request(server)
+        .post('/auth/2fa/enable')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ code: codeFor(secret) })
+        .expect(201);
+
+      await request(server)
+        .post('/auth/2fa/disable')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ password: 'wrong-password' })
+        .expect(401);
+
+      await request(server)
+        .post('/auth/2fa/disable')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ password: user.password })
+        .expect(201);
+
+      const res = await request(server)
+        .post('/auth/login')
+        .send({ email: user.email, password: user.password })
+        .expect(201);
+      expect(res.body.requiresTwoFactor).toBeUndefined();
+      expect(res.body.accessToken).toEqual(expect.any(String));
+    }, 15000);
   });
 });

@@ -119,6 +119,7 @@ export class OrgService {
       referralLink: membership.org.referralToken,
       myRole: membership.role,
       isOwner: membership.isOwner,
+      historyVisibleToNewMembers: membership.org.historyVisibleToNewMembers,
       members: membership.org.memberships.map((m) => ({
         userId: m.user.id,
         name: m.user.name,
@@ -129,6 +130,25 @@ export class OrgService {
         inGameRoles: m.user.roles,
       })),
     };
+  }
+
+  async updateHistorySetting(currentUserId: string, historyVisibleToNewMembers: boolean) {
+    const current = await this.prisma.membership.findFirst({
+      where: { userId: currentUserId },
+    });
+    if (!current) {
+      throw new NotFoundException('You are not part of an org yet');
+    }
+    if (!current.isOwner) {
+      throw new ForbiddenException('Only the org owner can change this setting');
+    }
+
+    await this.prisma.org.update({
+      where: { id: current.orgId },
+      data: { historyVisibleToNewMembers },
+    });
+
+    return { historyVisibleToNewMembers };
   }
 
   async changeMemberRole(currentUserId: string, dto: UpdateMemberRoleDto) {

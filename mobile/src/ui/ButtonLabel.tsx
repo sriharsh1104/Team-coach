@@ -27,7 +27,9 @@ export type AppIconName =
   | 'google'
   | 'logout'
   | 'people'
-  | 'settings';
+  | 'settings'
+  | 'trash'
+  | 'edit';
 
 const GLYPHS: Record<AppIconName, string> = {
   'log-in': '→',
@@ -54,6 +56,8 @@ const GLYPHS: Record<AppIconName, string> = {
   logout: '⎋',
   people: '☺☺',
   settings: '⚙',
+  trash: '⊗',
+  edit: '✎',
 };
 
 /** Icon + label row for chrome / primary action buttons. */

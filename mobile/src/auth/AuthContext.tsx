@@ -7,16 +7,50 @@ import React, {
 } from 'react';
 import { deleteToken, getToken, setToken } from '../storage/tokenStorage';
 import * as authApi from '../api/auth';
-import { AuthUser, OrgSummary } from '../api/types';
+import {
+  AuthResponse,
+  AuthUser,
+  OrgSummary,
+  TwoFactorChallengeResponse,
+} from '../api/types';
 import { registerPushTokenWithBackend } from '../notifications/registerPushToken';
+
+function toAuthUser(me: AuthUser): AuthUser {
+  return {
+    id: me.id,
+    email: me.email,
+    name: me.name,
+    avatarUrl: me.avatarUrl,
+    phone: me.phone,
+    profileComplete: me.profileComplete,
+    hasPassword: me.hasPassword,
+    twoFactorEnabled: me.twoFactorEnabled,
+  };
+}
 
 interface AuthContextValue {
   isLoading: boolean;
   user: AuthUser | null;
   org: OrgSummary | null;
   signup: (email: string, password: string, name: string) => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
+  // Resolves to a challenge when the account has 2FA enabled — the caller
+  // (LoginScreen) should navigate to the code-entry screen with it instead
+  // of treating the login as complete. void means login finished normally.
+  login: (
+    email: string,
+    password: string,
+  ) => Promise<TwoFactorChallengeResponse | void>;
+  loginWithGoogle: (
+    idToken: string,
+  ) => Promise<TwoFactorChallengeResponse | void>;
+  completeTwoFactorLogin: (
+    challengeToken: string,
+    payload: { code?: string; backupCode?: string },
+  ) => Promise<void>;
+  // Applies a fresh accessToken/user/org — used after login/signup, 2FA
+  // verification, and also after changing the password (which rotates the
+  // session token) so the current session stays logged in.
+  applyAuthResponse: (response: AuthResponse) => Promise<void>;
   logout: () => Promise<void>;
   refreshOrg: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -39,14 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const me = await authApi.me();
-        setUser({
-          id: me.id,
-          email: me.email,
-          name: me.name,
-          avatarUrl: me.avatarUrl,
-          phone: me.phone,
-          profileComplete: me.profileComplete,
-        });
+        setUser(toAuthUser(me));
         setOrgState(me.org);
         registerPushTokenWithBackend();
       } catch {
@@ -57,15 +84,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const applyAuthResponse = useCallback(
-    async (response: { accessToken: string; user: AuthUser; org: OrgSummary | null }) => {
-      await setToken(response.accessToken);
-      setUser(response.user);
-      setOrgState(response.org);
-      registerPushTokenWithBackend();
-    },
-    [],
-  );
+  const applyAuthResponse = useCallback(async (response: AuthResponse) => {
+    await setToken(response.accessToken);
+    setUser(response.user);
+    setOrgState(response.org);
+    registerPushTokenWithBackend();
+  }, []);
 
   const signup = useCallback(
     async (email: string, password: string, name: string) => {
@@ -77,15 +101,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      const response = await authApi.login(email, password);
-      await applyAuthResponse(response);
+      const result = await authApi.login(email, password);
+      if ('requiresTwoFactor' in result) {
+        return result;
+      }
+      await applyAuthResponse(result);
     },
     [applyAuthResponse],
   );
 
   const loginWithGoogle = useCallback(
     async (idToken: string) => {
-      const response = await authApi.googleLogin(idToken);
+      const result = await authApi.googleLogin(idToken);
+      if ('requiresTwoFactor' in result) {
+        return result;
+      }
+      await applyAuthResponse(result);
+    },
+    [applyAuthResponse],
+  );
+
+  const completeTwoFactorLogin = useCallback(
+    async (
+      challengeToken: string,
+      payload: { code?: string; backupCode?: string },
+    ) => {
+      const response = await authApi.verifyTwoFactor(challengeToken, payload);
       await applyAuthResponse(response);
     },
     [applyAuthResponse],
@@ -111,17 +152,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Re-fetches the user object itself — used after completing the forced
   // post-login profile gate, so `user.profileComplete` flips without
-  // requiring a full logout/login round trip.
+  // requiring a full logout/login round trip. Also used after changing
+  // Security settings (password, 2FA) to refresh the displayed status.
   const refreshUser = useCallback(async () => {
     const me = await authApi.me();
-    setUser({
-      id: me.id,
-      email: me.email,
-      name: me.name,
-      avatarUrl: me.avatarUrl,
-      phone: me.phone,
-      profileComplete: me.profileComplete,
-    });
+    setUser(toAuthUser(me));
     setOrgState(me.org);
   }, []);
 
@@ -138,6 +173,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signup,
         login,
         loginWithGoogle,
+        completeTwoFactorLogin,
+        applyAuthResponse,
         logout,
         refreshOrg,
         refreshUser,

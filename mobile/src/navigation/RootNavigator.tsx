@@ -5,12 +5,15 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
+import { TwoFactorChallengeScreen } from '../screens/TwoFactorChallengeScreen';
 import { OrgChoiceScreen } from '../screens/OrgChoiceScreen';
 import { CreateOrgScreen } from '../screens/CreateOrgScreen';
 import { JoinOrgScreen } from '../screens/JoinOrgScreen';
 import { OrgHomeScreen } from '../screens/OrgHomeScreen';
 import { MembersScreen } from '../screens/MembersScreen';
 import { OrgSettingsScreen } from '../screens/OrgSettingsScreen';
+import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
+import { TwoFactorSetupScreen } from '../screens/TwoFactorSetupScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
 import { MediaFeedScreen } from '../screens/media/MediaFeedScreen';
@@ -80,6 +83,10 @@ export function RootNavigator() {
         <AuthStack.Navigator screenOptions={{ headerShown: false }}>
           <AuthStack.Screen name="Login" component={LoginScreen} />
           <AuthStack.Screen name="Signup" component={SignupScreen} />
+          <AuthStack.Screen
+            name="TwoFactorChallenge"
+            component={TwoFactorChallengeScreen}
+          />
         </AuthStack.Navigator>
       ) : !user.profileComplete ? (
         <ProfileSetupStack.Navigator screenOptions={{ headerShown: false }}>
@@ -103,7 +110,7 @@ export function RootNavigator() {
           <MainStack.Screen
             name="Profile"
             component={ProfileScreen}
-            options={{ title: 'My Profile' }}
+            options={{ title: 'Profile' }}
           />
           <MainStack.Screen
             name="Members"
@@ -114,6 +121,16 @@ export function RootNavigator() {
             name="OrgSettings"
             component={OrgSettingsScreen}
             options={{ title: 'Org Settings' }}
+          />
+          <MainStack.Screen
+            name="AccountSettings"
+            component={AccountSettingsScreen}
+            options={{ title: 'Account Settings' }}
+          />
+          <MainStack.Screen
+            name="TwoFactorSetup"
+            component={TwoFactorSetupScreen}
+            options={{ title: 'Two-Factor Authentication' }}
           />
           <MainStack.Screen
             name="MemberProfile"

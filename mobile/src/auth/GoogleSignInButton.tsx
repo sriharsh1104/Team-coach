@@ -3,13 +3,17 @@ import { Pressable, StyleSheet, Alert } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from './AuthContext';
 import { ButtonLabel } from '../ui/ButtonLabel';
+import { AuthStackParamList } from '../navigation/types';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export function GoogleSignInButton() {
   const { loginWithGoogle } = useAuth();
+  const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const extra = Constants.expoConfig?.extra ?? {};
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
@@ -20,13 +24,21 @@ export function GoogleSignInButton() {
 
   useEffect(() => {
     if (response?.type === 'success' && response.params.id_token) {
-      loginWithGoogle(response.params.id_token).catch((err) => {
-        Alert.alert('Google sign-in failed', err?.message ?? 'Unknown error');
-      });
+      loginWithGoogle(response.params.id_token)
+        .then((result) => {
+          if (result && 'requiresTwoFactor' in result) {
+            navigation.navigate('TwoFactorChallenge', {
+              challengeToken: result.challengeToken,
+            });
+          }
+        })
+        .catch((err) => {
+          Alert.alert('Google sign-in failed', err?.message ?? 'Unknown error');
+        });
     } else if (response?.type === 'error') {
       Alert.alert('Google sign-in failed', 'Please try again.');
     }
-  }, [response, loginWithGoogle]);
+  }, [response, loginWithGoogle, navigation]);
 
   const isConfigured = Boolean(extra.googleWebClientId);
 
