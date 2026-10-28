@@ -1,11 +1,14 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { renderHook, waitFor, act } from '@testing-library/react-native';
 import * as SecureStore from 'expo-secure-store';
 import { AuthProvider, useAuth } from '../AuthContext';
-import { TOKEN_STORAGE_KEY } from '../../api/client';
+import { TOKEN_STORAGE_KEY, setBiometricEnabled } from '../../storage/tokenStorage';
 import * as authApi from '../../api/auth';
+import * as biometrics from '../biometrics';
 
 jest.mock('../../api/auth');
+jest.mock('../biometrics');
 jest.mock('../../notifications/registerPushToken', () => ({
   registerPushTokenWithBackend: jest.fn(),
 }));
@@ -15,6 +18,19 @@ const { registerPushTokenWithBackend } = jest.requireMock(
 );
 
 const mockedAuthApi = authApi as jest.Mocked<typeof authApi>;
+const mockedBiometrics = biometrics as jest.Mocked<typeof biometrics>;
+const originalPlatformOS = Platform.OS;
+
+// jest-expo's test environment has no DOM, so `localStorage` (the web branch
+// of tokenStorage.ts, exercised here by the "never prompts on web" case)
+// doesn't exist here — a minimal in-memory stand-in is enough.
+const localStorageMemory = new Map<string, string>();
+(global as any).localStorage = {
+  getItem: (key: string) => localStorageMemory.get(key) ?? null,
+  setItem: (key: string, value: string) => localStorageMemory.set(key, value),
+  removeItem: (key: string) => localStorageMemory.delete(key),
+  clear: () => localStorageMemory.clear(),
+};
 
 function renderAuth() {
   return renderHook(() => useAuth(), {
@@ -36,6 +52,12 @@ const fakeUser = {
 beforeEach(() => {
   jest.clearAllMocks();
   (SecureStore as any).clear();
+  localStorage.clear();
+  (Platform as any).OS = originalPlatformOS;
+  // Matches the default state (biometric login never enabled) so every
+  // existing test above is unaffected by the mock's mere presence.
+  mockedBiometrics.isBiometricAvailable.mockResolvedValue(false);
+  mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
 });
 
 describe('AuthContext', () => {
@@ -275,5 +297,109 @@ describe('AuthContext', () => {
 
     expect(result.current.org).toEqual({ id: 'org-3', name: 'Fresh Org', role: 'COACH', isOwner: true });
     expect(mockedAuthApi.me).not.toHaveBeenCalled();
+  });
+
+  describe('biometric unlock gate', () => {
+    beforeEach(async () => {
+      (Platform as any).OS = 'ios';
+      await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'existing-token');
+      await setBiometricEnabled(true);
+      mockedAuthApi.me.mockResolvedValue({
+        ...fakeUser,
+        org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false },
+      });
+    });
+
+    it('prompts for biometric unlock on bootstrap when enabled and available, and resumes the session on success', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+      mockedBiometrics.promptBiometricAuth.mockResolvedValue(true);
+
+      const { result } = renderAuth();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockedBiometrics.promptBiometricAuth).toHaveBeenCalledWith('Unlock Team Coach');
+      expect(result.current.needsBiometricUnlock).toBe(false);
+      expect(result.current.user).toEqual(fakeUser);
+    });
+
+    it('locks the session instead of resuming it when the prompt fails or is cancelled, without clearing the stored token', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+      mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
+
+      const { result } = renderAuth();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.needsBiometricUnlock).toBe(true);
+      expect(result.current.user).toBeNull();
+      expect(mockedAuthApi.me).not.toHaveBeenCalled();
+      expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBe('existing-token');
+    });
+
+    it('resumes normally without prompting when biometric hardware is unavailable, even if the preference is enabled', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(false);
+
+      const { result } = renderAuth();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockedBiometrics.promptBiometricAuth).not.toHaveBeenCalled();
+      expect(result.current.needsBiometricUnlock).toBe(false);
+      expect(result.current.user).toEqual(fakeUser);
+    });
+
+    it('never prompts on web, regardless of the enabled preference', async () => {
+      (Platform as any).OS = 'web';
+      localStorage.setItem(TOKEN_STORAGE_KEY, 'existing-token');
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+
+      const { result } = renderAuth();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockedBiometrics.promptBiometricAuth).not.toHaveBeenCalled();
+      expect(result.current.user).toEqual(fakeUser);
+    });
+
+    it('retryBiometricUnlock re-prompts and can resume the session on a later success', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+      mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
+
+      const { result } = renderAuth();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.needsBiometricUnlock).toBe(true);
+
+      mockedBiometrics.promptBiometricAuth.mockResolvedValue(true);
+      await act(async () => {
+        await result.current.retryBiometricUnlock();
+      });
+
+      expect(result.current.needsBiometricUnlock).toBe(false);
+      expect(result.current.user).toEqual(fakeUser);
+    });
+
+    it('dismissBiometricLock clears the lock and still allows a normal password login afterwards', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+      mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
+
+      const { result } = renderAuth();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.needsBiometricUnlock).toBe(true);
+
+      act(() => {
+        result.current.dismissBiometricLock();
+      });
+      expect(result.current.needsBiometricUnlock).toBe(false);
+      expect(result.current.user).toBeNull();
+
+      mockedAuthApi.login.mockResolvedValue({
+        accessToken: 'login-token',
+        user: fakeUser,
+        org: null,
+      });
+      await act(async () => {
+        await result.current.login('player1@example.com', 'password123');
+      });
+
+      expect(result.current.user).toEqual(fakeUser);
+      expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBe('login-token');
+    });
   });
 });

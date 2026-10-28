@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { TwoFactorChallengeScreen } from '../screens/TwoFactorChallengeScreen';
+import { BiometricLockScreen } from '../screens/BiometricLockScreen';
 import { OrgChoiceScreen } from '../screens/OrgChoiceScreen';
 import { CreateOrgScreen } from '../screens/CreateOrgScreen';
 import { JoinOrgScreen } from '../screens/JoinOrgScreen';
@@ -60,7 +61,7 @@ const mainScreenOptions = {
 };
 
 export function RootNavigator() {
-  const { isLoading, user, org } = useAuth();
+  const { isLoading, user, org, needsBiometricUnlock } = useAuth();
 
   if (isLoading) {
     return (
@@ -75,6 +76,10 @@ export function RootNavigator() {
         <ActivityIndicator color={colors.chrome} />
       </View>
     );
+  }
+
+  if (needsBiometricUnlock) {
+    return <BiometricLockScreen />;
   }
 
   return (

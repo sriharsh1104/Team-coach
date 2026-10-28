@@ -1,16 +1,29 @@
 import React from 'react';
-import { Alert } from 'react-native';
-import { render, screen, fireEvent, act } from '@testing-library/react-native';
+import { Alert, Switch } from 'react-native';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { AccountSettingsScreen } from '../AccountSettingsScreen';
 import * as authApi from '../../api/auth';
 import { useAuth } from '../../auth/AuthContext';
+import * as biometrics from '../../auth/biometrics';
+import * as tokenStorage from '../../storage/tokenStorage';
 
 jest.mock('../../api/auth');
 jest.mock('../../auth/AuthContext');
+jest.mock('../../auth/biometrics');
+jest.mock('../../storage/tokenStorage', () => ({
+  getBiometricEnabled: jest.fn(),
+  setBiometricEnabled: jest.fn(),
+}));
 
 const mockedAuthApi = authApi as jest.Mocked<typeof authApi>;
 const mockedUseAuth = useAuth as jest.Mock;
+const mockedBiometrics = biometrics as jest.Mocked<typeof biometrics>;
+const mockedTokenStorage = tokenStorage as jest.Mocked<typeof tokenStorage>;
 const navigation = { navigate: jest.fn() } as any;
+
+function openBiometricTab() {
+  fireEvent.press(screen.getByText('Biometric Login'));
+}
 
 const applyAuthResponse = jest.fn();
 const refreshUser = jest.fn();
@@ -32,10 +45,18 @@ async function pressAndSettle(text: string) {
   });
 }
 
+function openTwoFactorTab() {
+  fireEvent.press(screen.getByText('Two-Factor Authentication'));
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockedUseAuth.mockReturnValue({ user: baseUser, applyAuthResponse, refreshUser });
+  mockedBiometrics.isBiometricAvailable.mockResolvedValue(false);
+  mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
+  mockedTokenStorage.getBiometricEnabled.mockResolvedValue(false);
+  mockedTokenStorage.setBiometricEnabled.mockResolvedValue(undefined);
 });
 
 describe('AccountSettingsScreen', () => {
@@ -88,8 +109,21 @@ describe('AccountSettingsScreen', () => {
     expect(screen.queryByPlaceholderText('Current password')).toBeNull();
   });
 
+  it('defaults to the Change Password tab, with Two-Factor Authentication content hidden until its tab is pressed', () => {
+    render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+
+    expect(screen.getByPlaceholderText('Current password')).toBeTruthy();
+    expect(screen.queryByText('Enable 2FA')).toBeNull();
+
+    openTwoFactorTab();
+
+    expect(screen.getByText('Enable 2FA')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('Current password')).toBeNull();
+  });
+
   it('shows "Enable 2FA" navigating to setup when disabled', async () => {
     render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+    openTwoFactorTab();
 
     fireEvent.press(screen.getByText('Enable 2FA'));
     expect(navigation.navigate).toHaveBeenCalledWith('TwoFactorSetup');
@@ -103,6 +137,7 @@ describe('AccountSettingsScreen', () => {
     });
     mockedAuthApi.disableTwoFactor.mockResolvedValue(undefined);
     render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+    openTwoFactorTab();
 
     fireEvent.press(screen.getByText('Disable 2FA'));
     fireEvent.changeText(screen.getByPlaceholderText('Your password'), 'mypassword');
@@ -122,11 +157,102 @@ describe('AccountSettingsScreen', () => {
       response: { data: { message: 'Incorrect password' } },
     });
     render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+    openTwoFactorTab();
 
     fireEvent.press(screen.getByText('Disable 2FA'));
     fireEvent.changeText(screen.getByPlaceholderText('Your password'), 'wrong');
     await pressAndSettle('Confirm Disable');
 
     expect(Alert.alert).toHaveBeenCalledWith('Could not disable 2FA', 'Incorrect password');
+  });
+
+  describe('Biometric Login tab', () => {
+    it('shows the native "unavailable" hint and no toggle when there is no hardware/enrollment', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(false);
+      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+      openBiometricTab();
+
+      await screen.findByText(
+        "Biometric login isn't available on this device (no Face ID/Touch ID/fingerprint set up).",
+      );
+      expect(screen.UNSAFE_queryAllByType(Switch)).toHaveLength(0);
+    });
+
+    it('shows the web-specific "unavailable" hint on web', async () => {
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      Platform.OS = 'web';
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(false);
+      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+      openBiometricTab();
+
+      await screen.findByText(
+        "Biometric login isn't available in this browser preview — try it on a real device.",
+      );
+
+      Platform.OS = originalOS;
+    });
+
+    it('shows a toggle reflecting the stored preference when biometrics are available', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+      mockedTokenStorage.getBiometricEnabled.mockResolvedValue(true);
+      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+      openBiometricTab();
+
+      await waitFor(() =>
+        expect(screen.UNSAFE_getByType(Switch).props.value).toBe(true),
+      );
+    });
+
+    it('enabling requires a successful biometric prompt first, and persists only on success', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+      mockedTokenStorage.getBiometricEnabled.mockResolvedValue(false);
+      mockedBiometrics.promptBiometricAuth.mockResolvedValue(true);
+      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+      openBiometricTab();
+      await waitFor(() => expect(screen.UNSAFE_getByType(Switch)).toBeTruthy());
+
+      await act(async () => {
+        fireEvent(screen.UNSAFE_getByType(Switch), 'valueChange', true);
+      });
+
+      expect(mockedBiometrics.promptBiometricAuth).toHaveBeenCalledWith(
+        'Confirm to enable biometric login',
+      );
+      expect(mockedTokenStorage.setBiometricEnabled).toHaveBeenCalledWith(true);
+      expect(screen.UNSAFE_getByType(Switch).props.value).toBe(true);
+    });
+
+    it('does not persist enabling when the biometric prompt fails or is cancelled', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+      mockedTokenStorage.getBiometricEnabled.mockResolvedValue(false);
+      mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
+      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+      openBiometricTab();
+      await waitFor(() => expect(screen.UNSAFE_getByType(Switch)).toBeTruthy());
+
+      await act(async () => {
+        fireEvent(screen.UNSAFE_getByType(Switch), 'valueChange', true);
+      });
+
+      expect(mockedTokenStorage.setBiometricEnabled).not.toHaveBeenCalled();
+      expect(screen.UNSAFE_getByType(Switch).props.value).toBe(false);
+    });
+
+    it('disabling persists immediately without a biometric prompt', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+      mockedTokenStorage.getBiometricEnabled.mockResolvedValue(true);
+      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+      openBiometricTab();
+      await waitFor(() => expect(screen.UNSAFE_getByType(Switch).props.value).toBe(true));
+
+      await act(async () => {
+        fireEvent(screen.UNSAFE_getByType(Switch), 'valueChange', false);
+      });
+
+      expect(mockedBiometrics.promptBiometricAuth).not.toHaveBeenCalled();
+      expect(mockedTokenStorage.setBiometricEnabled).toHaveBeenCalledWith(false);
+      expect(screen.UNSAFE_getByType(Switch).props.value).toBe(false);
+    });
   });
 });
