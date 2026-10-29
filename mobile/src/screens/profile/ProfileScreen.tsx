@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  Pressable,
   ScrollView,
   Alert,
   StyleSheet,
@@ -17,6 +16,9 @@ import { CopyableField } from './CopyableField';
 import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
+import { SoftPressable } from '../../ui/SoftPressable';
+import { FadeSwap } from '../../ui/FadeSwap';
+import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { sharedStyles, formatRoleBadge } from '../shared';
 import { useAuth } from '../../auth/AuthContext';
 import { colors } from '../../theme';
@@ -84,44 +86,38 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
           </Text>
         )}
 
-        <View style={styles.tabRow}>
-          {(
+        <SegmentedTabs
+          value={tab}
+          onChange={setTab}
+          tabs={
             [
-              ['user', 'User Profile'],
-              ['game', 'Game Profile'],
-              ['social', 'Social Profile'],
+              { value: 'user', label: 'User' },
+              { value: 'game', label: 'Game' },
+              { value: 'social', label: 'Social' },
             ] as const
-          ).map(([value, label]) => (
-            <Pressable
-              key={value}
-              style={[styles.tab, tab === value && styles.tabActive]}
-              onPress={() => setTab(value)}
-            >
-              <Text style={tab === value ? styles.tabTextActive : styles.tabText}>
-                {label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+          }
+        />
 
-        {tab === 'user' && (
-          <UserProfileSection
-            profile={profile}
-            mustComplete={mustComplete}
-            onUpdated={onProfileUpdated}
-          />
-        )}
-        {tab === 'game' && (
-          <GameProfileSection
-            profile={profile}
-            mustComplete={mustComplete}
-            onUpdated={onProfileUpdated}
-            onDevicesChanged={load}
-          />
-        )}
-        {tab === 'social' && (
-          <SocialProfileSection profile={profile} onUpdated={onProfileUpdated} />
-        )}
+        <FadeSwap contentKey={tab} style={styles.panelCard}>
+          {tab === 'user' && (
+            <UserProfileSection
+              profile={profile}
+              mustComplete={mustComplete}
+              onUpdated={onProfileUpdated}
+            />
+          )}
+          {tab === 'game' && (
+            <GameProfileSection
+              profile={profile}
+              mustComplete={mustComplete}
+              onUpdated={onProfileUpdated}
+              onDevicesChanged={load}
+            />
+          )}
+          {tab === 'social' && (
+            <SocialProfileSection profile={profile} onUpdated={onProfileUpdated} />
+          )}
+        </FadeSwap>
       </ScrollView>
     </Screen>
   );
@@ -173,14 +169,15 @@ function UserProfileSection({
         <CopyableField label="Name" value={profile.name} />
         {user?.email && <CopyableField label="Email" value={user.email} />}
         {profile.phone && <CopyableField label="Phone" value={profile.phone} />}
-        <Pressable
-          style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
+        <SoftPressable
+          style={styles.editButton}
           onPress={() => setIsEditing(true)}
+          pressScale={0.97}
         >
           <ButtonLabel icon="edit" color={colors.link}>
             Edit
           </ButtonLabel>
-        </Pressable>
+        </SoftPressable>
       </View>
     );
   }
@@ -206,15 +203,19 @@ function UserProfileSection({
       />
       {mustComplete && <Text style={styles.requiredHint}>* Required</Text>}
 
-      <Pressable
-        style={[sharedStyles.button, (isSaving || !canSave) && sharedStyles.buttonDisabled]}
+      <SoftPressable
+        style={[
+          sharedStyles.button,
+          (isSaving || !canSave) && sharedStyles.buttonDisabled,
+        ]}
         disabled={isSaving || !canSave}
         onPress={onSave}
+        pressScale={0.98}
       >
         <ButtonLabel icon="save">
           {isSaving ? 'Saving…' : mustComplete ? 'Continue' : 'Save'}
         </ButtonLabel>
-      </Pressable>
+      </SoftPressable>
     </View>
   );
 }
@@ -322,14 +323,15 @@ function GameProfileSection({
           </>
         )}
 
-        <Pressable
-          style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
+        <SoftPressable
+          style={styles.editButton}
           onPress={() => setIsEditing(true)}
+          pressScale={0.97}
         >
           <ButtonLabel icon="edit" color={colors.link}>
             Edit
           </ButtonLabel>
-        </Pressable>
+        </SoftPressable>
       </View>
     );
   }
@@ -354,15 +356,19 @@ function GameProfileSection({
       />
       {mustComplete && <Text style={styles.requiredHint}>* Required</Text>}
 
-      <Pressable
-        style={[sharedStyles.button, (isSaving || !canSave) && sharedStyles.buttonDisabled]}
+      <SoftPressable
+        style={[
+          sharedStyles.button,
+          (isSaving || !canSave) && sharedStyles.buttonDisabled,
+        ]}
         disabled={isSaving || !canSave}
         onPress={onSave}
+        pressScale={0.98}
       >
         <ButtonLabel icon="save">
           {isSaving ? 'Saving…' : mustComplete ? 'Continue' : 'Save'}
         </ButtonLabel>
-      </Pressable>
+      </SoftPressable>
 
       {!mustComplete && (
         <>
@@ -373,9 +379,13 @@ function GameProfileSection({
                 {device.name} — {device.model}
               </Text>
               <CopyButton value={`${device.name} — ${device.model}`} />
-              <Pressable onPress={() => onRemoveDevice(device.id)} hitSlop={8}>
+              <SoftPressable
+                onPress={() => onRemoveDevice(device.id)}
+                hitSlop={8}
+                pressScale={0.95}
+              >
                 <Text style={{ color: '#f87171' }}>Remove</Text>
-              </Pressable>
+              </SoftPressable>
             </View>
           ))}
           <CopyableInput
@@ -388,16 +398,18 @@ function GameProfileSection({
             value={deviceModel}
             onChangeText={setDeviceModel}
           />
-          <Pressable
+          <SoftPressable
             style={[
               sharedStyles.button,
-              (!deviceName || !deviceModel || isAddingDevice) && sharedStyles.buttonDisabled,
+              (!deviceName || !deviceModel || isAddingDevice) &&
+                sharedStyles.buttonDisabled,
             ]}
             disabled={!deviceName || !deviceModel || isAddingDevice}
             onPress={onAddDevice}
+            pressScale={0.98}
           >
             <ButtonLabel icon="phone">Add Device</ButtonLabel>
-          </Pressable>
+          </SoftPressable>
         </>
       )}
     </View>
@@ -443,27 +455,20 @@ function SocialProfileSection({
   if (!isEditing) {
     return (
       <View>
-        {profile.whatsappUrl && <CopyableField label="WhatsApp" value={profile.whatsappUrl} />}
-        {profile.instagramUrl && (
-          <CopyableField label="Instagram" value={profile.instagramUrl} />
-        )}
-        {profile.discordUrl && <CopyableField label="Discord" value={profile.discordUrl} />}
-        {profile.youtubeUrl && <CopyableField label="YouTube" value={profile.youtubeUrl} />}
-        {!profile.whatsappUrl &&
-          !profile.instagramUrl &&
-          !profile.discordUrl &&
-          !profile.youtubeUrl && (
-            <Text style={{ color: '#9aa0a6' }}>No social links set yet</Text>
-          )}
+        <CopyableField label="WhatsApp" value={profile.whatsappUrl ?? ''} />
+        <CopyableField label="Instagram" value={profile.instagramUrl ?? ''} />
+        <CopyableField label="Discord" value={profile.discordUrl ?? ''} />
+        <CopyableField label="YouTube" value={profile.youtubeUrl ?? ''} />
 
-        <Pressable
-          style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
+        <SoftPressable
+          style={styles.editButton}
           onPress={() => setIsEditing(true)}
+          pressScale={0.97}
         >
           <ButtonLabel icon="edit" color={colors.link}>
             Edit
           </ButtonLabel>
-        </Pressable>
+        </SoftPressable>
       </View>
     );
   }
@@ -499,43 +504,35 @@ function SocialProfileSection({
         onChangeText={setYoutubeUrl}
       />
 
-      <Pressable
+      <SoftPressable
         style={[sharedStyles.button, isSaving && sharedStyles.buttonDisabled]}
         disabled={isSaving}
         onPress={onSave}
+        pressScale={0.98}
       >
         <ButtonLabel icon="save">{isSaving ? 'Saving…' : 'Save'}</ButtonLabel>
-      </Pressable>
+      </SoftPressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   roleBadge: {
-    color: '#a8b0ff',
+    color: colors.link,
     fontWeight: '600',
     textAlign: 'center',
     marginTop: -16,
     marginBottom: 16,
   },
-  tabRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 20,
-  },
-  tab: {
-    flex: 1,
+  panelCard: {
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.045)',
     borderWidth: 1,
-    borderColor: '#5f6368',
-    borderRadius: 20,
-    paddingVertical: 8,
-    alignItems: 'center',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  tabActive: { backgroundColor: colors.chrome, borderColor: colors.chrome },
-  tabText: { color: colors.text, fontWeight: '600' },
-  tabTextActive: { color: colors.chromeInk, fontWeight: '600' },
   sectionLabel: {
-    marginTop: 20,
+    marginTop: 16,
     marginBottom: 8,
     fontWeight: '600',
     color: '#e8eaed',
@@ -546,39 +543,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3a3d44',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   introText: {
-    color: '#9aa0a6',
+    color: colors.textMuted,
     marginBottom: 8,
     textAlign: 'center',
   },
   requiredHint: {
-    color: '#9aa0a6',
+    color: colors.textMuted,
     fontSize: 12,
     marginTop: -8,
     marginBottom: 4,
   },
-  // Outlined + tinted in the app's own highlight color (the same periwinkle
-  // used for the role badge above it) instead of the plain grey chrome
-  // button shared by every other action — Edit reads as a distinct, lighter
-  // action from a hard commit like Save. `pressed` gives instant tactile
-  // feedback without an Animated timer (see Toast.tsx for why timers are
-  // avoided here: they outlive unmounts in tests).
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: colors.link,
     backgroundColor: 'rgba(168,176,255,0.12)',
     paddingVertical: 12,
     marginTop: 20,
-  },
-  editButtonPressed: {
-    backgroundColor: 'rgba(168,176,255,0.26)',
-    transform: [{ scale: 0.98 }],
   },
 });

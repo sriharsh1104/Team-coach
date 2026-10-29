@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Text, View, FlatList, Pressable, RefreshControl, StyleSheet } from 'react-native';
+import { Text, View, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { OrgDetail } from '../api/types';
@@ -7,7 +7,7 @@ import { ROLE_LABELS, RoleOption } from '../api/roles';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
-import { sharedStyles } from './shared';
+import { SoftPressable } from '../ui/SoftPressable';
 import { CopyButton } from './profile/CopyButton';
 
 function formatInGameRoles(roles: string[]): string | null {
@@ -82,7 +82,7 @@ export function MembersScreen({ navigation }: Props) {
         renderItem={({ item, index }) => {
           const inGameRoles = formatInGameRoles(item.inGameRoles);
           return (
-            <Pressable
+            <SoftPressable
               style={styles.memberRow}
               onPress={() =>
                 navigation.navigate('MemberProfile', {
@@ -90,6 +90,7 @@ export function MembersScreen({ navigation }: Props) {
                   name: item.name,
                 })
               }
+              pressScale={0.985}
             >
               <View style={styles.memberInfo}>
                 <Text style={styles.memberName}>
@@ -101,7 +102,7 @@ export function MembersScreen({ navigation }: Props) {
                 )}
               </View>
               <Text style={styles.memberRole}>{item.role}</Text>
-            </Pressable>
+            </SoftPressable>
           );
         }}
       />
@@ -114,11 +115,11 @@ const styles = StyleSheet.create({
   listContent: { padding: 24 },
   inviteCard: {
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
     padding: 16,
     marginBottom: 20,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.045)',
   },
   inviteTitle: { color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 4 },
   inviteHint: { color: colors.textMuted, fontSize: 12, marginBottom: 12, lineHeight: 16 },
@@ -127,7 +128,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingVertical: 8,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
   inviteTextCol: { flex: 1 },
@@ -137,13 +138,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    marginBottom: 6,
     gap: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   memberInfo: { flex: 1 },
-  memberName: { fontSize: 16, color: colors.text },
+  memberName: { fontSize: 16, color: colors.text, fontWeight: '600' },
   memberInGameRoles: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  memberRole: { color: colors.textMuted },
+  memberRole: { color: colors.textMuted, fontWeight: '600', fontSize: 12 },
 });

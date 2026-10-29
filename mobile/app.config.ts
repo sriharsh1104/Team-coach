@@ -59,6 +59,7 @@ const expoConfig: ExpoConfig = {
     '@react-native-community/datetimepicker',
     '@livekit/react-native-expo-plugin',
     'expo-secure-store',
+    'react-native-compressor',
   ],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',

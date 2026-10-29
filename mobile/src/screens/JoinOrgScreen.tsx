@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, TextInput, Pressable, Alert } from 'react-native';
+import { Text, TextInput, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
@@ -7,6 +7,7 @@ import { OrgSetupStackParamList } from '../navigation/types';
 import { authStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
+import { SoftPressable } from '../ui/SoftPressable';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
 
@@ -56,16 +57,17 @@ export function JoinOrgScreen({}: Props) {
         value={orgCode}
         onChangeText={setOrgCode}
       />
-      <Pressable
+      <SoftPressable
         style={[
           authStyles.button,
           (isSubmitting || !orgCode) && authStyles.buttonDisabled,
         ]}
         disabled={isSubmitting || !orgCode}
         onPress={onSubmit}
+        pressScale={0.98}
       >
         <ButtonLabel icon="enter">Join</ButtonLabel>
-      </Pressable>
+      </SoftPressable>
     </FormScreen>
   );
 }

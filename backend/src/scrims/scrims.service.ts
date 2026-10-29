@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MembershipService } from '../membership/membership.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateScrimEventDto } from './dto/create-scrim-event.dto';
 import { UpdateScrimEventDto } from './dto/update-scrim-event.dto';
 
@@ -13,6 +14,7 @@ export class ScrimsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly membershipService: MembershipService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async create(userId: string, dto: CreateScrimEventDto) {
@@ -43,6 +45,7 @@ export class ScrimsService {
         createdBy: { select: { name: true } },
       },
     });
+    this.realtime.publish(membership.orgId, 'scrims.changed');
     return this.toResponse(event, membership.userName);
   }
 
@@ -96,12 +99,14 @@ export class ScrimsService {
         rounds: { orderBy: { roundNumber: 'asc' } },
       },
     });
+    this.realtime.publish(event.orgId, 'scrims.changed');
     return this.toResponse(updated, updated.createdBy.name);
   }
 
   async remove(userId: string, eventId: string) {
     const { event } = await this.requireEditAccess(userId, eventId);
     await this.prisma.scrimEvent.delete({ where: { id: event.id } });
+    this.realtime.publish(event.orgId, 'scrims.changed');
   }
 
   private normalizeRounds(dto: {

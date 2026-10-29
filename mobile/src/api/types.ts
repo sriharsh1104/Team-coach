@@ -70,6 +70,8 @@ export interface ChatChannel {
   title: string;
   peerUserId: string | null;
   peerAvatarUrl: string | null;
+  /** Org group size (self included). Null for DMs. */
+  memberCount?: number | null;
   unreadCount: number;
   lastMessageAt: string | null;
   lastPreview: string | null;

@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
+import { SoftPressable } from './SoftPressable';
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.82);
+const SKIP_MOTION = process.env.NODE_ENV === 'test';
 
 export type SideDrawerItem = {
   key: string;
@@ -42,26 +44,31 @@ export function SideDrawer({
   const slide = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
   useEffect(() => {
+    if (SKIP_MOTION) {
+      slide.setValue(open ? 0 : -DRAWER_WIDTH);
+      return;
+    }
     Animated.timing(slide, {
       toValue: open ? 0 : -DRAWER_WIDTH,
-      duration: 220,
+      duration: 240,
       useNativeDriver: true,
     }).start();
   }, [open, slide]);
 
   const renderItem = (item: SideDrawerItem) => (
-    <Pressable
+    <SoftPressable
       key={item.key}
       style={[styles.item, item.danger && styles.itemDanger]}
       onPress={() => {
         onClose();
         item.onPress();
       }}
+      pressScale={0.97}
     >
       <Text style={[styles.itemText, item.danger && { color: colors.danger }]}>
         {item.label}
       </Text>
-    </Pressable>
+    </SoftPressable>
   );
 
   return (
@@ -93,14 +100,15 @@ export function SideDrawer({
               {title ? <Text style={styles.title}>{title}</Text> : null}
               {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
             </View>
-            <Pressable
+            <SoftPressable
               onPress={onClose}
               hitSlop={12}
               accessibilityLabel="Close Menu"
               style={styles.closeBtn}
+              pressScale={0.9}
             >
               <Text style={styles.closeGlyph}>✕</Text>
-            </Pressable>
+            </SoftPressable>
           </View>
 
           <ScrollView
@@ -123,16 +131,17 @@ export function SideDrawer({
 /** Top-bar hamburger that opens the drawer. */
 export function MenuButton({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable
+    <SoftPressable
       onPress={onPress}
       style={styles.menuBtn}
       accessibilityLabel="Open Menu"
       hitSlop={8}
+      pressScale={0.92}
     >
       <View style={styles.menuBar} />
       <View style={styles.menuBar} />
       <View style={styles.menuBar} />
-    </Pressable>
+    </SoftPressable>
   );
 }
 
@@ -143,18 +152,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   panel: {
-    backgroundColor: '#121216',
+    backgroundColor: '#101014',
     borderRightWidth: 1,
-    borderRightColor: colors.border,
-    paddingHorizontal: 16,
+    borderRightColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 14,
     zIndex: 2,
     flexDirection: 'column',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    marginBottom: 18,
     gap: 8,
+    paddingHorizontal: 4,
   },
   title: {
     color: colors.text,
@@ -167,41 +177,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   closeBtn: {
-    padding: 6,
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   closeGlyph: {
     color: colors.textMuted,
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '700',
   },
   scroll: { flex: 1 },
-  items: { gap: 8, paddingBottom: 12 },
+  items: { gap: 6, paddingBottom: 12 },
   footer: {
-    gap: 8,
-    borderTopWidth: 1,
+    gap: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     paddingTop: 12,
     marginTop: 8,
   },
   item: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
     paddingVertical: 14,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
   },
   itemText: {
     color: colors.text,
     fontWeight: '700',
-    fontSize: 16,
+    fontSize: 15,
   },
   itemDanger: {
     backgroundColor: 'rgba(248,113,113,0.12)',
+    borderColor: 'rgba(248,113,113,0.2)',
   },
   menuBtn: {
     width: 40,
     height: 40,
-    borderRadius: 8,
+    borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',

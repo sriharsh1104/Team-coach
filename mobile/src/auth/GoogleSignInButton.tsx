@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Pressable, StyleSheet, Alert } from 'react-native';
+import { StyleSheet, Alert } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
@@ -7,6 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from './AuthContext';
 import { ButtonLabel } from '../ui/ButtonLabel';
+import { SoftPressable } from '../ui/SoftPressable';
 import { AuthStackParamList } from '../navigation/types';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -43,7 +44,7 @@ export function GoogleSignInButton() {
   const isConfigured = Boolean(extra.googleWebClientId);
 
   return (
-    <Pressable
+    <SoftPressable
       style={[styles.button, !isConfigured && styles.buttonDisabled]}
       disabled={isConfigured && !request}
       onPress={() => {
@@ -56,11 +57,12 @@ export function GoogleSignInButton() {
         }
         promptAsync();
       }}
+      pressScale={0.98}
     >
       <ButtonLabel icon="google" color="#e8eaed">
         Continue with Google
       </ButtonLabel>
-    </Pressable>
+    </SoftPressable>
   );
 }
 
@@ -68,9 +70,9 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: '#5f6368',
-    borderRadius: 8,
-    paddingVertical: 12,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 12,
+    paddingVertical: 13,
     alignItems: 'center',
     marginTop: 12,
   },

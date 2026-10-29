@@ -75,6 +75,7 @@ export class ChatService {
       include: { user: { select: { id: true, name: true, avatarUrl: true } } },
       orderBy: { user: { name: 'asc' } },
     });
+    const memberCount = members.length + 1; // teammates + self
 
     const groupUnread = await this.countUnread(userId, orgId, ORG_CHANNEL);
     const groupLast = await this.lastMessage(orgId, ORG_CHANNEL);
@@ -90,6 +91,7 @@ export class ChatService {
           title: m.user.name,
           peerUserId: m.user.id,
           peerAvatarUrl: m.user.avatarUrl,
+          memberCount: null as number | null,
           unreadCount,
           lastMessageAt: last?.createdAt ?? null,
           lastPreview: last ? this.preview(last) : null,
@@ -108,6 +110,7 @@ export class ChatService {
           title: 'Team Chat',
           peerUserId: null,
           peerAvatarUrl: null,
+          memberCount,
           unreadCount: groupUnread,
           lastMessageAt: groupLast?.createdAt ?? null,
           lastPreview: groupLast ? this.preview(groupLast) : null,

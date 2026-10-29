@@ -4,7 +4,6 @@ import {
   View,
   ScrollView,
   TextInput,
-  Pressable,
   Switch,
   Platform,
   Alert,
@@ -21,18 +20,18 @@ import { isBiometricAvailable, promptBiometricAuth } from '../auth/biometrics';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { ButtonLabel } from '../ui/ButtonLabel';
+import { SoftPressable } from '../ui/SoftPressable';
+import { FadeSwap } from '../ui/FadeSwap';
 import { Toast, useToast } from '../ui/Toast';
 import { colors } from '../theme';
-import { sharedStyles } from './shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'AccountSettings'>;
+type Tab = 'password' | 'twoFactor' | 'biometric';
 
 export function AccountSettingsScreen({ navigation }: Props) {
   const { user, applyAuthResponse, refreshUser } = useAuth();
   const { message: toastMessage, showToast } = useToast();
-  const [tab, setTab] = useState<'password' | 'twoFactor' | 'biometric'>(
-    'password',
-  );
+  const [tab, setTab] = useState<Tab>('password');
 
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
@@ -120,164 +119,222 @@ export function AccountSettingsScreen({ navigation }: Props) {
     <Screen>
       <ScrollView
         style={{ flex: 1, backgroundColor: 'transparent' }}
-        contentContainerStyle={{ padding: 24 }}
+        contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
+        <Text style={styles.eyebrow}>Account</Text>
         <Text style={styles.sectionLabel}>Security</Text>
+        <Text style={styles.lead}>
+          Keep your Sacred account locked down — password, authenticator, and
+          device unlock in one place.
+        </Text>
 
-        <View style={styles.tabRow}>
+        <View style={styles.tabTrack}>
           {(
             [
-              ['password', 'Change Password'],
-              ['twoFactor', 'Two-Factor Authentication'],
-              ['biometric', 'Biometric Login'],
+              ['password', 'Password', 'Change Password'],
+              ['twoFactor', '2FA', 'Two-Factor Authentication'],
+              ['biometric', 'Biometric', 'Biometric Login'],
             ] as const
-          ).map(([value, label]) => (
-            <Pressable
-              key={value}
-              style={[styles.tab, tab === value && styles.tabActive]}
-              onPress={() => setTab(value)}
-            >
-              <Text
-                style={tab === value ? styles.tabTextActive : styles.tabText}
+          ).map(([value, label, a11y]) => {
+            const active = tab === value;
+            return (
+              <SoftPressable
+                key={value}
+                style={[styles.tab, active && styles.tabActive]}
+                onPress={() => setTab(value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={a11y}
+                pressScale={0.96}
               >
-                {label}
-              </Text>
-            </Pressable>
-          ))}
+                <Text
+                  style={active ? styles.tabTextActive : styles.tabText}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              </SoftPressable>
+            );
+          })}
         </View>
 
-        {tab === 'password' &&
-          (!user.hasPassword ? (
-            <Text style={styles.hint}>
-              This account signs in with Google and has no password to change.
-            </Text>
-          ) : (
-            <>
-              <TextInput
-                style={sharedStyles.input}
-                placeholder="Current password"
-                placeholderTextColor={colors.textDim}
-                secureTextEntry
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-              />
-              <TextInput
-                style={sharedStyles.input}
-                placeholder="New password"
-                placeholderTextColor={colors.textDim}
-                secureTextEntry
-                value={newPassword}
-                onChangeText={setNewPassword}
-              />
-              <TextInput
-                style={sharedStyles.input}
-                placeholder="Confirm new password"
-                placeholderTextColor={colors.textDim}
-                secureTextEntry
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-              />
-              <Pressable
-                style={[
-                  sharedStyles.button,
-                  (isSavingPassword || !canChangePassword) &&
-                    sharedStyles.buttonDisabled,
-                ]}
-                disabled={isSavingPassword || !canChangePassword}
-                onPress={onChangePassword}
-              >
-                <ButtonLabel icon="save">
-                  {isSavingPassword ? 'Saving…' : 'Update Password'}
-                </ButtonLabel>
-              </Pressable>
-            </>
-          ))}
-
-        {tab === 'twoFactor' && (
-          <>
-            <Text style={styles.hint}>
-              Uses Google Authenticator (or any TOTP-compatible app).
-            </Text>
-            <View style={styles.statusRow}>
-              <Text style={styles.hint}>
-                {user.twoFactorEnabled
-                  ? 'Enabled — an authenticator code is required at login.'
-                  : 'Disabled — add an extra layer of security to your account.'}
-              </Text>
-            </View>
-
-            {user.twoFactorEnabled ? (
-              showDisableForm ? (
+        <FadeSwap contentKey={tab}>
+          {tab === 'password' && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Change Password</Text>
+              {!user.hasPassword ? (
+                <Text style={styles.hint}>
+                  This account signs in with Google and has no password to
+                  change.
+                </Text>
+              ) : (
                 <>
+                  <Text style={styles.hint}>
+                    Use at least 8 characters. You&apos;ll stay signed in after
+                    updating.
+                  </Text>
                   <TextInput
-                    style={sharedStyles.input}
-                    placeholder="Your password"
+                    style={styles.input}
+                    placeholder="Current password"
                     placeholderTextColor={colors.textDim}
                     secureTextEntry
-                    value={disablePassword}
-                    onChangeText={setDisablePassword}
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
                   />
-                  <Pressable
+                  <TextInput
+                    style={styles.input}
+                    placeholder="New password"
+                    placeholderTextColor={colors.textDim}
+                    secureTextEntry
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Confirm new password"
+                    placeholderTextColor={colors.textDim}
+                    secureTextEntry
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                  />
+                  <SoftPressable
                     style={[
-                      sharedStyles.button,
-                      (isDisabling || !disablePassword) &&
-                        sharedStyles.buttonDisabled,
+                      styles.primaryBtn,
+                      (isSavingPassword || !canChangePassword) &&
+                        styles.btnDisabled,
                     ]}
-                    disabled={isDisabling || !disablePassword}
-                    onPress={onDisableTwoFactor}
+                    disabled={isSavingPassword || !canChangePassword}
+                    onPress={onChangePassword}
+                    pressScale={0.98}
                   >
-                    <ButtonLabel icon="trash">
-                      {isDisabling ? 'Disabling…' : 'Confirm Disable'}
+                    <ButtonLabel icon="save">
+                      {isSavingPassword ? 'Saving…' : 'Update Password'}
                     </ButtonLabel>
-                  </Pressable>
+                  </SoftPressable>
                 </>
-              ) : (
-                <Pressable
-                  style={[sharedStyles.button, styles.dangerButton]}
-                  onPress={() => setShowDisableForm(true)}
-                >
-                  <ButtonLabel icon="trash" color={colors.danger}>
-                    Disable 2FA
-                  </ButtonLabel>
-                </Pressable>
-              )
-            ) : (
-              <Pressable
-                style={sharedStyles.button}
-                onPress={() => navigation.navigate('TwoFactorSetup')}
-              >
-                <ButtonLabel icon="check">Enable 2FA</ButtonLabel>
-              </Pressable>
-            )}
-          </>
-        )}
+              )}
+            </View>
+          )}
 
-        {tab === 'biometric' && (
-          <>
-            {!biometricAvailable ? (
+          {tab === 'twoFactor' && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Two-Factor Authentication</Text>
               <Text style={styles.hint}>
-                {Platform.OS === 'web'
-                  ? "Biometric login isn't available in this browser preview — try it on a real device."
-                  : "Biometric login isn't available on this device (no Face ID/Touch ID/fingerprint set up)."}
+                Uses Google Authenticator (or any TOTP-compatible app).
               </Text>
-            ) : (
-              <View style={styles.settingRow}>
-                <View style={styles.settingTextCol}>
-                  <Text style={styles.hint}>
-                    Use Face ID / Touch ID / fingerprint to unlock the app
-                    instead of staying signed in silently.
-                  </Text>
-                </View>
-                <Switch
-                  disabled={isTogglingBiometric}
-                  value={biometricEnabled}
-                  onValueChange={onToggleBiometric}
+              <View
+                style={[
+                  styles.statusPill,
+                  user.twoFactorEnabled
+                    ? styles.statusOn
+                    : styles.statusOff,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statusDot,
+                    {
+                      backgroundColor: user.twoFactorEnabled
+                        ? '#86efac'
+                        : colors.textDim,
+                    },
+                  ]}
                 />
+                <Text style={styles.statusText}>
+                  {user.twoFactorEnabled
+                    ? 'Enabled — code required at login'
+                    : 'Disabled — add an extra layer'}
+                </Text>
               </View>
-            )}
-          </>
-        )}
+
+              {user.twoFactorEnabled ? (
+                showDisableForm ? (
+                  <>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Your password"
+                      placeholderTextColor={colors.textDim}
+                      secureTextEntry
+                      value={disablePassword}
+                      onChangeText={setDisablePassword}
+                    />
+                    <SoftPressable
+                      style={[
+                        styles.primaryBtn,
+                        (isDisabling || !disablePassword) && styles.btnDisabled,
+                      ]}
+                      disabled={isDisabling || !disablePassword}
+                      onPress={onDisableTwoFactor}
+                      pressScale={0.98}
+                    >
+                      <ButtonLabel icon="trash">
+                        {isDisabling ? 'Disabling…' : 'Confirm Disable'}
+                      </ButtonLabel>
+                    </SoftPressable>
+                  </>
+                ) : (
+                  <SoftPressable
+                    style={styles.dangerBtn}
+                    onPress={() => setShowDisableForm(true)}
+                    pressScale={0.98}
+                  >
+                    <ButtonLabel icon="trash" color={colors.danger}>
+                      Disable 2FA
+                    </ButtonLabel>
+                  </SoftPressable>
+                )
+              ) : (
+                <SoftPressable
+                  style={styles.primaryBtn}
+                  onPress={() => navigation.navigate('TwoFactorSetup')}
+                  pressScale={0.98}
+                >
+                  <ButtonLabel icon="check">Enable 2FA</ButtonLabel>
+                </SoftPressable>
+              )}
+            </View>
+          )}
+
+          {tab === 'biometric' && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Biometric Login</Text>
+              {!biometricAvailable ? (
+                <Text style={styles.hint}>
+                  {Platform.OS === 'web'
+                    ? "Biometric login isn't available in this browser preview — try it on a real device."
+                    : "Biometric login isn't available on this device (no Face ID/Touch ID/fingerprint set up)."}
+                </Text>
+              ) : (
+                <View style={styles.settingRow}>
+                  <View style={styles.settingTextCol}>
+                    <Text style={styles.settingLead}>
+                      Unlock with Face ID / Touch ID
+                    </Text>
+                    <Text style={styles.hint}>
+                      Skip retyping passwords when you reopen the app on this
+                      device.
+                    </Text>
+                  </View>
+                  <Switch
+                    disabled={isTogglingBiometric}
+                    value={biometricEnabled}
+                    onValueChange={onToggleBiometric}
+                    accessibilityLabel="Enable biometric login"
+                    trackColor={{
+                      false: '#3a3d44',
+                      true: 'rgba(201,204,209,0.55)',
+                    }}
+                    thumbColor={
+                      biometricEnabled ? colors.chrome : '#9aa0a6'
+                    }
+                  />
+                </View>
+              )}
+            </View>
+          )}
+        </FadeSwap>
       </ScrollView>
       <Toast message={toastMessage} />
     </Screen>
@@ -285,38 +342,142 @@ export function AccountSettingsScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  sectionLabel: {
-    fontSize: 24,
+  scroll: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
+  eyebrow: {
+    color: colors.textDim,
+    fontSize: 12,
     fontWeight: '700',
-    marginBottom: 16,
-    color: colors.text,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 6,
   },
-  tabRow: {
-    flexDirection: 'row',
-    gap: 8,
+  sectionLabel: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.4,
+  },
+  lead: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
     marginBottom: 20,
   },
-  tab: {
+  tabTrack: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    padding: 4,
+    marginBottom: 18,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
-    borderColor: '#5f6368',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  tabActive: { backgroundColor: colors.chrome, borderColor: colors.chrome },
-  tabText: { color: colors.text, fontWeight: '600' },
-  tabTextActive: { color: colors.chromeInk, fontWeight: '600' },
-  hint: { color: colors.textMuted, fontSize: 13, marginBottom: 8 },
-  statusRow: { marginBottom: 4 },
-  dangerButton: {
+  tab: {
+    flexGrow: 1,
+    flexBasis: '28%',
+    minWidth: 96,
+    maxWidth: '100%',
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabActive: {
+    backgroundColor: colors.chrome,
+  },
+  tabText: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
+  tabTextActive: {
+    color: colors.chromeInk,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  cardTitle: {
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 17,
+    marginBottom: 8,
+  },
+  hint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginBottom: 12,
+    lineHeight: 19,
+  },
+  settingLead: {
+    color: colors.text,
+    fontWeight: '600',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 10,
+    fontSize: 16,
+    color: colors.text,
+  },
+  primaryBtn: {
+    backgroundColor: colors.chrome,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  dangerBtn: {
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: colors.danger,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
   },
+  btnDisabled: { opacity: 0.45 },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  statusOn: {
+    backgroundColor: 'rgba(134,239,172,0.08)',
+    borderColor: 'rgba(134,239,172,0.28)',
+  },
+  statusOff: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: colors.border,
+  },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { color: colors.text, fontSize: 12, fontWeight: '600' },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flexWrap: 'wrap',
   },
-  settingTextCol: { flex: 1 },
+  settingTextCol: { flex: 1, minWidth: 180 },
 });

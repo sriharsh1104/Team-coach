@@ -1,7 +1,8 @@
 import { io, Socket } from 'socket.io-client';
-import { apiClient, apiBaseUrl } from './client';
+import { apiClient, apiBaseUrl, resolveMediaUrl } from './client';
 import { ChatChannelsResponse, ChatMessage } from './types';
 import { appendFileToFormData } from './uploadFile';
+import { compressForUpload } from '../media/compressForUpload';
 
 export function getChatChannels() {
   return apiClient
@@ -74,12 +75,15 @@ export async function uploadChatMedia(file: {
   uri: string;
   fileName: string;
   mimeType: string;
+  width?: number | null;
+  height?: number | null;
 }) {
+  const prepared = await compressForUpload(file);
   const form = new FormData();
   await appendFileToFormData(form, {
-    uri: file.uri,
-    name: file.fileName,
-    type: file.mimeType,
+    uri: prepared.uri,
+    name: prepared.fileName,
+    type: prepared.mimeType,
   });
   const res = await apiClient.post<{
     mediaUrl: string;
@@ -107,7 +111,5 @@ export function connectChatSocket(token: string): Socket {
 }
 
 export function resolveChatMediaUrl(mediaUrl: string | null | undefined) {
-  if (!mediaUrl) return null;
-  if (mediaUrl.startsWith('http')) return mediaUrl;
-  return `${apiBaseUrl}${mediaUrl}`;
+  return resolveMediaUrl(mediaUrl);
 }

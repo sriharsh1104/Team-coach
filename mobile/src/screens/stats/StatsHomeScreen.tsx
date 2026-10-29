@@ -25,6 +25,14 @@ import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { sharedStyles } from '../shared';
 import { colors } from '../../theme';
+import { SoftPressable } from '../../ui/SoftPressable';
+import {
+  cacheGet,
+  cacheSet,
+  CacheKeys,
+  cacheInvalidate,
+} from '../../api/queryCache';
+import { useOrgRealtimeOptional } from '../../realtime/OrgRealtimeProvider';
 import { groupEntriesByDay } from './dayGroups';
 import { MatchSchedulePanel } from '../scrims/MatchSchedulePanel';
 import { useAuth } from '../../auth/AuthContext';
@@ -45,8 +53,31 @@ function pendingLabel(status: StatExtraction['status'], isReviewer: boolean): st
   return 'Review →';
 }
 
+type ModeBundle = {
+  board: LeaderboardRow[];
+  pending: StatExtraction[];
+  history: ModeHistoryEntry[];
+  historyCursor: string | null;
+};
+
+function applyBundle(
+  bundle: ModeBundle,
+  setters: {
+    setLeaderboard: (v: LeaderboardRow[]) => void;
+    setPending: (v: StatExtraction[]) => void;
+    setHistory: (v: ModeHistoryEntry[]) => void;
+    setHistoryCursor: (v: string | null) => void;
+  },
+) {
+  setters.setLeaderboard(bundle.board);
+  setters.setPending(bundle.pending);
+  setters.setHistory(bundle.history);
+  setters.setHistoryCursor(bundle.historyCursor);
+}
+
 export function StatsHomeScreen({ navigation, route }: Props) {
   const { org } = useAuth();
+  const realtime = useOrgRealtimeOptional();
   const isReviewer = org?.role === 'COACH' || org?.isOwner === true;
   const [mode, setMode] = useState<StatMode>(route.params?.mode ?? 'BR');
   const [viewTab, setViewTab] = useState<ViewTab>('board');
@@ -60,32 +91,68 @@ export function StatsHomeScreen({ navigation, route }: Props) {
 
   const grind = isGrindMode(mode);
 
-  const load = useCallback(async (selected: StatMode) => {
-    if (!isGrindMode(selected)) return;
-    const [board, extractions, modeHistory] = await Promise.all([
-      statsApi.getLeaderboard(selected),
-      statsApi.listExtractions(selected),
-      statsApi.getModeHistory(selected),
-    ]);
-    setLeaderboard(board);
-    setPending(
-      extractions.filter((e) =>
-        ['QUEUED', 'PROCESSING', 'PENDING', 'FAILED'].includes(e.status),
-      ),
-    );
-    setHistory(modeHistory.entries);
-    setHistoryCursor(modeHistory.nextCursor);
-  }, []);
+  const load = useCallback(
+    async (selected: StatMode, opts?: { force?: boolean }) => {
+      if (!isGrindMode(selected)) return;
+      const cacheKey = `stats:bundle:${selected}`;
+      if (!opts?.force) {
+        const cached = cacheGet<ModeBundle>(cacheKey);
+        if (cached) {
+          applyBundle(cached, {
+            setLeaderboard,
+            setPending,
+            setHistory,
+            setHistoryCursor,
+          });
+          return;
+        }
+      }
+
+      const [board, extractions, modeHistory] = await Promise.all([
+        statsApi.getLeaderboard(selected),
+        statsApi.listExtractions(selected),
+        statsApi.getModeHistory(selected),
+      ]);
+      const bundle: ModeBundle = {
+        board,
+        pending: extractions.filter((e) =>
+          ['QUEUED', 'PROCESSING', 'PENDING', 'FAILED'].includes(e.status),
+        ),
+        history: modeHistory.entries,
+        historyCursor: modeHistory.nextCursor,
+      };
+      cacheSet(cacheKey, bundle);
+      cacheSet(CacheKeys.statsBoard(selected), board);
+      applyBundle(bundle, {
+        setLeaderboard,
+        setPending,
+        setHistory,
+        setHistoryCursor,
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (route.params?.mode) setMode(route.params.mode);
   }, [route.params?.mode]);
 
+  // Cache-first on focus / mode — network only when cold or forced.
   useFocusEffect(
     useCallback(() => {
       void load(mode);
     }, [load, mode]),
   );
+
+  useEffect(() => {
+    if (!realtime) return;
+    return realtime.subscribe((event) => {
+      if (event.type !== 'stats.changed' && event.type !== 'scrims.changed') {
+        return;
+      }
+      void load(mode, { force: true });
+    });
+  }, [realtime, load, mode]);
 
   const onSelectMode = (next: StatMode) => {
     setMode(next);
@@ -94,7 +161,8 @@ export function StatsHomeScreen({ navigation, route }: Props) {
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await load(mode);
+    cacheInvalidate(`stats:bundle:${mode}`);
+    await load(mode, { force: true });
     setIsRefreshing(false);
   };
 
@@ -120,7 +188,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
+      quality: 1,
       allowsMultipleSelection: true,
       selectionLimit: 10,
     });
@@ -136,6 +204,8 @@ export function StatsHomeScreen({ navigation, route }: Props) {
           fileName: asset.fileName ?? `scoreboard-${mode}-${Date.now()}-${i}.jpg`,
           mimeType: asset.mimeType ?? 'image/jpeg',
           caption: `${mode} grind scoreboard`,
+          width: asset.width,
+          height: asset.height,
         });
         mediaPostIds.push(post.id);
       }
@@ -143,7 +213,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
         mode,
         mediaPostIds,
       });
-      await load(mode);
+      await load(mode, { force: true });
       const skippedNote =
         skipped.length > 0 ? ` (${skipped.length} already had an extraction)` : '';
       Alert.alert(
@@ -164,7 +234,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
   const onRetry = async (id: string) => {
     try {
       await statsApi.retryExtraction(id);
-      await load(mode);
+      await load(mode, { force: true });
     } catch (err: any) {
       Alert.alert('Could not retry', err?.response?.data?.message?.toString() ?? '');
     }
@@ -173,7 +243,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
   const onDiscard = async (id: string) => {
     try {
       await statsApi.rejectExtraction(id);
-      await load(mode);
+      await load(mode, { force: true });
     } catch (err: any) {
       Alert.alert('Could not discard', err?.response?.data?.message?.toString() ?? '');
     }
@@ -183,22 +253,23 @@ export function StatsHomeScreen({ navigation, route }: Props) {
   const dayGroups = useMemo(() => groupEntriesByDay(history), [history]);
 
   const modeChips = (
-    <View style={styles.modeRow}>
+    <View style={styles.modeTrack}>
       {STAT_MODES.map((item) => {
         const active = mode === item.mode;
         return (
-          <Pressable
+          <SoftPressable
             key={item.mode}
             onPress={() => onSelectMode(item.mode)}
             style={[styles.modeChip, active && styles.modeChipActive]}
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             accessibilityLabel={item.label}
+            pressScale={0.96}
           >
             <Text style={active ? styles.modeTextActive : styles.modeText}>
               {item.label}
             </Text>
-          </Pressable>
+          </SoftPressable>
         );
       })}
     </View>
@@ -244,17 +315,18 @@ export function StatsHomeScreen({ navigation, route }: Props) {
         ).map(([value, label]) => {
           const active = viewTab === value;
           return (
-            <Pressable
+            <SoftPressable
               key={value}
               onPress={() => setViewTab(value)}
               style={[styles.viewTab, active && styles.viewTabActive]}
               accessibilityRole="button"
               accessibilityLabel={label}
+              pressScale={0.97}
             >
               <Text style={active ? styles.viewTabTextActive : styles.viewTabText}>
                 {label}
               </Text>
-            </Pressable>
+            </SoftPressable>
           );
         })}
       </View>
@@ -328,8 +400,8 @@ export function StatsHomeScreen({ navigation, route }: Props) {
               </Text>
             }
             renderItem={({ item, index }) => (
-              <Pressable
-                style={styles.row}
+              <SoftPressable
+                style={[styles.row, index === 0 && styles.rowLead]}
                 onPress={() =>
                   navigation.navigate('PlayerStats', {
                     userId: item.userId,
@@ -337,8 +409,11 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                     mode,
                   })
                 }
+                pressScale={0.985}
               >
-                <Text style={styles.rank}>#{index + 1}</Text>
+                <Text style={[styles.rank, index === 0 && styles.rankLead]}>
+                  #{index + 1}
+                </Text>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name}>{item.name}</Text>
                   <Text style={styles.meta}>{item.matches} match(es)</Text>
@@ -346,7 +421,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                 <Text style={styles.stats}>
                   {item.kills}K / {item.assists}A / {item.damage} DMG
                 </Text>
-              </Pressable>
+              </SoftPressable>
             )}
           />
         ) : (
@@ -378,7 +453,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                   </Text>
                 </View>
                 {group.entries.map((entry) => (
-                  <Pressable
+                  <SoftPressable
                     key={entry.id}
                     style={styles.dayRow}
                     onPress={() =>
@@ -388,12 +463,13 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                         mode,
                       })
                     }
+                    pressScale={0.985}
                   >
                     <Text style={styles.dayName}>{entry.name}</Text>
                     <Text style={styles.stats}>
                       {entry.kills}K / {entry.assists}A / {entry.damage} DMG
                     </Text>
-                  </Pressable>
+                  </SoftPressable>
                 ))}
               </View>
             )}
@@ -401,19 +477,20 @@ export function StatsHomeScreen({ navigation, route }: Props) {
         )}
 
         <View style={styles.bottomBar}>
-          <Pressable
+          <SoftPressable
             style={[styles.uploadBtn, uploading && styles.uploadDisabled]}
             onPress={onUploadScoreboards}
             disabled={uploading}
             accessibilityRole="button"
             accessibilityLabel="Upload Scoreboard"
+            pressScale={0.97}
           >
             {uploading ? (
               <ActivityIndicator color="#0a0a0c" />
             ) : (
               <Text style={styles.uploadText}>Upload {modeLabel}</Text>
             )}
-          </Pressable>
+          </SoftPressable>
         </View>
       </View>
     </Screen>
@@ -432,37 +509,44 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     lineHeight: 18,
   },
-  modeRow: {
+  modeTrack: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
+    gap: 6,
+    marginBottom: 14,
+    padding: 4,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   modeChip: {
-    borderWidth: 1,
-    borderColor: '#5f6368',
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-  },
-  modeChipActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
-  modeText: { color: '#f2f3f5', fontWeight: '600' },
-  modeTextActive: { color: '#0a0a0c', fontWeight: '700' },
-  viewTabs: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  viewTab: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#3a3d44',
     borderRadius: 10,
     paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  modeChipActive: { backgroundColor: colors.chrome },
+  modeText: { color: colors.textMuted, fontWeight: '600' },
+  modeTextActive: { color: colors.chromeInk, fontWeight: '700' },
+  viewTabs: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+  },
+  viewTab: {
+    flex: 1,
+    borderRadius: 9,
+    paddingVertical: 9,
     alignItems: 'center',
   },
   viewTabActive: {
-    backgroundColor: 'rgba(201,204,209,0.18)',
-    borderColor: '#c9ccd1',
+    backgroundColor: 'rgba(201,204,209,0.2)',
   },
-  viewTabText: { color: '#9aa0a6', fontWeight: '600', fontSize: 13 },
-  viewTabTextActive: { color: '#f2f3f5', fontWeight: '700', fontSize: 13 },
+  viewTabText: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
+  viewTabTextActive: { color: colors.text, fontWeight: '700', fontSize: 13 },
   sectionHeader: {
     fontWeight: '700',
     fontSize: 16,
@@ -474,63 +558,74 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3a3d44',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  reviewLink: { color: '#a8b0ff', fontWeight: '600' },
+  reviewLink: { color: colors.link, fontWeight: '600' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3a3d44',
+    paddingVertical: 13,
+    paddingHorizontal: 10,
+    marginBottom: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
-  rank: { width: 32, fontWeight: '700', color: '#9aa0a6' },
-  name: { fontWeight: '600', color: '#f2f3f5' },
-  meta: { color: '#9aa0a6', fontSize: 12, marginTop: 2 },
-  stats: { color: '#9aa0a6', fontWeight: '600' },
-  empty: { textAlign: 'center', color: '#9aa0a6', marginTop: 28 },
+  rowLead: {
+    backgroundColor: 'rgba(201,204,209,0.1)',
+    borderColor: 'rgba(201,204,209,0.28)',
+  },
+  rank: { width: 36, fontWeight: '700', color: colors.textMuted },
+  rankLead: { color: colors.chrome },
+  name: { fontWeight: '600', color: colors.text },
+  meta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  stats: { color: colors.textMuted, fontWeight: '600' },
+  empty: { textAlign: 'center', color: colors.textMuted, marginTop: 28 },
   dayCard: {
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#3a3d44',
-    borderRadius: 12,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   dayHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
     paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3a3d44',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  dayTitle: { color: '#f2f3f5', fontWeight: '700' },
-  dayTotals: { color: '#c9ccd1', fontWeight: '600', fontSize: 12 },
+  dayTitle: { color: colors.text, fontWeight: '700' },
+  dayTotals: { color: colors.chrome, fontWeight: '600', fontSize: 12 },
   dayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 2,
   },
   dayName: { color: '#e8eaed' },
   bottomBar: {
     alignItems: 'center',
-    paddingVertical: 10,
-    borderTopWidth: 1,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#2a2d33',
-    backgroundColor: 'rgba(10,10,12,0.92)',
+    backgroundColor: 'rgba(10,10,12,0.94)',
   },
   uploadBtn: {
-    backgroundColor: '#c9ccd1',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 18,
-    minWidth: 120,
+    backgroundColor: colors.chrome,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    minWidth: 160,
     alignItems: 'center',
   },
   uploadDisabled: { opacity: 0.6 },
-  uploadText: { color: '#0a0a0c', fontWeight: '700', fontSize: 13 },
+  uploadText: { color: colors.chromeInk, fontWeight: '700', fontSize: 14 },
 });

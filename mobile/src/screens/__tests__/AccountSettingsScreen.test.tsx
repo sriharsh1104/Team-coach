@@ -22,7 +22,7 @@ const mockedTokenStorage = tokenStorage as jest.Mocked<typeof tokenStorage>;
 const navigation = { navigate: jest.fn() } as any;
 
 function openBiometricTab() {
-  fireEvent.press(screen.getByText('Biometric Login'));
+  fireEvent.press(screen.getByLabelText('Biometric Login'));
 }
 
 const applyAuthResponse = jest.fn();
@@ -46,7 +46,7 @@ async function pressAndSettle(text: string) {
 }
 
 function openTwoFactorTab() {
-  fireEvent.press(screen.getByText('Two-Factor Authentication'));
+  fireEvent.press(screen.getByLabelText('Two-Factor Authentication'));
 }
 
 beforeEach(() => {
@@ -109,9 +109,11 @@ describe('AccountSettingsScreen', () => {
     expect(screen.queryByPlaceholderText('Current password')).toBeNull();
   });
 
-  it('defaults to the Change Password tab, with Two-Factor Authentication content hidden until its tab is pressed', () => {
+  it('defaults to the Password tab, with 2FA content hidden until its tab is pressed', () => {
     render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
 
+    expect(screen.getByLabelText('Change Password')).toBeTruthy();
+    expect(screen.getByLabelText('Biometric Login')).toBeTruthy();
     expect(screen.getByPlaceholderText('Current password')).toBeTruthy();
     expect(screen.queryByText('Enable 2FA')).toBeNull();
 

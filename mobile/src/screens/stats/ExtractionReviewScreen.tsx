@@ -13,7 +13,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as statsApi from '../../api/stats';
 import * as orgApi from '../../api/org';
-import { apiBaseUrl } from '../../api/client';
+import { resolveMediaUrl } from '../../api/client';
 import { ExtractionRow, OrgMember, StatExtraction } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
@@ -303,7 +303,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
 
         {extraction.mediaUrl && (
           <Image
-            source={{ uri: `${apiBaseUrl}${extraction.mediaUrl}` }}
+            source={{ uri: resolveMediaUrl(extraction.mediaUrl) ?? undefined }}
             style={styles.preview}
             resizeMode="contain"
           />
