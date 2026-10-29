@@ -9,9 +9,26 @@ export function getChatChannels() {
     .then((res) => res.data);
 }
 
-export function getChatHistory(channelKey = 'org') {
+// `before` is the oldest currently-loaded message's id — pass it to fetch
+// the next (older) page. A returned page shorter than CHAT_HISTORY_PAGE_SIZE
+// means there's nothing older left.
+export const CHAT_HISTORY_PAGE_SIZE = 50;
+
+export function getChatHistory(channelKey = 'org', before?: string) {
   return apiClient
-    .get<ChatMessage[]>('/chat/messages', { params: { channelKey } })
+    .get<ChatMessage[]>('/chat/messages', { params: { channelKey, before } })
+    .then((res) => res.data);
+}
+
+export function getChatMedia(channelKey = 'org', before?: string) {
+  return apiClient
+    .get<ChatMessage[]>('/chat/media', { params: { channelKey, before } })
+    .then((res) => res.data);
+}
+
+export function getChatLinks(channelKey = 'org', before?: string) {
+  return apiClient
+    .get<ChatMessage[]>('/chat/links', { params: { channelKey, before } })
     .then((res) => res.data);
 }
 
@@ -67,10 +84,19 @@ export async function uploadChatMedia(file: {
   const res = await apiClient.post<{
     mediaUrl: string;
     mediaType: 'IMAGE' | 'VIDEO';
+    fileKey: string;
+    mediaPostId: string | null;
   }>('/chat/media', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
+}
+
+/** Pull the disk file key out of a chat media URL path. */
+export function fileKeyFromChatMediaUrl(mediaUrl: string | null | undefined) {
+  if (!mediaUrl) return null;
+  const match = mediaUrl.match(/\/chat\/files\/([^?]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
 export function connectChatSocket(token: string): Socket {

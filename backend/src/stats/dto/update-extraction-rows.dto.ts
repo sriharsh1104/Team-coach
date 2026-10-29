@@ -28,6 +28,11 @@ export class ExtractionRowDto {
   @IsInt()
   @Min(0)
   assists: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  damage?: number;
 }
 
 export class UpdateExtractionRowsDto {

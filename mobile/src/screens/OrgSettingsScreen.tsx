@@ -19,6 +19,7 @@ import { colors } from '../theme';
 import { sharedStyles } from './shared';
 import { RoleSelector } from './RoleSelector';
 import { Toast, useToast } from '../ui/Toast';
+import { confirmAsync } from '../ui/confirmAsync';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgSettings'>;
 
@@ -68,29 +69,23 @@ export function OrgSettingsScreen({ navigation }: Props) {
     }
   };
 
-  const onMakeOwner = (member: OrgMember) => {
-    Alert.alert(
+  const onMakeOwner = async (member: OrgMember) => {
+    const confirmed = await confirmAsync(
       'Make Owner',
       `Make ${member.name} the org owner? You will no longer be the owner.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Make Owner',
-          onPress: async () => {
-            try {
-              await orgApi.transferOwnership(member.userId);
-              await refreshOrg();
-              await load();
-            } catch (err: any) {
-              Alert.alert(
-                'Could not transfer ownership',
-                err?.response?.data?.message ?? 'Please try again.',
-              );
-            }
-          },
-        },
-      ],
+      'Make Owner',
     );
+    if (!confirmed) return;
+    try {
+      await orgApi.transferOwnership(member.userId);
+      await refreshOrg();
+      await load();
+    } catch (err: any) {
+      Alert.alert(
+        'Could not transfer ownership',
+        err?.response?.data?.message ?? 'Please try again.',
+      );
+    }
   };
 
   const onToggleHistory = async (value: boolean) => {
@@ -109,30 +104,23 @@ export function OrgSettingsScreen({ navigation }: Props) {
     }
   };
 
-  const onRemove = (member: OrgMember) => {
-    Alert.alert(
+  const onRemove = async (member: OrgMember) => {
+    const confirmed = await confirmAsync(
       'Remove Member',
       `Remove ${member.name} from the org? They will need a new invite to rejoin.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await orgApi.removeMember(member.userId);
-              showToast(`${member.name} removed`);
-              await load();
-            } catch (err: any) {
-              Alert.alert(
-                'Could not remove member',
-                err?.response?.data?.message ?? 'Please try again.',
-              );
-            }
-          },
-        },
-      ],
+      'Remove',
     );
+    if (!confirmed) return;
+    try {
+      await orgApi.removeMember(member.userId);
+      showToast(`${member.name} removed`);
+      await load();
+    } catch (err: any) {
+      Alert.alert(
+        'Could not remove member',
+        err?.response?.data?.message ?? 'Please try again.',
+      );
+    }
   };
 
   return (

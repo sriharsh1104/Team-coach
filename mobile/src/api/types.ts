@@ -44,6 +44,8 @@ export interface OrgMember {
   avatarUrl: string | null;
   role: MembershipRole;
   isOwner: boolean;
+  /** Free Fire IGN used to auto-match scoreboard OCR rows. */
+  inGameName?: string | null;
   // In-game role tags (IGL/Sniper/...) — separate from the org role above.
   inGameRoles: string[];
 }
@@ -121,6 +123,7 @@ export interface Profile {
 }
 
 export interface UpdateProfileInput {
+  name?: string;
   roles?: string[];
   inGameName?: string;
   inGameUid?: string;
@@ -194,7 +197,22 @@ export type VoiceConfig =
   | { mode: 'self' }
   | { mode: 'hosted'; url: string; token: string };
 
-export type ExtractionStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED';
+export type ExtractionStatus =
+  | 'QUEUED'
+  | 'PROCESSING'
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'REJECTED'
+  | 'FAILED';
+
+export type StatMode = 'BR' | 'CS' | 'SCRIM' | 'TOURNAMENT';
+
+export const STAT_MODES: Array<{ mode: StatMode; label: string }> = [
+  { mode: 'BR', label: 'BR' },
+  { mode: 'CS', label: 'CS' },
+  { mode: 'SCRIM', label: 'Scrims' },
+  { mode: 'TOURNAMENT', label: 'Tournament' },
+];
 
 export interface ExtractionRow {
   rawName: string;
@@ -202,33 +220,71 @@ export interface ExtractionRow {
   kills: number;
   deaths: number;
   assists: number;
+  damage: number;
 }
 
 export interface StatExtraction {
   id: string;
+  mode: StatMode;
+  scrimEventId?: string | null;
   status: ExtractionStatus;
+  failureReason: string | null;
   mediaUrl: string | null;
   rows: ExtractionRow[];
   createdAt: string;
 }
 
+export interface RequestExtractionsInput {
+  mode: StatMode;
+  mediaPostIds: string[];
+  scrimEventId?: string;
+}
+
+export interface RequestExtractionsResponse {
+  created: StatExtraction[];
+  skipped: Array<{ mediaPostId: string; reason: string }>;
+}
+
 export interface LeaderboardRow {
   userId: string;
   name: string;
+  mode?: StatMode;
   kills: number;
   deaths: number;
   assists: number;
+  damage: number;
   matches: number;
 }
 
 export interface PlayerStatsResponse {
-  totals: { kills: number; deaths: number; assists: number };
+  mode: StatMode;
+  totals: { kills: number; deaths: number; assists: number; damage: number };
   matches: number;
   entries: Array<{
     id: string;
     kills: number;
     deaths: number;
     assists: number;
+    damage: number;
     recordedAt: string;
   }>;
+  nextCursor: string | null;
+}
+
+export interface ModeHistoryEntry {
+  id: string;
+  userId: string;
+  name: string;
+  mode: StatMode;
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  recordedAt: string;
+}
+
+export interface ModeHistoryResponse {
+  mode: StatMode;
+  entries: ModeHistoryEntry[];
+  nextCursor: string | null;
 }

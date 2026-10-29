@@ -1,97 +1,171 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { Alert } from 'react-native';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { StatsHomeScreen } from '../StatsHomeScreen';
 import * as statsApi from '../../../api/stats';
+import * as mediaApi from '../../../api/media';
+import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../../../auth/AuthContext';
 
 jest.mock('../../../api/stats');
+jest.mock('../../../api/media');
+jest.mock('../../../auth/AuthContext');
+jest.mock('../../scrims/MatchSchedulePanel', () => ({
+  MatchSchedulePanel: ({ eventType }: { eventType: string }) => {
+    const { Text } = require('react-native');
+    return <Text>{`Match panel ${eventType}`}</Text>;
+  },
+}));
+jest.mock('expo-image-picker', () => ({
+  MediaTypeOptions: { Images: 'Images' },
+  requestMediaLibraryPermissionsAsync: jest.fn(),
+  launchImageLibraryAsync: jest.fn(),
+}));
 jest.mock('@react-navigation/native', () => ({
   useFocusEffect: (cb: () => void) => require('react').useEffect(cb, []),
 }));
 
 const mockedStatsApi = statsApi as jest.Mocked<typeof statsApi>;
+const mockedMediaApi = mediaApi as jest.Mocked<typeof mediaApi>;
+const mockedImagePicker = ImagePicker as jest.Mocked<typeof ImagePicker>;
+const mockedUseAuth = useAuth as jest.Mock;
 const navigation = { navigate: jest.fn() } as any;
-
-const pendingExtraction = {
-  id: 'ext-1',
-  status: 'PENDING',
-  rows: [
-    { rawName: 'Player A', matchedUserId: null, kills: 1, deaths: 2, assists: 3 },
-    { rawName: 'Player B', matchedUserId: null, kills: 0, deaths: 0, assists: 0 },
-  ],
-  createdAt: '2026-01-01T00:00:00.000Z',
-  reviewedAt: null,
-  mediaPostId: 'post-1',
-} as any;
-
-const confirmedExtraction = { ...pendingExtraction, id: 'ext-2', status: 'CONFIRMED' };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockedStatsApi.getLeaderboard.mockResolvedValue([]);
   mockedStatsApi.listExtractions.mockResolvedValue([]);
+  mockedStatsApi.getModeHistory.mockResolvedValue({ mode: 'BR', entries: [], nextCursor: null });
+  // Coach/owner by default — matches most existing tests' assumption that
+  // the viewer can act on pending extractions; non-reviewer behavior gets
+  // its own dedicated tests below.
+  mockedUseAuth.mockReturnValue({ org: { role: 'COACH', isOwner: false } });
 });
 
 describe('StatsHomeScreen', () => {
-  it('shows the empty leaderboard message and no pending section when there is nothing to show', async () => {
+  it('shows four equal modes: BR, CS, Scrims, Tournament', async () => {
     render(<StatsHomeScreen navigation={navigation} route={{} as any} />);
 
-    await screen.findByText(/No confirmed stats yet/);
-    expect(screen.queryByText('Pending Review')).toBeNull();
+    expect(screen.getByLabelText('BR')).toBeTruthy();
+    expect(screen.getByLabelText('CS')).toBeTruthy();
+    expect(screen.getByLabelText('Scrims')).toBeTruthy();
+    expect(screen.getByLabelText('Tournament')).toBeTruthy();
+    expect(screen.getByLabelText('Upload Scoreboard')).toBeTruthy();
+    await screen.findByText(/No BR grind stats yet/);
   });
 
-  it('shows only PENDING extractions under Pending Review, not confirmed ones', async () => {
-    mockedStatsApi.listExtractions.mockResolvedValue([pendingExtraction, confirmedExtraction]);
+  it('opens Scrims schedule panel (not nested under BR) when Scrims is selected', async () => {
     render(<StatsHomeScreen navigation={navigation} route={{} as any} />);
+    fireEvent.press(screen.getByLabelText('Scrims'));
 
-    await screen.findByText('Pending Review');
-    const expectedTimestamp = new Date(pendingExtraction.createdAt).toLocaleString();
-    expect(screen.getByText(`2 player(s) · ${expectedTimestamp}`)).toBeTruthy();
-    expect(screen.getAllByText('Review →')).toHaveLength(1);
+    await screen.findByText('Match panel SCRIM');
+    expect(screen.queryByLabelText('Upload Scoreboard')).toBeNull();
   });
 
-  it('navigates to ExtractionReview with the extraction when a pending row is pressed', async () => {
-    mockedStatsApi.listExtractions.mockResolvedValue([pendingExtraction]);
+  it('opens Tournament schedule panel when Tournament is selected', async () => {
     render(<StatsHomeScreen navigation={navigation} route={{} as any} />);
+    fireEvent.press(screen.getByLabelText('Tournament'));
 
-    const row = await screen.findByText('Review →');
-    fireEvent.press(row);
-
-    expect(navigation.navigate).toHaveBeenCalledWith('ExtractionReview', {
-      extraction: pendingExtraction,
-    });
+    await screen.findByText('Match panel TOURNAMENT');
   });
 
-  it('renders leaderboard rows with rank and computed K/D', async () => {
+  it('navigates to PlayerStats from BR leaderboard, showing kills/assists/damage', async () => {
     mockedStatsApi.getLeaderboard.mockResolvedValue([
-      { userId: 'user-1', name: 'Top Frag', kills: 20, deaths: 10, assists: 5, matches: 4 },
-      { userId: 'user-2', name: 'Support', kills: 4, deaths: 0, assists: 12, matches: 4 },
+      { userId: 'user-1', name: 'Top Frag', kills: 20, deaths: 10, assists: 5, damage: 3000, matches: 4 },
     ]);
     render(<StatsHomeScreen navigation={navigation} route={{} as any} />);
 
-    await screen.findByText('Top Frag');
-    expect(screen.getByText('#1')).toBeTruthy();
-    expect(screen.getByText('4 match(es) · K/D 2.00')).toBeTruthy();
-    expect(screen.getByText('20K / 10D / 5A')).toBeTruthy();
-
-    // Support has 0 deaths: K/D falls back to raw kills, not a division-by-zero NaN.
-    expect(screen.getByText('#2')).toBeTruthy();
-    expect(screen.getByText('4 match(es) · K/D 4')).toBeTruthy();
-  });
-
-  it('navigates to PlayerStats when a leaderboard row is pressed', async () => {
-    mockedStatsApi.getLeaderboard.mockResolvedValue([
-      { userId: 'user-1', name: 'Top Frag', kills: 20, deaths: 10, assists: 5, matches: 4 },
-    ]);
-    render(<StatsHomeScreen navigation={navigation} route={{} as any} />);
-
-    const row = await screen.findByText('Top Frag');
-    fireEvent.press(row);
+    await screen.findByText('20K / 5A / 3000 DMG');
+    fireEvent.press(screen.getByText('Top Frag'));
 
     await waitFor(() =>
       expect(navigation.navigate).toHaveBeenCalledWith('PlayerStats', {
         userId: 'user-1',
         name: 'Top Frag',
+        mode: 'BR',
       }),
+    );
+  });
+
+  it('uploads multiple screenshots as one batch request, not one call per file', async () => {
+    mockedImagePicker.requestMediaLibraryPermissionsAsync.mockResolvedValue({ granted: true } as any);
+    mockedImagePicker.launchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [
+        { uri: 'file://a.jpg', fileName: 'a.jpg', mimeType: 'image/jpeg' },
+        { uri: 'file://b.jpg', fileName: 'b.jpg', mimeType: 'image/jpeg' },
+      ],
+    } as any);
+    mockedMediaApi.uploadMedia
+      .mockResolvedValueOnce({ id: 'media-1' } as any)
+      .mockResolvedValueOnce({ id: 'media-2' } as any);
+    mockedStatsApi.requestExtractions.mockResolvedValue({
+      created: [
+        { id: 'ext-1', status: 'QUEUED' } as any,
+        { id: 'ext-2', status: 'QUEUED' } as any,
+      ],
+      skipped: [],
+    });
+
+    render(<StatsHomeScreen navigation={navigation} route={{} as any} />);
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Upload Scoreboard'));
+    });
+
+    expect(mockedStatsApi.requestExtractions).toHaveBeenCalledTimes(1);
+    expect(mockedStatsApi.requestExtractions).toHaveBeenCalledWith({
+      mode: 'BR',
+      mediaPostIds: ['media-1', 'media-2'],
+    });
+    expect(navigation.navigate).not.toHaveBeenCalledWith('ExtractionReview', expect.anything());
+  });
+
+  it('shows "Processing…" for a QUEUED extraction and "Review →" for a PENDING one', async () => {
+    mockedStatsApi.listExtractions.mockResolvedValue([
+      { id: 'ext-1', status: 'QUEUED', rows: [], createdAt: new Date().toISOString() } as any,
+      { id: 'ext-2', status: 'PENDING', rows: [{}], createdAt: new Date().toISOString() } as any,
+    ]);
+    render(<StatsHomeScreen navigation={navigation} route={{} as any} />);
+
+    await screen.findByText('Processing…');
+    expect(screen.getByText('Review →')).toBeTruthy();
+  });
+
+  it('offers Retry/Discard for a FAILED extraction', async () => {
+    mockedStatsApi.listExtractions.mockResolvedValue([
+      {
+        id: 'ext-1',
+        status: 'FAILED',
+        failureReason: 'boom',
+        rows: [],
+        createdAt: new Date().toISOString(),
+      } as any,
+    ]);
+    mockedStatsApi.retryExtraction.mockResolvedValue({} as any);
+    render(<StatsHomeScreen navigation={navigation} route={{} as any} />);
+
+    await screen.findByText(/Couldn't read this screenshot/);
+    await act(async () => {
+      fireEvent.press(screen.getByText('Retry'));
+    });
+    expect(mockedStatsApi.retryExtraction).toHaveBeenCalledWith('ext-1');
+  });
+
+  it('tells a plain player a PENDING upload is awaiting the coach, instead of inviting them to review it', async () => {
+    mockedUseAuth.mockReturnValue({ org: { role: 'PLAYER', isOwner: false } });
+    mockedStatsApi.listExtractions.mockResolvedValue([
+      { id: 'ext-1', status: 'PENDING', rows: [{}], createdAt: new Date().toISOString() } as any,
+    ]);
+    render(<StatsHomeScreen navigation={navigation} route={{} as any} />);
+
+    await screen.findByText('Pending review from coach');
+    expect(screen.queryByText('Review →')).toBeNull();
+
+    fireEvent.press(screen.getByText(/player\(s\)/));
+    expect(navigation.navigate).not.toHaveBeenCalledWith(
+      'ExtractionReview',
+      expect.anything(),
     );
   });
 });

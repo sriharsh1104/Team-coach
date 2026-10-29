@@ -128,7 +128,10 @@ export class ChatService {
     };
   }
 
-  async listMessages(userId: string, channelKey = ORG_CHANNEL) {
+  // `before` is a message id cursor — pass the oldest message id currently
+  // loaded on the client to fetch the next (older) page. Omit it for the
+  // initial/most-recent page.
+  async listMessages(userId: string, channelKey = ORG_CHANNEL, before?: string) {
     const membership = await this.getMembershipForUser(userId);
     const orgId = membership.orgId;
     await this.assertChannelAccess(userId, orgId, channelKey);
@@ -156,6 +159,7 @@ export class ChatService {
       include: { sender: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
       take: HISTORY_LIMIT,
+      ...(before ? { cursor: { id: before }, skip: 1 } : {}),
     });
 
     // Role/ownership shown in chat always reflects the sender's *current*
@@ -170,6 +174,57 @@ export class ChatService {
       .map((m) =>
         this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
       );
+  }
+
+  // WhatsApp-style "chat media" gallery — every image/video shared in this
+  // one channel, newest first. Same `before` id-cursor convention as
+  // listMessages; a page shorter than HISTORY_LIMIT means there's no more.
+  async listMedia(userId: string, channelKey = ORG_CHANNEL, before?: string) {
+    const membership = await this.getMembershipForUser(userId);
+    const orgId = membership.orgId;
+    await this.assertChannelAccess(userId, orgId, channelKey);
+
+    const messages = await this.prisma.chatMessage.findMany({
+      where: { orgId, channelKey, mediaUrl: { not: null } },
+      include: { sender: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: HISTORY_LIMIT,
+      ...(before ? { cursor: { id: before }, skip: 1 } : {}),
+    });
+
+    const senderIds = [...new Set(messages.map((m) => m.senderId))];
+    const roleByUserId = await this.loadRoles(orgId, senderIds);
+    return messages.map((m) =>
+      this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+    );
+  }
+
+  // Every message in this channel whose text contains a link, newest first —
+  // the backing data for the gallery's "Links" tab. `contains: 'http'` is a
+  // simple, cheap filter (not a true URL validator); the client extracts and
+  // renders the actual link(s) from each message's text.
+  async listLinks(userId: string, channelKey = ORG_CHANNEL, before?: string) {
+    const membership = await this.getMembershipForUser(userId);
+    const orgId = membership.orgId;
+    await this.assertChannelAccess(userId, orgId, channelKey);
+
+    const messages = await this.prisma.chatMessage.findMany({
+      where: {
+        orgId,
+        channelKey,
+        text: { contains: 'http', mode: 'insensitive' },
+      },
+      include: { sender: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: HISTORY_LIMIT,
+      ...(before ? { cursor: { id: before }, skip: 1 } : {}),
+    });
+
+    const senderIds = [...new Set(messages.map((m) => m.senderId))];
+    const roleByUserId = await this.loadRoles(orgId, senderIds);
+    return messages.map((m) =>
+      this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+    );
   }
 
   async createMessage(

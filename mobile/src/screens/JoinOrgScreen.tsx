@@ -10,6 +10,11 @@ import { ButtonLabel } from '../ui/ButtonLabel';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
 
+// Org codes are always 6 characters (see org.service.ts's generateOrgCode);
+// referral tokens are always 24 (generateReferralToken) — long enough that
+// the two never collide, so one input field can accept either.
+const ORG_CODE_LENGTH = 6;
+
 export function JoinOrgScreen({}: Props) {
   const { setOrg } = useAuth();
   const [orgCode, setOrgCode] = useState('');
@@ -18,9 +23,14 @@ export function JoinOrgScreen({}: Props) {
   const onSubmit = async () => {
     setIsSubmitting(true);
     try {
+      const trimmed = orgCode.trim();
       // Role is always PLAYER on join — the org owner promotes coaches /
       // analysts from the roster afterwards.
-      const org = await orgApi.joinOrg({ orgCode: orgCode.trim() });
+      const org = await orgApi.joinOrg(
+        trimmed.length === ORG_CODE_LENGTH
+          ? { orgCode: trimmed }
+          : { referralToken: trimmed },
+      );
       setOrg({ id: org.id, name: org.name, role: org.myRole, isOwner: org.isOwner });
     } catch (err: any) {
       Alert.alert(
@@ -40,9 +50,9 @@ export function JoinOrgScreen({}: Props) {
       </Text>
       <TextInput
         style={authStyles.input}
-        placeholder="Org code (e.g. 75HCP3)"
+        placeholder="Org code or invite link"
         placeholderTextColor="#8b8f97"
-        autoCapitalize="characters"
+        autoCapitalize="none"
         value={orgCode}
         onChangeText={setOrgCode}
       />

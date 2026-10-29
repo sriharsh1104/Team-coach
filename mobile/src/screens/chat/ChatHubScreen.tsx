@@ -11,6 +11,7 @@ import * as chatApi from '../../api/chat';
 import { ChatChannel, ChatTeammate } from '../../api/types';
 import { colors } from '../../theme';
 import { ChatScreen } from './ChatScreen';
+import { ChatMediaModal } from './ChatMediaModal';
 
 interface Props {
   /** Called when loading the channel list fails — e.g. to surface a toast.
@@ -29,6 +30,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
   const [activeTitle, setActiveTitle] = useState('Team Chat');
   const [showInbox, setShowInbox] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false);
 
   const load = useCallback(async () => {
     const data = await chatApi.getChatChannels();
@@ -67,11 +69,27 @@ export function ChatHubScreen({ onLoadError }: Props) {
           <Pressable onPress={backToInbox} hitSlop={8}>
             <Text style={styles.back}>← Chats</Text>
           </Pressable>
-          <Text style={styles.chatTitle} numberOfLines={1}>
-            {activeTitle}
-          </Text>
+          <Pressable style={styles.chatTitleTouch} onPress={() => setMediaGalleryOpen(true)}>
+            <Text style={styles.chatTitle} numberOfLines={1}>
+              {activeTitle}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.mediaBtn}
+            onPress={() => setMediaGalleryOpen(true)}
+            hitSlop={8}
+            accessibilityLabel="Chat Media"
+          >
+            <Text style={styles.mediaBtnText}>Media</Text>
+          </Pressable>
         </View>
         <ChatScreen key={activeKey} embedded channelKey={activeKey} />
+        <ChatMediaModal
+          visible={mediaGalleryOpen}
+          channelKey={activeKey}
+          title={activeTitle}
+          onClose={() => setMediaGalleryOpen(false)}
+        />
       </View>
     );
   }
@@ -196,5 +214,14 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   back: { color: colors.link, fontWeight: '600' },
-  chatTitle: { flex: 1, color: colors.text, fontWeight: '700', fontSize: 16 },
+  chatTitleTouch: { flex: 1 },
+  chatTitle: { color: colors.text, fontWeight: '700', fontSize: 16 },
+  mediaBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  mediaBtnText: { color: colors.link, fontWeight: '700', fontSize: 13 },
 });

@@ -58,14 +58,9 @@ export function OrgHomeScreen({ navigation }: Props) {
         onPress: () => navigation.navigate('MediaFeed'),
       },
       {
-        key: 'scrims',
-        label: 'Scrims & Tournaments',
-        onPress: () => navigation.navigate('Scrims'),
-      },
-      {
         key: 'stats',
-        label: 'Stats',
-        onPress: () => navigation.navigate('Stats'),
+        label: 'Stats & Schedule',
+        onPress: () => navigation.navigate('Stats', { mode: 'BR' }),
       },
       {
         key: 'members',

@@ -158,16 +158,19 @@ describe('Phase 1D — Chat (e2e)', () => {
         .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
         .expect(201);
       expect(upload.body.mediaUrl).toContain('/chat/files/');
-
-      // Fire-and-forget on the server side — give it a tick to land.
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(upload.body.mediaPostId).toEqual(expect.any(String));
+      expect(upload.body.fileKey).toEqual(expect.any(String));
 
       const media = await request(server)
         .get('/media')
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
       expect(media.body).toHaveLength(1);
-      expect(media.body[0]).toMatchObject({ type: 'IMAGE', uploaderName: 'Coach' });
+      expect(media.body[0]).toMatchObject({
+        id: upload.body.mediaPostId,
+        type: 'IMAGE',
+        uploaderName: 'Coach',
+      });
       expect(media.body[0].url).toContain('/media/files/');
     });
   });
@@ -213,6 +216,138 @@ describe('Phase 1D — Chat (e2e)', () => {
       expect(res.body[0].senderRole).toBe('PLAYER');
       // The coach is the org creator in setUpOrgWithPlayer, not this sender.
       expect(res.body[0].senderIsOwner).toBe(false);
+    });
+
+    it('pages backward through older history with the `before` cursor', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: coach.user.id },
+      });
+
+      // Seeded directly (not via socket) with strictly increasing timestamps
+      // so ordering is deterministic — "msg-0" is oldest, "msg-4" newest.
+      const base = Date.now() - 10_000;
+      for (let i = 0; i < 5; i++) {
+        await prisma.chatMessage.create({
+          data: {
+            orgId: membership.orgId,
+            senderId: player.user.id,
+            text: `msg-${i}`,
+            createdAt: new Date(base + i * 1000),
+          },
+        });
+      }
+
+      const page1 = await request(server)
+        .get('/chat/messages?channelKey=org')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(page1.body.map((m: any) => m.text)).toEqual([
+        'msg-0', 'msg-1', 'msg-2', 'msg-3', 'msg-4',
+      ]);
+
+      // Ask for anything older than msg-3 — should get only msg-0..msg-2.
+      const oldestId = page1.body[3].id;
+      const page2 = await request(server)
+        .get(`/chat/messages?channelKey=org&before=${oldestId}`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(page2.body.map((m: any) => m.text)).toEqual([
+        'msg-0', 'msg-1', 'msg-2',
+      ]);
+    });
+  });
+
+  describe('GET /chat/media', () => {
+    it('requires authentication', async () => {
+      await request(server).get('/chat/media').expect(401);
+    });
+
+    it('returns only the messages in this channel that have media, not plain text ones', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: coach.user.id },
+      });
+
+      await prisma.chatMessage.create({
+        data: { orgId: membership.orgId, senderId: player.user.id, text: 'just text' },
+      });
+      await prisma.chatMessage.create({
+        data: {
+          orgId: membership.orgId,
+          senderId: player.user.id,
+          mediaUrl: '/chat/files/shot.jpg',
+          mediaType: 'IMAGE',
+        },
+      });
+      await prisma.chatMessage.create({
+        data: {
+          orgId: membership.orgId,
+          senderId: player.user.id,
+          mediaUrl: '/chat/files/clip.mp4',
+          mediaType: 'VIDEO',
+        },
+      });
+
+      const res = await request(server)
+        .get('/chat/media?channelKey=org')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(res.body).toHaveLength(2);
+      expect(res.body.map((m: any) => m.mediaType).sort()).toEqual(['IMAGE', 'VIDEO']);
+    });
+
+    it("SECURITY: never returns another channel's or another org's media", async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: coach.user.id },
+      });
+      await prisma.chatMessage.create({
+        data: {
+          orgId: membership.orgId,
+          senderId: player.user.id,
+          channelKey: 'dm:a:b',
+          mediaUrl: '/chat/files/shot.jpg',
+          mediaType: 'IMAGE',
+        },
+      });
+
+      const res = await request(server)
+        .get('/chat/media?channelKey=org')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(res.body).toHaveLength(0);
+    });
+  });
+
+  describe('GET /chat/links', () => {
+    it('requires authentication', async () => {
+      await request(server).get('/chat/links').expect(401);
+    });
+
+    it('returns only messages whose text contains a link', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: coach.user.id },
+      });
+
+      await prisma.chatMessage.create({
+        data: { orgId: membership.orgId, senderId: player.user.id, text: 'gg no re' },
+      });
+      await prisma.chatMessage.create({
+        data: {
+          orgId: membership.orgId,
+          senderId: player.user.id,
+          text: 'check this out https://example.com/clip',
+        },
+      });
+
+      const res = await request(server)
+        .get('/chat/links?channelKey=org')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].text).toContain('https://example.com/clip');
     });
   });
 

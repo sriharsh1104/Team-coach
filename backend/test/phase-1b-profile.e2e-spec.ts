@@ -87,6 +87,31 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       expect(res.body.discordUrl).toBe('https://discord.gg/example');
     });
 
+    it('lets the user rename themselves', async () => {
+      const user = await signup(server, { name: 'Original Name' });
+      const res = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ name: 'New Name' })
+        .expect(200);
+      expect(res.body.name).toBe('New Name');
+
+      const me = await request(server)
+        .get('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(200);
+      expect(me.body.name).toBe('New Name');
+    });
+
+    it('rejects an empty name', async () => {
+      const user = await signup(server);
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ name: '' })
+        .expect(400);
+    });
+
     it('rejects a role outside the fixed role list', async () => {
       const user = await signup(server);
       await request(server)

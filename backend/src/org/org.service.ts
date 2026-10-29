@@ -126,6 +126,8 @@ export class OrgService {
         avatarUrl: m.user.avatarUrl,
         role: m.role,
         isOwner: m.isOwner,
+        // Used by scoreboard OCR to match Free Fire IGNs (e.g. SES-SRI).
+        inGameName: m.user.inGameName,
         // In-game role tags (IGL/Sniper/...), separate from the org role above.
         inGameRoles: m.user.roles,
       })),

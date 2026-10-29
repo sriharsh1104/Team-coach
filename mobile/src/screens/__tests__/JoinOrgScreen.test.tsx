@@ -58,7 +58,7 @@ describe('JoinOrgScreen', () => {
     });
     render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
 
-    fireEvent.changeText(screen.getByPlaceholderText('Org code (e.g. 75HCP3)'), '  75HCP3  ');
+    fireEvent.changeText(screen.getByPlaceholderText('Org code or invite link'), '  75HCP3  ');
     await pressAndSettle('Join');
 
     expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({ orgCode: '75HCP3' });
@@ -67,6 +67,30 @@ describe('JoinOrgScreen', () => {
       name: 'Alpha Squad',
       role: 'PLAYER',
       isOwner: false,
+    });
+  });
+
+  it('joins with a pasted referral link/token (longer than a 6-char org code)', async () => {
+    const setOrg = jest.fn();
+    mockedUseAuth.mockReturnValue({ setOrg });
+    mockedOrgApi.joinOrg.mockResolvedValue({
+      id: 'org-1',
+      name: 'Alpha Squad',
+      orgCode: '75HCP3',
+      referralLink: '7vrQ3WST1LbnAM0ziUcBGrUk',
+      myRole: 'PLAYER',
+      isOwner: false,
+    });
+    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
+
+    fireEvent.changeText(
+      screen.getByPlaceholderText('Org code or invite link'),
+      '  7vrQ3WST1LbnAM0ziUcBGrUk  ',
+    );
+    await pressAndSettle('Join');
+
+    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({
+      referralToken: '7vrQ3WST1LbnAM0ziUcBGrUk',
     });
   });
 
@@ -79,7 +103,7 @@ describe('JoinOrgScreen', () => {
     });
     render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
 
-    fireEvent.changeText(screen.getByPlaceholderText('Org code (e.g. 75HCP3)'), '75HCP3');
+    fireEvent.changeText(screen.getByPlaceholderText('Org code or invite link'), '75HCP3');
     await pressAndSettle('Join');
 
     expect(alertSpy).toHaveBeenCalledWith(

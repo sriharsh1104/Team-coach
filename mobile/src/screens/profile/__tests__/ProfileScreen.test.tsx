@@ -30,53 +30,132 @@ const baseProfile = {
 
 const mockRefreshUser = jest.fn();
 
+function goToGameTab() {
+  fireEvent.press(screen.getByText('Game Profile'));
+}
+
+function goToSocialTab() {
+  fireEvent.press(screen.getByText('Social Profile'));
+}
+
 async function enterEditMode() {
   await screen.findByText('Edit');
   await act(async () => {
     fireEvent.press(screen.getByText('Edit'));
   });
-  await screen.findByText('Role(s)');
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockedUsersApi.getMyProfile.mockResolvedValue(baseProfile);
-  mockedUseAuth.mockReturnValue({ refreshUser: mockRefreshUser });
+  mockedUseAuth.mockReturnValue({
+    refreshUser: mockRefreshUser,
+    user: { email: 'player1@example.com' },
+  });
 });
 
 describe('ProfileScreen', () => {
-  describe('view mode (default, non-mustComplete)', () => {
-    it('shows a read-only view first — name, org role badge, and filled fields — with an Edit button', async () => {
+  describe('User Profile tab (default, non-mustComplete)', () => {
+    it('shows a read-only view first — name, org role badge, email, phone — with its own Edit button', async () => {
       render(<ProfileScreen />);
 
-      await screen.findByText('Player 1');
-      expect(screen.getByText('Coach (Owner)')).toBeTruthy();
+      await screen.findByText('Coach (Owner)');
+      expect(screen.getAllByText('Player 1').length).toBeGreaterThan(0);
+      expect(screen.getByText('player1@example.com')).toBeTruthy();
+      expect(screen.getByText('9999999999')).toBeTruthy();
+      expect(screen.getByText('Edit')).toBeTruthy();
+      expect(screen.queryByText('Name *')).toBeNull();
+    });
+
+    it('pressing Edit reveals name + phone inputs, pre-filled, and shows the signup email as read-only', async () => {
+      render(<ProfileScreen />);
+      await enterEditMode();
+
+      expect(screen.getByDisplayValue('Player 1')).toBeTruthy();
+      expect(screen.getByDisplayValue('9999999999')).toBeTruthy();
+      expect(screen.getByText('player1@example.com')).toBeTruthy();
+    });
+
+    it('saves a new name and phone, then returns to the view', async () => {
+      mockedUsersApi.updateMyProfile.mockResolvedValue({ ...baseProfile, name: 'New Name' });
+      render(<ProfileScreen />);
+      await enterEditMode();
+
+      fireEvent.changeText(screen.getByDisplayValue('Player 1'), 'New Name');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save'));
+      });
+
+      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
+        name: 'New Name',
+        phone: '9999999999',
+      });
+      await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
+      expect(screen.queryByText('Name *')).toBeNull();
+    });
+
+    it('blocks saving an empty name', async () => {
+      render(<ProfileScreen />);
+      await enterEditMode();
+
+      fireEvent.changeText(screen.getByDisplayValue('Player 1'), '');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save'));
+      });
+
+      expect(mockedUsersApi.updateMyProfile).not.toHaveBeenCalled();
+    });
+
+    it('shows an error alert when save fails', async () => {
+      mockedUsersApi.updateMyProfile.mockRejectedValue({
+        response: { data: { message: 'Invalid name' } },
+      });
+      render(<ProfileScreen />);
+      await enterEditMode();
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save'));
+      });
+
+      expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Invalid name');
+    });
+  });
+
+  describe('Game Profile tab', () => {
+    async function enterGameEditMode() {
+      await screen.findByText('Coach (Owner)');
+      goToGameTab();
+      await act(async () => {
+        fireEvent.press(screen.getByText('Edit'));
+      });
+      await screen.findByText('Role(s)');
+    }
+
+    it('shows a read-only view with IGN/UID/socials/devices and its own Edit button', async () => {
+      render(<ProfileScreen />);
+      await screen.findByText('Coach (Owner)');
+      goToGameTab();
+
       expect(screen.getByText('ShadowStrike')).toBeTruthy();
       expect(screen.getByText('UID-0001')).toBeTruthy();
       expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();
       expect(screen.getByText('Edit')).toBeTruthy();
-
-      // No editable inputs in view mode.
       expect(screen.queryByText('Role(s)')).toBeNull();
-      expect(screen.queryByText('Save Profile')).toBeNull();
     });
 
     it('pressing Edit reveals the editable form, pre-filled from the current profile', async () => {
       render(<ProfileScreen />);
-      await enterEditMode();
+      await enterGameEditMode();
 
       expect(screen.getByDisplayValue('ShadowStrike')).toBeTruthy();
       expect(screen.getByDisplayValue('UID-0001')).toBeTruthy();
-      expect(screen.getByDisplayValue('https://discord.gg/example')).toBeTruthy();
       expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();
     });
-  });
 
-  describe('editable form (after pressing Edit)', () => {
     it('copies the IGN field value when its Copy button is pressed', async () => {
       render(<ProfileScreen />);
-      await enterEditMode();
+      await enterGameEditMode();
 
       const copyButtons = screen.getAllByLabelText('Copy');
       await act(async () => {
@@ -86,49 +165,42 @@ describe('ProfileScreen', () => {
       expect(Clipboard.setStringAsync).toHaveBeenCalledWith('ShadowStrike');
     });
 
-    it('saves with roles toggled and empty fields sent as undefined, not empty strings, then returns to the view', async () => {
+    it('saves with roles toggled and empty fields sent as undefined, then returns to the view', async () => {
       mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
       render(<ProfileScreen />);
-      await enterEditMode();
+      await enterGameEditMode();
 
       fireEvent.press(screen.getByText('Sniper')); // add a second role
       await act(async () => {
-        fireEvent.press(screen.getByText('Save Profile'));
+        fireEvent.press(screen.getByText('Save'));
       });
 
       expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
         roles: ['IGL', 'SNIPER'],
         inGameName: 'ShadowStrike',
         inGameUid: 'UID-0001',
-        phone: '9999999999',
-        whatsappUrl: undefined,
-        instagramUrl: undefined,
-        discordUrl: 'https://discord.gg/example',
-        youtubeUrl: undefined,
       });
-      // Back to the read-only view after a successful save.
       await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
       expect(screen.queryByText('Role(s)')).toBeNull();
     });
 
     it('shows an error alert when save fails', async () => {
-      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
       mockedUsersApi.updateMyProfile.mockRejectedValue({
         response: { data: { message: 'Invalid role' } },
       });
       render(<ProfileScreen />);
-      await enterEditMode();
+      await enterGameEditMode();
 
       await act(async () => {
-        fireEvent.press(screen.getByText('Save Profile'));
+        fireEvent.press(screen.getByText('Save'));
       });
 
-      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Invalid role');
+      expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Invalid role');
     });
 
     it('blocks adding a device until both name and model are filled', async () => {
       render(<ProfileScreen />);
-      await enterEditMode();
+      await enterGameEditMode();
 
       await act(async () => {
         fireEvent.press(screen.getByText('Add Device'));
@@ -156,7 +228,7 @@ describe('ProfileScreen', () => {
         });
 
       render(<ProfileScreen />);
-      await enterEditMode();
+      await enterGameEditMode();
 
       fireEvent.changeText(screen.getByPlaceholderText('Device name (e.g. Main rig)'), 'Backup');
       fireEvent.changeText(screen.getByPlaceholderText('Device model (e.g. ROG Phone 8)'), 'iPhone 15');
@@ -176,7 +248,7 @@ describe('ProfileScreen', () => {
         .mockResolvedValueOnce({ ...baseProfile, devices: [] });
 
       render(<ProfileScreen />);
-      await enterEditMode();
+      await enterGameEditMode();
 
       await act(async () => {
         fireEvent.press(screen.getByText('Remove'));
@@ -185,69 +257,150 @@ describe('ProfileScreen', () => {
       expect(mockedUsersApi.removeDevice).toHaveBeenCalledWith('device-1');
       await waitFor(() => expect(screen.queryByText('Main rig — ROG Phone 8')).toBeNull());
     });
+
+    it('IGN/UID stay optional outside mustComplete mode — Save is never blocked', async () => {
+      mockedUsersApi.getMyProfile.mockResolvedValue({
+        ...baseProfile,
+        inGameName: null,
+        inGameUid: null,
+      });
+      mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
+      render(<ProfileScreen />);
+      await enterGameEditMode();
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save'));
+      });
+      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalled();
+    });
   });
 
-  describe('required fields (IGN / UID / Phone)', () => {
-    it('disables Save when phone is cleared, even though it was prefilled', async () => {
-      render(<ProfileScreen />);
-      await enterEditMode();
-
-      fireEvent.changeText(screen.getByDisplayValue('9999999999'), '');
+  describe('Social Profile tab', () => {
+    async function enterSocialEditMode() {
+      await screen.findByText('Coach (Owner)');
+      goToSocialTab();
       await act(async () => {
-        fireEvent.press(screen.getByText('Save Profile'));
+        fireEvent.press(screen.getByText('Edit'));
       });
+      await screen.findByText('WhatsApp');
+    }
 
-      expect(mockedUsersApi.updateMyProfile).not.toHaveBeenCalled();
+    it('shows a read-only view with the social links and its own Edit button', async () => {
+      render(<ProfileScreen />);
+      await screen.findByText('Coach (Owner)');
+      goToSocialTab();
+
+      expect(screen.getByText('https://discord.gg/example')).toBeTruthy();
+      expect(screen.getByText('Edit')).toBeTruthy();
+      expect(screen.queryByText('WhatsApp')).toBeNull();
     });
 
-    it('enables Save once IGN, UID, and phone are all filled', async () => {
+    it('shows a message when no social links are set yet', async () => {
+      mockedUsersApi.getMyProfile.mockResolvedValue({
+        ...baseProfile,
+        discordUrl: null,
+      });
+      render(<ProfileScreen />);
+      await screen.findByText('Coach (Owner)');
+      goToSocialTab();
+
+      expect(screen.getByText('No social links set yet')).toBeTruthy();
+    });
+
+    it('pressing Edit reveals the social link inputs, pre-filled', async () => {
+      render(<ProfileScreen />);
+      await enterSocialEditMode();
+
+      expect(screen.getByDisplayValue('https://discord.gg/example')).toBeTruthy();
+    });
+
+    it('saves only the social fields, with empty ones sent as undefined, then returns to the view', async () => {
+      mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
+      render(<ProfileScreen />);
+      await enterSocialEditMode();
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save'));
+      });
+
+      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
+        whatsappUrl: undefined,
+        instagramUrl: undefined,
+        discordUrl: 'https://discord.gg/example',
+        youtubeUrl: undefined,
+      });
+      await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
+      expect(screen.queryByText('WhatsApp')).toBeNull();
+    });
+
+    it('shows an error alert when save fails', async () => {
+      mockedUsersApi.updateMyProfile.mockRejectedValue({
+        response: { data: { message: 'Invalid URL' } },
+      });
+      render(<ProfileScreen />);
+      await enterSocialEditMode();
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save'));
+      });
+
+      expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Invalid URL');
+    });
+  });
+
+  describe('mustComplete mode (forced post-login gate)', () => {
+    it('starts both tabs directly in the editable form — no view-mode/Edit button', async () => {
+      render(<ProfileScreen mustComplete />);
+      await screen.findByText('Name *');
+
+      expect(screen.queryByText('Edit')).toBeNull();
+      expect(screen.getByText('Continue')).toBeTruthy();
+
+      goToGameTab();
+      await screen.findByText('Role(s)');
+      expect(screen.queryByText('Edit')).toBeNull();
+      expect(screen.getByText('Continue')).toBeTruthy();
+      expect(screen.queryByText('My Devices')).toBeNull();
+    });
+
+    it('does not call refreshUser until BOTH tabs satisfy the required fields', async () => {
       mockedUsersApi.getMyProfile.mockResolvedValue({
         ...baseProfile,
         inGameName: null,
         inGameUid: null,
         phone: null,
       });
-      mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
-      render(<ProfileScreen />);
-      await enterEditMode();
-
-      await act(async () => {
-        fireEvent.press(screen.getByText('Save Profile'));
+      mockedUsersApi.updateMyProfile.mockResolvedValue({
+        ...baseProfile,
+        inGameName: null,
+        inGameUid: null,
+        phone: '9999999999',
       });
-      expect(mockedUsersApi.updateMyProfile).not.toHaveBeenCalled();
+      render(<ProfileScreen mustComplete />);
+      await screen.findByText('Name *');
 
-      fireEvent.changeText(screen.getByPlaceholderText('Your in-game name'), 'ShadowStrike');
-      fireEvent.changeText(screen.getByPlaceholderText('Your in-game UID'), 'UID-0001');
+      // Saving the User tab alone (phone filled) isn't enough — IGN/UID still empty.
       fireEvent.changeText(screen.getByPlaceholderText('Your phone number'), '9999999999');
       await act(async () => {
-        fireEvent.press(screen.getByText('Save Profile'));
+        fireEvent.press(screen.getByText('Continue'));
       });
+      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
+        name: 'Player 1',
+        phone: '9999999999',
+      });
+      expect(mockRefreshUser).not.toHaveBeenCalled();
 
-      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalled();
-    });
-  });
-
-  describe('mustComplete mode (forced post-login gate)', () => {
-    it('starts directly in the editable form — no view-mode/Edit button', async () => {
-      render(<ProfileScreen mustComplete />);
-      await screen.findByText('Role(s)');
-
-      expect(screen.queryByText('Edit')).toBeNull();
-      expect(screen.getByText('Continue')).toBeTruthy();
-      expect(screen.queryByText('Save Profile')).toBeNull();
-      expect(screen.queryByText('My Devices')).toBeNull();
-    });
-
-    it('calls refreshUser (not the "Saved" alert) once the required fields are saved', async () => {
+      // Completing the Game tab (IGN + UID) on top of the now-saved phone
+      // satisfies isProfileComplete and triggers refreshUser.
       mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
-      render(<ProfileScreen mustComplete />);
+      goToGameTab();
       await screen.findByText('Role(s)');
-
+      fireEvent.changeText(screen.getByPlaceholderText('Your in-game name'), 'ShadowStrike');
+      fireEvent.changeText(screen.getByPlaceholderText('Your in-game UID'), 'UID-0001');
       await act(async () => {
         fireEvent.press(screen.getByText('Continue'));
       });
 
-      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalled();
       expect(mockRefreshUser).toHaveBeenCalledTimes(1);
       expect(Alert.alert).not.toHaveBeenCalledWith('Saved', expect.anything());
     });

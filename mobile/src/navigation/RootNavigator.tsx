@@ -1,6 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, View } from 'react-native';
-import { DarkTheme, NavigationContainer } from '@react-navigation/native';
+import { ActivityIndicator, Platform, View } from 'react-native';
+import { DarkTheme, NavigationContainer, NavigationState } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -61,8 +61,62 @@ const mainScreenOptions = {
   contentStyle: { backgroundColor: colors.bg },
 };
 
+// On a web page refresh, React Navigation has nothing to restore from and
+// always boots back at the default route — this persists/restores the
+// current screen across a refresh so an F5 doesn't throw the user back to
+// OrgHome. Native builds don't need this ("refresh" isn't really a native
+// concept the same way), so it's web-only.
+type NavPhase = 'auth' | 'profileSetup' | 'orgSetup' | 'main';
+const NAV_STATE_KEY = 'team-coach.navState';
+
+function computeNavPhase(
+  user: { profileComplete: boolean } | null,
+  org: unknown,
+): NavPhase {
+  if (!user) return 'auth';
+  if (!user.profileComplete) return 'profileSetup';
+  if (!org) return 'orgSetup';
+  return 'main';
+}
+
+// Persisted state is only valid for the navigator tree it was captured
+// under (Auth/ProfileSetup/OrgSetup/Main each register different route
+// names) — tagging it with the phase and only restoring on a phase match
+// avoids handing React Navigation a route name it doesn't recognize.
+function loadPersistedNavState(phase: NavPhase): NavigationState | undefined {
+  if (Platform.OS !== 'web') return undefined;
+  try {
+    const raw = localStorage.getItem(NAV_STATE_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    return parsed.phase === phase ? parsed.state : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistNavState(phase: NavPhase, state: NavigationState | undefined) {
+  if (Platform.OS !== 'web' || !state) return;
+  try {
+    localStorage.setItem(NAV_STATE_KEY, JSON.stringify({ phase, state }));
+  } catch {
+    // Private browsing / storage full — losing refresh-persistence isn't
+    // worth surfacing an error for.
+  }
+}
+
 export function RootNavigator() {
   const { isLoading, user, org, needsBiometricUnlock } = useAuth();
+  const phase = computeNavPhase(user, org);
+  // Deliberately NOT memoized with useState: RootNavigator itself mounts
+  // immediately (while isLoading is still true, before `phase` can possibly
+  // be 'main' yet), and a useState initializer only runs on THAT first
+  // render — it would permanently cache the wrong phase before auth even
+  // resolves. NavigationContainer only consults initialState on its OWN
+  // first mount (once isLoading flips false and this subtree finally
+  // renders) and ignores it on every render after, so recomputing this
+  // plain value each render is both correct and cheap.
+  const initialNavState = loadPersistedNavState(phase);
 
   if (isLoading) {
     return (
@@ -84,7 +138,11 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={sacredNavTheme}>
+    <NavigationContainer
+      theme={sacredNavTheme}
+      initialState={initialNavState}
+      onStateChange={(state) => persistNavState(phase, state)}
+    >
       {!user ? (
         <AuthStack.Navigator screenOptions={{ headerShown: false }}>
           <AuthStack.Screen name="Login" component={LoginScreen} />

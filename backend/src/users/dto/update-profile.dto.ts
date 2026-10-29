@@ -6,6 +6,7 @@ import {
   IsString,
   IsUrl,
   MaxLength,
+  MinLength,
 } from 'class-validator';
 
 // Kept as a simple constant list for now rather than an admin-editable table —
@@ -23,6 +24,12 @@ export const ROLE_OPTIONS = [
 ] as const;
 
 export class UpdateProfileDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  name?: string;
+
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(ROLE_OPTIONS.length)

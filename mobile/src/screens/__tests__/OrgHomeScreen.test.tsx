@@ -85,8 +85,8 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Chats')).toBeTruthy();
     expect(screen.getByText('Team Voice')).toBeTruthy();
     expect(screen.getByText('Media')).toBeTruthy();
-    expect(screen.getByText('Scrims & Tournaments')).toBeTruthy();
-    expect(screen.getByText('Stats')).toBeTruthy();
+    expect(screen.getByText('Stats & Schedule')).toBeTruthy();
+    expect(screen.queryByText('Scrims & Tournaments')).toBeNull();
     expect(screen.getByText('Team Members')).toBeTruthy();
     expect(screen.getByText('Org Settings')).toBeTruthy();
     expect(screen.getByText('Profile')).toBeTruthy();
@@ -110,20 +110,23 @@ describe('OrgHomeScreen', () => {
   });
 
   it.each([
-    ['Team Voice', 'Voice'],
-    ['Media', 'MediaFeed'],
-    ['Scrims & Tournaments', 'Scrims'],
-    ['Stats', 'Stats'],
-    ['Team Members', 'Members'],
-    ['Org Settings', 'OrgSettings'],
-    ['Profile', 'Profile'],
-  ])('navigates from sidebar %s -> %s', async (label, routeName) => {
+    ['Team Voice', 'Voice', undefined],
+    ['Media', 'MediaFeed', undefined],
+    ['Stats & Schedule', 'Stats', { mode: 'BR' }],
+    ['Team Members', 'Members', undefined],
+    ['Org Settings', 'OrgSettings', undefined],
+    ['Profile', 'Profile', undefined],
+  ])('navigates from sidebar %s -> %s', async (label, routeName, params) => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');
 
     fireEvent.press(screen.getByLabelText('Open Menu'));
     fireEvent.press(screen.getByText(label));
-    expect(navigation.navigate).toHaveBeenCalledWith(routeName);
+    if (params) {
+      expect(navigation.navigate).toHaveBeenCalledWith(routeName, params);
+    } else {
+      expect(navigation.navigate).toHaveBeenCalledWith(routeName);
+    }
   });
 
   it('opens a dropdown from the gear icon with Security and Logout, separated by a divider', async () => {

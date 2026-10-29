@@ -1,18 +1,14 @@
 import React from 'react';
-import { Alert } from 'react-native';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
+import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { MediaFeedScreen } from '../MediaFeedScreen';
 import * as mediaApi from '../../../api/media';
 import * as orgApi from '../../../api/org';
-import * as statsApi from '../../../api/stats';
 
 jest.mock('../../../api/media');
 jest.mock('../../../api/org');
-jest.mock('../../../api/stats');
 
 const mockedMediaApi = mediaApi as jest.Mocked<typeof mediaApi>;
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
-const mockedStatsApi = statsApi as jest.Mocked<typeof statsApi>;
 
 const navigation = { navigate: jest.fn() } as any;
 
@@ -47,7 +43,6 @@ const videoPost = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockedOrgApi.getMyOrg.mockResolvedValue(org);
   mockedMediaApi.listMedia.mockResolvedValue([imagePost, videoPost]);
 });
@@ -72,8 +67,6 @@ describe('MediaFeedScreen', () => {
     render(<MediaFeedScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Great round');
 
-    // "Player 2" also appears as the uploader name on post rows; the chip
-    // (rendered in the horizontal filter list) comes first in the tree.
     await act(async () => {
       fireEvent.press(screen.getAllByText('Player 2')[0]);
     });
@@ -81,62 +74,11 @@ describe('MediaFeedScreen', () => {
     expect(mockedMediaApi.listMedia).toHaveBeenLastCalledWith('user-2');
   });
 
-  it('has no upload entry point — media now only arrives by being sent in chat', async () => {
+  it('has no upload or OCR entry point — scoreboards upload from Stats modes', async () => {
     render(<MediaFeedScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Great round');
 
     expect(screen.queryByText('Upload Screenshot / Clip')).toBeNull();
-  });
-
-  it('requests extraction and navigates to ExtractionReview on success', async () => {
-    const extraction = { id: 'ext-1' } as any;
-    mockedStatsApi.requestExtraction.mockResolvedValue(extraction);
-    render(<MediaFeedScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Great round');
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('Extract Stats'));
-    });
-
-    expect(mockedStatsApi.requestExtraction).toHaveBeenCalledWith('post-1');
-    expect(navigation.navigate).toHaveBeenCalledWith('ExtractionReview', { extraction });
-  });
-
-  it('does not show an Extract Stats link for video posts', async () => {
-    mockedMediaApi.listMedia.mockResolvedValue([videoPost]);
-    render(<MediaFeedScreen navigation={navigation} route={{} as any} />);
-    await waitFor(() => expect(mockedMediaApi.listMedia).toHaveBeenCalled());
-
     expect(screen.queryByText('Extract Stats')).toBeNull();
-  });
-
-  it('shows "Already extracted" alert on a 409 conflict', async () => {
-    mockedStatsApi.requestExtraction.mockRejectedValue({ response: { status: 409 } });
-    render(<MediaFeedScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Great round');
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('Extract Stats'));
-    });
-
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Already extracted',
-      'This screenshot already has a stat extraction — check Stats > Pending Review.',
-    );
-    expect(navigation.navigate).not.toHaveBeenCalledWith('ExtractionReview', expect.anything());
-  });
-
-  it('shows a generic error alert for other extraction failures', async () => {
-    mockedStatsApi.requestExtraction.mockRejectedValue({
-      response: { data: { message: 'Screenshot unreadable' } },
-    });
-    render(<MediaFeedScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Great round');
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('Extract Stats'));
-    });
-
-    expect(Alert.alert).toHaveBeenCalledWith('Could not extract stats', 'Screenshot unreadable');
   });
 });

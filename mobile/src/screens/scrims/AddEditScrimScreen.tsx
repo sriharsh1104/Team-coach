@@ -15,6 +15,7 @@ import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { ScheduleDateTimeField, defaultEventTimeToPM } from '../../ui/ScheduleDateTimeField';
+import { confirmAsync } from '../../ui/confirmAsync';
 import { colors } from '../../theme';
 import { sharedStyles } from '../shared';
 
@@ -30,7 +31,9 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
   const existing = route.params?.scrim;
   const isEditing = Boolean(existing);
 
-  const [type, setType] = useState<ScrimEventType>(existing?.type ?? 'SCRIM');
+  const [type, setType] = useState<ScrimEventType>(
+    existing?.type ?? route.params?.defaultType ?? 'SCRIM',
+  );
   const [title, setTitle] = useState(existing?.title ?? '');
   const [platform, setPlatform] = useState(existing?.platform ?? '');
   const [notes, setNotes] = useState(existing?.notes ?? '');
@@ -124,19 +127,23 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
     }
   };
 
-  const onDelete = () => {
+  const onDelete = async () => {
     if (!existing) return;
-    Alert.alert('Delete Entry', `Remove "${existing.title}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await scrimsApi.deleteScrim(existing.id);
-          navigation.goBack();
-        },
-      },
-    ]);
+    const confirmed = await confirmAsync(
+      'Delete Entry',
+      `Remove "${existing.title}"?`,
+      'Delete',
+    );
+    if (!confirmed) return;
+    try {
+      await scrimsApi.deleteScrim(existing.id);
+      navigation.goBack();
+    } catch (err: any) {
+      Alert.alert(
+        'Could not delete',
+        err?.response?.data?.message?.toString() ?? 'Please try again.',
+      );
+    }
   };
 
   return (
