@@ -1,9 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { join } from 'path';
 import { MembershipRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationService, PushMessage } from '../common/push-notification.service';
+import { RealtimeService } from '../realtime/realtime.service';
+import { MediaStorageService } from './media-storage.service';
 import { UploadMediaDto } from './dto/upload-media.dto';
 
 interface FileTokenPayload {
@@ -20,6 +21,8 @@ export class MediaService {
     private readonly prisma: PrismaService,
     private readonly pushNotifications: PushNotificationService,
     private readonly jwtService: JwtService,
+    private readonly realtime: RealtimeService,
+    private readonly storage: MediaStorageService,
   ) {}
 
   async saveUpload(
@@ -60,6 +63,7 @@ export class MediaService {
     this.notifyCoaches(membership.orgId, userId, membership.user.name, type).catch(
       (err) => this.logger.warn(`Push notification failed: ${err.message}`),
     );
+    this.realtime.publish(membership.orgId, 'media.changed');
 
     return this.toResponse(post, membership.user.name, userId);
   }
@@ -86,18 +90,20 @@ export class MediaService {
     );
   }
 
-  // <Image>/<Video> components and Linking.openURL (used for video playback)
-  // can't attach an Authorization header, so file URLs carry a short-lived,
-  // single-file-scoped signed token instead of requiring the long-lived
-  // session JWT in the query string — a much smaller leak surface (one file,
-  // 15 minutes) than passing the main bearer token around.
   async buildFileUrl(fileKey: string, userId: string): Promise<string> {
+    const cloudUrl = this.storage.buildDeliveryUrl(fileKey);
+    if (cloudUrl) return cloudUrl;
+
     const payload: FileTokenPayload = { sub: userId, fileKey, purpose: 'media-file' };
     const token = await this.jwtService.signAsync(payload, { expiresIn: '15m' });
-    return `/media/files/${fileKey}?token=${token}`;
+    // Encode so Cloudinary-style keys with `/` survive path params if ever used.
+    return `/media/files/${encodeURIComponent(fileKey)}?token=${token}`;
   }
 
-  async getFileForDownload(fileKey: string, token: string | undefined) {
+  async getFileForDownload(fileKey: string, token: string | undefined): Promise<{
+    filePath?: string;
+    redirectUrl?: string;
+  }> {
     let payload: FileTokenPayload | undefined;
     if (token) {
       try {
@@ -113,10 +119,6 @@ export class MediaService {
     const membership = await this.prisma.membership.findFirst({
       where: { userId: payload.sub },
     });
-    // Re-check org membership at request time (not just at the moment the
-    // token was issued) — same 404-not-403 pattern used everywhere else in
-    // this codebase, so a guess can't distinguish "no such file" from "that
-    // file exists but isn't yours".
     const post = membership
       ? await this.prisma.mediaPost.findUnique({ where: { fileKey } })
       : null;
@@ -124,8 +126,13 @@ export class MediaService {
       throw new NotFoundException('File not found');
     }
 
-    const uploadDir = join(process.cwd(), process.env.MEDIA_UPLOAD_DIR ?? 'uploads');
-    return { filePath: join(uploadDir, fileKey) };
+    if (this.storage.isCloudinaryKey(fileKey)) {
+      const redirectUrl = this.storage.buildDeliveryUrl(fileKey);
+      if (!redirectUrl) throw new NotFoundException('File not found');
+      return { redirectUrl };
+    }
+
+    return { filePath: this.storage.localFilePath(fileKey) };
   }
 
   private async toResponse(

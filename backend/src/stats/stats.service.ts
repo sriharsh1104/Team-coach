@@ -6,12 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { readFile } from 'fs/promises';
-import { join, extname } from 'path';
 import { StatExtractionStatus, StatMode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
+import { MediaStorageService } from '../media/media-storage.service';
 import { MembershipService } from '../membership/membership.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { StatsAiService, ExtractedPlayerStat } from './stats-ai.service';
 import { UpdateExtractionRowsDto } from './dto/update-extraction-rows.dto';
 
@@ -23,14 +23,6 @@ export interface ExtractionRow {
   assists: number;
   damage: number;
 }
-
-const EXTENSION_TO_MEDIA_TYPE: Record<string, string> = {
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-};
 
 const DEFAULT_HISTORY_PAGE_SIZE = 50;
 
@@ -55,8 +47,14 @@ export class StatsService {
     private readonly configService: ConfigService,
     private readonly statsAi: StatsAiService,
     private readonly mediaService: MediaService,
+    private readonly mediaStorage: MediaStorageService,
     private readonly membershipService: MembershipService,
+    private readonly realtime: RealtimeService,
   ) {}
+
+  private notifyStatsChanged(orgId: string) {
+    this.realtime.publish(orgId, 'stats.changed');
+  }
 
   // Fast, OCR-free write — each screenshot is created as QUEUED and picked up
   // later by StatsExtractionWorkerService. A problem with one item (duplicate,
@@ -107,6 +105,9 @@ export class StatsService {
       }
     }
 
+    if (created.length > 0) {
+      this.notifyStatsChanged(membership.orgId);
+    }
     return { created, skipped };
   }
 
@@ -163,18 +164,12 @@ export class StatsService {
       const mediaPost = await this.prisma.mediaPost.findUniqueOrThrow({
         where: { id: extraction.mediaPostId },
       });
-      const uploadDir = join(
-        process.cwd(),
-        this.configService.get<string>('MEDIA_UPLOAD_DIR', 'uploads'),
-      );
-      const filePath = join(uploadDir, mediaPost.fileKey);
-      const mediaType =
-        EXTENSION_TO_MEDIA_TYPE[extname(mediaPost.fileKey).toLowerCase()];
-      if (!mediaType) {
+      const { buffer: fileBuffer, mediaType } =
+        await this.mediaStorage.readFileBuffer(mediaPost.fileKey);
+      if (!mediaType.startsWith('image/')) {
         throw new Error('Unsupported image format for extraction');
       }
 
-      const fileBuffer = await readFile(filePath);
       const extracted = await this.statsAi.extractFromImage(
         fileBuffer.toString('base64'),
         mediaType,
@@ -195,6 +190,7 @@ export class StatsService {
           status: StatExtractionStatus.PENDING,
         },
       });
+      this.notifyStatsChanged(extraction.orgId);
     } catch (err) {
       await this.prisma.statExtraction.update({
         where: { id: extractionId },
@@ -203,6 +199,7 @@ export class StatsService {
           failureReason: (err as Error).message,
         },
       });
+      this.notifyStatsChanged(extraction.orgId);
     }
   }
 
@@ -239,6 +236,7 @@ export class StatsService {
         rows: [] as unknown as object[],
       },
     });
+    this.notifyStatsChanged(membership.orgId);
     return this.toExtractionResponse(updated, userId);
   }
 
@@ -340,6 +338,7 @@ export class StatsService {
       ),
     ]);
 
+    this.notifyStatsChanged(extraction.orgId);
     return {
       confirmedRows: teammateRows.length,
       skippedRows: rows.length - teammateRows.length,
@@ -360,6 +359,7 @@ export class StatsService {
       where: { id: extraction.id },
       data: { status: StatExtractionStatus.REJECTED, reviewedAt: new Date() },
     });
+    this.notifyStatsChanged(extraction.orgId);
   }
 
   async getPlayerStats(

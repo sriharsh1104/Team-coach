@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/auth/AuthContext';
 import { BrandWatermark } from './src/brand/BrandWatermark';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { OrgRealtimeProvider } from './src/realtime/OrgRealtimeProvider';
 import { colors } from './src/theme';
 
 // Needed by both voice paths (self-hosted mediasoup-client and hosted
@@ -34,7 +35,9 @@ export default function App() {
         <BrandWatermark variant="subtle" />
         <View style={styles.foreground}>
           <AuthProvider>
-            <RootNavigator />
+            <OrgRealtimeProvider>
+              <RootNavigator />
+            </OrgRealtimeProvider>
           </AuthProvider>
         </View>
         <StatusBar style="light" />

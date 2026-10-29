@@ -31,11 +31,11 @@ const baseProfile = {
 const mockRefreshUser = jest.fn();
 
 function goToGameTab() {
-  fireEvent.press(screen.getByText('Game Profile'));
+  fireEvent.press(screen.getByText('Game'));
 }
 
 function goToSocialTab() {
-  fireEvent.press(screen.getByText('Social Profile'));
+  fireEvent.press(screen.getByText('Social'));
 }
 
 async function enterEditMode() {
@@ -292,19 +292,29 @@ describe('ProfileScreen', () => {
 
       expect(screen.getByText('https://discord.gg/example')).toBeTruthy();
       expect(screen.getByText('Edit')).toBeTruthy();
-      expect(screen.queryByText('WhatsApp')).toBeNull();
+      // Labels always show (even when not editing) — confirmed by checking
+      // we're not accidentally in the edit form (no input placeholder).
+      expect(screen.getByText('WhatsApp')).toBeTruthy();
+      expect(screen.queryByPlaceholderText('WhatsApp URL')).toBeNull();
     });
 
-    it('shows a message when no social links are set yet', async () => {
+    it('shows every platform label blank (not a "not set" message) when no social links are set yet', async () => {
       mockedUsersApi.getMyProfile.mockResolvedValue({
         ...baseProfile,
+        whatsappUrl: null,
+        instagramUrl: null,
         discordUrl: null,
+        youtubeUrl: null,
       });
       render(<ProfileScreen />);
       await screen.findByText('Coach (Owner)');
       goToSocialTab();
 
-      expect(screen.getByText('No social links set yet')).toBeTruthy();
+      expect(screen.getByText('WhatsApp')).toBeTruthy();
+      expect(screen.getByText('Instagram')).toBeTruthy();
+      expect(screen.getByText('Discord')).toBeTruthy();
+      expect(screen.getByText('YouTube')).toBeTruthy();
+      expect(screen.queryByText('No social links set yet')).toBeNull();
     });
 
     it('pressing Edit reveals the social link inputs, pre-filled', async () => {
@@ -330,7 +340,7 @@ describe('ProfileScreen', () => {
         youtubeUrl: undefined,
       });
       await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
-      expect(screen.queryByText('WhatsApp')).toBeNull();
+      expect(screen.queryByPlaceholderText('WhatsApp URL')).toBeNull();
     });
 
     it('shows an error alert when save fails', async () => {

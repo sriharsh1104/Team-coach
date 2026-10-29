@@ -44,15 +44,45 @@ describe('ChatHubScreen', () => {
     render(<ChatHubScreen />);
 
     await screen.findByText('Team Chat');
-    expect(screen.getByText('gg everyone')).toBeTruthy();
+    expect(screen.getByText(/gg everyone/)).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
   });
 
-  it('lists every teammate under Start Direct Message', async () => {
+  it('lists every teammate under Direct Messages', async () => {
     render(<ChatHubScreen />);
 
+    await screen.findByText('Direct Messages');
     await screen.findByText('Teammate');
     expect(screen.queryByText('No teammates yet.')).toBeNull();
+  });
+
+  it('keeps Team Chat separate from DM names and shows member count', async () => {
+    mockedChatApi.getChatChannels.mockResolvedValue({
+      ...channelsResponse,
+      channels: [
+        {
+          ...channelsResponse.channels[0],
+          memberCount: 2,
+        },
+        {
+          channelKey: 'dm:user-1:user-2',
+          type: 'DM' as const,
+          title: 'prashant',
+          peerUserId: 'user-2',
+          peerAvatarUrl: null,
+          memberCount: null,
+          unreadCount: 0,
+          lastMessageAt: '2026-01-02T00:00:00.000Z',
+          lastPreview: 'hey',
+        },
+      ],
+    } as any);
+    render(<ChatHubScreen />);
+
+    await screen.findByText('Team Chat');
+    expect(screen.getByText(/2 members/)).toBeTruthy();
+    expect(screen.getByText('prashant')).toBeTruthy();
+    expect(screen.getByText('Direct Messages')).toBeTruthy();
   });
 
   it('shows "No teammates yet." when there are no other members', async () => {
@@ -106,14 +136,14 @@ describe('ChatHubScreen', () => {
         ],
       } as any);
     render(<ChatHubScreen />);
-    await screen.findByText('gg everyone');
+    await screen.findByText(/gg everyone/);
 
     fireEvent.press(screen.getByText('Team Chat'));
     await screen.findByText('← Chats');
     fireEvent.press(screen.getByText('← Chats'));
 
     expect(mockedChatApi.getChatChannels).toHaveBeenCalledTimes(2);
-    await screen.findByText('gg just now');
+    await screen.findByText(/gg just now/);
   });
 
   it('opens the chat media gallery when the labeled "Media" button is pressed', async () => {

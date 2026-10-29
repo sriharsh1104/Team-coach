@@ -221,9 +221,19 @@ export function ChatScreen({
         : option === 'photo'
           ? ImagePicker.MediaTypeOptions.Images
           : ImagePicker.MediaTypeOptions.All;
+    // Pick near-full quality — compressForUpload (WhatsApp-style) shrinks
+    // bytes before the multipart POST so huge camera rolls stay manageable.
     const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({ mediaTypes, quality: 0.8 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes, quality: 0.8 });
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes,
+          quality: 1,
+          videoMaxDuration: 180,
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes,
+          quality: 1,
+          videoMaxDuration: 180,
+        });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     try {
@@ -231,6 +241,8 @@ export function ChatScreen({
         uri: asset.uri,
         fileName: asset.fileName ?? `chat-${Date.now()}.jpg`,
         mimeType: asset.mimeType ?? 'image/jpeg',
+        width: asset.width,
+        height: asset.height,
       });
       emitMessage({
         mediaUrl: uploaded.mediaUrl,

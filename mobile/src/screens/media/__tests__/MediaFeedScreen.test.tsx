@@ -81,4 +81,15 @@ describe('MediaFeedScreen', () => {
     expect(screen.queryByText('Upload Screenshot / Clip')).toBeNull();
     expect(screen.queryByText('Extract Stats')).toBeNull();
   });
+
+  it('opens the full-screen viewer when a media row is pressed', async () => {
+    render(<MediaFeedScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Great round');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('View image'));
+    });
+
+    expect(screen.getByLabelText('Close viewer')).toBeTruthy();
+  });
 });

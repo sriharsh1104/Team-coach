@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,16 @@ import {
   StatMode,
 } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
+import { SoftPressable } from '../../ui/SoftPressable';
+import { SegmentedTabs } from '../../ui/SegmentedTabs';
+import { colors } from '../../theme';
+import {
+  cacheGet,
+  cacheSet,
+  CacheKeys,
+  cacheInvalidate,
+} from '../../api/queryCache';
+import { useOrgRealtimeOptional } from '../../realtime/OrgRealtimeProvider';
 import { groupEntriesByDay } from '../stats/dayGroups';
 
 type Tab = 'upcoming' | 'past' | 'results';
@@ -50,6 +60,7 @@ export function MatchSchedulePanel({
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { user, org } = useAuth();
+  const realtime = useOrgRealtimeOptional();
   const [events, setEvents] = useState<ScrimEvent[]>([]);
   const [resultHistory, setResultHistory] = useState<ModeHistoryEntry[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -59,24 +70,57 @@ export function MatchSchedulePanel({
   const mode: StatMode = eventType === 'TOURNAMENT' ? 'TOURNAMENT' : 'SCRIM';
   const typeLabel = eventType === 'TOURNAMENT' ? 'Tournament' : 'Scrim';
 
-  const load = useCallback(async () => {
-    const [data, history] = await Promise.all([
-      scrimsApi.listScrims(),
-      statsApi.getModeHistory(mode).catch(() => ({ entries: [] as ModeHistoryEntry[] })),
-    ]);
-    setEvents(data.filter((e) => e.type === eventType));
-    setResultHistory(history.entries);
-  }, [eventType, mode]);
+  const load = useCallback(
+    async (opts?: { force?: boolean }) => {
+      const key = `${CacheKeys.scrimsList()}:${eventType}`;
+      if (!opts?.force) {
+        const cached = cacheGet<{
+          events: ScrimEvent[];
+          history: ModeHistoryEntry[];
+        }>(key);
+        if (cached) {
+          setEvents(cached.events);
+          setResultHistory(cached.history);
+          return;
+        }
+      }
+      const [data, history] = await Promise.all([
+        scrimsApi.listScrims(),
+        statsApi
+          .getModeHistory(mode)
+          .catch(() => ({ entries: [] as ModeHistoryEntry[] })),
+      ]);
+      const filtered = data.filter((e) => e.type === eventType);
+      cacheSet(key, { events: filtered, history: history.entries });
+      setEvents(filtered);
+      setResultHistory(history.entries);
+    },
+    [eventType, mode],
+  );
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
     }, [load]),
   );
 
+  useEffect(() => {
+    if (!realtime) return;
+    return realtime.subscribe((event) => {
+      if (
+        event.type !== 'scrims.changed' &&
+        event.type !== 'stats.changed'
+      ) {
+        return;
+      }
+      void load({ force: true });
+    });
+  }, [realtime, load]);
+
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await load();
+    cacheInvalidate(`${CacheKeys.scrimsList()}:${eventType}`);
+    await load({ force: true });
     setIsRefreshing(false);
   };
 
@@ -89,7 +133,7 @@ export function MatchSchedulePanel({
     if (!confirmed) return;
     try {
       await scrimsApi.deleteScrim(event.id);
-      await load();
+      await load({ force: true });
     } catch (err: any) {
       Alert.alert(
         'Could not delete',
@@ -111,7 +155,7 @@ export function MatchSchedulePanel({
     }
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
+      quality: 1,
     });
     if (picked.canceled || !picked.assets[0]) return;
 
@@ -123,6 +167,8 @@ export function MatchSchedulePanel({
         fileName: asset.fileName ?? `result-${event.id}.jpg`,
         mimeType: asset.mimeType ?? 'image/jpeg',
         caption: `${event.type} result: ${event.title}`,
+        width: asset.width,
+        height: asset.height,
       });
       const { created } = await statsApi.requestExtractions({
         mode,
@@ -163,26 +209,18 @@ export function MatchSchedulePanel({
         scoreboard to update each player&apos;s {typeLabel.toLowerCase()} stats.
       </Text>
 
-      <View style={styles.tabRow}>
-        {(
-          [
-            ['upcoming', 'Upcoming'],
-            ['past', 'Past'],
-            ['results', 'Results'],
-          ] as const
-        ).map(([value, label]) => (
-          <Pressable
-            key={value}
-            style={[styles.tab, tab === value && styles.tabActive]}
-            onPress={() => setTab(value)}
-            accessibilityRole="button"
-            accessibilityLabel={label}
-          >
-            <Text style={tab === value ? styles.tabTextActive : styles.tabText}>
-              {label}
-            </Text>
-          </Pressable>
-        ))}
+      <View style={styles.tabPad}>
+        <SegmentedTabs
+          value={tab}
+          onChange={setTab}
+          tabs={
+            [
+              { value: 'upcoming', label: 'Upcoming' },
+              { value: 'past', label: 'Past' },
+              { value: 'results', label: 'Results' },
+            ] as const
+          }
+        />
       </View>
 
       {tab !== 'results' ? (
@@ -219,33 +257,35 @@ export function MatchSchedulePanel({
               {item.notes ? <Text style={styles.notes}>{item.notes}</Text> : null}
 
               <View style={styles.actionsRow}>
-                <Pressable
+                <SoftPressable
                   style={styles.primaryAction}
                   onPress={() => uploadResultForEvent(item)}
                   disabled={uploadingEventId === item.id}
                   accessibilityRole="button"
                   accessibilityLabel="Upload Result"
+                  pressScale={0.97}
                 >
                   {uploadingEventId === item.id ? (
                     <ActivityIndicator color="#0a0a0c" />
                   ) : (
                     <Text style={styles.primaryActionText}>Upload Result</Text>
                   )}
-                </Pressable>
+                </SoftPressable>
                 {canEdit(item) && (
                   <>
-                    <Pressable
+                    <SoftPressable
                       onPress={() =>
                         navigation.navigate('AddEditScrim', { scrim: item })
                       }
+                      pressScale={0.96}
                     >
                       <Text style={styles.action}>Edit</Text>
-                    </Pressable>
-                    <Pressable onPress={() => onDelete(item)}>
-                      <Text style={[styles.action, { color: '#dc2626' }]}>
+                    </SoftPressable>
+                    <SoftPressable onPress={() => onDelete(item)} pressScale={0.96}>
+                      <Text style={[styles.action, { color: colors.danger }]}>
                         Delete
                       </Text>
-                    </Pressable>
+                    </SoftPressable>
                   </>
                 )}
               </View>
@@ -276,7 +316,7 @@ export function MatchSchedulePanel({
                 </Text>
               </View>
               {group.entries.map((entry: ModeHistoryEntry) => (
-                <Pressable
+                <SoftPressable
                   key={entry.id}
                   style={styles.dayRow}
                   onPress={() =>
@@ -286,12 +326,13 @@ export function MatchSchedulePanel({
                       mode: entry.mode,
                     })
                   }
+                  pressScale={0.985}
                 >
                   <Text style={styles.dayName}>{entry.name}</Text>
                   <Text style={styles.dayStats}>
                     {entry.kills}K / {entry.assists}A
                   </Text>
-                </Pressable>
+                </SoftPressable>
               ))}
             </View>
           )}
@@ -299,16 +340,17 @@ export function MatchSchedulePanel({
       )}
 
       <View style={styles.bottomBar}>
-        <Pressable
+        <SoftPressable
           style={styles.addBtn}
           onPress={() =>
             navigation.navigate('AddEditScrim', { defaultType: eventType })
           }
           accessibilityRole="button"
           accessibilityLabel={`Add ${typeLabel}`}
+          pressScale={0.97}
         >
           <Text style={styles.addBtnText}>+ Add {typeLabel}</Text>
-        </Pressable>
+        </SoftPressable>
       </View>
     </View>
   );
@@ -323,38 +365,22 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     paddingHorizontal: 16,
   },
-  tabRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-    paddingHorizontal: 16,
-  },
-  tab: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#5f6368',
-    borderRadius: 20,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  tabActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
-  tabText: { color: '#f2f3f5', fontWeight: '600', fontSize: 12 },
-  tabTextActive: { color: '#0a0a0c', fontWeight: '700', fontSize: 12 },
+  tabPad: { paddingHorizontal: 16 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
-  empty: { textAlign: 'center', color: '#9aa0a6', marginTop: 28 },
+  empty: { textAlign: 'center', color: colors.textMuted, marginTop: 28 },
   card: {
     borderWidth: 1,
-    borderColor: '#3a3d44',
-    borderRadius: 12,
-    padding: 12,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    padding: 14,
     marginTop: 10,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: '#f2f3f5' },
-  meta: { color: '#9aa0a6', fontSize: 12, marginTop: 6 },
-  link: { color: '#a8b0ff', marginTop: 4 },
-  notes: { color: '#9aa0a6', marginTop: 4 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
+  meta: { color: colors.textMuted, fontSize: 12, marginTop: 6 },
+  link: { color: colors.link, marginTop: 4 },
+  notes: { color: colors.textMuted, marginTop: 4 },
   actionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -363,55 +389,59 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   primaryAction: {
-    backgroundColor: '#c9ccd1',
-    borderRadius: 16,
-    paddingVertical: 6,
+    backgroundColor: colors.chrome,
+    borderRadius: 12,
+    paddingVertical: 8,
     paddingHorizontal: 14,
     minWidth: 110,
     alignItems: 'center',
   },
-  primaryActionText: { color: '#0a0a0c', fontWeight: '700', fontSize: 12 },
-  action: { color: '#a8b0ff', fontWeight: '600' },
+  primaryActionText: {
+    color: colors.chromeInk,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  action: { color: colors.link, fontWeight: '600' },
   dayCard: {
     marginTop: 10,
     borderWidth: 1,
-    borderColor: '#3a3d44',
-    borderRadius: 12,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   dayHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
     paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3a3d44',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  dayTitle: { color: '#f2f3f5', fontWeight: '700' },
-  dayTotals: { color: '#c9ccd1', fontWeight: '600', fontSize: 12 },
+  dayTitle: { color: colors.text, fontWeight: '700' },
+  dayTotals: { color: colors.chrome, fontWeight: '600', fontSize: 12 },
   dayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
   dayName: { color: '#e8eaed' },
-  dayStats: { color: '#9aa0a6', fontWeight: '600' },
+  dayStats: { color: colors.textMuted, fontWeight: '600' },
   bottomBar: {
     alignItems: 'center',
-    paddingVertical: 10,
-    borderTopWidth: 1,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#2a2d33',
-    backgroundColor: 'rgba(10,10,12,0.92)',
+    backgroundColor: 'rgba(10,10,12,0.94)',
   },
   addBtn: {
-    backgroundColor: '#c9ccd1',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 18,
-    minWidth: 120,
+    backgroundColor: colors.chrome,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    minWidth: 140,
     alignItems: 'center',
   },
-  addBtnText: { color: '#0a0a0c', fontWeight: '700', fontSize: 13 },
+  addBtnText: { color: colors.chromeInk, fontWeight: '700', fontSize: 14 },
 });

@@ -13,6 +13,7 @@ import { ChatModule } from './chat/chat.module';
 import { ScrimsModule } from './scrims/scrims.module';
 import { StatsModule } from './stats/stats.module';
 import { VoiceModule } from './voice/voice.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { VoiceModule } from './voice/voice.module';
     ScrimsModule,
     StatsModule,
     VoiceModule,
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

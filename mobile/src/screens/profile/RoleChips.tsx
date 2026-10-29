@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { ROLE_OPTIONS, ROLE_LABELS, RoleOption } from '../../api/roles';
+import { colors } from '../../theme';
+import { SoftPressable } from '../../ui/SoftPressable';
 
 export function RoleChips({
   selected,
@@ -16,16 +18,17 @@ export function RoleChips({
       {ROLE_OPTIONS.map((role) => {
         const isActive = selected.includes(role);
         return (
-          <Pressable
+          <SoftPressable
             key={role}
             disabled={!editable}
             onPress={() => onToggle?.(role)}
             style={[styles.pill, isActive && styles.pillActive]}
+            pressScale={0.96}
           >
             <Text style={isActive ? styles.pillTextActive : styles.pillText}>
               {ROLE_LABELS[role]}
             </Text>
-          </Pressable>
+          </SoftPressable>
         );
       })}
     </View>
@@ -36,13 +39,17 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: {
     borderWidth: 1,
-    borderColor: '#5f6368',
-    borderRadius: 20,
-    paddingVertical: 6,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 12,
+    paddingVertical: 8,
     paddingHorizontal: 14,
-    marginBottom: 8,
+    marginBottom: 4,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  pillActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
-  pillText: { color: '#f2f3f5' },
-  pillTextActive: { color: '#0a0a0c' },
+  pillActive: {
+    backgroundColor: colors.chrome,
+    borderColor: colors.chrome,
+  },
+  pillText: { color: colors.textMuted, fontWeight: '600' },
+  pillTextActive: { color: colors.chromeInk, fontWeight: '700' },
 });

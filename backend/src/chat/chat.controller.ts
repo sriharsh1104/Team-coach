@@ -16,25 +16,14 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtService } from '@nestjs/jwt';
 import type { Response } from 'express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
-import { customAlphabet } from 'nanoid';
+import { createReadStream, existsSync } from 'fs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MediaService } from '../media/media.service';
+import { MediaStorageService } from '../media/media-storage.service';
+import { mediaFileInterceptorOptions } from '../media/multer-options';
 import { ChatService, ORG_CHANNEL } from './chat.service';
 import { MarkReadDto } from './dto/mark-read.dto';
-
-const generateFileKey = customAlphabet(
-  'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-  32,
-);
-
-const uploadDir = join(process.cwd(), process.env.MEDIA_UPLOAD_DIR ?? 'uploads');
-if (!existsSync(uploadDir)) {
-  mkdirSync(uploadDir, { recursive: true });
-}
 
 @Controller('chat')
 export class ChatController {
@@ -44,6 +33,7 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly jwtService: JwtService,
     private readonly mediaService: MediaService,
+    private readonly storage: MediaStorageService,
   ) {}
 
   @UseGuards(JwtAuthGuard)
@@ -139,24 +129,7 @@ export class ChatController {
   @UseGuards(JwtAuthGuard)
   @Post('media')
   @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: uploadDir,
-        filename: (_req, file, cb) => {
-          cb(null, `${generateFileKey()}${extname(file.originalname)}`);
-        },
-      }),
-      limits: { fileSize: 50 * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
-        const isAllowed = /^(image|video)\//.test(file.mimetype);
-        cb(
-          isAllowed
-            ? null
-            : new BadRequestException('Only image or video files are allowed'),
-          isAllowed,
-        );
-      },
-    }),
+    FileInterceptor('file', mediaFileInterceptorOptions(50 * 1024 * 1024)),
   )
   async uploadChatMedia(
     @CurrentUser() user: { userId: string },
@@ -165,18 +138,23 @@ export class ChatController {
     if (!file) throw new BadRequestException('No file uploaded');
     await this.chatService.getOrgIdForUser(user.userId);
     const mediaType = file.mimetype.startsWith('video/') ? 'VIDEO' : 'IMAGE';
+    const stored = await this.storage.storeUploadedFile(file);
+
+    const cloudUrl = this.storage.buildDeliveryUrl(stored.fileKey);
     const token = await this.jwtService.signAsync(
-      { sub: user.userId, fileKey: file.filename, purpose: 'chat-file' },
+      { sub: user.userId, fileKey: stored.fileKey, purpose: 'chat-file' },
       { expiresIn: '7d' },
     );
+    const mediaUrl =
+      cloudUrl ??
+      `/chat/files/${encodeURIComponent(stored.fileKey)}?token=${token}`;
 
     // Mirror into Media feed so Gemini OCR / leaderboard can use the same file.
-    // Awaited so chat can return mediaPostId and trigger extraction immediately.
     let mediaPostId: string | null = null;
     try {
       const post = await this.mediaService.createPost(
         user.userId,
-        file.filename,
+        stored.fileKey,
         mediaType,
       );
       mediaPostId = post.id;
@@ -187,9 +165,9 @@ export class ChatController {
     }
 
     return {
-      mediaUrl: `/chat/files/${file.filename}?token=${token}`,
+      mediaUrl,
       mediaType,
-      fileKey: file.filename,
+      fileKey: stored.fileKey,
       mediaPostId,
     };
   }
@@ -200,6 +178,7 @@ export class ChatController {
     @Query('token') token: string | undefined,
     @Res() res: Response,
   ) {
+    const key = decodeURIComponent(fileKey);
     let payload: { sub: string; fileKey: string; purpose: string } | undefined;
     try {
       payload = await this.jwtService.verifyAsync(token ?? '');
@@ -209,13 +188,20 @@ export class ChatController {
     if (
       !payload ||
       payload.purpose !== 'chat-file' ||
-      payload.fileKey !== fileKey
+      payload.fileKey !== key
     ) {
       throw new NotFoundException('File not found');
     }
     await this.chatService.getOrgIdForUser(payload.sub);
-    const filePath = join(uploadDir, fileKey);
+
+    if (this.storage.isCloudinaryKey(key)) {
+      const redirectUrl = this.storage.buildDeliveryUrl(key);
+      if (!redirectUrl) throw new NotFoundException('File not found');
+      return res.redirect(redirectUrl);
+    }
+
+    const filePath = this.storage.localFilePath(key);
     if (!existsSync(filePath)) throw new NotFoundException('File not found');
-    return res.sendFile(filePath);
+    return createReadStream(filePath).pipe(res);
   }
 }

@@ -13,45 +13,25 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
-import { customAlphabet } from 'nanoid';
+import { createReadStream, existsSync } from 'fs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MediaService } from './media.service';
+import { MediaStorageService } from './media-storage.service';
 import { UploadMediaDto } from './dto/upload-media.dto';
-
-const generateFileKey = customAlphabet(
-  'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-  32,
-);
-
-const uploadDir = join(process.cwd(), process.env.MEDIA_UPLOAD_DIR ?? 'uploads');
-if (!existsSync(uploadDir)) {
-  mkdirSync(uploadDir, { recursive: true });
-}
+import { mediaFileInterceptorOptions } from './multer-options';
 
 @Controller('media')
 export class MediaController {
-  constructor(private readonly mediaService: MediaService) {}
+  constructor(
+    private readonly mediaService: MediaService,
+    private readonly storage: MediaStorageService,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Post()
   @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: uploadDir,
-        filename: (_req, file, cb) => {
-          cb(null, `${generateFileKey()}${extname(file.originalname)}`);
-        },
-      }),
-      limits: { fileSize: 100 * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
-        const isAllowed = /^(image|video)\//.test(file.mimetype);
-        cb(isAllowed ? null : new BadRequestException('Only image or video files are allowed'), isAllowed);
-      },
-    }),
+    FileInterceptor('file', mediaFileInterceptorOptions(100 * 1024 * 1024)),
   )
   async upload(
     @CurrentUser() user: { userId: string },
@@ -61,7 +41,8 @@ export class MediaController {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
-    return this.mediaService.saveUpload(user.userId, file.filename, dto);
+    const stored = await this.storage.storeUploadedFile(file);
+    return this.mediaService.saveUpload(user.userId, stored.fileKey, dto);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -73,21 +54,23 @@ export class MediaController {
     return this.mediaService.listOrgMedia(user.userId, uploaderId);
   }
 
-  // No JwtAuthGuard here on purpose: <Image>/<Video>/Linking.openURL can't
-  // attach an Authorization header, so this route authenticates via the
-  // short-lived, single-file-scoped `token` query param that
-  // MediaService.buildFileUrl embeds in every URL it hands out — see
-  // MediaService.getFileForDownload for the verification.
+  // No JwtAuthGuard — <Image> can't send Authorization; short-lived token
+  // query param is verified in MediaService.getFileForDownload.
   @Get('files/:fileKey')
   async getFile(
     @Param('fileKey') fileKey: string,
     @Query('token') token: string | undefined,
     @Res() res: Response,
   ) {
-    const { filePath } = await this.mediaService.getFileForDownload(
-      fileKey,
-      token,
-    );
-    res.sendFile(filePath);
+    // Express may decode `image:foo/bar` oddly — accept encoded keys too.
+    const key = decodeURIComponent(fileKey);
+    const result = await this.mediaService.getFileForDownload(key, token);
+    if (result.redirectUrl) {
+      return res.redirect(result.redirectUrl);
+    }
+    if (!result.filePath || !existsSync(result.filePath)) {
+      return res.status(404).end();
+    }
+    return createReadStream(result.filePath).pipe(res);
   }
 }

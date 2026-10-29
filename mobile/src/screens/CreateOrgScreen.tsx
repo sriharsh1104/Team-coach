@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, TextInput, Pressable, Alert, StyleSheet } from 'react-native';
+import { Text, TextInput, Alert, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
@@ -9,6 +9,7 @@ import { authStyles } from './shared';
 import { RoleSelector } from './RoleSelector';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
+import { SoftPressable } from '../ui/SoftPressable';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'CreateOrg'>;
 
@@ -49,16 +50,17 @@ export function CreateOrgScreen({}: Props) {
       />
       <Text style={roleStyles.label}>I am joining this org as a:</Text>
       <RoleSelector value={role} onChange={setRole} />
-      <Pressable
+      <SoftPressable
         style={[
           authStyles.button,
           (isSubmitting || !name) && authStyles.buttonDisabled,
         ]}
         disabled={isSubmitting || !name}
         onPress={onSubmit}
+        pressScale={0.98}
       >
         <ButtonLabel icon="add-circle">Create Org</ButtonLabel>
-      </Pressable>
+      </SoftPressable>
     </FormScreen>
   );
 }

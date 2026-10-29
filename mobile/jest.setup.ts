@@ -100,3 +100,25 @@ jest.mock('socket.io-client', () => ({
     connected: false,
   })),
 }));
+
+// Query-cache survives across tests in the same Jest worker — wipe it so
+ // cache-first screens (Stats/Media/Scrims) don't serve a previous test's data.
+beforeEach(() => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require('./src/api/queryCache').cacheInvalidate();
+});
+
+jest.mock('expo-image-manipulator', () => ({
+  SaveFormat: { JPEG: 'jpeg', PNG: 'png' },
+  manipulateAsync: jest.fn(async (uri: string) => ({
+    uri,
+    width: 100,
+    height: 100,
+  })),
+}));
+
+jest.mock('react-native-compressor', () => ({
+  Image: { compress: jest.fn(async (uri: string) => uri) },
+  Video: { compress: jest.fn(async (uri: string) => uri) },
+  getFileSize: jest.fn(async () => 1_000_000),
+}));
