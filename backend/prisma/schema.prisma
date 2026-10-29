@@ -146,9 +146,10 @@ model ScrimEvent {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  org       Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  createdBy User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  rounds    ScrimRound[]
+  org         Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy   User             @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  rounds      ScrimRound[]
+  extractions StatExtraction[]
 }
 
 // Unlimited tournament (or scrim) rounds — Round 1 mirrors scheduledAt on create.
@@ -235,9 +236,20 @@ model MediaPost {
 }
 
 enum StatExtractionStatus {
-  PENDING
+  QUEUED // just created — OCR hasn't run yet (StatsExtractionWorkerService picks it up)
+  PROCESSING // a worker tick has claimed it and is calling Gemini right now
+  PENDING // OCR finished, rows are populated, awaiting coach/owner review
   CONFIRMED
   REJECTED
+  FAILED // OCR errored — see failureReason; can be retried back to QUEUED
+}
+
+// Grind / match category for OCR scoreboards — history & leaderboards are per mode.
+enum StatMode {
+  BR
+  CS
+  SCRIM
+  TOURNAMENT
 }
 
 // AI-suggested per-player stats read from a MediaPost screenshot. Nothing in
@@ -247,17 +259,27 @@ model StatExtraction {
   orgId         String
   mediaPostId   String               @unique
   requestedById String
-  status        StatExtractionStatus @default(PENDING)
-  // Array of { rawName, matchedUserId, kills, deaths, assists }, editable while PENDING.
+  mode          StatMode             @default(BR)
+  // Set when uploaded against a specific Scrim / Tournament calendar event.
+  scrimEventId  String?
+  status        StatExtractionStatus @default(QUEUED)
+  // Set only when status is FAILED — the OCR error message, shown to the user.
+  failureReason String?
+  // Array of { rawName, matchedUserId, kills, deaths, assists, damage }, empty
+  // until OCR runs, editable while PENDING.
   rows          Json
   createdAt     DateTime             @default(now())
   reviewedAt    DateTime?
 
-  org         Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  mediaPost   MediaPost @relation(fields: [mediaPostId], references: [id], onDelete: Cascade)
-  requestedBy User      @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  org         Org         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  mediaPost   MediaPost   @relation(fields: [mediaPostId], references: [id], onDelete: Cascade)
+  requestedBy User        @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  scrimEvent  ScrimEvent? @relation(fields: [scrimEventId], references: [id], onDelete: SetNull)
 
   playerStats PlayerStat[]
+
+  @@index([orgId, mode, status])
+  @@index([scrimEventId])
 }
 
 // One confirmed row of stats for one player, created only once a human
@@ -266,9 +288,11 @@ model PlayerStat {
   id           String   @id @default(cuid())
   userId       String
   orgId        String
+  mode         StatMode @default(BR)
   kills        Int
   deaths       Int
   assists      Int
+  damage       Int      @default(0)
   recordedAt   DateTime @default(now())
   extractionId String
   createdAt    DateTime @default(now())
@@ -276,6 +300,9 @@ model PlayerStat {
   user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   org        Org            @relation(fields: [orgId], references: [id], onDelete: Cascade)
   extraction StatExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, mode])
+  @@index([userId, mode])
 }
 
 model Membership {

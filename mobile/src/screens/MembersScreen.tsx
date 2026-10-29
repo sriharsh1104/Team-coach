@@ -8,6 +8,7 @@ import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
 import { sharedStyles } from './shared';
+import { CopyButton } from './profile/CopyButton';
 
 function formatInGameRoles(roles: string[]): string | null {
   if (roles.length === 0) return null;
@@ -52,10 +53,33 @@ export function MembersScreen({ navigation }: Props) {
           />
         }
         ListHeaderComponent={
-          <Text style={sharedStyles.title}>Team Members</Text>
+          detail && (
+            <View style={styles.inviteCard}>
+              <Text style={styles.inviteTitle}>Invite Players</Text>
+              <Text style={styles.inviteHint}>
+                Share your org code or invite link so players can join.
+              </Text>
+              <View style={styles.inviteRow}>
+                <View style={styles.inviteTextCol}>
+                  <Text style={styles.inviteLabel}>Org Code</Text>
+                  <Text style={styles.inviteValue}>{detail.orgCode}</Text>
+                </View>
+                <CopyButton value={detail.orgCode} />
+              </View>
+              <View style={styles.inviteRow}>
+                <View style={styles.inviteTextCol}>
+                  <Text style={styles.inviteLabel}>Invite Link</Text>
+                  <Text style={styles.inviteValue} numberOfLines={1}>
+                    {detail.referralLink}
+                  </Text>
+                </View>
+                <CopyButton value={detail.referralLink} />
+              </View>
+            </View>
+          )
         }
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const inGameRoles = formatInGameRoles(item.inGameRoles);
           return (
             <Pressable
@@ -69,7 +93,7 @@ export function MembersScreen({ navigation }: Props) {
             >
               <View style={styles.memberInfo}>
                 <Text style={styles.memberName}>
-                  {item.name}
+                  {index + 1}. {item.name}
                   {item.isOwner ? ' (Owner)' : ''}
                 </Text>
                 {inGameRoles && (
@@ -88,6 +112,27 @@ export function MembersScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   list: { flex: 1, backgroundColor: 'transparent' },
   listContent: { padding: 24 },
+  inviteCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  inviteTitle: { color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 4 },
+  inviteHint: { color: colors.textMuted, fontSize: 12, marginBottom: 12, lineHeight: 16 },
+  inviteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  inviteTextCol: { flex: 1 },
+  inviteLabel: { color: colors.textMuted, fontSize: 12 },
+  inviteValue: { color: colors.text, fontWeight: '600', marginTop: 2 },
   memberRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

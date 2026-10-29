@@ -63,10 +63,40 @@ export class ChatController {
   listMessages(
     @CurrentUser() user: { userId: string },
     @Query('channelKey') channelKey?: string,
+    @Query('before') before?: string,
   ) {
     return this.chatService.listMessages(
       user.userId,
       channelKey?.trim() || ORG_CHANNEL,
+      before,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('media')
+  listMedia(
+    @CurrentUser() user: { userId: string },
+    @Query('channelKey') channelKey?: string,
+    @Query('before') before?: string,
+  ) {
+    return this.chatService.listMedia(
+      user.userId,
+      channelKey?.trim() || ORG_CHANNEL,
+      before,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('links')
+  listLinks(
+    @CurrentUser() user: { userId: string },
+    @Query('channelKey') channelKey?: string,
+    @Query('before') before?: string,
+  ) {
+    return this.chatService.listLinks(
+      user.userId,
+      channelKey?.trim() || ORG_CHANNEL,
+      before,
     );
   }
 
@@ -140,19 +170,27 @@ export class ChatController {
       { expiresIn: '7d' },
     );
 
-    // Mirrors this upload into the Media feed (Stats extraction reads from
-    // there) — fire-and-forget, same as other non-critical side effects in
-    // this module, so a hiccup here never fails the chat upload itself.
-    this.mediaService
-      .createPost(user.userId, file.filename, mediaType)
-      .catch((err) =>
-        this.logger.warn(`Failed to mirror chat upload into Media feed: ${err.message}`),
+    // Mirror into Media feed so Gemini OCR / leaderboard can use the same file.
+    // Awaited so chat can return mediaPostId and trigger extraction immediately.
+    let mediaPostId: string | null = null;
+    try {
+      const post = await this.mediaService.createPost(
+        user.userId,
+        file.filename,
+        mediaType,
       );
+      mediaPostId = post.id;
+    } catch (err) {
+      this.logger.warn(
+        `Failed to mirror chat upload into Media feed: ${(err as Error).message}`,
+      );
+    }
 
     return {
       mediaUrl: `/chat/files/${file.filename}?token=${token}`,
       mediaType,
       fileKey: file.filename,
+      mediaPostId,
     };
   }
 

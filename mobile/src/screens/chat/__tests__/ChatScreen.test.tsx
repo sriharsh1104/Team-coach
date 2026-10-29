@@ -1,4 +1,5 @@
 import React from 'react';
+import { FlatList } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
@@ -279,6 +280,8 @@ describe('ChatScreen', () => {
       mockedChatApi.uploadChatMedia.mockResolvedValue({
         mediaUrl: '/chat/files/a.jpg',
         mediaType: 'IMAGE',
+        fileKey: 'a.jpg',
+        mediaPostId: 'post-1',
       });
 
       fireEvent.press(screen.getByLabelText('Attach'));
@@ -295,7 +298,7 @@ describe('ChatScreen', () => {
         mediaType: 'IMAGE',
         text: undefined,
       });
-      // Panel closes once a pick completes.
+      // Panel closes once a pick completes. OCR lives under Stats modes, not chat.
       expect(screen.queryByLabelText('Photo')).toBeNull();
     });
 
@@ -568,6 +571,56 @@ describe('ChatScreen', () => {
       expect(await screen.findByText('Message Info')).toBeTruthy();
       expect(screen.getByText('Alice')).toBeTruthy();
       expect(screen.getByText('Bob')).toBeTruthy();
+    });
+  });
+
+  describe('pagination (older history)', () => {
+    function makeMessages(count: number, startIndex = 0) {
+      return Array.from({ length: count }, (_, i) => ({
+        id: `m${startIndex + i}`,
+        channelKey: 'org',
+        senderId: 'user-2',
+        senderName: 'Teammate',
+        senderRole: 'PLAYER' as const,
+        senderIsOwner: false,
+        text: `msg-${startIndex + i}`,
+        mediaUrl: null,
+        mediaType: null,
+        createdAt: new Date(2026, 0, 1, 0, startIndex + i).toISOString(),
+      }));
+    }
+
+    it('loads older messages via onStartReached and prepends them', async () => {
+      const firstPage = makeMessages(50, 50); // a full page => more may exist
+      mockedChatApi.getChatHistory.mockResolvedValueOnce(firstPage);
+      await connectAndSettle();
+      await screen.findByText('msg-50');
+
+      const olderPage = makeMessages(3, 0);
+      mockedChatApi.getChatHistory.mockResolvedValueOnce(olderPage);
+
+      const list = screen.UNSAFE_getByType(FlatList);
+      await act(async () => {
+        list.props.onStartReached();
+      });
+
+      expect(mockedChatApi.getChatHistory).toHaveBeenLastCalledWith('org', 'm50');
+      expect(screen.getByText('msg-0')).toBeTruthy();
+      expect(screen.getByText('msg-50')).toBeTruthy();
+    });
+
+    it('does not request another page once a short page signals there is no more history', async () => {
+      const shortPage = makeMessages(3, 0); // fewer than a full page => nothing older
+      mockedChatApi.getChatHistory.mockResolvedValueOnce(shortPage);
+      await connectAndSettle();
+      await screen.findByText('msg-0');
+
+      const list = screen.UNSAFE_getByType(FlatList);
+      await act(async () => {
+        list.props.onStartReached();
+      });
+
+      expect(mockedChatApi.getChatHistory).toHaveBeenCalledTimes(1);
     });
   });
 });

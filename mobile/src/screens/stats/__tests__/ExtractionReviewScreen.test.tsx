@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert } from 'react-native';
-import { render, screen, fireEvent, act } from '@testing-library/react-native';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { ExtractionReviewScreen } from '../ExtractionReviewScreen';
 import * as statsApi from '../../../api/stats';
 import * as orgApi from '../../../api/org';
@@ -16,7 +16,8 @@ const extraction = {
   id: 'ext-1',
   status: 'PENDING',
   rows: [
-    { rawName: 'PlayerOne', matchedUserId: null, kills: 5, deaths: 2, assists: 1 },
+    { rawName: 'SES-SRI', matchedUserId: null, kills: 3, deaths: 0, assists: 2, damage: 0 },
+    { rawName: 'ANNIE~GAMING', matchedUserId: null, kills: 5, deaths: 0, assists: 0, damage: 0 },
   ],
   createdAt: '2026-01-01T00:00:00.000Z',
   reviewedAt: null,
@@ -39,66 +40,79 @@ beforeEach(() => {
     id: 'org-1',
     name: 'Alpha Squad',
     orgCode: '75HCP3',
-    members: [{ userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'PLAYER' }],
+    members: [
+      {
+        userId: 'user-1',
+        name: 'prashant',
+        avatarUrl: null,
+        role: 'PLAYER',
+        inGameName: 'SES-SRI',
+      },
+    ],
   } as any);
 });
 
 describe('ExtractionReviewScreen', () => {
-  it('renders each row prefilled with the raw name and stats', async () => {
+  it('auto-matches IGN to teammate and marks outsiders as skipped', async () => {
     render(<ExtractionReviewScreen navigation={navigation} route={route} />);
 
-    expect(screen.getByDisplayValue('PlayerOne')).toBeTruthy();
-    expect(screen.getByDisplayValue('5')).toBeTruthy();
-    expect(screen.getByDisplayValue('2')).toBeTruthy();
-    expect(screen.getByDisplayValue('1')).toBeTruthy();
-    await screen.findByText('Teammate');
+    await screen.findByText('Confirm & Save 1 Teammate(s)');
+    expect(screen.getByDisplayValue('SES-SRI')).toBeTruthy();
+    expect(screen.getByText(/Teammate · Will Save/i)).toBeTruthy();
+    expect(screen.getByText(/Not On Team · Won't Save/i)).toBeTruthy();
+    expect(screen.getByDisplayValue('ANNIE~GAMING')).toBeTruthy();
   });
 
-  it('defaults to "No match" and switches to a teammate chip when pressed', async () => {
+  it('saves only matched teammate rows and ignores outsiders', async () => {
+    mockedStatsApi.confirmExtraction.mockResolvedValue({
+      confirmedRows: 1,
+      skippedRows: 1,
+    });
     render(<ExtractionReviewScreen navigation={navigation} route={route} />);
-    await screen.findByText('Teammate');
+    await screen.findByText('Confirm & Save 1 Teammate(s)');
 
-    fireEvent.press(screen.getByText('Teammate'));
-    await pressAndSettle('Confirm & Save Stats');
+    await pressAndSettle('Confirm & Save 1 Teammate(s)');
 
     expect(mockedStatsApi.updateExtractionRows).toHaveBeenCalledWith('ext-1', [
-      expect.objectContaining({ matchedUserId: 'user-2' }),
+      expect.objectContaining({
+        rawName: 'SES-SRI',
+        matchedUserId: 'user-1',
+        kills: 3,
+        assists: 2,
+      }),
     ]);
-  });
-
-  it('treats a non-numeric stat edit as 0, not NaN or a crash', async () => {
-    render(<ExtractionReviewScreen navigation={navigation} route={route} />);
-
-    fireEvent.changeText(screen.getByDisplayValue('5'), 'abc');
-    await pressAndSettle('Confirm & Save Stats');
-
-    expect(mockedStatsApi.updateExtractionRows).toHaveBeenCalledWith('ext-1', [
-      expect.objectContaining({ kills: 0 }),
-    ]);
-  });
-
-  it('saves rows, confirms, shows the result, and navigates back', async () => {
-    mockedStatsApi.confirmExtraction.mockResolvedValue({ confirmedRows: 1, skippedRows: 0 });
-    render(<ExtractionReviewScreen navigation={navigation} route={route} />);
-
-    await pressAndSettle('Confirm & Save Stats');
-
-    expect(mockedStatsApi.updateExtractionRows).toHaveBeenCalledWith('ext-1', extraction.rows);
     expect(mockedStatsApi.confirmExtraction).toHaveBeenCalledWith('ext-1');
-    expect(Alert.alert).toHaveBeenCalledWith('Stats saved', '1 player(s) updated.');
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Teammate Stats Saved',
+      expect.stringContaining('1 teammate(s) updated'),
+    );
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
-  it('mentions skipped rows in the confirmation message when some rows had no match', async () => {
-    mockedStatsApi.confirmExtraction.mockResolvedValue({ confirmedRows: 1, skippedRows: 2 });
+  it('blocks confirm when nobody is matched to a teammate', async () => {
+    mockedOrgApi.getMyOrg.mockResolvedValue({
+      id: 'org-1',
+      members: [
+        { userId: 'user-9', name: 'other', avatarUrl: null, role: 'PLAYER', inGameName: null },
+      ],
+    } as any);
     render(<ExtractionReviewScreen navigation={navigation} route={route} />);
+    await screen.findByText('Confirm & Save 0 Teammate(s)');
 
-    await pressAndSettle('Confirm & Save Stats');
+    await pressAndSettle('Confirm & Save 0 Teammate(s)');
+    expect(mockedStatsApi.confirmExtraction).not.toHaveBeenCalled();
+  });
 
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Stats saved',
-      '1 player(s) updated, 2 skipped (no player matched).',
-    );
+  it('treats a non-numeric kill edit as 0 after a teammate is matched', async () => {
+    render(<ExtractionReviewScreen navigation={navigation} route={route} />);
+    await screen.findByText('Confirm & Save 1 Teammate(s)');
+
+    fireEvent.changeText(screen.getByDisplayValue('3'), 'abc');
+    await pressAndSettle('Confirm & Save 1 Teammate(s)');
+
+    expect(mockedStatsApi.updateExtractionRows).toHaveBeenCalledWith('ext-1', [
+      expect.objectContaining({ kills: 0, matchedUserId: 'user-1' }),
+    ]);
   });
 
   it('shows an error alert and does not navigate back when saving fails', async () => {
@@ -106,8 +120,9 @@ describe('ExtractionReviewScreen', () => {
       response: { data: { message: 'Extraction already reviewed' } },
     });
     render(<ExtractionReviewScreen navigation={navigation} route={route} />);
+    await screen.findByText('Confirm & Save 1 Teammate(s)');
 
-    await pressAndSettle('Confirm & Save Stats');
+    await pressAndSettle('Confirm & Save 1 Teammate(s)');
 
     expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Extraction already reviewed');
     expect(navigation.goBack).not.toHaveBeenCalled();
@@ -120,11 +135,86 @@ describe('ExtractionReviewScreen', () => {
     });
     mockedStatsApi.rejectExtraction.mockResolvedValue(undefined as any);
     render(<ExtractionReviewScreen navigation={navigation} route={route} />);
+    await waitFor(() => expect(screen.getByText('Discard This Extraction')).toBeTruthy());
 
     await pressAndSettle('Discard This Extraction');
 
     expect(mockedStatsApi.rejectExtraction).toHaveBeenCalledWith('ext-1');
     expect(navigation.goBack).toHaveBeenCalled();
     expect(mockedStatsApi.updateExtractionRows).not.toHaveBeenCalled();
+  });
+
+  it('includes an editable Damage field, submitted alongside kills/assists', async () => {
+    render(<ExtractionReviewScreen navigation={navigation} route={route} />);
+    await screen.findByText('Confirm & Save 1 Teammate(s)');
+
+    // The matched teammate's card (SES-SRI) renders first, under "Will Save".
+    const damageInputs = screen.getAllByDisplayValue('0');
+    fireEvent.changeText(damageInputs[0], '750');
+    await pressAndSettle('Confirm & Save 1 Teammate(s)');
+
+    expect(mockedStatsApi.updateExtractionRows).toHaveBeenCalledWith('ext-1', [
+      expect.objectContaining({ rawName: 'SES-SRI', damage: 750 }),
+    ]);
+  });
+
+  describe('still-processing / failed states', () => {
+    const queuedExtraction = {
+      ...extraction,
+      status: 'QUEUED',
+      rows: [],
+      failureReason: null,
+    };
+    const queuedRoute = { params: { extraction: queuedExtraction } } as any;
+
+    it('shows a processing state and polls until the extraction is ready, instead of the row editor', async () => {
+      jest.useFakeTimers();
+      mockedStatsApi.getExtraction.mockResolvedValue({
+        ...queuedExtraction,
+        status: 'PENDING',
+        rows: extraction.rows,
+      });
+      render(<ExtractionReviewScreen navigation={navigation} route={queuedRoute} />);
+
+      expect(screen.getByText(/Still processing/)).toBeTruthy();
+      expect(screen.queryByText(/Confirm & Save/)).toBeNull();
+
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      await waitFor(() => expect(screen.getByText('Confirm & Save 1 Teammate(s)')).toBeTruthy());
+      jest.useRealTimers();
+    });
+
+    it('shows a retry/discard state for a FAILED extraction', async () => {
+      const failedRoute = {
+        params: {
+          extraction: { ...queuedExtraction, status: 'FAILED', failureReason: 'Gemini timed out' },
+        },
+      } as any;
+      mockedStatsApi.retryExtraction.mockResolvedValue({ ...queuedExtraction, status: 'QUEUED' });
+      render(<ExtractionReviewScreen navigation={navigation} route={failedRoute} />);
+
+      await screen.findByText('Gemini timed out');
+      await pressAndSettle('Retry');
+      expect(mockedStatsApi.retryExtraction).toHaveBeenCalledWith('ext-1');
+    });
+
+    it('discards a FAILED extraction and navigates back without a confirm dialog', async () => {
+      const failedRoute = {
+        params: {
+          extraction: { ...queuedExtraction, status: 'FAILED', failureReason: 'boom' },
+        },
+      } as any;
+      mockedStatsApi.rejectExtraction.mockResolvedValue(undefined as any);
+      render(<ExtractionReviewScreen navigation={navigation} route={failedRoute} />);
+
+      await screen.findByText('Discard');
+      await pressAndSettle('Discard');
+
+      expect(mockedStatsApi.rejectExtraction).toHaveBeenCalledWith('ext-1');
+      expect(navigation.goBack).toHaveBeenCalled();
+    });
   });
 });

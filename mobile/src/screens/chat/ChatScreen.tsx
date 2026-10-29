@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Socket } from 'socket.io-client';
@@ -42,6 +43,8 @@ export function ChatScreen({
   const { user } = useAuth();
   const isGroup = channelKey === 'org';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [draft, setDraft] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
@@ -62,6 +65,7 @@ export function ChatScreen({
       const history = await chatApi.getChatHistory(channelKey);
       if (cancelled) return;
       setMessages(history);
+      setHasOlderMessages(history.length === chatApi.CHAT_HISTORY_PAGE_SIZE);
       await chatApi.markChatRead(channelKey).catch(() => undefined);
       chatApi.getReadReceipts(channelKey).then((r) => {
         if (!cancelled) setReceipts(r);
@@ -170,6 +174,18 @@ export function ChatScreen({
     return 'sent';
   }, [seenByForLastMine, deliveredForLastMine]);
 
+  const onLoadOlder = useCallback(async () => {
+    if (!hasOlderMessages || isLoadingOlder || messages.length === 0) return;
+    setIsLoadingOlder(true);
+    try {
+      const older = await chatApi.getChatHistory(channelKey, messages[0].id);
+      setMessages((prev) => [...older, ...prev]);
+      setHasOlderMessages(older.length === chatApi.CHAT_HISTORY_PAGE_SIZE);
+    } finally {
+      setIsLoadingOlder(false);
+    }
+  }, [channelKey, hasOlderMessages, isLoadingOlder, messages]);
+
   const emitMessage = useCallback(
     (payload: {
       text?: string;
@@ -241,6 +257,14 @@ export function ChatScreen({
         contentContainerStyle={{ padding: 16 }}
         data={messages}
         keyExtractor={(item) => item.id}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        onStartReached={onLoadOlder}
+        onStartReachedThreshold={0.3}
+        ListHeaderComponent={
+          isLoadingOlder ? (
+            <ActivityIndicator color={colors.chrome} style={{ marginBottom: 8 }} />
+          ) : null
+        }
         renderItem={({ item }) => {
           const isMine = item.senderId === user?.id;
           const mediaUri = chatApi.resolveChatMediaUrl(item.mediaUrl);

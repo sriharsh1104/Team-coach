@@ -9,7 +9,7 @@ const RESEND_API_URL = 'https://api.resend.com/emails';
 //
 // Reads RESEND_API_KEY/RESEND_FROM_EMAIL lazily per-send (not via getOrThrow
 // in the constructor) so a backend without Resend configured yet still boots
-// — same deferred-config pattern as StatsAiService/ANTHROPIC_API_KEY.
+// — same deferred-config pattern as StatsAiService/GEMINI_API_KEY.
 @Injectable()
 export class MailerService {
   constructor(private readonly configService: ConfigService) {}

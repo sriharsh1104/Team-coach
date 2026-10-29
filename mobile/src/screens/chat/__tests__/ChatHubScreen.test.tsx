@@ -35,6 +35,8 @@ const channelsResponse = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockedChatApi.getChatChannels.mockResolvedValue(channelsResponse as any);
+  mockedChatApi.getChatMedia.mockResolvedValue([]);
+  mockedChatApi.getChatLinks.mockResolvedValue([]);
 });
 
 describe('ChatHubScreen', () => {
@@ -112,6 +114,37 @@ describe('ChatHubScreen', () => {
 
     expect(mockedChatApi.getChatChannels).toHaveBeenCalledTimes(2);
     await screen.findByText('gg just now');
+  });
+
+  it('opens the chat media gallery when the labeled "Media" button is pressed', async () => {
+    render(<ChatHubScreen />);
+    await screen.findByText('Team Chat');
+    fireEvent.press(screen.getByText('Team Chat'));
+    await screen.findByText('← Chats');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Chat Media'));
+    });
+
+    expect(mockedChatApi.getChatMedia).toHaveBeenCalledWith('org');
+    expect(mockedChatApi.getChatLinks).toHaveBeenCalledWith('org');
+    expect(screen.getByText('No media shared yet.')).toBeTruthy();
+  });
+
+  it('also opens the chat media gallery when the conversation title itself is pressed', async () => {
+    render(<ChatHubScreen />);
+    await screen.findByText('Team Chat');
+    fireEvent.press(screen.getByText('Team Chat'));
+    await screen.findByText('← Chats');
+
+    // After opening the conversation, "Team Chat" now refers to the
+    // conversation header title, not the inbox row — pressing it should open
+    // the gallery too, mirroring the WhatsApp-style "tap the header" pattern.
+    await act(async () => {
+      fireEvent.press(screen.getByText('Team Chat'));
+    });
+
+    expect(mockedChatApi.getChatMedia).toHaveBeenCalledWith('org');
   });
 
   it('calls onLoadError instead of failing silently when the channel list fails to load', async () => {

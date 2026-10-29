@@ -27,7 +27,7 @@
     "prisma:studio": "dotenv -e .env.development -- prisma studio"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.3.0",
+    "@google/generative-ai": "^0.24.1",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.0.0",

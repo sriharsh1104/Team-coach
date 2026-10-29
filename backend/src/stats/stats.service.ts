@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { readFile } from 'fs/promises';
 import { join, extname } from 'path';
-import { StatExtractionStatus } from '@prisma/client';
+import { StatExtractionStatus, StatMode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
 import { MembershipService } from '../membership/membership.service';
@@ -21,6 +21,7 @@ export interface ExtractionRow {
   kills: number;
   deaths: number;
   assists: number;
+  damage: number;
 }
 
 const EXTENSION_TO_MEDIA_TYPE: Record<string, string> = {
@@ -30,6 +31,22 @@ const EXTENSION_TO_MEDIA_TYPE: Record<string, string> = {
   '.gif': 'image/gif',
   '.webp': 'image/webp',
 };
+
+const DEFAULT_HISTORY_PAGE_SIZE = 50;
+
+export interface PageOptions {
+  cursor?: string;
+  limit?: number;
+}
+
+/** Collapse Free Fire IGN noise so "SES-SRI" / "ses sri" / "SES~SRI" still match. */
+export function normalizeIgn(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[~·•._\-\s]+/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
 
 @Injectable()
 export class StatsService {
@@ -41,13 +58,67 @@ export class StatsService {
     private readonly membershipService: MembershipService,
   ) {}
 
-  async requestExtraction(userId: string, mediaPostId: string) {
+  // Fast, OCR-free write — each screenshot is created as QUEUED and picked up
+  // later by StatsExtractionWorkerService. A problem with one item (duplicate,
+  // wrong org, video) is skipped rather than failing the whole batch.
+  async requestExtractions(
+    userId: string,
+    input: { mode: StatMode; mediaPostIds: string[]; scrimEventId?: string },
+  ) {
     const membership = await this.requireMembership(userId);
 
+    if (input.scrimEventId) {
+      const event = await this.prisma.scrimEvent.findUnique({
+        where: { id: input.scrimEventId },
+      });
+      if (!event || event.orgId !== membership.orgId) {
+        throw new NotFoundException('Scrim / tournament event not found');
+      }
+      const expectedMode =
+        event.type === 'TOURNAMENT' ? StatMode.TOURNAMENT : StatMode.SCRIM;
+      if (input.mode !== expectedMode) {
+        throw new BadRequestException(
+          `This event requires mode ${expectedMode}`,
+        );
+      }
+    }
+
+    const created: Awaited<ReturnType<typeof this.toExtractionResponse>>[] = [];
+    const skipped: { mediaPostId: string; reason: string }[] = [];
+
+    for (const mediaPostId of input.mediaPostIds) {
+      try {
+        const extraction = await this.createQueuedExtraction(
+          userId,
+          membership.orgId,
+          { mode: input.mode, mediaPostId, scrimEventId: input.scrimEventId },
+        );
+        created.push(await this.toExtractionResponse(extraction, userId));
+      } catch (err) {
+        // Only a duplicate (someone already requested extraction on this
+        // screenshot) is benign enough to skip and keep going — a genuine
+        // validation/security problem (wrong org, missing, wrong type) still
+        // fails the whole batch rather than silently dropping it.
+        if (err instanceof ConflictException) {
+          skipped.push({ mediaPostId, reason: err.message });
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    return { created, skipped };
+  }
+
+  private async createQueuedExtraction(
+    userId: string,
+    orgId: string,
+    input: { mode: StatMode; mediaPostId: string; scrimEventId?: string },
+  ) {
     const mediaPost = await this.prisma.mediaPost.findUnique({
-      where: { id: mediaPostId },
+      where: { id: input.mediaPostId },
     });
-    if (!mediaPost || mediaPost.orgId !== membership.orgId) {
+    if (!mediaPost || mediaPost.orgId !== orgId) {
       throw new NotFoundException('Media not found');
     }
     if (mediaPost.type !== 'IMAGE') {
@@ -57,7 +128,7 @@ export class StatsService {
     }
 
     const existing = await this.prisma.statExtraction.findUnique({
-      where: { mediaPostId },
+      where: { mediaPostId: mediaPost.id },
     });
     if (existing) {
       throw new ConflictException(
@@ -65,48 +136,131 @@ export class StatsService {
       );
     }
 
-    const uploadDir = join(
-      process.cwd(),
-      this.configService.get<string>('MEDIA_UPLOAD_DIR', 'uploads'),
-    );
-    const filePath = join(uploadDir, mediaPost.fileKey);
-    const mediaType =
-      EXTENSION_TO_MEDIA_TYPE[extname(mediaPost.fileKey).toLowerCase()];
-    if (!mediaType) {
-      throw new BadRequestException('Unsupported image format for extraction');
+    return this.prisma.statExtraction.create({
+      data: {
+        orgId,
+        mediaPostId: mediaPost.id,
+        requestedById: userId,
+        mode: input.mode,
+        scrimEventId: input.scrimEventId ?? null,
+        rows: [] as unknown as object[],
+      },
+      include: { mediaPost: true },
+    });
+  }
+
+  // Called by StatsExtractionWorkerService once it has atomically claimed a
+  // QUEUED row (flipped it to PROCESSING) — also callable directly (tests,
+  // retry-then-immediately-process tooling) since it doesn't re-check status
+  // itself, it just does the OCR work and records the outcome.
+  async processQueuedExtraction(extractionId: string): Promise<void> {
+    const extraction = await this.prisma.statExtraction.findUnique({
+      where: { id: extractionId },
+    });
+    if (!extraction) return;
+
+    try {
+      const mediaPost = await this.prisma.mediaPost.findUniqueOrThrow({
+        where: { id: extraction.mediaPostId },
+      });
+      const uploadDir = join(
+        process.cwd(),
+        this.configService.get<string>('MEDIA_UPLOAD_DIR', 'uploads'),
+      );
+      const filePath = join(uploadDir, mediaPost.fileKey);
+      const mediaType =
+        EXTENSION_TO_MEDIA_TYPE[extname(mediaPost.fileKey).toLowerCase()];
+      if (!mediaType) {
+        throw new Error('Unsupported image format for extraction');
+      }
+
+      const fileBuffer = await readFile(filePath);
+      const extracted = await this.statsAi.extractFromImage(
+        fileBuffer.toString('base64'),
+        mediaType,
+      );
+
+      const members = await this.prisma.user.findMany({
+        where: { memberships: { some: { orgId: extraction.orgId } } },
+        select: { id: true, name: true, inGameName: true },
+      });
+      const rows: ExtractionRow[] = extracted.map((row) =>
+        this.toRowWithMatch(row, members),
+      );
+
+      await this.prisma.statExtraction.update({
+        where: { id: extractionId },
+        data: {
+          rows: rows as unknown as object[],
+          status: StatExtractionStatus.PENDING,
+        },
+      });
+    } catch (err) {
+      await this.prisma.statExtraction.update({
+        where: { id: extractionId },
+        data: {
+          status: StatExtractionStatus.FAILED,
+          failureReason: (err as Error).message,
+        },
+      });
+    }
+  }
+
+  async retry(userId: string, extractionId: string) {
+    const membership = await this.requireMembership(userId);
+    const extraction = await this.prisma.statExtraction.findUnique({
+      where: { id: extractionId },
+    });
+    if (!extraction || extraction.orgId !== membership.orgId) {
+      throw new NotFoundException('Stat extraction not found');
+    }
+    if (extraction.status !== StatExtractionStatus.FAILED) {
+      throw new BadRequestException('Only a failed extraction can be retried');
     }
 
-    const fileBuffer = await readFile(filePath);
-    const extracted = await this.statsAi.extractFromImage(
-      fileBuffer.toString('base64'),
-      mediaType,
+    // Retry is requester-or-reviewer, not review-only — nothing has been
+    // reviewed yet, so the person who uploaded it can also just try again.
+    const isRequester = extraction.requestedById === userId;
+    const hasElevatedAccess = await this.membershipService.hasEditAccess(
+      userId,
+      membership.orgId,
     );
+    if (!isRequester && !hasElevatedAccess) {
+      throw new ForbiddenException(
+        'Only the requester, the org owner, or a coach can retry this extraction',
+      );
+    }
 
-    const members = await this.prisma.user.findMany({
-      where: { memberships: { some: { orgId: membership.orgId } } },
-      select: { id: true, name: true, inGameName: true },
-    });
-
-    const rows: ExtractionRow[] = extracted.map((row) =>
-      this.toRowWithMatch(row, members),
-    );
-
-    const extraction = await this.prisma.statExtraction.create({
+    const updated = await this.prisma.statExtraction.update({
+      where: { id: extractionId },
       data: {
-        orgId: membership.orgId,
-        mediaPostId,
-        requestedById: userId,
-        rows: rows as unknown as object[],
+        status: StatExtractionStatus.QUEUED,
+        failureReason: null,
+        rows: [] as unknown as object[],
       },
     });
+    return this.toExtractionResponse(updated, userId);
+  }
 
+  async getOne(userId: string, extractionId: string) {
+    const membership = await this.requireMembership(userId);
+    const extraction = await this.prisma.statExtraction.findUnique({
+      where: { id: extractionId },
+      include: { mediaPost: true },
+    });
+    if (!extraction || extraction.orgId !== membership.orgId) {
+      throw new NotFoundException('Stat extraction not found');
+    }
     return this.toExtractionResponse(extraction, userId);
   }
 
-  async list(userId: string) {
+  async list(userId: string, mode?: StatMode) {
     const membership = await this.requireMembership(userId);
     const extractions = await this.prisma.statExtraction.findMany({
-      where: { orgId: membership.orgId },
+      where: {
+        orgId: membership.orgId,
+        ...(mode ? { mode } : {}),
+      },
       include: { mediaPost: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -125,9 +279,14 @@ export class StatsService {
       throw new BadRequestException('Only pending extractions can be edited');
     }
 
+    const rows: ExtractionRow[] = dto.rows.map((r) => ({
+      ...r,
+      matchedUserId: r.matchedUserId ?? null,
+      damage: r.damage ?? 0,
+    }));
     const updated = await this.prisma.statExtraction.update({
       where: { id: extraction.id },
-      data: { rows: dto.rows as unknown as object[] },
+      data: { rows: rows as unknown as object[] },
     });
     return this.toExtractionResponse(updated, userId);
   }
@@ -139,38 +298,62 @@ export class StatsService {
     }
 
     const rows = extraction.rows as unknown as ExtractionRow[];
+    // Only org teammates with an explicit match are written — outsiders on the
+    // Free Fire scoreboard (unmatched IGNs) are never saved to PlayerStat.
     const confirmableRows = rows.filter((r) => r.matchedUserId);
+    if (confirmableRows.length === 0) {
+      throw new BadRequestException(
+        'Match at least one scoreboard name to a teammate (set In-Game Name on Profile) before saving.',
+      );
+    }
 
     const mediaPost = await this.prisma.mediaPost.findUniqueOrThrow({
       where: { id: extraction.mediaPostId },
     });
 
+    // Persist only the teammate rows so the extraction record matches what was saved.
+    const teammateRows = confirmableRows;
+
     await this.prisma.$transaction([
-      ...confirmableRows.map((row) =>
+      this.prisma.statExtraction.update({
+        where: { id: extraction.id },
+        data: {
+          rows: teammateRows as unknown as object[],
+          status: StatExtractionStatus.CONFIRMED,
+          reviewedAt: new Date(),
+        },
+      }),
+      ...teammateRows.map((row) =>
         this.prisma.playerStat.create({
           data: {
             userId: row.matchedUserId as string,
             orgId: extraction.orgId,
+            mode: extraction.mode,
             kills: row.kills,
             deaths: row.deaths,
             assists: row.assists,
+            damage: row.damage,
             recordedAt: mediaPost.createdAt,
             extractionId: extraction.id,
           },
         }),
       ),
-      this.prisma.statExtraction.update({
-        where: { id: extraction.id },
-        data: { status: StatExtractionStatus.CONFIRMED, reviewedAt: new Date() },
-      }),
     ]);
 
-    return { confirmedRows: confirmableRows.length, skippedRows: rows.length - confirmableRows.length };
+    return {
+      confirmedRows: teammateRows.length,
+      skippedRows: rows.length - teammateRows.length,
+    };
   }
 
   async reject(userId: string, extractionId: string) {
     const { extraction } = await this.requireReviewAccess(userId, extractionId);
-    if (extraction.status !== StatExtractionStatus.PENDING) {
+    // FAILED is dismissible too — discarding a screenshot OCR couldn't read
+    // is the same "review" decision as rejecting one the AI did read.
+    if (
+      extraction.status !== StatExtractionStatus.PENDING &&
+      extraction.status !== StatExtractionStatus.FAILED
+    ) {
       throw new BadRequestException('This extraction was already reviewed');
     }
     await this.prisma.statExtraction.update({
@@ -179,7 +362,12 @@ export class StatsService {
     });
   }
 
-  async getPlayerStats(requesterId: string, targetUserId: string) {
+  async getPlayerStats(
+    requesterId: string,
+    targetUserId: string,
+    mode: StatMode,
+    pagination: PageOptions = {},
+  ) {
     const requesterMembership = await this.requireMembership(requesterId);
     const targetMembership = await this.prisma.membership.findFirst({
       where: { userId: targetUserId },
@@ -190,41 +378,78 @@ export class StatsService {
       );
     }
 
-    const entries = await this.prisma.playerStat.findMany({
-      where: { userId: targetUserId },
-      orderBy: { recordedAt: 'desc' },
-    });
+    const limit = pagination.limit ?? DEFAULT_HISTORY_PAGE_SIZE;
+    const where = { userId: targetUserId, mode };
+
+    // Totals/matches always reflect the player's FULL history, independent of
+    // how many entries are paginated below — a cheap indexed aggregate, not a
+    // full row fetch, so it doesn't reintroduce the unbounded-scan problem.
+    const [entries, aggregate] = await Promise.all([
+      this.prisma.playerStat.findMany({
+        where,
+        orderBy: [{ recordedAt: 'desc' }, { id: 'desc' }],
+        take: limit,
+        ...(pagination.cursor
+          ? { cursor: { id: pagination.cursor }, skip: 1 }
+          : {}),
+      }),
+      this.prisma.playerStat.aggregate({
+        where,
+        _sum: { kills: true, deaths: true, assists: true, damage: true },
+        _count: true,
+      }),
+    ]);
 
     return {
-      totals: this.sumStats(entries),
-      matches: entries.length,
+      mode,
+      totals: {
+        kills: aggregate._sum.kills ?? 0,
+        deaths: aggregate._sum.deaths ?? 0,
+        assists: aggregate._sum.assists ?? 0,
+        damage: aggregate._sum.damage ?? 0,
+      },
+      matches: aggregate._count,
       entries,
+      nextCursor:
+        entries.length === limit ? entries[entries.length - 1].id : null,
     };
   }
 
-  async getOrgLeaderboard(userId: string) {
+  async getOrgLeaderboard(userId: string, mode: StatMode) {
     const membership = await this.requireMembership(userId);
     const entries = await this.prisma.playerStat.findMany({
-      where: { orgId: membership.orgId },
+      where: { orgId: membership.orgId, mode },
       include: { user: { select: { name: true } } },
     });
 
     const byUser = new Map<
       string,
-      { userId: string; name: string; kills: number; deaths: number; assists: number; matches: number }
+      {
+        userId: string;
+        name: string;
+        mode: StatMode;
+        kills: number;
+        deaths: number;
+        assists: number;
+        damage: number;
+        matches: number;
+      }
     >();
     for (const entry of entries) {
       const row = byUser.get(entry.userId) ?? {
         userId: entry.userId,
         name: entry.user.name,
+        mode,
         kills: 0,
         deaths: 0,
         assists: 0,
+        damage: 0,
         matches: 0,
       };
       row.kills += entry.kills;
       row.deaths += entry.deaths;
       row.assists += entry.assists;
+      row.damage += entry.damage;
       row.matches += 1;
       byUser.set(entry.userId, row);
     }
@@ -232,33 +457,60 @@ export class StatsService {
     return [...byUser.values()].sort((a, b) => b.kills - a.kills);
   }
 
-  private sumStats(entries: { kills: number; deaths: number; assists: number }[]) {
-    return entries.reduce(
-      (acc, e) => ({
-        kills: acc.kills + e.kills,
-        deaths: acc.deaths + e.deaths,
-        assists: acc.assists + e.assists,
-      }),
-      { kills: 0, deaths: 0, assists: 0 },
-    );
+  /** Confirmed match rows for a mode, newest first — client groups by calendar day. */
+  async getModeHistory(
+    userId: string,
+    mode: StatMode,
+    pagination: PageOptions = {},
+  ) {
+    const membership = await this.requireMembership(userId);
+    const limit = pagination.limit ?? DEFAULT_HISTORY_PAGE_SIZE;
+    const entries = await this.prisma.playerStat.findMany({
+      where: { orgId: membership.orgId, mode },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: [{ recordedAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+      ...(pagination.cursor
+        ? { cursor: { id: pagination.cursor }, skip: 1 }
+        : {}),
+    });
+
+    return {
+      mode,
+      entries: entries.map((e) => ({
+        id: e.id,
+        userId: e.userId,
+        name: e.user.name,
+        mode,
+        kills: e.kills,
+        deaths: e.deaths,
+        assists: e.assists,
+        damage: e.damage,
+        recordedAt: e.recordedAt,
+      })),
+      nextCursor:
+        entries.length === limit ? entries[entries.length - 1].id : null,
+    };
   }
 
   private toRowWithMatch(
     extracted: ExtractedPlayerStat,
     members: { id: string; name: string; inGameName: string | null }[],
   ): ExtractionRow {
-    const normalized = extracted.name.trim().toLowerCase();
-    const match = members.find(
-      (m) =>
-        m.name.toLowerCase() === normalized ||
-        m.inGameName?.toLowerCase() === normalized,
-    );
+    const raw = extracted.name.trim();
+    const key = normalizeIgn(raw);
+    // Prefer in-game name (Free Fire IGN) over app display name.
+    const match =
+      members.find((m) => m.inGameName && normalizeIgn(m.inGameName) === key) ??
+      members.find((m) => normalizeIgn(m.name) === key) ??
+      null;
     return {
-      rawName: extracted.name,
+      rawName: raw,
       matchedUserId: match?.id ?? null,
       kills: extracted.kills,
       deaths: extracted.deaths,
       assists: extracted.assists,
+      damage: extracted.damage,
     };
   }
 
@@ -281,14 +533,13 @@ export class StatsService {
       throw new NotFoundException('Stat extraction not found');
     }
 
-    const isRequester = extraction.requestedById === userId;
     const hasElevatedAccess = await this.membershipService.hasEditAccess(
       userId,
       membership.orgId,
     );
-    if (!isRequester && !hasElevatedAccess) {
+    if (!hasElevatedAccess) {
       throw new ForbiddenException(
-        'Only the requester, the org owner, or a coach can review this extraction',
+        'Only the org owner or a coach can review this extraction',
       );
     }
 
@@ -298,7 +549,10 @@ export class StatsService {
   private async toExtractionResponse(
     extraction: {
       id: string;
+      mode: StatMode;
+      scrimEventId?: string | null;
       status: StatExtractionStatus;
+      failureReason?: string | null;
       rows: unknown;
       createdAt: Date;
       reviewedAt: Date | null;
@@ -309,7 +563,10 @@ export class StatsService {
   ) {
     return {
       id: extraction.id,
+      mode: extraction.mode,
+      scrimEventId: extraction.scrimEventId ?? null,
       status: extraction.status,
+      failureReason: extraction.failureReason ?? null,
       rows: extraction.rows as unknown as ExtractionRow[],
       createdAt: extraction.createdAt,
       reviewedAt: extraction.reviewedAt,
