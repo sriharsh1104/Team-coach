@@ -34,6 +34,10 @@ function goToGameTab() {
   fireEvent.press(screen.getByText('Game'));
 }
 
+function goToDevicesTab() {
+  fireEvent.press(screen.getByText('Devices'));
+}
+
 function goToSocialTab() {
   fireEvent.press(screen.getByText('Social'));
 }
@@ -132,14 +136,14 @@ describe('ProfileScreen', () => {
       await screen.findByText('Role(s)');
     }
 
-    it('shows a read-only view with IGN/UID/socials/devices and its own Edit button', async () => {
+    it('shows a read-only view with IGN/UID and its own Edit button (devices live on Devices tab)', async () => {
       render(<ProfileScreen />);
       await screen.findByText('Coach (Owner)');
       goToGameTab();
 
       expect(screen.getByText('ShadowStrike')).toBeTruthy();
       expect(screen.getByText('UID-0001')).toBeTruthy();
-      expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();
+      expect(screen.queryByText('Main rig — ROG Phone 8')).toBeNull();
       expect(screen.getByText('Edit')).toBeTruthy();
       expect(screen.queryByText('Role(s)')).toBeNull();
     });
@@ -150,7 +154,9 @@ describe('ProfileScreen', () => {
 
       expect(screen.getByDisplayValue('ShadowStrike')).toBeTruthy();
       expect(screen.getByDisplayValue('UID-0001')).toBeTruthy();
-      expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();
+      expect(screen.getByText('Primary rusher')).toBeTruthy();
+      expect(screen.getByText('Grenadier/support')).toBeTruthy();
+      expect(screen.queryByText('Add Device')).toBeNull();
     });
 
     it('copies the IGN field value when its Copy button is pressed', async () => {
@@ -198,66 +204,6 @@ describe('ProfileScreen', () => {
       expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Invalid role');
     });
 
-    it('blocks adding a device until both name and model are filled', async () => {
-      render(<ProfileScreen />);
-      await enterGameEditMode();
-
-      await act(async () => {
-        fireEvent.press(screen.getByText('Add Device'));
-      });
-      expect(mockedUsersApi.addDevice).not.toHaveBeenCalled();
-
-      fireEvent.changeText(screen.getByPlaceholderText('Device name (e.g. Main rig)'), 'Backup');
-      await act(async () => {
-        fireEvent.press(screen.getByText('Add Device'));
-      });
-      expect(mockedUsersApi.addDevice).not.toHaveBeenCalled(); // model still empty
-    });
-
-    it('adds a device, clears the inputs, and reloads the device list', async () => {
-      mockedUsersApi.addDevice.mockResolvedValue({
-        id: 'device-2',
-        name: 'Backup',
-        model: 'iPhone 15',
-      });
-      mockedUsersApi.getMyProfile
-        .mockResolvedValueOnce(baseProfile)
-        .mockResolvedValueOnce({
-          ...baseProfile,
-          devices: [...baseProfile.devices, { id: 'device-2', name: 'Backup', model: 'iPhone 15' }],
-        });
-
-      render(<ProfileScreen />);
-      await enterGameEditMode();
-
-      fireEvent.changeText(screen.getByPlaceholderText('Device name (e.g. Main rig)'), 'Backup');
-      fireEvent.changeText(screen.getByPlaceholderText('Device model (e.g. ROG Phone 8)'), 'iPhone 15');
-      await act(async () => {
-        fireEvent.press(screen.getByText('Add Device'));
-      });
-
-      expect(mockedUsersApi.addDevice).toHaveBeenCalledWith('Backup', 'iPhone 15');
-      await waitFor(() => expect(screen.getByText('Backup — iPhone 15')).toBeTruthy());
-      expect(screen.getByPlaceholderText('Device name (e.g. Main rig)').props.value).toBe('');
-    });
-
-    it('removes a device and reloads the list', async () => {
-      mockedUsersApi.removeDevice.mockResolvedValue(undefined as any);
-      mockedUsersApi.getMyProfile
-        .mockResolvedValueOnce(baseProfile)
-        .mockResolvedValueOnce({ ...baseProfile, devices: [] });
-
-      render(<ProfileScreen />);
-      await enterGameEditMode();
-
-      await act(async () => {
-        fireEvent.press(screen.getByText('Remove'));
-      });
-
-      expect(mockedUsersApi.removeDevice).toHaveBeenCalledWith('device-1');
-      await waitFor(() => expect(screen.queryByText('Main rig — ROG Phone 8')).toBeNull());
-    });
-
     it('IGN/UID stay optional outside mustComplete mode — Save is never blocked', async () => {
       mockedUsersApi.getMyProfile.mockResolvedValue({
         ...baseProfile,
@@ -272,6 +218,69 @@ describe('ProfileScreen', () => {
         fireEvent.press(screen.getByText('Save'));
       });
       expect(mockedUsersApi.updateMyProfile).toHaveBeenCalled();
+    });
+  });
+
+  describe('Devices Profile tab', () => {
+    async function enterDevicesEditMode() {
+      await screen.findByText('Coach (Owner)');
+      goToDevicesTab();
+      await act(async () => {
+        fireEvent.press(screen.getByText('Edit'));
+      });
+      await screen.findByText('Add Device');
+    }
+
+    it('shows a read-only list with Edit — add/remove only after Edit', async () => {
+      render(<ProfileScreen />);
+      await screen.findByText('Coach (Owner)');
+      goToDevicesTab();
+
+      expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();
+      expect(screen.getByText('Edit')).toBeTruthy();
+      expect(screen.queryByText('Add Device')).toBeNull();
+      expect(screen.queryByText('Remove')).toBeNull();
+    });
+
+    it('lets you add and remove devices after pressing Edit', async () => {
+      mockedUsersApi.addDevice.mockResolvedValue({
+        id: 'device-2',
+        name: 'Backup',
+        model: 'iPhone 15',
+      });
+      mockedUsersApi.removeDevice.mockResolvedValue(undefined as any);
+      mockedUsersApi.getMyProfile
+        .mockResolvedValueOnce(baseProfile)
+        .mockResolvedValueOnce({
+          ...baseProfile,
+          devices: [...baseProfile.devices, { id: 'device-2', name: 'Backup', model: 'iPhone 15' }],
+        })
+        .mockResolvedValueOnce({
+          ...baseProfile,
+          devices: [{ id: 'device-2', name: 'Backup', model: 'iPhone 15' }],
+        });
+
+      render(<ProfileScreen />);
+      await enterDevicesEditMode();
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Add Device'));
+      });
+      expect(mockedUsersApi.addDevice).not.toHaveBeenCalled();
+
+      fireEvent.changeText(screen.getByPlaceholderText('Device name (e.g. Main rig)'), 'Backup');
+      fireEvent.changeText(screen.getByPlaceholderText('Device model (e.g. ROG Phone 8)'), 'iPhone 15');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Add Device'));
+      });
+
+      expect(mockedUsersApi.addDevice).toHaveBeenCalledWith('Backup', 'iPhone 15');
+      await waitFor(() => expect(screen.getByText('Backup — iPhone 15')).toBeTruthy());
+
+      await act(async () => {
+        fireEvent.press(screen.getAllByText('Remove')[0]);
+      });
+      expect(mockedUsersApi.removeDevice).toHaveBeenCalledWith('device-1');
     });
   });
 

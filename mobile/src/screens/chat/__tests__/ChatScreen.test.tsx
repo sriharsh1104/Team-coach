@@ -64,6 +64,7 @@ beforeEach(() => {
   mockedChatApi.markChatRead = jest.fn().mockResolvedValue({ unreadCount: 0 });
   mockedChatApi.getReadReceipts = jest.fn().mockResolvedValue([]);
   mockedChatApi.getDeliveryReceipts = jest.fn().mockResolvedValue([]);
+  mockedChatApi.searchChatMessages = jest.fn().mockResolvedValue([]);
   mockedChatApi.resolveChatMediaUrl = jest.fn(
     (url) => (url ? `http://localhost:3000${url}` : null),
   ) as any;
@@ -621,6 +622,69 @@ describe('ChatScreen', () => {
       });
 
       expect(mockedChatApi.getChatHistory).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('in-chat search', () => {
+    it('debounces, searches this channel, and keeps the conversation on screen', async () => {
+      jest.useFakeTimers();
+      mockedChatApi.getChatHistory.mockResolvedValue([
+        {
+          id: 'm1',
+          senderId: 'user-2',
+          senderName: 'Teammate',
+          text: 'hello from teammate',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          id: 'm2',
+          senderId: 'user-1',
+          senderName: 'Me',
+          text: 'other stuff',
+          createdAt: '2026-01-01T00:01:00.000Z',
+        },
+      ] as any);
+      mockedChatApi.searchChatMessages.mockResolvedValue([
+        {
+          id: 'm1',
+          senderId: 'user-2',
+          senderName: 'Teammate',
+          text: 'hello from teammate',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ] as any);
+
+      await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
+      mockedChatApi.connectChatSocket.mockReturnValue(createFakeSocket() as any);
+      const onCloseSearch = jest.fn();
+      render(
+        <ChatScreen searchActive onCloseSearch={onCloseSearch} />,
+      );
+      await screen.findByText('hello from teammate');
+      expect(screen.getByLabelText('Search in chat')).toBeTruthy();
+
+      fireEvent.changeText(screen.getByLabelText('Search in chat'), 'hello');
+      expect(mockedChatApi.searchChatMessages).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+
+      await waitFor(() =>
+        expect(mockedChatApi.searchChatMessages).toHaveBeenCalledWith(
+          'org',
+          'hello',
+        ),
+      );
+      expect(screen.getByLabelText('Search match count').props.children).toEqual(
+        '1/1',
+      );
+      // Still in the same chat list — not a separate results screen.
+      expect(screen.getByText('other stuff')).toBeTruthy();
+
+      fireEvent.press(screen.getByLabelText('Close search'));
+      expect(onCloseSearch).toHaveBeenCalled();
+      jest.useRealTimers();
     });
   });
 });

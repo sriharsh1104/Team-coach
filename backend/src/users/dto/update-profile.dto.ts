@@ -14,13 +14,10 @@ import {
 // since the client never hardcodes anything beyond this list's values.
 export const ROLE_OPTIONS = [
   'IGL',
-  'ENTRY_FRAGGER',
-  'SUPPORT',
+  'PRIMARY_RUSHER',
+  'SECONDARY_RUSHER',
+  'GRENADIER_SUPPORT',
   'SNIPER',
-  'FLANKER',
-  'LURKER',
-  'RIFLER',
-  'GRENADIER',
 ] as const;
 
 export class UpdateProfileDto {

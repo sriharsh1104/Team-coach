@@ -10,7 +10,7 @@ jest.mock('../../../api/org');
 const mockedMediaApi = mediaApi as jest.Mocked<typeof mediaApi>;
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
 
-const navigation = { navigate: jest.fn() } as any;
+const navigation = { navigate: jest.fn(), push: jest.fn() } as any;
 
 const org = {
   id: 'org-1',
@@ -91,5 +91,19 @@ describe('MediaFeedScreen', () => {
     });
 
     expect(screen.getByLabelText('Close viewer')).toBeTruthy();
+  });
+
+  it('opens MemberProfile when an uploader name is pressed (back returns to Media)', async () => {
+    render(<MediaFeedScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Great round');
+
+    await act(async () => {
+      fireEvent.press(screen.getAllByLabelText('Player 2 profile')[0]);
+    });
+
+    expect(navigation.push).toHaveBeenCalledWith('MemberProfile', {
+      userId: 'user-2',
+      name: 'Player 2',
+    });
   });
 });

@@ -33,12 +33,19 @@ function formatSenderLabel(message: ChatMessage): string {
   return badge ? `${message.senderName} · ${badge}` : message.senderName;
 }
 
+const SEARCH_DEBOUNCE_MS = 300;
+
 export function ChatScreen({
   embedded = false,
   channelKey = 'org',
+  searchActive = false,
+  onCloseSearch,
 }: {
   embedded?: boolean;
   channelKey?: string;
+  /** Inline search bar under the hub header — scrolls matches in this list. */
+  searchActive?: boolean;
+  onCloseSearch?: () => void;
 } = {}) {
   const { user } = useAuth();
   const isGroup = channelKey === 'org';
@@ -55,8 +62,21 @@ export function ChatScreen({
     uri: string;
   } | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [searchDraft, setSearchDraft] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [matchIds, setMatchIds] = useState<string[]>([]);
+  const [matchIndex, setMatchIndex] = useState(0);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const hasOlderRef = useRef(false);
+  const searchRequestId = useRef(0);
+  const searchInputRef = useRef<TextInput>(null);
+
+  messagesRef.current = messages;
+  hasOlderRef.current = hasOlderMessages;
 
   useEffect(() => {
     let cancelled = false;
@@ -139,10 +159,140 @@ export function ChatScreen({
   }, [channelKey]);
 
   useEffect(() => {
+    // Don't yank to bottom while the user is hunting older search hits.
+    if (searchActive && searchQuery) return;
     if (messages.length > 0) {
       listRef.current?.scrollToEnd({ animated: true });
     }
-  }, [messages.length]);
+  }, [messages.length, searchActive, searchQuery]);
+
+  useEffect(() => {
+    if (!searchActive) {
+      setSearchDraft('');
+      setSearchQuery('');
+      setMatchIds([]);
+      setMatchIndex(0);
+      setHighlightId(null);
+      setIsSearching(false);
+      return;
+    }
+    const t = setTimeout(() => searchInputRef.current?.focus(), 80);
+    return () => clearTimeout(t);
+  }, [searchActive]);
+
+  useEffect(() => {
+    if (!searchActive) return;
+    const handle = setTimeout(
+      () => setSearchQuery(searchDraft.trim()),
+      SEARCH_DEBOUNCE_MS,
+    );
+    return () => clearTimeout(handle);
+  }, [searchDraft, searchActive]);
+
+  const scrollToMessageId = useCallback((messageId: string) => {
+    const index = messagesRef.current.findIndex((m) => m.id === messageId);
+    if (index < 0) return false;
+    setHighlightId(messageId);
+    requestAnimationFrame(() => {
+      try {
+        listRef.current?.scrollToIndex({
+          index,
+          animated: true,
+          viewPosition: 0.35,
+        });
+      } catch {
+        listRef.current?.scrollToOffset({
+          offset: Math.max(0, index * 72),
+          animated: true,
+        });
+      }
+    });
+    return true;
+  }, []);
+
+  const ensureMessageLoaded = useCallback(
+    async (messageId: string) => {
+      if (messagesRef.current.some((m) => m.id === messageId)) return true;
+
+      let guard = 20;
+      while (hasOlderRef.current && guard-- > 0) {
+        const oldestId = messagesRef.current[0]?.id;
+        if (!oldestId) break;
+        const older = await chatApi.getChatHistory(channelKey, oldestId);
+        const next = [...older, ...messagesRef.current];
+        messagesRef.current = next;
+        setMessages(next);
+        const more = older.length === chatApi.CHAT_HISTORY_PAGE_SIZE;
+        hasOlderRef.current = more;
+        setHasOlderMessages(more);
+        if (next.some((m) => m.id === messageId)) return true;
+        if (older.length === 0) break;
+      }
+      return messagesRef.current.some((m) => m.id === messageId);
+    },
+    [channelKey],
+  );
+
+  const jumpToMatch = useCallback(
+    async (messageId: string | undefined) => {
+      if (!messageId) {
+        setHighlightId(null);
+        return;
+      }
+      const loaded = await ensureMessageLoaded(messageId);
+      if (!loaded) {
+        setHighlightId(null);
+        return;
+      }
+      // FlatList needs a beat after prepended rows settle.
+      setTimeout(() => scrollToMessageId(messageId), 50);
+    },
+    [ensureMessageLoaded, scrollToMessageId],
+  );
+
+  useEffect(() => {
+    if (!searchActive) return;
+    if (!searchQuery) {
+      setMatchIds([]);
+      setMatchIndex(0);
+      setHighlightId(null);
+      setIsSearching(false);
+      return;
+    }
+
+    const req = ++searchRequestId.current;
+    setIsSearching(true);
+    chatApi
+      .searchChatMessages(channelKey, searchQuery)
+      .then(async (hits) => {
+        if (req !== searchRequestId.current) return;
+        const ids = hits.map((h) => h.id);
+        setMatchIds(ids);
+        setMatchIndex(0);
+        await jumpToMatch(ids[0]);
+      })
+      .catch(() => {
+        if (req !== searchRequestId.current) return;
+        setMatchIds([]);
+        setMatchIndex(0);
+        setHighlightId(null);
+      })
+      .finally(() => {
+        if (req !== searchRequestId.current) return;
+        setIsSearching(false);
+      });
+  }, [searchQuery, searchActive, channelKey, jumpToMatch]);
+
+  const goToMatch = useCallback(
+    (nextIndex: number) => {
+      if (matchIds.length === 0) return;
+      const wrapped =
+        ((nextIndex % matchIds.length) + matchIds.length) % matchIds.length;
+      setMatchIndex(wrapped);
+      void jumpToMatch(matchIds[wrapped]);
+    },
+    [matchIds, jumpToMatch],
+  );
 
   // The most recent message that is mine — "Seen"/"Sent" only shows there,
   // not on every bubble, mirroring how most chat apps surface receipts.
@@ -263,6 +413,67 @@ export function ChatScreen({
       style={{ flex: 1, backgroundColor: 'transparent' }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      {searchActive ? (
+        <View style={styles.searchBar}>
+          <Text style={styles.searchGlyph}>⌕</Text>
+          <TextInput
+            ref={searchInputRef}
+            style={styles.searchInput}
+            value={searchDraft}
+            onChangeText={setSearchDraft}
+            placeholder="Search in chat"
+            placeholderTextColor={colors.textDim}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search in chat"
+          />
+          {isSearching ? (
+            <ActivityIndicator color={colors.chrome} size="small" />
+          ) : searchQuery ? (
+            <Text style={styles.searchCount} accessibilityLabel="Search match count">
+              {matchIds.length === 0
+                ? '0'
+                : `${matchIndex + 1}/${matchIds.length}`}
+            </Text>
+          ) : null}
+          <Pressable
+            onPress={() => goToMatch(matchIndex - 1)}
+            disabled={matchIds.length < 2}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel="Previous match"
+            style={[
+              styles.searchNavBtn,
+              matchIds.length < 2 && styles.searchNavDisabled,
+            ]}
+          >
+            <Text style={styles.searchNavText}>↑</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => goToMatch(matchIndex + 1)}
+            disabled={matchIds.length < 2}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel="Next match"
+            style={[
+              styles.searchNavBtn,
+              matchIds.length < 2 && styles.searchNavDisabled,
+            ]}
+          >
+            <Text style={styles.searchNavText}>↓</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => onCloseSearch?.()}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Close search"
+          >
+            <Text style={styles.searchClose}>✕</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <FlatList
         ref={listRef}
         style={{ flex: 1 }}
@@ -272,6 +483,23 @@ export function ChatScreen({
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         onStartReached={onLoadOlder}
         onStartReachedThreshold={0.3}
+        onScrollToIndexFailed={({ index }) => {
+          listRef.current?.scrollToOffset({
+            offset: Math.max(0, index * 72),
+            animated: true,
+          });
+          setTimeout(() => {
+            try {
+              listRef.current?.scrollToIndex({
+                index,
+                animated: true,
+                viewPosition: 0.35,
+              });
+            } catch {
+              /* ignore */
+            }
+          }, 80);
+        }}
         ListHeaderComponent={
           isLoadingOlder ? (
             <ActivityIndicator color={colors.chrome} style={{ marginBottom: 8 }} />
@@ -281,6 +509,7 @@ export function ChatScreen({
           const isMine = item.senderId === user?.id;
           const mediaUri = chatApi.resolveChatMediaUrl(item.mediaUrl);
           const showSeen = isMine && item.id === lastMineId;
+          const isHit = highlightId === item.id;
           const tickLabel =
             tickState === 'seen'
               ? isGroup
@@ -299,7 +528,13 @@ export function ChatScreen({
               ]}
             >
               <View style={styles.bubbleCol}>
-                <View style={[styles.bubble, isMine && styles.bubbleMine]}>
+                <View
+                  style={[
+                    styles.bubble,
+                    isMine && styles.bubbleMine,
+                    isHit && styles.bubbleHit,
+                  ]}
+                >
                   {!isMine && (
                     <Text style={styles.sender}>{formatSenderLabel(item)}</Text>
                   )}
@@ -403,6 +638,41 @@ export function ChatScreen({
 }
 
 const styles = StyleSheet.create({
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(10,10,12,0.96)',
+  },
+  searchGlyph: { color: colors.textDim, fontSize: 16, fontWeight: '700' },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: 15,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  searchCount: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    minWidth: 28,
+    textAlign: 'center',
+  },
+  searchNavBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchNavDisabled: { opacity: 0.3 },
+  searchNavText: { color: colors.chrome, fontSize: 16, fontWeight: '700' },
+  searchClose: { color: colors.link, fontSize: 16, fontWeight: '700', paddingHorizontal: 4 },
   bubbleRow: { flexDirection: 'row', marginBottom: 10 },
   bubbleRowMine: { justifyContent: 'flex-end' },
   bubbleRowTheirs: { justifyContent: 'flex-start' },
@@ -415,6 +685,11 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   bubbleMine: { backgroundColor: '#c9ccd1' },
+  bubbleHit: {
+    borderWidth: 2,
+    borderColor: colors.link,
+    backgroundColor: 'rgba(139, 156, 255, 0.22)',
+  },
   sender: { fontSize: 11, color: '#9aa0a6', marginBottom: 2 },
   text: { color: '#f2f3f5' },
   textMine: { color: '#0a0a0c' },

@@ -27,7 +27,7 @@ import { MediaViewerModal } from '../chat/MediaViewerModal';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'MediaFeed'>;
 
-export function MediaFeedScreen(_props: Props) {
+export function MediaFeedScreen({ navigation }: Props) {
   const realtime = useOrgRealtimeOptional();
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [selectedUploaderId, setSelectedUploaderId] = useState<string | null>(
@@ -158,7 +158,19 @@ export function MediaFeedScreen(_props: Props) {
                   </View>
                 )}
                 <View style={styles.postMeta}>
-                  <Text style={styles.uploader}>{item.uploaderName}</Text>
+                  <SoftPressable
+                    onPress={() =>
+                      navigation.push('MemberProfile', {
+                        userId: item.uploaderId,
+                        name: item.uploaderName,
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.uploaderName} profile`}
+                    pressScale={0.97}
+                  >
+                    <Text style={styles.uploader}>{item.uploaderName}</Text>
+                  </SoftPressable>
                   {item.caption ? (
                     <Text numberOfLines={2} style={styles.caption}>
                       {item.caption}

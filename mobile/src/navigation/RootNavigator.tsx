@@ -26,6 +26,8 @@ import { StatsHomeScreen } from '../screens/stats/StatsHomeScreen';
 import { ExtractionReviewScreen } from '../screens/stats/ExtractionReviewScreen';
 import { PlayerStatsScreen } from '../screens/stats/PlayerStatsScreen';
 import { VoiceChannelScreen } from '../screens/voice/VoiceChannelScreen';
+import { RuleBookScreen } from '../screens/RuleBookScreen';
+import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -244,6 +246,16 @@ export function RootNavigator() {
             name="Voice"
             component={VoiceChannelScreen}
             options={{ title: 'Team Voice' }}
+          />
+          <MainStack.Screen
+            name="RuleBook"
+            component={RuleBookScreen}
+            options={{ title: 'Rule Book' }}
+          />
+          <MainStack.Screen
+            name="SocialHandles"
+            component={SocialHandlesScreen}
+            options={{ title: 'Social Handles' }}
           />
         </MainStack.Navigator>
       )}
