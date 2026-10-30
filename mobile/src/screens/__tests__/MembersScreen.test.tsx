@@ -7,7 +7,7 @@ import * as orgApi from '../../api/org';
 jest.mock('../../api/org');
 
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
-const navigation = { navigate: jest.fn() } as any;
+const navigation = { navigate: jest.fn(), push: jest.fn() } as any;
 
 const detail = {
   id: 'org-1',
@@ -63,7 +63,7 @@ describe('MembersScreen', () => {
     await screen.findByText('2. Teammate');
 
     fireEvent.press(screen.getByText('2. Teammate'));
-    expect(navigation.navigate).toHaveBeenCalledWith('MemberProfile', {
+    expect(navigation.push).toHaveBeenCalledWith('MemberProfile', {
       userId: 'user-2',
       name: 'Teammate',
     });

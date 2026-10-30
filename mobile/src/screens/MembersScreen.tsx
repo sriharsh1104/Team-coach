@@ -3,7 +3,7 @@ import { Text, View, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { OrgDetail } from '../api/types';
-import { ROLE_LABELS, RoleOption } from '../api/roles';
+import { roleLabel } from '../api/roles';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
@@ -12,7 +12,7 @@ import { CopyButton } from './profile/CopyButton';
 
 function formatInGameRoles(roles: string[]): string | null {
   if (roles.length === 0) return null;
-  return roles.map((r) => ROLE_LABELS[r as RoleOption] ?? r).join(', ');
+  return roles.map(roleLabel).join(', ');
 }
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Members'>;
@@ -85,7 +85,7 @@ export function MembersScreen({ navigation }: Props) {
             <SoftPressable
               style={styles.memberRow}
               onPress={() =>
-                navigation.navigate('MemberProfile', {
+                navigation.push('MemberProfile', {
                   userId: item.userId,
                   name: item.name,
                 })

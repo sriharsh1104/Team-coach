@@ -21,6 +21,19 @@ export function getChatHistory(channelKey = 'org', before?: string) {
     .then((res) => res.data);
 }
 
+/** Debounce on the client; empty `q` returns [] from the API. */
+export function searchChatMessages(
+  channelKey = 'org',
+  q: string,
+  before?: string,
+) {
+  return apiClient
+    .get<ChatMessage[]>('/chat/search', {
+      params: { channelKey, q, before },
+    })
+    .then((res) => res.data);
+}
+
 export function getChatMedia(channelKey = 'org', before?: string) {
   return apiClient
     .get<ChatMessage[]>('/chat/media', { params: { channelKey, before } })

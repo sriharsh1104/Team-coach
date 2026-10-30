@@ -1,5 +1,10 @@
 import { Platform } from 'react-native';
 import * as ImageManipulator from 'expo-image-manipulator';
+import {
+  compressImageNative,
+  compressVideoNative,
+  tryGetNativeFileSize,
+} from './nativeCompressor';
 
 export type UploadAsset = {
   uri: string;
@@ -13,8 +18,6 @@ const IMAGE_JPEG_QUALITY = 0.72;
 /** Skip re-encode when the picker already gave us a tiny file. */
 const IMAGE_SKIP_UNDER_BYTES = 350_000;
 const VIDEO_SKIP_UNDER_BYTES = 4_000_000;
-/** Longest edge for video (720p-class) — WhatsApp-style auto compress. */
-const VIDEO_MAX_SIZE = 1280;
 
 function isVideoMime(mime: string) {
   return mime.startsWith('video/');
@@ -29,23 +32,13 @@ function withJpgName(fileName: string) {
   return `${base}.jpg`;
 }
 
-function withMp4Name(fileName: string) {
-  const base = fileName.replace(/\.[^.]+$/, '') || 'video';
-  return `${base}.mp4`;
-}
-
 async function tryGetSizeBytes(uri: string): Promise<number | null> {
   try {
     if (Platform.OS === 'web') {
       const blob = await fetch(uri).then((r) => r.blob());
       return blob.size;
     }
-    // Optional native helper — absent in Jest / Expo Go without rebuild.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getFileSize } = require('react-native-compressor') as {
-      getFileSize: (u: string) => Promise<number>;
-    };
-    return await getFileSize(uri);
+    return await tryGetNativeFileSize(uri);
   } catch {
     return null;
   }
@@ -88,60 +81,6 @@ async function compressImageWithManipulator(
     fileName: withJpgName(asset.fileName),
     mimeType: 'image/jpeg',
   };
-}
-
-async function compressImageNative(asset: UploadAsset): Promise<UploadAsset | null> {
-  if (Platform.OS === 'web') return null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Image } = require('react-native-compressor') as {
-      Image: {
-        compress: (
-          uri: string,
-          opts?: Record<string, unknown>,
-        ) => Promise<string>;
-      };
-    };
-    const uri = await Image.compress(asset.uri, {
-      compressionMethod: 'auto',
-      maxWidth: IMAGE_MAX_EDGE,
-      quality: IMAGE_JPEG_QUALITY,
-    });
-    return {
-      uri,
-      fileName: withJpgName(asset.fileName),
-      mimeType: 'image/jpeg',
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function compressVideoNative(asset: UploadAsset): Promise<UploadAsset | null> {
-  if (Platform.OS === 'web') return null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Video } = require('react-native-compressor') as {
-      Video: {
-        compress: (
-          uri: string,
-          opts?: Record<string, unknown>,
-        ) => Promise<string>;
-      };
-    };
-    const uri = await Video.compress(asset.uri, {
-      compressionMethod: 'auto',
-      maxSize: VIDEO_MAX_SIZE,
-      minimumFileSizeForCompress: VIDEO_SKIP_UNDER_BYTES,
-    });
-    return {
-      uri,
-      fileName: withMp4Name(asset.fileName),
-      mimeType: 'video/mp4',
-    };
-  } catch {
-    return null;
-  }
 }
 
 /**

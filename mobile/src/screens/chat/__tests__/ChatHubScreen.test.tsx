@@ -2,16 +2,33 @@ import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { ChatHubScreen } from '../ChatHubScreen';
 import * as chatApi from '../../../api/chat';
+import * as orgApi from '../../../api/org';
+import * as usersApi from '../../../api/users';
 
 jest.mock('../../../api/chat');
+jest.mock('../../../api/org');
+jest.mock('../../../api/users');
 jest.mock('../ChatScreen', () => ({
-  ChatScreen: ({ channelKey }: { channelKey: string }) => {
+  ChatScreen: ({
+    channelKey,
+    searchActive,
+  }: {
+    channelKey: string;
+    searchActive?: boolean;
+  }) => {
     const { Text } = require('react-native');
-    return <Text>Conversation: {channelKey}</Text>;
+    return (
+      <>
+        <Text>Conversation: {channelKey}</Text>
+        {searchActive ? <Text>In-chat search open</Text> : null}
+      </>
+    );
   },
 }));
 
 const mockedChatApi = chatApi as jest.Mocked<typeof chatApi>;
+const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
+const mockedUsersApi = usersApi as jest.Mocked<typeof usersApi>;
 
 const channelsResponse = {
   channels: [
@@ -32,11 +49,48 @@ const channelsResponse = {
   totalUnread: 2,
 };
 
+const orgDetail = {
+  id: 'org-1',
+  name: 'Alpha',
+  orgCode: 'ABC',
+  referralLink: 'https://x',
+  myRole: 'PLAYER',
+  isOwner: false,
+  members: [
+    {
+      userId: 'user-2',
+      name: 'Teammate',
+      avatarUrl: null,
+      role: 'PLAYER',
+      isOwner: false,
+      inGameRoles: [],
+    },
+  ],
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockedChatApi.getChatChannels.mockResolvedValue(channelsResponse as any);
   mockedChatApi.getChatMedia.mockResolvedValue([]);
   mockedChatApi.getChatLinks.mockResolvedValue([]);
+  mockedChatApi.searchChatMessages.mockResolvedValue([]);
+  mockedOrgApi.getMyOrg.mockResolvedValue(orgDetail as any);
+  mockedUsersApi.getMemberProfile.mockResolvedValue({
+    id: 'user-2',
+    name: 'Teammate',
+    avatarUrl: null,
+    roles: [],
+    inGameName: 'SES-SRI',
+    inGameUid: null,
+    phone: null,
+    whatsappUrl: null,
+    instagramUrl: null,
+    discordUrl: null,
+    youtubeUrl: null,
+    devices: [],
+    role: 'PLAYER',
+    isOwner: false,
+  } as any);
 });
 
 describe('ChatHubScreen', () => {
@@ -102,7 +156,7 @@ describe('ChatHubScreen', () => {
     fireEvent.press(screen.getByText('Team Chat'));
 
     await screen.findByText('Conversation: org');
-    expect(screen.getByText('← Chats')).toBeTruthy();
+    expect(screen.getByLabelText('Back')).toBeTruthy();
   });
 
   it('opens a DM conversation when a teammate row is pressed', async () => {
@@ -114,13 +168,13 @@ describe('ChatHubScreen', () => {
     await screen.findByText('Conversation: dm:user-1:user-2');
   });
 
-  it('returns to the inbox when "← Chats" is pressed', async () => {
+  it('returns to the inbox when "Back" is pressed', async () => {
     render(<ChatHubScreen />);
     await screen.findByText('Team Chat');
     fireEvent.press(screen.getByText('Team Chat'));
-    await screen.findByText('← Chats');
+    await screen.findByLabelText('Back');
 
-    fireEvent.press(screen.getByText('← Chats'));
+    fireEvent.press(screen.getByLabelText('Back'));
 
     await screen.findByText('Team Chat');
     expect(screen.queryByText('Conversation: org')).toBeNull();
@@ -139,8 +193,8 @@ describe('ChatHubScreen', () => {
     await screen.findByText(/gg everyone/);
 
     fireEvent.press(screen.getByText('Team Chat'));
-    await screen.findByText('← Chats');
-    fireEvent.press(screen.getByText('← Chats'));
+    await screen.findByLabelText('Back');
+    fireEvent.press(screen.getByLabelText('Back'));
 
     expect(mockedChatApi.getChatChannels).toHaveBeenCalledTimes(2);
     await screen.findByText(/gg just now/);
@@ -150,7 +204,7 @@ describe('ChatHubScreen', () => {
     render(<ChatHubScreen />);
     await screen.findByText('Team Chat');
     fireEvent.press(screen.getByText('Team Chat'));
-    await screen.findByText('← Chats');
+    await screen.findByLabelText('Back');
 
     await act(async () => {
       fireEvent.press(screen.getByLabelText('Chat Media'));
@@ -161,20 +215,104 @@ describe('ChatHubScreen', () => {
     expect(screen.getByText('No media shared yet.')).toBeTruthy();
   });
 
-  it('also opens the chat media gallery when the conversation title itself is pressed', async () => {
+  it('toggles in-chat search from the search icon (no separate screen)', async () => {
     render(<ChatHubScreen />);
     await screen.findByText('Team Chat');
     fireEvent.press(screen.getByText('Team Chat'));
-    await screen.findByText('← Chats');
+    await screen.findByLabelText('Back');
 
-    // After opening the conversation, "Team Chat" now refers to the
-    // conversation header title, not the inbox row — pressing it should open
-    // the gallery too, mirroring the WhatsApp-style "tap the header" pattern.
+    expect(screen.queryByText('In-chat search open')).toBeNull();
+    expect(screen.getByText('Conversation: org')).toBeTruthy();
+
     await act(async () => {
-      fireEvent.press(screen.getByText('Team Chat'));
+      fireEvent.press(screen.getByLabelText('Search chat'));
     });
 
-    expect(mockedChatApi.getChatMedia).toHaveBeenCalledWith('org');
+    expect(screen.getByText('In-chat search open')).toBeTruthy();
+    expect(screen.getByText('Conversation: org')).toBeTruthy();
+  });
+
+  it('opens the members list when the group chat title is pressed (Media stays a separate button)', async () => {
+    mockedChatApi.getChatChannels.mockResolvedValue({
+      ...channelsResponse,
+      channels: [{ ...channelsResponse.channels[0], memberCount: 2 }],
+    } as any);
+
+    render(<ChatHubScreen />);
+    await screen.findByText('Team Chat');
+    fireEvent.press(screen.getByText('Team Chat'));
+    await screen.findByLabelText('Back');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Team members'));
+    });
+
+    await screen.findByText(/1\. Teammate/);
+    expect(mockedChatApi.getChatMedia).not.toHaveBeenCalled();
+  });
+
+  it('opens a member profile from the members list, and Back returns step-by-step', async () => {
+    mockedChatApi.getChatChannels.mockResolvedValue({
+      ...channelsResponse,
+      channels: [{ ...channelsResponse.channels[0], memberCount: 2 }],
+    } as any);
+
+    render(<ChatHubScreen />);
+    await screen.findByText('Team Chat');
+    fireEvent.press(screen.getByText('Team Chat'));
+    await screen.findByLabelText('Back');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Team members'));
+    });
+    await screen.findByText(/1\. Teammate/);
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Teammate'));
+    });
+    await screen.findByText('SES-SRI');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Back'));
+    });
+    await screen.findByText(/1\. Teammate/);
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Back'));
+    });
+    await screen.findByLabelText('Back');
+    expect(screen.getByText('Conversation: org')).toBeTruthy();
+  });
+
+  it('opens the peer profile when a DM title is pressed', async () => {
+    mockedChatApi.getChatChannels.mockResolvedValue({
+      ...channelsResponse,
+      channels: [
+        {
+          channelKey: 'dm:user-1:user-2',
+          type: 'DM' as const,
+          title: 'Teammate',
+          peerUserId: 'user-2',
+          peerAvatarUrl: null,
+          memberCount: null,
+          unreadCount: 0,
+          lastMessageAt: null,
+          lastPreview: null,
+        },
+      ],
+    } as any);
+
+    render(<ChatHubScreen />);
+    await screen.findByText('Teammate');
+    fireEvent.press(screen.getByText('Teammate'));
+    await screen.findByLabelText('Back');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Member profile'));
+    });
+
+    await screen.findByText('SES-SRI');
+    expect(mockedUsersApi.getMemberProfile).toHaveBeenCalledWith('user-2');
   });
 
   it('calls onLoadError instead of failing silently when the channel list fails to load', async () => {

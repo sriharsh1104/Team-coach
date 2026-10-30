@@ -82,6 +82,16 @@ export function OrgHomeScreen({ navigation }: Props) {
         label: 'Profile',
         onPress: () => navigation.navigate('Profile'),
       },
+      {
+        key: 'ruleBook',
+        label: 'Rule Book',
+        onPress: () => navigation.navigate('RuleBook'),
+      },
+      {
+        key: 'socialHandles',
+        label: 'Social Handles',
+        onPress: () => navigation.navigate('SocialHandles'),
+      },
     ],
     [navigation, org?.isOwner],
   );

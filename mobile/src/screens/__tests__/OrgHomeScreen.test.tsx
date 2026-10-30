@@ -90,6 +90,7 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Team Members')).toBeTruthy();
     expect(screen.getByText('Org Settings')).toBeTruthy();
     expect(screen.getByText('Profile')).toBeTruthy();
+    expect(screen.getByText('Rule Book')).toBeTruthy();
     expect(screen.queryByText('Security')).toBeNull();
     expect(screen.queryByText('Logout')).toBeNull();
     expect(screen.queryByText('Log Out')).toBeNull();
@@ -116,6 +117,8 @@ describe('OrgHomeScreen', () => {
     ['Team Members', 'Members', undefined],
     ['Org Settings', 'OrgSettings', undefined],
     ['Profile', 'Profile', undefined],
+    ['Rule Book', 'RuleBook', undefined],
+    ['Social Handles', 'SocialHandles', undefined],
   ])('navigates from sidebar %s -> %s', async (label, routeName, params) => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');

@@ -202,6 +202,55 @@ export class ChatService {
     );
   }
 
+  /**
+   * Case-insensitive substring search over message text in one channel.
+   * Empty / whitespace-only `q` returns []. Respects the same org-history
+   * cutoff as listMessages for the group channel.
+   */
+  async searchMessages(
+    userId: string,
+    channelKey = ORG_CHANNEL,
+    q = '',
+    before?: string,
+  ) {
+    const query = q.trim().slice(0, 100);
+    if (!query) return [];
+
+    const membership = await this.getMembershipForUser(userId);
+    const orgId = membership.orgId;
+    await this.assertChannelAccess(userId, orgId, channelKey);
+
+    let historyCutoff: Date | undefined;
+    if (channelKey === ORG_CHANNEL) {
+      const org = await this.prisma.org.findUnique({
+        where: { id: orgId },
+        select: { historyVisibleToNewMembers: true },
+      });
+      if (org && !org.historyVisibleToNewMembers) {
+        historyCutoff = membership.createdAt;
+      }
+    }
+
+    const messages = await this.prisma.chatMessage.findMany({
+      where: {
+        orgId,
+        channelKey,
+        text: { contains: query, mode: 'insensitive' },
+        ...(historyCutoff ? { createdAt: { gte: historyCutoff } } : {}),
+      },
+      include: { sender: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: HISTORY_LIMIT,
+      ...(before ? { cursor: { id: before }, skip: 1 } : {}),
+    });
+
+    const senderIds = [...new Set(messages.map((m) => m.senderId))];
+    const roleByUserId = await this.loadRoles(orgId, senderIds);
+    return messages.map((m) =>
+      this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+    );
+  }
+
   // Every message in this channel whose text contains a link, newest first —
   // the backing data for the gallery's "Links" tab. `contains: 'http'` is a
   // simple, cheap filter (not a true URL validator); the client extracts and

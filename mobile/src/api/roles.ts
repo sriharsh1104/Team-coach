@@ -1,24 +1,23 @@
 // Mirrors backend/src/users/dto/update-profile.dto.ts ROLE_OPTIONS — keep in sync.
 export const ROLE_OPTIONS = [
   'IGL',
-  'ENTRY_FRAGGER',
-  'SUPPORT',
+  'PRIMARY_RUSHER',
+  'SECONDARY_RUSHER',
+  'GRENADIER_SUPPORT',
   'SNIPER',
-  'FLANKER',
-  'LURKER',
-  'RIFLER',
-  'GRENADIER',
 ] as const;
 
 export type RoleOption = (typeof ROLE_OPTIONS)[number];
 
 export const ROLE_LABELS: Record<RoleOption, string> = {
   IGL: 'IGL',
-  ENTRY_FRAGGER: 'Entry Fragger',
-  SUPPORT: 'Support',
+  PRIMARY_RUSHER: 'Primary rusher',
+  SECONDARY_RUSHER: 'Secondary rusher',
+  GRENADIER_SUPPORT: 'Grenadier/support',
   SNIPER: 'Sniper',
-  FLANKER: 'Flanker',
-  LURKER: 'Lurker',
-  RIFLER: 'Rifler',
-  GRENADIER: 'Grenadier',
 };
+
+/** Label for any stored role string (incl. legacy values still in the DB). */
+export function roleLabel(role: string): string {
+  return (ROLE_LABELS as Record<string, string>)[role] ?? role;
+}

@@ -63,6 +63,22 @@ export class ChatController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('search')
+  searchMessages(
+    @CurrentUser() user: { userId: string },
+    @Query('channelKey') channelKey?: string,
+    @Query('q') q?: string,
+    @Query('before') before?: string,
+  ) {
+    return this.chatService.searchMessages(
+      user.userId,
+      channelKey?.trim() || ORG_CHANNEL,
+      q ?? '',
+      before,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('media')
   listMedia(
     @CurrentUser() user: { userId: string },

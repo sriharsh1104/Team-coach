@@ -29,7 +29,8 @@ export type AppIconName =
   | 'people'
   | 'settings'
   | 'trash'
-  | 'edit';
+  | 'edit'
+  | 'copy';
 
 const GLYPHS: Record<AppIconName, string> = {
   'log-in': '→',
@@ -58,6 +59,7 @@ const GLYPHS: Record<AppIconName, string> = {
   settings: '⚙',
   trash: '⊗',
   edit: '✎',
+  copy: '❐',
 };
 
 /** Icon + label row for chrome / primary action buttons. */

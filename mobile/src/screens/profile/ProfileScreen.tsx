@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
-import { RoleOption } from '../../api/roles';
+import { ROLE_OPTIONS, RoleOption } from '../../api/roles';
 import { RoleChips } from './RoleChips';
 import { CopyableInput } from './CopyableInput';
 import { CopyableField } from './CopyableField';
@@ -23,7 +23,7 @@ import { sharedStyles, formatRoleBadge } from '../shared';
 import { useAuth } from '../../auth/AuthContext';
 import { colors } from '../../theme';
 
-type ProfileTab = 'user' | 'game' | 'social';
+type ProfileTab = 'user' | 'game' | 'devices' | 'social';
 
 // IGN, UID and phone are compulsory for every user — everything else
 // (socials) stays optional. Enforced here for both the one-time forced
@@ -93,6 +93,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
             [
               { value: 'user', label: 'User' },
               { value: 'game', label: 'Game' },
+              { value: 'devices', label: 'Devices' },
               { value: 'social', label: 'Social' },
             ] as const
           }
@@ -111,6 +112,11 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
               profile={profile}
               mustComplete={mustComplete}
               onUpdated={onProfileUpdated}
+            />
+          )}
+          {tab === 'devices' && (
+            <DevicesProfileSection
+              profile={profile}
               onDevicesChanged={load}
             />
           )}
@@ -220,26 +226,25 @@ function UserProfileSection({
   );
 }
 
+function knownRolesOnly(roles: string[]): string[] {
+  const allowed = new Set<string>(ROLE_OPTIONS);
+  return roles.filter((r) => allowed.has(r));
+}
+
 function GameProfileSection({
   profile,
   mustComplete,
   onUpdated,
-  onDevicesChanged,
 }: {
   profile: Profile;
   mustComplete: boolean;
   onUpdated: (updated: Profile) => void;
-  onDevicesChanged: () => Promise<void>;
 }) {
   const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
-  const [roles, setRoles] = useState<string[]>(profile.roles);
+  const [roles, setRoles] = useState<string[]>(() => knownRolesOnly(profile.roles));
   const [inGameName, setInGameName] = useState(profile.inGameName ?? '');
   const [inGameUid, setInGameUid] = useState(profile.inGameUid ?? '');
-
-  const [deviceName, setDeviceName] = useState('');
-  const [deviceModel, setDeviceModel] = useState('');
-  const [isAddingDevice, setIsAddingDevice] = useState(false);
 
   const toggleRole = (role: RoleOption) => {
     setRoles((prev) =>
@@ -254,7 +259,7 @@ function GameProfileSection({
     setIsSaving(true);
     try {
       const updated = await usersApi.updateMyProfile({
-        roles,
+        roles: knownRolesOnly(roles),
         inGameName: inGameName || undefined,
         inGameUid: inGameUid || undefined,
       });
@@ -273,30 +278,10 @@ function GameProfileSection({
     }
   };
 
-  const onAddDevice = async () => {
-    if (!deviceName || !deviceModel) return;
-    setIsAddingDevice(true);
-    try {
-      await usersApi.addDevice(deviceName.trim(), deviceModel.trim());
-      setDeviceName('');
-      setDeviceModel('');
-      await onDevicesChanged();
-    } catch (err: any) {
-      Alert.alert('Could not add device', err?.response?.data?.message ?? '');
-    } finally {
-      setIsAddingDevice(false);
-    }
-  };
-
-  const onRemoveDevice = async (id: string) => {
-    await usersApi.removeDevice(id);
-    await onDevicesChanged();
-  };
-
   if (!isEditing) {
     return (
       <View>
-        {profile.roles.length > 0 ? (
+        {knownRolesOnly(profile.roles).length > 0 ? (
           <RoleChips selected={profile.roles} editable={false} />
         ) : (
           <Text style={{ color: '#9aa0a6', marginTop: 12, marginBottom: 12 }}>
@@ -308,20 +293,6 @@ function GameProfileSection({
           <CopyableField label="In-Game Name (IGN)" value={profile.inGameName} />
         )}
         {profile.inGameUid && <CopyableField label="UID" value={profile.inGameUid} />}
-
-        {profile.devices.length > 0 && (
-          <>
-            <Text style={styles.sectionLabel}>My Devices</Text>
-            {profile.devices.map((device) => (
-              <View key={device.id} style={styles.deviceRow}>
-                <Text style={{ flex: 1, color: '#f2f3f5' }}>
-                  {device.name} — {device.model}
-                </Text>
-                <CopyButton value={`${device.name} — ${device.model}`} />
-              </View>
-            ))}
-          </>
-        )}
 
         <SoftPressable
           style={styles.editButton}
@@ -369,49 +340,128 @@ function GameProfileSection({
           {isSaving ? 'Saving…' : mustComplete ? 'Continue' : 'Save'}
         </ButtonLabel>
       </SoftPressable>
+    </View>
+  );
+}
 
-      {!mustComplete && (
-        <>
-          <Text style={styles.sectionLabel}>My Devices</Text>
-          {profile.devices.map((device) => (
+function DevicesProfileSection({
+  profile,
+  onDevicesChanged,
+}: {
+  profile: Profile;
+  onDevicesChanged: () => Promise<void>;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [deviceName, setDeviceName] = useState('');
+  const [deviceModel, setDeviceModel] = useState('');
+  const [isAddingDevice, setIsAddingDevice] = useState(false);
+
+  const onAddDevice = async () => {
+    if (!deviceName || !deviceModel) return;
+    setIsAddingDevice(true);
+    try {
+      await usersApi.addDevice(deviceName.trim(), deviceModel.trim());
+      setDeviceName('');
+      setDeviceModel('');
+      await onDevicesChanged();
+    } catch (err: any) {
+      Alert.alert('Could not add device', err?.response?.data?.message ?? '');
+    } finally {
+      setIsAddingDevice(false);
+    }
+  };
+
+  const onRemoveDevice = async (id: string) => {
+    await usersApi.removeDevice(id);
+    await onDevicesChanged();
+  };
+
+  if (!isEditing) {
+    return (
+      <View>
+        <Text style={styles.sectionLabel}>My Devices</Text>
+        {profile.devices.length === 0 ? (
+          <Text style={{ color: '#9aa0a6', marginBottom: 12 }}>No devices yet.</Text>
+        ) : (
+          profile.devices.map((device) => (
             <View key={device.id} style={styles.deviceRow}>
               <Text style={{ flex: 1, color: '#f2f3f5' }}>
                 {device.name} — {device.model}
               </Text>
               <CopyButton value={`${device.name} — ${device.model}`} />
-              <SoftPressable
-                onPress={() => onRemoveDevice(device.id)}
-                hitSlop={8}
-                pressScale={0.95}
-              >
-                <Text style={{ color: '#f87171' }}>Remove</Text>
-              </SoftPressable>
             </View>
-          ))}
-          <CopyableInput
-            placeholder="Device name (e.g. Main rig)"
-            value={deviceName}
-            onChangeText={setDeviceName}
-          />
-          <CopyableInput
-            placeholder="Device model (e.g. ROG Phone 8)"
-            value={deviceModel}
-            onChangeText={setDeviceModel}
-          />
-          <SoftPressable
-            style={[
-              sharedStyles.button,
-              (!deviceName || !deviceModel || isAddingDevice) &&
-                sharedStyles.buttonDisabled,
-            ]}
-            disabled={!deviceName || !deviceModel || isAddingDevice}
-            onPress={onAddDevice}
-            pressScale={0.98}
-          >
-            <ButtonLabel icon="phone">Add Device</ButtonLabel>
-          </SoftPressable>
-        </>
+          ))
+        )}
+        <SoftPressable
+          style={styles.editButton}
+          onPress={() => setIsEditing(true)}
+          pressScale={0.97}
+        >
+          <ButtonLabel icon="edit" color={colors.link}>
+            Edit
+          </ButtonLabel>
+        </SoftPressable>
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      <Text style={styles.sectionLabel}>My Devices</Text>
+      {profile.devices.length === 0 ? (
+        <Text style={{ color: '#9aa0a6', marginBottom: 12 }}>No devices yet.</Text>
+      ) : (
+        profile.devices.map((device) => (
+          <View key={device.id} style={styles.deviceRow}>
+            <Text style={{ flex: 1, color: '#f2f3f5' }}>
+              {device.name} — {device.model}
+            </Text>
+            <CopyButton value={`${device.name} — ${device.model}`} />
+            <SoftPressable
+              onPress={() => onRemoveDevice(device.id)}
+              hitSlop={8}
+              pressScale={0.95}
+            >
+              <Text style={{ color: '#f87171' }}>Remove</Text>
+            </SoftPressable>
+          </View>
+        ))
       )}
+      <CopyableInput
+        placeholder="Device name (e.g. Main rig)"
+        value={deviceName}
+        onChangeText={setDeviceName}
+      />
+      <CopyableInput
+        placeholder="Device model (e.g. ROG Phone 8)"
+        value={deviceModel}
+        onChangeText={setDeviceModel}
+      />
+      <SoftPressable
+        style={[
+          sharedStyles.button,
+          (!deviceName || !deviceModel || isAddingDevice) &&
+            sharedStyles.buttonDisabled,
+        ]}
+        disabled={!deviceName || !deviceModel || isAddingDevice}
+        onPress={onAddDevice}
+        pressScale={0.98}
+      >
+        <ButtonLabel icon="phone">Add Device</ButtonLabel>
+      </SoftPressable>
+      <SoftPressable
+        style={styles.editButton}
+        onPress={() => {
+          setDeviceName('');
+          setDeviceModel('');
+          setIsEditing(false);
+        }}
+        pressScale={0.97}
+      >
+        <ButtonLabel icon="edit" color={colors.link}>
+          Done
+        </ButtonLabel>
+      </SoftPressable>
     </View>
   );
 }

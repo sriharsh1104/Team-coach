@@ -12,6 +12,8 @@ import { colors } from '../../theme';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
+import { ChatMembersPanel } from './ChatMembersPanel';
+import { ChatMemberProfilePanel } from './ChatMemberProfilePanel';
 
 interface Props {
   /** Called when loading the channel list fails — e.g. to surface a toast.
@@ -24,7 +26,14 @@ type ActiveChat = {
   title: string;
   type: 'ORG' | 'DM';
   memberCount: number | null;
+  peerUserId: string | null;
 };
+
+/** Local steps on top of an open chat — back pops in reverse order. */
+type ChatOverlay =
+  | { kind: 'media' }
+  | { kind: 'members' }
+  | { kind: 'profile'; userId: string; name: string };
 
 /**
  * Inbox + conversation: Team Chat (group) separate from 1:1 DMs.
@@ -33,8 +42,9 @@ export function ChatHubScreen({ onLoadError }: Props) {
   const [channels, setChannels] = useState<ChatChannel[]>([]);
   const [teammates, setTeammates] = useState<ChatTeammate[]>([]);
   const [active, setActive] = useState<ActiveChat | null>(null);
+  const [overlayStack, setOverlayStack] = useState<ChatOverlay[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false);
 
   const load = useCallback(async () => {
     const data = await chatApi.getChatChannels();
@@ -66,21 +76,34 @@ export function ChatHubScreen({ onLoadError }: Props) {
     return teammates.filter((t) => !openKeys.has(t.channelKey));
   }, [teammates, dmChannels]);
 
+  const pushOverlay = (overlay: ChatOverlay) => {
+    setOverlayStack((prev) => [...prev, overlay]);
+  };
+
+  const popOverlay = () => {
+    setOverlayStack((prev) => prev.slice(0, -1));
+  };
+
   const openChannel = (channel: {
     channelKey: string;
     title: string;
     type: 'ORG' | 'DM';
     memberCount?: number | null;
+    peerUserId?: string | null;
   }) => {
+    setOverlayStack([]);
     setActive({
       channelKey: channel.channelKey,
       title: channel.title,
       type: channel.type,
       memberCount: channel.memberCount ?? null,
+      peerUserId: channel.peerUserId ?? null,
     });
   };
 
   const backToInbox = () => {
+    setOverlayStack([]);
+    setSearchOpen(false);
     setActive(null);
     // The inbox was loaded once on mount — without this, returning from a
     // conversation you just sent a message in still shows the stale
@@ -88,13 +111,57 @@ export function ChatHubScreen({ onLoadError }: Props) {
     load().catch((err) => onLoadError?.(err));
   };
 
+  const openHeaderInfo = () => {
+    if (!active) return;
+    if (active.type === 'ORG') {
+      pushOverlay({ kind: 'members' });
+      return;
+    }
+    if (active.peerUserId) {
+      pushOverlay({
+        kind: 'profile',
+        userId: active.peerUserId,
+        name: active.title,
+      });
+    }
+  };
+
   if (active) {
+    const top = overlayStack[overlayStack.length - 1] ?? null;
+    const mediaOpen = top?.kind === 'media';
+
+    if (top?.kind === 'profile') {
+      return (
+        <ChatMemberProfilePanel
+          userId={top.userId}
+          name={top.name}
+          onBack={popOverlay}
+        />
+      );
+    }
+
+    if (top?.kind === 'members') {
+      return (
+        <ChatMembersPanel
+          title={active.title}
+          onBack={popOverlay}
+          onSelectMember={(member) =>
+            pushOverlay({
+              kind: 'profile',
+              userId: member.userId,
+              name: member.name,
+            })
+          }
+        />
+      );
+    }
+
     const subtitle =
       active.type === 'ORG'
         ? active.memberCount
-          ? `${active.memberCount} member${active.memberCount === 1 ? '' : 's'} · Tap for media`
-          : 'Group chat · Tap for media'
-        : 'Direct message · Tap for media';
+          ? `${active.memberCount} member${active.memberCount === 1 ? '' : 's'} · Tap for list`
+          : 'Group chat · Tap for members'
+        : 'Direct message · Tap for profile';
 
     return (
       <View style={styles.flex}>
@@ -103,43 +170,67 @@ export function ChatHubScreen({ onLoadError }: Props) {
             onPress={backToInbox}
             style={styles.backBtn}
             accessibilityRole="button"
-            accessibilityLabel="← Chats"
-            pressScale={0.94}
+            accessibilityLabel="Back"
+            hitSlop={10}
+            pressScale={0.92}
           >
-            <Text style={styles.backLabel}>← Chats</Text>
+            <Text style={styles.backIcon}>←</Text>
           </SoftPressable>
 
-          <SoftPressable
-            style={styles.chatTitleBlock}
-            onPress={() => setMediaGalleryOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel={active.title}
-            pressScale={0.98}
-          >
-            <Text style={styles.chatTitle} numberOfLines={1}>
-              {active.title}
-            </Text>
-            <Text style={styles.chatSubtitle} numberOfLines={1}>
-              {subtitle}
-            </Text>
-          </SoftPressable>
+          {/* Outer flex:1 — SoftPressable puts styles on its inner view, so flex
+              must live on a real row child or Media sits next to the title. */}
+          <View style={styles.chatTitleBlock}>
+            <SoftPressable
+              onPress={openHeaderInfo}
+              accessibilityRole="button"
+              accessibilityLabel={
+                active.type === 'ORG' ? 'Team members' : 'Member profile'
+              }
+              pressScale={0.98}
+            >
+              <Text style={styles.chatTitle} numberOfLines={1}>
+                {active.title}
+              </Text>
+              <Text style={styles.chatSubtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            </SoftPressable>
+          </View>
 
           <SoftPressable
             style={styles.mediaBtn}
-            onPress={() => setMediaGalleryOpen(true)}
+            onPress={() => pushOverlay({ kind: 'media' })}
             accessibilityRole="button"
             accessibilityLabel="Chat Media"
+            hitSlop={8}
             pressScale={0.95}
           >
             <Text style={styles.mediaBtnText}>Media</Text>
           </SoftPressable>
+
+          <SoftPressable
+            style={styles.searchBtn}
+            onPress={() => setSearchOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel="Search chat"
+            hitSlop={8}
+            pressScale={0.92}
+          >
+            <Text style={styles.searchIcon}>⌕</Text>
+          </SoftPressable>
         </View>
-        <ChatScreen key={active.channelKey} embedded channelKey={active.channelKey} />
+        <ChatScreen
+          key={active.channelKey}
+          embedded
+          channelKey={active.channelKey}
+          searchActive={searchOpen}
+          onCloseSearch={() => setSearchOpen(false)}
+        />
         <ChatMediaModal
-          visible={mediaGalleryOpen}
+          visible={mediaOpen}
           channelKey={active.channelKey}
           title={active.title}
-          onClose={() => setMediaGalleryOpen(false)}
+          onClose={popOverlay}
         />
       </View>
     );
@@ -197,7 +288,12 @@ export function ChatHubScreen({ onLoadError }: Props) {
               <SoftPressable
                 key={item.channelKey}
                 style={styles.row}
-                onPress={() => openChannel(item)}
+                onPress={() =>
+                  openChannel({
+                    ...item,
+                    peerUserId: item.peerUserId,
+                  })
+                }
                 pressScale={0.985}
               >
                 <View style={styles.rowMain}>
@@ -234,6 +330,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
                         title: mate.name,
                         type: 'DM',
                         memberCount: null,
+                        peerUserId: mate.userId,
                       })
                     }
                     pressScale={0.985}
@@ -332,7 +429,6 @@ const styles = StyleSheet.create({
   chatHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
     paddingHorizontal: 12,
     paddingTop: 4,
     paddingBottom: 12,
@@ -341,26 +437,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10,10,12,0.92)',
   },
   backBtn: {
-    flexDirection: 'row',
+    width: 36,
+    height: 36,
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
   },
-  backLabel: {
+  backIcon: {
     color: colors.link,
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 22,
+    lineHeight: 24,
   },
   chatTitleBlock: {
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: 4,
+    paddingHorizontal: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   chatTitle: {
     color: colors.text,
@@ -375,16 +468,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   mediaBtn: {
-    borderWidth: 1,
-    borderColor: colors.chrome,
-    borderRadius: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(201,204,209,0.12)',
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    marginLeft: 'auto',
   },
   mediaBtnText: {
     color: colors.chrome,
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 14,
+  },
+  searchBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchIcon: {
+    color: colors.chrome,
+    fontWeight: '700',
+    fontSize: 20,
+    lineHeight: 22,
   },
 });

@@ -258,6 +258,49 @@ describe('Phase 1D — Chat (e2e)', () => {
     });
   });
 
+  describe('GET /chat/search', () => {
+    it('requires authentication', async () => {
+      await request(server).get('/chat/search').query({ q: 'hi' }).expect(401);
+    });
+
+    it('returns [] for blank q and matches text case-insensitively', async () => {
+      const { coach, player } = await setUpOrgWithPlayer();
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: coach.user.id },
+      });
+
+      await prisma.chatMessage.create({
+        data: {
+          orgId: membership.orgId,
+          senderId: player.user.id,
+          text: 'Practice at 8pm tonight',
+        },
+      });
+      await prisma.chatMessage.create({
+        data: {
+          orgId: membership.orgId,
+          senderId: player.user.id,
+          text: 'unrelated hello',
+        },
+      });
+
+      const blank = await request(server)
+        .get('/chat/search')
+        .query({ channelKey: 'org', q: '   ' })
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(blank.body).toEqual([]);
+
+      const hit = await request(server)
+        .get('/chat/search')
+        .query({ channelKey: 'org', q: 'PRACTICE' })
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(hit.body).toHaveLength(1);
+      expect(hit.body[0].text).toBe('Practice at 8pm tonight');
+    });
+  });
+
   describe('GET /chat/media', () => {
     it('requires authentication', async () => {
       await request(server).get('/chat/media').expect(401);

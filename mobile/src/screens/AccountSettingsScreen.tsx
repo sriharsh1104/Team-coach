@@ -130,7 +130,12 @@ export function AccountSettingsScreen({ navigation }: Props) {
           device unlock in one place.
         </Text>
 
-        <View style={styles.tabTrack}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabTrack}
+          style={styles.tabTrackScroll}
+        >
           {(
             [
               ['password', 'Password', 'Change Password'],
@@ -158,7 +163,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
               </SoftPressable>
             );
           })}
-        </View>
+        </ScrollView>
 
         <FadeSwap contentKey={tab}>
           {tab === 'password' && (
@@ -364,25 +369,22 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 20,
   },
-  tabTrack: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    padding: 4,
+  tabTrackScroll: {
     marginBottom: 18,
     borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
   },
+  tabTrack: {
+    flexDirection: 'row',
+    gap: 6,
+    padding: 4,
+  },
   tab: {
-    flexGrow: 1,
-    flexBasis: '28%',
-    minWidth: 96,
-    maxWidth: '100%',
     borderRadius: 10,
     paddingVertical: 11,
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
