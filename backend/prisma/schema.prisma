@@ -325,3 +325,19 @@ model Membership {
 
   @@unique([userId, orgId])
 }
+
+// Public marketing-site tournament ledger (sacredesports.com Records tab).
+// Readable by anyone; writable only by org coaches / owners.
+model WebsiteTournamentRecord {
+  id            String   @id @default(cuid())
+  name          String
+  status        String
+  kind          String
+  progress      String?
+  qualifierDate String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([sortOrder])
+}

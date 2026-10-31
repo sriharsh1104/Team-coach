@@ -14,6 +14,7 @@ import { ScrimsModule } from './scrims/scrims.module';
 import { StatsModule } from './stats/stats.module';
 import { VoiceModule } from './voice/voice.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { WebsiteModule } from './website/website.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     StatsModule,
     VoiceModule,
     RealtimeModule,
+    WebsiteModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

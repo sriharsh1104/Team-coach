@@ -1,17 +1,19 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
-const NAV = [
-  { to: '/app', label: 'Chats', end: true },
-  { to: '/app/members', label: 'Team Members' },
-  { to: '/app/profile', label: 'Profile' },
-  { to: '/app/rule-book', label: 'Rule Book' },
-  { to: '/app/social', label: 'Social Handles' },
-];
-
 export function AppShell() {
   const { user, org, logout } = useAuth();
   const navigate = useNavigate();
+  const nav = [
+    { to: '/app', label: 'Chats', end: true },
+    { to: '/app/members', label: 'Team Members' },
+    { to: '/app/profile', label: 'Profile' },
+    { to: '/app/tournament-records', label: 'Records', end: false },
+    { to: '/app/maps', label: 'Maps', end: false },
+    { to: '/app/points-table', label: 'Points Table', end: false },
+    { to: '/app/rule-book', label: 'Rule Book' },
+    { to: '/app/social', label: 'Social Handles' },
+  ];
 
   return (
     <div className="shell">
@@ -23,7 +25,7 @@ export function AppShell() {
           Sacred Esports
           <small>{org?.name ?? 'Team Coach'}</small>
         </div>
-        {NAV.map((item) => (
+        {nav.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

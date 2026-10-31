@@ -6,8 +6,12 @@ export function TwoFactorPage() {
   const { completeTwoFactorLogin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const challengeToken = (location.state as { challengeToken?: string } | null)
-    ?.challengeToken;
+  const state = (location.state || {}) as {
+    challengeToken?: string;
+    next?: string;
+  };
+  const challengeToken = state.challengeToken;
+  const nextPath = state.next || '/app';
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -30,7 +34,7 @@ export function TwoFactorPage() {
     setError(null);
     try {
       await completeTwoFactorLogin(challengeToken, { code: code.trim() });
-      navigate('/app');
+      navigate(nextPath);
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string | string[] } } })
