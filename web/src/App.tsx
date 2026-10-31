@@ -15,6 +15,7 @@ import {
 } from './pages/OrgSetupPages';
 import { ProfilePage } from './pages/ProfilePage';
 import { RuleBookPage } from './pages/RuleBookPage';
+import { StatsPage } from './pages/StatsPage';
 import { SignupPage } from './pages/SignupPage';
 import { SocialHandlesPage } from './pages/SocialHandlesPage';
 import { TwoFactorPage } from './pages/TwoFactorPage';
@@ -109,6 +110,8 @@ export default function App() {
           path="tournament-records"
           element={<ManageTournamentRecordsPage />}
         />
+        <Route path="stats" element={<StatsPage />} />
+        <Route path="scrims" element={<Navigate to="/app/stats" replace />} />
         <Route path="maps" element={<MapsPage />} />
         <Route path="points-table" element={<PointsTablePage />} />
         <Route path="rule-book" element={<RuleBookPage />} />

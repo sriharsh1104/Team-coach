@@ -140,3 +140,129 @@ export interface UpdateProfileInput {
   discordUrl?: string;
   youtubeUrl?: string;
 }
+
+export type ScrimEventType = 'SCRIM' | 'TOURNAMENT';
+export type ScrimRoundResult = 'PENDING' | 'QUALIFIED' | 'ELIMINATED';
+
+export interface ScrimRound {
+  id?: string;
+  roundNumber: number;
+  scheduledAt: string;
+  result: ScrimRoundResult;
+}
+
+export interface ScrimEvent {
+  id: string;
+  type: ScrimEventType;
+  title: string;
+  scheduledAt: string;
+  platform: string | null;
+  notes: string | null;
+  createdById: string;
+  createdByName: string;
+  remind30: boolean;
+  remind10: boolean;
+  rounds: ScrimRound[];
+}
+
+export interface ScrimEventInput {
+  type: ScrimEventType;
+  title: string;
+  scheduledAt: string;
+  platform?: string;
+  notes?: string;
+  remind30?: boolean;
+  remind10?: boolean;
+  rounds?: Array<{
+    roundNumber: number;
+    scheduledAt: string;
+    result?: ScrimRoundResult;
+  }>;
+}
+
+export type StatMode = 'BR' | 'CS' | 'SCRIM' | 'TOURNAMENT';
+
+export const STAT_MODES: Array<{ mode: StatMode; label: string }> = [
+  { mode: 'BR', label: 'BR' },
+  { mode: 'CS', label: 'CS' },
+  { mode: 'SCRIM', label: 'Scrims' },
+  { mode: 'TOURNAMENT', label: 'Tournament' },
+];
+
+export type ExtractionStatus =
+  | 'QUEUED'
+  | 'PROCESSING'
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'REJECTED'
+  | 'FAILED';
+
+export interface ExtractionRow {
+  rawName: string;
+  matchedUserId: string | null;
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+}
+
+export interface StatExtraction {
+  id: string;
+  mode: StatMode;
+  scrimEventId?: string | null;
+  status: ExtractionStatus;
+  failureReason: string | null;
+  mediaUrl: string | null;
+  rows: ExtractionRow[];
+  createdAt: string;
+}
+
+export interface RequestExtractionsInput {
+  mode: StatMode;
+  mediaPostIds: string[];
+  scrimEventId?: string;
+}
+
+export interface RequestExtractionsResponse {
+  created: StatExtraction[];
+  skipped: Array<{ mediaPostId: string; reason: string }>;
+}
+
+export interface LeaderboardRow {
+  userId: string;
+  name: string;
+  mode?: StatMode;
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  matches: number;
+}
+
+export interface ModeHistoryEntry {
+  id: string;
+  userId: string;
+  name: string;
+  mode: StatMode;
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  recordedAt: string;
+}
+
+export interface ModeHistoryResponse {
+  mode: StatMode;
+  entries: ModeHistoryEntry[];
+  nextCursor: string | null;
+}
+
+export interface MediaPost {
+  id: string;
+  type: 'IMAGE' | 'VIDEO';
+  url: string;
+  caption: string | null;
+  createdAt: string;
+  uploaderId: string;
+  uploaderName: string;
+}

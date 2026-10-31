@@ -9,6 +9,7 @@ export function AppShell() {
     { to: '/app/members', label: 'Team Members' },
     { to: '/app/profile', label: 'Profile' },
     { to: '/app/tournament-records', label: 'Records', end: false },
+    { to: '/app/stats', label: 'Stats', end: false },
     { to: '/app/maps', label: 'Maps', end: false },
     { to: '/app/points-table', label: 'Points Table', end: false },
     { to: '/app/rule-book', label: 'Rule Book' },
