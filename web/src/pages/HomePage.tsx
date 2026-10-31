@@ -3,15 +3,17 @@ import { AppDownloadTab } from './home/AppDownloadTab';
 import { HomeHeroTab } from './home/HomeHeroTab';
 import { HOME_TABS, HomeTabId } from './home/homeTabs';
 import { SocialFooter } from './home/SocialFooter';
+import { TeamLoginTab } from './home/TeamLoginTab';
 import { TeamPlayersTab } from './home/TeamPlayersTab';
-import { TournamentRecordTab } from './home/TournamentRecordTab';
 import { TournamentsTab } from './home/TournamentsTab';
 
 export function HomePage() {
   const [tab, setTab] = useState<HomeTabId>('home');
 
   return (
-    <div className="landing">
+    <div
+      className={`landing${tab === 'team-login' ? ' landing--team-login' : ''}`}
+    >
       <div className="brand-watermark" aria-hidden="true">
         <img src="/sacred-logo-transparent.png" alt="" />
       </div>
@@ -36,8 +38,8 @@ export function HomePage() {
         {tab === 'home' ? <HomeHeroTab onOpenTab={setTab} /> : null}
         {tab === 'app' ? <AppDownloadTab /> : null}
         {tab === 'tournaments' ? <TournamentsTab /> : null}
-        {tab === 'records' ? <TournamentRecordTab /> : null}
         {tab === 'players' ? <TeamPlayersTab /> : null}
+        {tab === 'team-login' ? <TeamLoginTab /> : null}
       </main>
 
       <SocialFooter />

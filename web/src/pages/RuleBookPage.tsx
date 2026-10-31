@@ -1,34 +1,68 @@
-const MINDSET = [
-  {
-    title: 'Review Every Custom Match',
-    body: 'Har custom ke baad apni mistakes discuss karo. Blame nahi, solutions chahiye.',
-  },
-  {
-    title: 'Never Give Up on a Match Set',
-    body: 'Saare matches khelne hain — bad performance ke baad quit option nahi hai.',
-  },
-  {
-    title: 'Team Comes Before Individual Ego',
-    body: 'Personal kill count se zyada important team ka result hai.',
-  },
+import { useState } from 'react';
+import {
+  FINAL_PRINCIPLE_LINES,
+  GAMEPLAY_RULES,
+  MINDSET_RULES,
+  OFFICIAL_FF_RULES,
+  Rule,
+} from './home/ruleBookData';
+
+type TabId = 'mindset' | 'gameplay' | 'principle' | 'official';
+
+const TABS: Array<{ id: TabId; label: string }> = [
+  { id: 'mindset', label: 'Mindset' },
+  { id: 'gameplay', label: 'Gameplay' },
+  { id: 'principle', label: 'Principle' },
+  { id: 'official', label: 'FF Official' },
 ];
 
-const GAMEPLAY = [
-  {
-    title: 'Never Take an Unplanned Fight',
-    body: 'Open rush tabhi jab information, utility, ya support ho.',
-  },
-  {
-    title: 'Communicate with Useful Callouts',
-    body: 'Callouts short, clear, actionable — location, knock, numbers, support.',
-  },
-  {
-    title: 'Position Before Kills',
-    body: 'Strong compound aur zone advantage kabhi-kabhi extra kills se zyada valuable hain.',
-  },
-];
+function SectionHeader({
+  eyebrow,
+  title,
+  countLabel,
+}: {
+  eyebrow: string;
+  title: string;
+  countLabel: string;
+}) {
+  return (
+    <div className="rule-section-head">
+      <div>
+        <p className="rule-eyebrow">{eyebrow}</p>
+        <h2 className="rule-section-title">{title}</h2>
+      </div>
+      <span className="rule-count-pill">{countLabel}</span>
+    </div>
+  );
+}
+
+function RuleList({ rules }: { rules: Rule[] }) {
+  return (
+    <div className="rules">
+      {rules.map((rule) => (
+        <div key={rule.number} className="rule">
+          <div className="rule-header">
+            <span className="rule-num">{rule.number}</span>
+            <h3>{rule.title}</h3>
+          </div>
+          <p>{rule.body}</p>
+          {rule.bullets?.length ? (
+            <ul className="rule-bullets">
+              {rule.bullets.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          ) : null}
+          {rule.note ? <p className="rule-note">Note: {rule.note}</p> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function RuleBookPage() {
+  const [tab, setTab] = useState<TabId>('mindset');
+
   return (
     <>
       <div className="topbar">
@@ -37,29 +71,74 @@ export function RuleBookPage() {
           <p>Rules every competitive player must follow</p>
         </div>
       </div>
-      <div className="content">
-        <h2>Mindset & Discipline</h2>
-        <div className="rules">
-          {MINDSET.map((r, i) => (
-            <div key={r.title} className="rule">
-              <h3>
-                {i + 1}. {r.title}
-              </h3>
-              <p>{r.body}</p>
-            </div>
+      <div className="content rulebook-page">
+        <nav className="profile-tabs rulebook-tabs" aria-label="Rule book sections">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`profile-tab${tab === t.id ? ' active' : ''}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
           ))}
-        </div>
-        <h2 style={{ marginTop: 24 }}>Gameplay & Practice</h2>
-        <div className="rules">
-          {GAMEPLAY.map((r, i) => (
-            <div key={r.title} className="rule">
-              <h3>
-                {i + 1}. {r.title}
-              </h3>
-              <p>{r.body}</p>
+        </nav>
+
+        {tab === 'mindset' ? (
+          <div>
+            <SectionHeader
+              eyebrow="Part 1"
+              title="Mindset & Discipline"
+              countLabel={`${MINDSET_RULES.length} rules`}
+            />
+            <RuleList rules={MINDSET_RULES} />
+          </div>
+        ) : null}
+
+        {tab === 'gameplay' ? (
+          <div>
+            <SectionHeader
+              eyebrow="Part 2"
+              title="Gameplay & Practice"
+              countLabel={`${GAMEPLAY_RULES.length} rules`}
+            />
+            <RuleList rules={GAMEPLAY_RULES} />
+          </div>
+        ) : null}
+
+        {tab === 'principle' ? (
+          <div>
+            <SectionHeader
+              eyebrow="Closing"
+              title="Final Team Principle"
+              countLabel="1 focus"
+            />
+            <div className="principle-card">
+              {FINAL_PRINCIPLE_LINES.map((line) => (
+                <div key={line} className="principle-row">
+                  {line}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ) : null}
+
+        {tab === 'official' ? (
+          <div>
+            <SectionHeader
+              eyebrow="Garena FFWS"
+              title="Free Fire Esports Official Rules"
+              countLabel={`${OFFICIAL_FF_RULES.length} points`}
+            />
+            <p className="rulebook-source muted">
+              Condensed from Garena Free Fire World Series competition rulebooks
+              (FFWS Africa 2026 Fall / MENA 2026 Spring). Always follow the live
+              event PDF for that tournament.
+            </p>
+            <RuleList rules={OFFICIAL_FF_RULES} />
+          </div>
+        ) : null}
       </div>
     </>
   );

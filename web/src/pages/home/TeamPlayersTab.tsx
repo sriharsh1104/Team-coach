@@ -16,8 +16,7 @@ export function TeamPlayersTab() {
               {p.ign.slice(0, 2).toUpperCase()}
             </div>
             <div className="player-body">
-              <h3>{p.name}</h3>
-              <p className="player-ign">{p.ign}</p>
+              <h3>{p.ign}</h3>
               <p className="player-role">{p.role}</p>
               <div className="player-tags">
                 {p.inGameRoles.map((r) => (

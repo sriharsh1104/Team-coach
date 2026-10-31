@@ -4,7 +4,10 @@ import { AppShell } from './layout/AppShell';
 import { ChatPage } from './pages/ChatPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
+import { ManageTournamentRecordsPage } from './pages/ManageTournamentRecordsPage';
+import { MapsPage } from './pages/MapsPage';
 import { MembersPage } from './pages/MembersPage';
+import { PointsTablePage } from './pages/PointsTablePage';
 import {
   CreateOrgPage,
   JoinOrgPage,
@@ -102,6 +105,12 @@ export default function App() {
         <Route index element={<ChatPage />} />
         <Route path="members" element={<MembersPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route
+          path="tournament-records"
+          element={<ManageTournamentRecordsPage />}
+        />
+        <Route path="maps" element={<MapsPage />} />
+        <Route path="points-table" element={<PointsTablePage />} />
         <Route path="rule-book" element={<RuleBookPage />} />
         <Route path="social" element={<SocialHandlesPage />} />
       </Route>

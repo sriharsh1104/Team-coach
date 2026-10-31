@@ -106,6 +106,12 @@ export interface ChatChannelsResponse {
   totalUnread: number;
 }
 
+export interface Device {
+  id: string;
+  name: string;
+  model: string;
+}
+
 export interface Profile {
   id: string;
   name: string;
@@ -118,7 +124,19 @@ export interface Profile {
   instagramUrl: string | null;
   discordUrl: string | null;
   youtubeUrl: string | null;
-  devices: Array<{ id: string; name: string; model: string }>;
+  devices: Device[];
   role: MembershipRole | null;
   isOwner: boolean;
+}
+
+export interface UpdateProfileInput {
+  name?: string;
+  roles?: string[];
+  inGameName?: string;
+  inGameUid?: string;
+  phone?: string;
+  whatsappUrl?: string;
+  instagramUrl?: string;
+  discordUrl?: string;
+  youtubeUrl?: string;
 }

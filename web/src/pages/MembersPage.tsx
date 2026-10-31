@@ -28,8 +28,11 @@ export function MembersPage() {
       <div className="content">
         {error ? <p className="error">{error}</p> : null}
         <div className="list">
-          {org?.members.map((m) => (
+          {org?.members.map((m, index) => (
             <div key={m.userId} className="list-row" style={{ cursor: 'default' }}>
+              <span className="list-sno" aria-hidden="true">
+                {index + 1}
+              </span>
               <div>
                 <strong>
                   {m.name}
