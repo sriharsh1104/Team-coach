@@ -8,8 +8,9 @@ you're ready to move beyond your laptop.
 
 ```
 team-coach/
-  backend/   NestJS API (TypeScript, Prisma, PostgreSQL)
+  backend/   NestJS API (TypeScript, Prisma, PostgreSQL) — shared by mobile + web
   mobile/    React Native app (Expo, Android-first)
+  web/       React website (Vite + TypeScript) — same API as mobile
   docker-compose.yml   local Postgres (compose plugin not installed here — see below)
 ```
 
@@ -51,6 +52,13 @@ cd mobile
 npm install
 ```
 
+### 4. Web (Vite React)
+
+```bash
+cd web
+npm install
+```
+
 ## Start
 
 Each start script loads one env file. Fill that file before you run the matching command. Local development files already have working defaults; stage and production are placeholders.
@@ -76,6 +84,17 @@ npm run web
 ```
 
 Chrome opens http://localhost:8090. The script loads `mobile/.env.development`, then overrides `API_BASE_URL`.
+
+### Desktop website (Vite)
+
+Same backend. From another terminal:
+
+```bash
+cd web
+npm run dev
+```
+
+Opens http://localhost:5173 (`VITE_API_BASE_URL=http://localhost:3000`).
 
 ```
 APP_ENV=development
