@@ -7,6 +7,8 @@ export type FallbackTournamentRecord = {
   kind: RecordKind;
   progress?: string;
   qualifierDate?: string;
+  rank?: string;
+  resultImage?: string;
 };
 
 /** Offline / API-down fallback — same Sacred sheet seed. */

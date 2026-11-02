@@ -135,6 +135,9 @@ a:hover {
   padding: 9px 14px;
   border-radius: 10px;
   cursor: pointer;
+  transition:
+    background 0.28s ease,
+    color 0.28s ease;
 }
 
 .landing-tab:hover {
@@ -149,6 +152,89 @@ a:hover {
 .landing-main {
   flex: 1;
   min-height: 0;
+}
+
+.landing-stage {
+  position: relative;
+  perspective: 1600px;
+  overflow: hidden;
+}
+
+.landing-page {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.landing-page.is-leaving {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.landing-page.enter-next {
+  transform-origin: left center;
+  animation: book-enter-next 560ms cubic-bezier(0.22, 0.75, 0.2, 1);
+}
+
+.landing-page.leave-next {
+  transform-origin: left center;
+  animation: book-leave-next 520ms ease forwards;
+}
+
+.landing-page.enter-prev {
+  transform-origin: right center;
+  animation: book-enter-prev 560ms cubic-bezier(0.22, 0.75, 0.2, 1);
+}
+
+.landing-page.leave-prev {
+  transform-origin: right center;
+  animation: book-leave-prev 520ms ease forwards;
+}
+
+@keyframes book-enter-next {
+  from {
+    opacity: 0.35;
+    transform: rotateY(42deg) translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes book-leave-next {
+  to {
+    opacity: 0;
+    transform: rotateY(-62deg) translateX(-18px);
+  }
+}
+
+@keyframes book-enter-prev {
+  from {
+    opacity: 0.35;
+    transform: rotateY(-42deg) translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes book-leave-prev {
+  to {
+    opacity: 0;
+    transform: rotateY(62deg) translateX(18px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-page.enter-next,
+  .landing-page.enter-prev,
+  .landing-page.leave-next,
+  .landing-page.leave-prev {
+    animation: none;
+  }
 }
 
 .landing-tab-panel {
@@ -483,6 +569,97 @@ a:hover {
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.record-table-public {
+  min-width: 0;
+}
+
+.record-table-public td strong {
+  margin-bottom: 0;
+}
+
+.record-rank {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.record-table th.record-result-col,
+.record-table td.record-result-col {
+  width: 4.5rem;
+  text-align: center;
+}
+
+.record-view-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--chrome);
+  cursor: pointer;
+}
+
+.record-view-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.record-view-btn:hover {
+  background: rgba(201, 204, 209, 0.16);
+  color: var(--text);
+}
+
+.record-shot-card {
+  width: min(720px, 100%);
+  padding: 18px;
+}
+
+.record-shot-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.record-shot-head h3 {
+  margin: 2px 0 0;
+  font-size: 18px;
+}
+
+.record-shot-kicker {
+  margin: 0;
+  color: var(--chrome);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.record-shot-close {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.record-shot-card img {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+}
+
+.record-shot-empty {
+  margin: 0;
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .records-panel-head {
