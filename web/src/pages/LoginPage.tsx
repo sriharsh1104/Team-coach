@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { PasswordField } from '../auth/PasswordField';
 import { useAuth } from '../auth/AuthContext';
 
 export function LoginPage() {
@@ -42,6 +43,7 @@ export function LoginPage() {
         <h1 className="brand">
           Sacred <span>Esports</span>
         </h1>
+        <h2 className="auth-title">Log in</h2>
         <p className="auth-sub">Sign in to your team workspace on the web.</p>
 
         <div className="field">
@@ -55,17 +57,14 @@ export function LoginPage() {
             required
           />
         </div>
-        <div className="field">
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
+        <PasswordField
+          id="password"
+          label="Password"
+          autoComplete="current-password"
+          value={password}
+          onChange={setPassword}
+          required
+        />
 
         {error ? <p className="error">{error}</p> : null}
         <button className="btn btn-primary" type="submit" disabled={busy}>

@@ -8,6 +8,7 @@ import { AuthStackParamList } from '../navigation/types';
 import { authStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
+import { PasswordField } from '../ui/PasswordField';
 import { SoftPressable } from '../ui/SoftPressable';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Signup'>;
@@ -47,7 +48,7 @@ export function SignupScreen({ navigation }: Props) {
   return (
     <FormScreen>
       <BrandMark />
-      <Text style={authStyles.title}>Create Your Account</Text>
+      <Text style={authStyles.title}>Sign up</Text>
       <TextInput
         style={authStyles.input}
         placeholder="Full name"
@@ -64,14 +65,7 @@ export function SignupScreen({ navigation }: Props) {
         value={email}
         onChangeText={setEmail}
       />
-      <TextInput
-        style={authStyles.input}
-        placeholder="Password"
-        placeholderTextColor="#8b8f97"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+      <PasswordField value={password} onChangeText={setPassword} />
       <Text style={{ color: '#9aa0a6', fontSize: 12, marginBottom: 12 }}>
         At least 8 characters, with an uppercase letter, a lowercase letter, a
         number, and a special character.

@@ -7,6 +7,14 @@
 // present — true on web too, which is why VoiceChannelScreen has a .web.tsx
 // stub; Jest has the identical problem and needs the identical treatment).
 
+jest.mock('@expo/vector-icons', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+  const Icon = ({ name }: { name?: string }) =>
+    React.createElement(Text, null, name ?? 'icon');
+  return { Ionicons: Icon };
+});
+
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   const inset = { top: 0, right: 0, bottom: 0, left: 0 };

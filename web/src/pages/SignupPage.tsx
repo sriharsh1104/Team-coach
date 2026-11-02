@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { PasswordField } from '../auth/PasswordField';
 import { useAuth } from '../auth/AuthContext';
 
 export function SignupPage() {
@@ -45,6 +46,7 @@ export function SignupPage() {
         <h1 className="brand">
           Sacred <span>Esports</span>
         </h1>
+        <h2 className="auth-title">Sign up</h2>
         <p className="auth-sub">Create your account — same backend as the mobile app.</p>
 
         <div className="field">
@@ -67,18 +69,15 @@ export function SignupPage() {
             required
           />
         </div>
-        <div className="field">
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
-            required
-          />
-        </div>
+        <PasswordField
+          id="password"
+          label="Password"
+          autoComplete="new-password"
+          value={password}
+          onChange={setPassword}
+          minLength={8}
+          required
+        />
 
         {error ? <p className="error">{error}</p> : null}
         <button className="btn btn-primary" type="submit" disabled={busy}>

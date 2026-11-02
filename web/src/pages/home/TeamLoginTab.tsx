@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleSignInButton } from '../../auth/GoogleSignInButton';
+import { PasswordField } from '../../auth/PasswordField';
 import { useAuth } from '../../auth/AuthContext';
 
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
@@ -108,6 +109,7 @@ export function TeamLoginTab() {
 
   return (
     <section className="landing-section landing-tab-panel team-login-panel">
+      <h2>{mode === 'signup' ? 'Sign up' : 'Log in'}</h2>
       <p className="landing-section-lead">
         {mode === 'signup'
           ? 'Create a Sacred account, then open tournament records.'
@@ -138,17 +140,14 @@ export function TeamLoginTab() {
             required
           />
         </div>
-        <div className="field">
-          <label htmlFor="team-password">Password</label>
-          <input
-            id="team-password"
-            type="password"
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
+        <PasswordField
+          id="team-password"
+          label="Password"
+          autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+          value={password}
+          onChange={setPassword}
+          required
+        />
         {mode === 'signup' ? (
           <p className="team-password-hint">
             At least 8 characters, with an uppercase letter, a lowercase letter,

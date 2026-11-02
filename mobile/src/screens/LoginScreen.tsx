@@ -8,6 +8,7 @@ import { AuthStackParamList } from '../navigation/types';
 import { authStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
+import { PasswordField } from '../ui/PasswordField';
 import { SoftPressable } from '../ui/SoftPressable';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
@@ -40,7 +41,7 @@ export function LoginScreen({ navigation }: Props) {
   return (
     <FormScreen>
       <BrandMark />
-      <Text style={authStyles.title}>Sign In</Text>
+      <Text style={authStyles.title}>Log in</Text>
       <TextInput
         style={authStyles.input}
         placeholder="Email"
@@ -50,14 +51,7 @@ export function LoginScreen({ navigation }: Props) {
         value={email}
         onChangeText={setEmail}
       />
-      <TextInput
-        style={authStyles.input}
-        placeholder="Password"
-        placeholderTextColor="#8b8f97"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+      <PasswordField value={password} onChangeText={setPassword} />
       <SoftPressable
         style={[
           authStyles.button,
