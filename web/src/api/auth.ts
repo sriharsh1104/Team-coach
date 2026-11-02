@@ -31,6 +31,12 @@ export function login(email: string, password: string) {
     .then((res) => res.data);
 }
 
+export function googleLogin(idToken: string) {
+  return apiClient
+    .post<LoginResult>('/auth/google', { idToken })
+    .then((res) => res.data);
+}
+
 export function verifyTwoFactor(
   challengeToken: string,
   payload: { code?: string; backupCode?: string },

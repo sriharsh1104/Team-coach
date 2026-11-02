@@ -46,6 +46,9 @@ interface AuthContextValue {
     email: string,
     password: string,
   ) => Promise<TwoFactorChallengeResponse | void>;
+  loginWithGoogle: (
+    idToken: string,
+  ) => Promise<TwoFactorChallengeResponse | void>;
   completeTwoFactorLogin: (
     challengeToken: string,
     payload: { code?: string; backupCode?: string },
@@ -119,6 +122,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applyAuthResponse],
   );
 
+  const loginWithGoogle = useCallback(
+    async (idToken: string) => {
+      const result = await authApi.googleLogin(idToken);
+      if ('requiresTwoFactor' in result) return result;
+      await applyAuthResponse(result);
+    },
+    [applyAuthResponse],
+  );
+
   const completeTwoFactorLogin = useCallback(
     async (
       challengeToken: string,
@@ -166,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         completeEmailVerification,
         resendEmailVerification,
         login,
+        loginWithGoogle,
         completeTwoFactorLogin,
         applyAuthResponse,
         logout,
