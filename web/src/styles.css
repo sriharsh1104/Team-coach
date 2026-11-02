@@ -229,6 +229,26 @@ a:hover {
 .landing-cta {
   background: var(--chrome);
   color: var(--chrome-ink);
+  gap: 10px;
+}
+
+.landing-cta:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.landing-cta:disabled:hover {
+  transform: none;
+}
+
+.landing-cta-soon {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(10, 10, 12, 0.14);
 }
 
 .landing-cta-ghost {
@@ -322,6 +342,55 @@ a:hover {
   color: var(--text-muted);
   font-size: 14px;
   line-height: 1.5;
+}
+
+.tour-extra {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.tour-panel {
+  border-radius: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.tour-panel h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.tour-points {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.tour-records {
+  padding-top: 8px;
+}
+
+.tour-page-btn {
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.tour-page-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tour-page-btn:disabled:hover {
+  transform: none;
 }
 
 .landing-footer.social-footer {
@@ -1116,10 +1185,229 @@ a:hover {
   color: var(--text-muted);
 }
 
+.roster-section {
+  max-width: 1120px;
+}
+
+.game-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.game-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.game-tag.active {
+  background: var(--chrome);
+  border-color: var(--chrome);
+  color: var(--chrome-ink);
+}
+
+.game-tag:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.game-tag-soon {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--chrome);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.roster-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 16px;
+  align-items: start;
+}
+
+.roster-block,
+.mentor-block {
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.roster-block {
+  border: 1px solid rgba(201, 204, 209, 0.5);
+  background: rgba(201, 204, 209, 0.1);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.mentor-block {
+  border: 1px solid rgba(168, 176, 255, 0.55);
+  background: rgba(168, 176, 255, 0.1);
+  box-shadow: 0 0 0 1px rgba(168, 176, 255, 0.08);
+}
+
+.roster-block-title {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--chrome);
+}
+
+.mentor-block .roster-block-title {
+  color: var(--link);
+}
+
 .player-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.guild-section {
+  max-width: 980px;
+}
+
+.guild-profile {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 28px;
+  align-items: center;
+  padding: 22px;
+  border-radius: 24px;
+  border: 1px solid rgba(201, 204, 209, 0.28);
+  background:
+    radial-gradient(circle at 18% 20%, rgba(201, 204, 209, 0.12), transparent 42%),
+    rgba(255, 255, 255, 0.035);
+}
+
+.guild-logo-wrap {
+  border-radius: 28px;
+  background: #050506;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.guild-logo-wrap img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+}
+
+.guild-kicker {
+  margin: 0;
+  color: var(--chrome);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.guild-name {
+  margin: 6px 0 0;
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.guild-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.guild-id strong {
+  color: var(--text);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+.guild-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.guild-profile-body h4 {
+  margin: 22px 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.guild-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.guild-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.guild-person-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--chrome-ink);
+  background: var(--chrome);
+}
+
+.guild-person-ign {
+  min-width: 0;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.guild-person-role {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--link);
 }
 
 .player-card {
@@ -1196,12 +1484,21 @@ a:hover {
 }
 
 @media (max-width: 800px) {
-  .tour-grid {
+  .tour-grid,
+  .tour-extra {
     grid-template-columns: 1fr;
   }
 
-  .player-grid {
+  .roster-layout,
+  .player-grid,
+  .guild-profile,
+  .guild-groups {
     grid-template-columns: 1fr;
+  }
+
+  .guild-logo-wrap {
+    width: min(220px, 70%);
+    margin: 0 auto;
   }
 
   .landing-footer.social-footer {

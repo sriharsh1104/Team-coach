@@ -1,10 +1,6 @@
 export function TournamentsTab() {
   return (
     <section className="landing-section landing-tab-panel">
-      <h2>Tournament participation</h2>
-      <p className="landing-section-lead">
-        How Sacred fields teams — pick the lane that fits you.
-      </p>
       <div className="tour-grid">
         <article className="tour-item">
           <h3>Org roster</h3>
@@ -28,9 +24,36 @@ export function TournamentsTab() {
           </p>
         </article>
       </div>
+
+      <div className="tour-extra">
+        <article className="tour-panel">
+          <h3>What We Provide</h3>
+          <ul className="tour-points">
+            <li>Coach checks player stats, practice, and weak points to improve</li>
+            <li>Everyday scrims slot</li>
+            <li>Mentor for player moral support</li>
+            <li>Analyst for map analysis</li>
+            <li>Tournament registration</li>
+          </ul>
+        </article>
+
+        <article className="tour-panel">
+          <h3>Requirement</h3>
+          <ul className="tour-points">
+            <li>Clear the tryout first</li>
+            <li>Join the Sacred guild</li>
+            <li>Set your in-game name starting with SES-</li>
+            <li>Join the Sacred Discord</li>
+            <li>Share at least 5 clips from your YouTube or Instagram</li>
+          </ul>
+        </article>
+      </div>
+
       <a
-        className="landing-cta-ghost"
-        href="mailto:sacredesportsss@gmail.com?subject=Sacred%20Esports%20%E2%80%94%20Tournament%20/%20Tryout"
+        className="landing-cta"
+        href="https://discord.gg/mUES4kcAE"
+        target="_blank"
+        rel="noopener noreferrer"
       >
         Apply for tryouts
       </a>

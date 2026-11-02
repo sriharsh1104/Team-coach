@@ -1,5 +1,5 @@
 type Props = {
-  onOpenTab: (tab: 'app' | 'tournaments') => void;
+  onOpenTab: (tab: 'tournaments') => void;
 };
 
 export function HomeHeroTab({ onOpenTab }: Props) {
@@ -12,12 +12,9 @@ export function HomeHeroTab({ onOpenTab }: Props) {
         tournaments, or reach the org for tryouts and partnerships.
       </p>
       <div className="landing-cta-row">
-        <button
-          type="button"
-          className="landing-cta"
-          onClick={() => onOpenTab('app')}
-        >
+        <button type="button" className="landing-cta" disabled>
           Download Android APK
+          <span className="landing-cta-soon">Coming soon</span>
         </button>
         <button
           type="button"

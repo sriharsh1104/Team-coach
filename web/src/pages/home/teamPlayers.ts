@@ -13,9 +13,9 @@ export const TEAM_PLAYERS: TeamPlayer[] = [
     id: 'p1',
     name: 'SRI',
     ign: 'SES-SRI',
-    role: 'Owner Cum Mentor',
-    inGameRoles: ['Owner Cum Mentor'],
-    bio: 'Owns and mentors the Sacred pack — discipline, review, and long-term roster direction.',
+    role: 'Mentor',
+    inGameRoles: ['Mentor'],
+    bio: 'Mentors the Sacred pack — discipline, review, and long-term roster direction.',
   },
   {
     id: 'p2',
@@ -44,7 +44,7 @@ export const TEAM_PLAYERS: TeamPlayer[] = [
   {
     id: 'p5',
     name: 'BOOM',
-    ign: 'IE-BOOM',
+    ign: 'IE-BOOM07',
     role: 'Player',
     inGameRoles: ['PRIMARY_RUSHER'],
     bio: 'Primary rusher — first man in, opens space, and forces the trade line.',
@@ -57,7 +57,7 @@ const ROLE_LABELS: Record<string, string> = {
   PRIMARY_RUSHER: 'Primary rusher',
   SECONDARY_RUSHER: 'Secondary rusher',
   SNIPER: 'Sniper',
-  'Owner Cum Mentor': 'Owner Cum Mentor',
+  Mentor: 'Mentor',
 };
 
 export function formatInGameRole(role: string) {

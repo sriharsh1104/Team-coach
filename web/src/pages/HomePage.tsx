@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { AppDownloadTab } from './home/AppDownloadTab';
 import { HomeHeroTab } from './home/HomeHeroTab';
 import { HOME_TABS, HomeTabId } from './home/homeTabs';
 import { SocialFooter } from './home/SocialFooter';
 import { TeamLoginTab } from './home/TeamLoginTab';
+import { GuildTab } from './home/GuildTab';
+import { RecordsTab } from './home/RecordsTab';
 import { TeamPlayersTab } from './home/TeamPlayersTab';
 import { TournamentsTab } from './home/TournamentsTab';
 
@@ -36,9 +37,10 @@ export function HomePage() {
 
       <main className="landing-main">
         {tab === 'home' ? <HomeHeroTab onOpenTab={setTab} /> : null}
-        {tab === 'app' ? <AppDownloadTab /> : null}
         {tab === 'tournaments' ? <TournamentsTab /> : null}
+        {tab === 'records' ? <RecordsTab /> : null}
         {tab === 'players' ? <TeamPlayersTab /> : null}
+        {tab === 'guild' ? <GuildTab /> : null}
         {tab === 'team-login' ? <TeamLoginTab /> : null}
       </main>
 

@@ -17,7 +17,6 @@ export function TeamLoginTab() {
   if (user && org) {
     return (
       <section className="landing-section landing-tab-panel team-login-panel">
-        <h2>Team login</h2>
         <p className="landing-section-lead">
           You&apos;re signed in as {user.name}. Open tournament records for the
           roster.
@@ -63,7 +62,6 @@ export function TeamLoginTab() {
 
   return (
     <section className="landing-section landing-tab-panel team-login-panel">
-      <h2>Team login</h2>
       <p className="landing-section-lead">
         Sacred players, coaches, and owners — sign in to view tournament
         records. Coaches and owners can also update them.
