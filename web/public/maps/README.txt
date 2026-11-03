@@ -1,11 +1,3 @@
-Official Garena Free Fire map overviews (active FFWS 2026 pool).
-
-Files:
-  bermuda.jpg
-  purgatory.jpg
-  kalahari.jpg
-  nexterra.jpg
-  solara.jpg
-
-Source: https://ff.garena.com/en/maps
-Pool: Bermuda, Purgatory, Kalahari, NeXTerra, Solara (Alpine removed in 2026 FFWS rulebooks).
+Map images live on the backend: backend/assets/maps
+Served via GET /maps (catalog) and GET /maps/files/<path> (images).
+Do not put JPGs here — it bloats the Vite/web deploy.

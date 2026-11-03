@@ -6,11 +6,15 @@ import * as usersApi from '../api/users';
 import { MembershipRole, Profile } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { postAuthPath } from '../auth/postAuthPath';
+import {
+  SOCIAL_PLACEHOLDERS,
+  SocialPlatform,
+  validateAllSocialUrls,
+} from '../lib/socialUrls';
 import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { SesLoader } from '../ui/SesLoader';
 
 type ProfileTab = 'user' | 'game' | 'devices' | 'social';
-type SocialPlatform = 'whatsapp' | 'instagram' | 'discord' | 'youtube';
 
 const TABS: Array<{ id: ProfileTab; label: string }> = [
   { id: 'user', label: 'User' },
@@ -845,6 +849,15 @@ function SocialSection({
     setYoutubeUrl(profile.youtubeUrl ?? '');
   }, [profile]);
 
+  function socialDraft() {
+    return {
+      whatsapp: whatsappUrl,
+      instagram: instagramUrl,
+      discord: discordUrl,
+      youtube: youtubeUrl,
+    };
+  }
+
   async function persistSocial() {
     const updated = await usersApi.updateMyProfile({
       whatsappUrl: whatsappUrl.trim() || undefined,
@@ -861,6 +874,11 @@ function SocialSection({
     setBusy(true);
     setError(null);
     try {
+      const invalid = validateAllSocialUrls(socialDraft());
+      if (invalid) {
+        setError(invalid);
+        return;
+      }
       await persistSocial();
       if (!mustComplete) setEditing(false);
     } catch (err) {
@@ -874,6 +892,11 @@ function SocialSection({
     setBusy(true);
     setError(null);
     try {
+      const invalid = validateAllSocialUrls(socialDraft());
+      if (invalid) {
+        setError(invalid);
+        return;
+      }
       // Save whatever they typed (all optional), then leave the gate.
       const hasAny =
         whatsappUrl.trim() ||
@@ -950,7 +973,11 @@ function SocialSection({
             id={`pf-${field.key}`}
             value={draftByKey[field.key]}
             onChange={(e) => setDraftByKey[field.key](e.target.value)}
-            placeholder={`${field.label} URL`}
+            placeholder={SOCIAL_PLACEHOLDERS[field.key]}
+            inputMode="url"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </div>
       ))}

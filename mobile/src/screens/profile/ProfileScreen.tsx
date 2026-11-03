@@ -23,6 +23,10 @@ import { Toast, useToast } from '../../ui/Toast';
 import { sharedStyles, formatRoleBadge } from '../shared';
 import { useAuth } from '../../auth/AuthContext';
 import { coercePhoneToE164 } from '../../lib/phone';
+import {
+  SOCIAL_PLACEHOLDERS,
+  validateAllSocialUrls,
+} from '../../lib/socialUrls';
 import { colors } from '../../theme';
 
 type ProfileTab = 'user' | 'game' | 'devices' | 'social';
@@ -503,20 +507,33 @@ function SocialProfileSection({
   const [youtubeUrl, setYoutubeUrl] = useState(profile.youtubeUrl ?? '');
 
   const onSave = async () => {
+    const invalid = validateAllSocialUrls({
+      whatsapp: whatsappUrl,
+      instagram: instagramUrl,
+      discord: discordUrl,
+      youtube: youtubeUrl,
+    });
+    if (invalid) {
+      showToast(invalid);
+      return;
+    }
     setIsSaving(true);
     try {
       const updated = await usersApi.updateMyProfile({
-        whatsappUrl: whatsappUrl || undefined,
-        instagramUrl: instagramUrl || undefined,
-        discordUrl: discordUrl || undefined,
-        youtubeUrl: youtubeUrl || undefined,
+        whatsappUrl: whatsappUrl.trim() || undefined,
+        instagramUrl: instagramUrl.trim() || undefined,
+        discordUrl: discordUrl.trim() || undefined,
+        youtubeUrl: youtubeUrl.trim() || undefined,
       });
       onUpdated(updated);
       setIsEditing(false);
       showToast('Saved — your profile was updated.');
     } catch (err: any) {
+      const msg = err?.response?.data?.message;
       showToast(
-        err?.response?.data?.message?.toString() ?? 'Could not save. Please try again.',
+        Array.isArray(msg)
+          ? msg.join(', ')
+          : msg?.toString() ?? 'Could not save. Please try again.',
       );
     } finally {
       setIsSaving(false);
@@ -548,28 +565,28 @@ function SocialProfileSection({
     <View>
       <Text style={styles.sectionLabel}>WhatsApp</Text>
       <CopyableInput
-        placeholder="WhatsApp URL"
+        placeholder={SOCIAL_PLACEHOLDERS.whatsapp}
         autoCapitalize="none"
         value={whatsappUrl}
         onChangeText={setWhatsappUrl}
       />
       <Text style={styles.sectionLabel}>Instagram</Text>
       <CopyableInput
-        placeholder="Instagram URL"
+        placeholder={SOCIAL_PLACEHOLDERS.instagram}
         autoCapitalize="none"
         value={instagramUrl}
         onChangeText={setInstagramUrl}
       />
       <Text style={styles.sectionLabel}>Discord</Text>
       <CopyableInput
-        placeholder="Discord URL"
+        placeholder={SOCIAL_PLACEHOLDERS.discord}
         autoCapitalize="none"
         value={discordUrl}
         onChangeText={setDiscordUrl}
       />
       <Text style={styles.sectionLabel}>YouTube</Text>
       <CopyableInput
-        placeholder="YouTube URL"
+        placeholder={SOCIAL_PLACEHOLDERS.youtube}
         autoCapitalize="none"
         value={youtubeUrl}
         onChangeText={setYoutubeUrl}

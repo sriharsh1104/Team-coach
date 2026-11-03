@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react';
-import {
-  allDropsForMap,
-  DropPoint,
-  getDropPool,
-} from './home/dropPoints';
-import { FREE_FIRE_MAPS, FreeFireMap } from './home/freeFireMaps';
+import { FreeFireMap, listMaps, MapDrop } from '../api/maps';
+import { SesLoader } from '../ui/SesLoader';
 
 type ViewerTarget =
   | { kind: 'overview'; map: FreeFireMap }
-  | { kind: 'drop'; map: FreeFireMap; drop: DropPoint };
+  | { kind: 'drop'; map: FreeFireMap; drop: MapDrop };
 
 function MapImage({
   src,
@@ -24,6 +20,10 @@ function MapImage({
   fallbackName: string;
 }) {
   const [broken, setBroken] = useState(false);
+
+  useEffect(() => {
+    setBroken(false);
+  }, [src]);
 
   return (
     <div className={`map-frame${className ? ` ${className}` : ''}`}>
@@ -43,7 +43,7 @@ function DropThumb({
   drop,
   onOpen,
 }: {
-  drop: DropPoint;
+  drop: MapDrop;
   onOpen: () => void;
 }) {
   return (
@@ -57,7 +57,7 @@ function DropThumb({
         {drop.tier === 'primary' ? 'Primary' : 'Secondary'}
       </span>
       <div className="drop-thumb-frame">
-        <img src={drop.image} alt={`${drop.name} drone view`} loading="lazy" />
+        <img src={drop.imageUrl} alt={`${drop.name} drone view`} loading="lazy" />
       </div>
       <strong>{drop.name}</strong>
       <span>{drop.note}</span>
@@ -66,8 +66,28 @@ function DropThumb({
 }
 
 export function MapsPage() {
+  const [maps, setMaps] = useState<FreeFireMap[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerTarget | null>(null);
   const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    let cancelled = false;
+    listMaps()
+      .then((next) => {
+        if (!cancelled) setMaps(next);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load maps from the server');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!viewer) {
@@ -94,7 +114,7 @@ export function MapsPage() {
     setViewer({ kind: 'overview', map });
   };
 
-  const openDrop = (map: FreeFireMap, drop: DropPoint) => {
+  const openDrop = (map: FreeFireMap, drop: MapDrop) => {
     setZoom(1);
     setViewer({ kind: 'drop', map, drop });
   };
@@ -107,14 +127,18 @@ export function MapsPage() {
         : '';
 
   const viewerSrc =
-    viewer?.kind === 'drop' ? viewer.drop.image : viewer?.map.image ?? '';
+    viewer?.kind === 'drop' ? viewer.drop.imageUrl : viewer?.map.imageUrl ?? '';
 
   const viewerNote =
     viewer?.kind === 'drop'
       ? `${viewer.drop.tier === 'primary' ? 'Primary' : 'Secondary'} team drop · drone view · zoom for clash landing`
       : 'Full overview · scroll to pan · zoom for drop / rotation plans';
 
-  const viewerDrops = viewer ? allDropsForMap(viewer.map.id) : [];
+  const viewerDrops = viewer
+    ? [viewer.map.primary, viewer.map.secondary]
+    : [];
+
+  if (loading) return <SesLoader label="Loading maps" />;
 
   return (
     <>
@@ -128,66 +152,62 @@ export function MapsPage() {
         </div>
       </div>
       <div className="content maps-page">
-        {FREE_FIRE_MAPS.map((map, index) => {
-          const pool = getDropPool(map.id);
-          return (
-            <article key={map.id} className="map-block">
-              <header className="map-block-head">
-                <span className="list-sno">{index + 1}</span>
-                <div>
-                  <strong>{map.name}</strong>
-                  <span>
-                    {map.theme}
-                    {map.size ? ` · ${map.size}` : ''}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-ghost map-fullscreen-btn"
-                  onClick={() => openOverview(map)}
-                >
-                  Full screen overview
-                </button>
-              </header>
-
+        {error ? <p className="error">{error}</p> : null}
+        {maps.map((map, index) => (
+          <article key={map.id} className="map-block">
+            <header className="map-block-head">
+              <span className="list-sno">{index + 1}</span>
+              <div>
+                <strong>{map.name}</strong>
+                <span>
+                  {map.theme}
+                  {map.size ? ` · ${map.size}` : ''}
+                </span>
+              </div>
               <button
                 type="button"
-                className="map-card-preview map-block-overview"
+                className="btn btn-ghost map-fullscreen-btn"
                 onClick={() => openOverview(map)}
-                aria-label={`Open ${map.name} full screen overview`}
               >
-                <MapImage
-                  src={map.image}
-                  alt={`${map.name} full overview`}
-                  fallbackId={map.id}
-                  fallbackName={map.name}
-                />
+                Full screen overview
               </button>
+            </header>
 
-              {pool ? (
-                <section className="drop-section">
-                  <div className="drop-section-head">
-                    <div>
-                      <p className="drop-eyebrow">Sacred drops</p>
-                      <h3>Primary &amp; secondary</h3>
-                    </div>
-                    <span className="drop-count">2</span>
-                  </div>
-                  <div className="drop-grid drop-grid-pair">
-                    <DropThumb
-                      drop={pool.primary}
-                      onOpen={() => openDrop(map, pool.primary)}
-                    />
-                    <DropThumb
-                      drop={pool.secondary}
-                      onOpen={() => openDrop(map, pool.secondary)}
-                    />
-                  </div>
-                </section>
-              ) : null}
-            </article>
-          );
-        })}
+            <button
+              type="button"
+              className="map-card-preview map-block-overview"
+              onClick={() => openOverview(map)}
+              aria-label={`Open ${map.name} full screen overview`}
+            >
+              <MapImage
+                src={map.imageUrl}
+                alt={`${map.name} full overview`}
+                fallbackId={map.id}
+                fallbackName={map.name}
+              />
+            </button>
+
+            <section className="drop-section">
+              <div className="drop-section-head">
+                <div>
+                  <p className="drop-eyebrow">Sacred drops</p>
+                  <h3>Primary &amp; secondary</h3>
+                </div>
+                <span className="drop-count">2</span>
+              </div>
+              <div className="drop-grid drop-grid-pair">
+                <DropThumb
+                  drop={map.primary}
+                  onOpen={() => openDrop(map, map.primary)}
+                />
+                <DropThumb
+                  drop={map.secondary}
+                  onOpen={() => openDrop(map, map.secondary)}
+                />
+              </div>
+            </section>
+          </article>
+        ))}
       </div>
 
       {viewer ? (

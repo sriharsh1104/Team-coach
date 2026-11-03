@@ -15,6 +15,7 @@ import { StatsModule } from './stats/stats.module';
 import { VoiceModule } from './voice/voice.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { WebsiteModule } from './website/website.module';
+import { MapsModule } from './maps/maps.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { WebsiteModule } from './website/website.module';
     VoiceModule,
     RealtimeModule,
     WebsiteModule,
+    MapsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

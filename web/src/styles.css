@@ -157,6 +157,13 @@ a:hover {
   overflow: hidden;
 }
 
+/* Inside scrollable .content: don't let overflow:hidden flex-shrink clip tall pages. */
+.content > .book-stage,
+.content .book-stage {
+  flex-shrink: 0;
+  overflow: visible;
+}
+
 .landing-page,
 .book-page {
   position: relative;
@@ -2951,7 +2958,9 @@ a:hover {
 }
 
 .guild-list-stage {
-  min-height: min(48vh, 360px);
+  flex-shrink: 0;
+  overflow: visible;
+  min-height: 0;
 }
 
 .member-name-link {
@@ -3267,8 +3276,12 @@ a:hover {
   max-width: 100%;
 }
 
+/* flex + overflow:hidden on .book-stage was clipping tall rule lists
+   (child shrunk instead of letting .content scroll). */
 .rulebook-stage {
-  min-height: min(58vh, 520px);
+  flex-shrink: 0;
+  overflow: visible;
+  min-height: 0;
 }
 
 .rulebook-tabs {
@@ -3652,12 +3665,16 @@ a:hover {
 }
 
 /* ——— Stats (BR / CS / Scrims / Tournament + OCR) ——— */
-.stats-book-stage {
-  min-height: min(52vh, 480px);
+.stats-book-stage,
+.stats-sub-stage {
+  flex-shrink: 0;
+  overflow: visible;
+  min-height: 0;
 }
 
-.stats-sub-stage {
-  min-height: 200px;
+.security-panel.book-stage {
+  flex-shrink: 0;
+  overflow: visible;
 }
 
 .stats-page {

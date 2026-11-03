@@ -182,6 +182,33 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .expect(400);
     });
 
+    it('rejects a social URL that belongs to another platform', async () => {
+      const user = await signup(server);
+      const wrongDiscord = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ discordUrl: 'https://instagram.com/someone' })
+        .expect(400);
+      expect(JSON.stringify(wrongDiscord.body.message)).toMatch(/discord/i);
+
+      const wrongWhatsapp = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ whatsappUrl: 'https://youtube.com/watch?v=abc' })
+        .expect(400);
+      expect(JSON.stringify(wrongWhatsapp.body.message)).toMatch(/whatsapp/i);
+
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({
+          whatsappUrl: 'https://wa.me/919876543210',
+          instagramUrl: 'https://instagram.com/sacred',
+          youtubeUrl: 'https://youtube.com/@sacred',
+        })
+        .expect(200);
+    });
+
     it('rejects unexpected fields instead of silently accepting them (mass-assignment guard)', async () => {
       const user = await signup(server);
       await request(server)

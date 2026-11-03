@@ -4,10 +4,17 @@ import {
   IsIn,
   IsOptional,
   IsString,
-  IsUrl,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import {
+  DISCORD_URL_REGEX,
+  INSTAGRAM_URL_REGEX,
+  SOCIAL_URL_MESSAGES,
+  WHATSAPP_URL_REGEX,
+  YOUTUBE_URL_REGEX,
+} from '../social-url.util';
 
 // Kept as a simple constant list for now rather than an admin-editable table —
 // enough for Phase 1B, can move to a DB-backed catalog later without an API change
@@ -49,18 +56,26 @@ export class UpdateProfileDto {
   phone?: string;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
+  @MaxLength(200)
+  @Matches(WHATSAPP_URL_REGEX, { message: SOCIAL_URL_MESSAGES.whatsappUrl })
   whatsappUrl?: string;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
+  @MaxLength(200)
+  @Matches(INSTAGRAM_URL_REGEX, { message: SOCIAL_URL_MESSAGES.instagramUrl })
   instagramUrl?: string;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
+  @MaxLength(200)
+  @Matches(DISCORD_URL_REGEX, { message: SOCIAL_URL_MESSAGES.discordUrl })
   discordUrl?: string;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
+  @MaxLength(200)
+  @Matches(YOUTUBE_URL_REGEX, { message: SOCIAL_URL_MESSAGES.youtubeUrl })
   youtubeUrl?: string;
 }
