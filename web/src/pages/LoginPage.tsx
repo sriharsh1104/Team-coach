@@ -17,6 +17,12 @@ export function LoginPage() {
     setBusy(true);
     try {
       const challenge = await login(email.trim(), password);
+      if (challenge && 'requiresEmailVerification' in challenge) {
+        navigate('/verify-email', {
+          state: { challengeToken: challenge.challengeToken, email },
+        });
+        return;
+      }
       if (challenge && 'requiresTwoFactor' in challenge) {
         navigate('/2fa', { state: { challengeToken: challenge.challengeToken } });
         return;

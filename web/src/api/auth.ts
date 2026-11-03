@@ -3,6 +3,7 @@ import {
   AuthResponse,
   AuthUser,
   GuildSummary,
+  GoogleLoginResult,
   LoginResult,
   OrgSummary,
   SignupResult,
@@ -34,7 +35,7 @@ export function login(email: string, password: string) {
 
 export function googleLogin(idToken: string) {
   return apiClient
-    .post<LoginResult>('/auth/google', { idToken })
+    .post<GoogleLoginResult>('/auth/google', { idToken })
     .then((res) => res.data);
 }
 

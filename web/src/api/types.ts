@@ -38,7 +38,11 @@ export interface TwoFactorChallengeResponse {
   challengeToken: string;
 }
 
-export type LoginResult = AuthResponse | TwoFactorChallengeResponse;
+export type GoogleLoginResult = AuthResponse | TwoFactorChallengeResponse;
+
+export type LoginResult =
+  | GoogleLoginResult
+  | EmailVerificationChallengeResponse;
 
 export interface EmailVerificationChallengeResponse {
   requiresEmailVerification: true;

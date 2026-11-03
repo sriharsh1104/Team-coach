@@ -71,6 +71,16 @@ export function GuildLoginTab() {
         }
       } else {
         const challenge = await login(email.trim(), password);
+        if (challenge && 'requiresEmailVerification' in challenge) {
+          navigate('/verify-email', {
+            state: {
+              challengeToken: challenge.challengeToken,
+              email,
+              next: GUILD_HOME,
+            },
+          });
+          return;
+        }
         if (challenge && 'requiresTwoFactor' in challenge) {
           navigate('/2fa', {
             state: { challengeToken: challenge.challengeToken, next: GUILD_HOME },

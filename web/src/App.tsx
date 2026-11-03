@@ -110,13 +110,14 @@ export default function App() {
         <Route path="/guild" element={<GuildSpacePage />} />
         <Route element={<GuildTools />}>
           <Route path="/guild/chat" element={<ChatPage variant="guild" />} />
-          <Route path="/guild/profile" element={<ProfilePage />} />
         </Route>
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/social" element={<SocialHandlesPage />} />
 
         <Route path="/app" element={<RequireOrg />}>
           <Route index element={<ChatPage />} />
           <Route path="members" element={<MembersPage />} />
-          <Route path="profile" element={<ProfilePage />} />
+          <Route path="profile" element={<Navigate to="/profile" replace />} />
           <Route
             path="tournament-records"
             element={<ManageTournamentRecordsPage />}
@@ -126,7 +127,7 @@ export default function App() {
           <Route path="maps" element={<MapsPage />} />
           <Route path="points-table" element={<PointsTablePage />} />
           <Route path="rule-book" element={<RuleBookPage />} />
-          <Route path="social" element={<SocialHandlesPage />} />
+          <Route path="social" element={<Navigate to="/social" replace />} />
         </Route>
       </Route>
 

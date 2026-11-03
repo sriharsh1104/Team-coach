@@ -6,13 +6,16 @@ type NavItem = { to: string; label: string; end?: boolean };
 const ROSTER_NAV: NavItem[] = [
   { to: '/app', label: 'Chats', end: true },
   { to: '/app/members', label: 'Team Members' },
-  { to: '/app/profile', label: 'Profile' },
   { to: '/app/tournament-records', label: 'Records' },
   { to: '/app/stats', label: 'Stats' },
   { to: '/app/maps', label: 'Maps' },
   { to: '/app/points-table', label: 'Points Table' },
   { to: '/app/rule-book', label: 'Rule Book' },
-  { to: '/app/social', label: 'Social Handles' },
+];
+
+const COMMON_NAV: NavItem[] = [
+  { to: '/profile', label: 'Profile' },
+  { to: '/social', label: 'Social Handles' },
 ];
 
 export function AppShell() {
@@ -28,7 +31,6 @@ export function AppShell() {
   const guildNav: NavItem[] = [
     { to: '/guild/chat', label: 'Guild Chat' },
     { to: '/guild', label: 'Guild Roster', end: true },
-    ...(!org ? [{ to: '/guild/profile', label: 'Profile' }] : []),
   ];
 
   return (
@@ -75,6 +77,16 @@ export function AppShell() {
             ))}
           </>
         ) : null}
+        <div className="sidebar-split">Account</div>
+        {COMMON_NAV.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+          >
+            {item.label}
+          </NavLink>
+        ))}
         <div className="sidebar-foot">
           <div className="muted" style={{ padding: '0 10px 10px' }}>
             {user?.name}

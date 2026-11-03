@@ -55,16 +55,22 @@ export function RecordsTab() {
 
   useEffect(() => {
     let cancelled = false;
-    listPublicTournamentRecords(1, 100)
-      .then((data) => {
+    (async () => {
+      try {
+        const first = await listPublicTournamentRecords(1, PAGE_SIZE);
         if (cancelled) return;
-        setAll(data.items.filter(isFinalPush));
+        const items = [...first.items];
+        for (let next = 2; next <= first.totalPages; next += 1) {
+          const data = await listPublicTournamentRecords(next, PAGE_SIZE);
+          if (cancelled) return;
+          items.push(...data.items);
+        }
+        setAll(items.filter(isFinalPush));
         setPage(1);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAll(FALLBACK_TOURNAMENT_RECORDS.filter(isFinalPush));
-      });
+      } catch {
+        if (!cancelled) setAll(FALLBACK_TOURNAMENT_RECORDS.filter(isFinalPush));
+      }
+    })();
     return () => {
       cancelled = true;
     };

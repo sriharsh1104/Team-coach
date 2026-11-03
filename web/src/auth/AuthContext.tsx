@@ -47,7 +47,9 @@ interface AuthContextValue {
   login: (
     email: string,
     password: string,
-  ) => Promise<TwoFactorChallengeResponse | void>;
+  ) => Promise<
+    TwoFactorChallengeResponse | EmailVerificationChallengeResponse | void
+  >;
   loginWithGoogle: (
     idToken: string,
   ) => Promise<TwoFactorChallengeResponse | void>;
@@ -122,7 +124,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (email: string, password: string) => {
       const result = await authApi.login(email, password);
-      if ('requiresTwoFactor' in result) return result;
+      if ('requiresTwoFactor' in result || 'requiresEmailVerification' in result) {
+        return result;
+      }
       await applyAuthResponse(result);
     },
     [applyAuthResponse],

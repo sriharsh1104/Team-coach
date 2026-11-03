@@ -28,7 +28,7 @@ import {
   verifyTwoFactorCode,
 } from './two-factor.util';
 import { generateEmailOtp } from './email-verification.util';
-import { generateRandomPassword } from './password.util';
+import { PASSWORD_REGEX, generateRandomPassword } from './password.util';
 
 const BCRYPT_SALT_ROUNDS = 12;
 // A 6-digit OTP is short-lived (10 min), single-use, and already capped at
@@ -64,17 +64,23 @@ export class AuthService {
   }
 
   async signup(dto: SignupDto) {
+    const email = dto.email.trim().toLowerCase();
     const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email },
     });
-    if (existing) {
+    if (existing?.emailVerified) {
       throw new ConflictException('An account with this email already exists');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
-    const user = await this.prisma.user.create({
-      data: { email: dto.email, passwordHash, name: dto.name },
-    });
+    const user = existing
+      ? await this.prisma.user.update({
+          where: { id: existing.id },
+          data: { passwordHash, name: dto.name },
+        })
+      : await this.prisma.user.create({
+          data: { email, passwordHash, name: dto.name },
+        });
 
     // Signup never returns a session directly — the account isn't usable
     // until the emailed code is verified (see verifyEmailSignup). Letting a
@@ -179,8 +185,9 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
+    const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email },
     });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('Invalid email or password');
@@ -192,6 +199,15 @@ export class AuthService {
     );
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (!user.emailVerified) {
+      await this.issueEmailVerificationCode(user.id, user.email);
+      const challengeToken = await this.jwtService.signAsync(
+        { sub: user.id, purpose: 'email-verification' },
+        { expiresIn: '15m' },
+      );
+      return { requiresEmailVerification: true as const, challengeToken };
     }
 
     return this.completeLoginOrChallenge(user);
@@ -222,6 +238,7 @@ export class AuthService {
     if (!payload.sub || !payload.email) {
       throw new UnauthorizedException('Invalid Google token');
     }
+    const email = payload.email.trim().toLowerCase();
 
     // An unverified email on Google's side could belong to someone other
     // than the account holder — don't let it link to or create a Team Coach
@@ -236,13 +253,13 @@ export class AuthService {
 
     if (!user) {
       const existingByEmail = await this.prisma.user.findUnique({
-        where: { email: payload.email },
+        where: { email },
       });
 
       if (existingByEmail) {
         user = await this.prisma.user.update({
           where: { id: existingByEmail.id },
-          data: { googleId: payload.sub },
+          data: { googleId: payload.sub, emailVerified: true },
         });
       } else {
         // Google already required a verified email above, so this account
@@ -251,15 +268,18 @@ export class AuthService {
         // emailed once) so the user has a way to log in directly later, not
         // just through Google.
         const generatedPassword = generateRandomPassword();
+        if (!PASSWORD_REGEX.test(generatedPassword)) {
+          throw new UnauthorizedException('Could not create the account');
+        }
         const passwordHash = await bcrypt.hash(
           generatedPassword,
           BCRYPT_SALT_ROUNDS,
         );
         user = await this.prisma.user.create({
           data: {
-            email: payload.email,
+            email,
             googleId: payload.sub,
-            name: payload.name ?? payload.email,
+            name: payload.name ?? email,
             avatarUrl: payload.picture,
             passwordHash,
             emailVerified: true,
