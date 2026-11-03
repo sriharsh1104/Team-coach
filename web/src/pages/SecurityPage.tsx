@@ -3,10 +3,16 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as authApi from '../api/auth';
 import { PasswordField } from '../auth/PasswordField';
 import { useAuth } from '../auth/AuthContext';
-import { FadeSwap } from '../ui/FadeSwap';
+import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { SesLoader } from '../ui/SesLoader';
 
 type Tab = 'password' | 'twoFactor';
+
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'password', label: 'Password' },
+  { id: 'twoFactor', label: '2FA' },
+];
+const TAB_IDS = TABS.map((t) => t.id);
 
 function apiError(err: unknown, fallback: string) {
   const msg = (err as { response?: { data?: { message?: string | string[] } } })
@@ -18,7 +24,7 @@ function apiError(err: unknown, fallback: string) {
 export function SecurityPage() {
   const { user, applyAuthResponse, refreshUser } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>('password');
+  const { tab, openTab, turn } = useBookTabs(TAB_IDS, 'password');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -75,6 +81,135 @@ export function SecurityPage() {
     }
   }
 
+  function renderTab(active: string) {
+    if (active === 'password') {
+      return (
+        <div>
+          <h2 className="profile-section-title">Change Password</h2>
+          {!user.hasPassword ? (
+            <p className="muted">
+              This account signs in with Google and has no password to change.
+            </p>
+          ) : (
+            <form className="profile-form-grid" onSubmit={onChangePassword}>
+              <PasswordField
+                id="sec-current"
+                label="Current password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={setCurrentPassword}
+                required
+              />
+              <PasswordField
+                id="sec-new"
+                label="New password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={setNewPassword}
+                minLength={8}
+                required
+              />
+              <PasswordField
+                id="sec-confirm"
+                label="Confirm new password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                minLength={8}
+                required
+              />
+              {passwordError ? <p className="error">{passwordError}</p> : null}
+              {passwordInfo ? <p className="muted">{passwordInfo}</p> : null}
+              <div className="profile-actions">
+                <button
+                  className="btn btn-primary"
+                  type="submit"
+                  disabled={
+                    passwordBusy ||
+                    !currentPassword ||
+                    newPassword.length < 8 ||
+                    newPassword !== confirmPassword
+                  }
+                >
+                  Update Password
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <h2 className="profile-section-title">Two-Factor Authentication</h2>
+        <p className="muted">
+          Uses Google Authenticator (or any TOTP-compatible app).
+        </p>
+        <p className={`security-status${user.twoFactorEnabled ? ' on' : ''}`}>
+          {user.twoFactorEnabled
+            ? 'Enabled — code required at login'
+            : 'Disabled — add an extra layer'}
+        </p>
+        {twoFactorError ? <p className="error">{twoFactorError}</p> : null}
+        {twoFactorInfo ? <p className="muted">{twoFactorInfo}</p> : null}
+
+        {user.twoFactorEnabled ? (
+          showDisableForm ? (
+            <form className="profile-form-grid" onSubmit={onDisableTwoFactor}>
+              <PasswordField
+                id="sec-disable"
+                label="Your password"
+                autoComplete="current-password"
+                value={disablePassword}
+                onChange={setDisablePassword}
+                required
+              />
+              <div className="profile-actions">
+                <button
+                  className="btn btn-primary"
+                  type="submit"
+                  disabled={disableBusy || !disablePassword}
+                >
+                  Confirm Disable
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setShowDisableForm(false);
+                    setDisablePassword('');
+                    setTwoFactorError(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ color: 'var(--danger)' }}
+              onClick={() => setShowDisableForm(true)}
+            >
+              Disable 2FA
+            </button>
+          )
+        ) : (
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ width: 'auto' }}
+            onClick={() => navigate('/settings/2fa')}
+          >
+            Enable 2FA
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="topbar">
@@ -84,161 +219,28 @@ export function SecurityPage() {
         </div>
       </div>
       <div className="content profile-page">
-        <nav className="profile-tabs" aria-label="Security sections">
-          <button
-            type="button"
-            className={`profile-tab${tab === 'password' ? ' active' : ''}`}
-            onClick={() => setTab('password')}
-          >
-            Password
-          </button>
-          <button
-            type="button"
-            className={`profile-tab${tab === 'twoFactor' ? ' active' : ''}`}
-            onClick={() => setTab('twoFactor')}
-          >
-            2FA
-          </button>
+        <nav className="pill-switch" aria-label="Security sections" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              className={`pill-switch-btn${tab === t.id ? ' active' : ''}`}
+              onClick={() => openTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
         </nav>
 
-        <FadeSwap contentKey={tab} className="panel profile-panel">
-          {tab === 'password' ? (
-            <div>
-              <h2 className="profile-section-title">Change Password</h2>
-              {!user.hasPassword ? (
-                <p className="muted">
-                  This account signs in with Google and has no password to
-                  change.
-                </p>
-              ) : (
-                <form className="profile-form-grid" onSubmit={onChangePassword}>
-                  <p className="muted" style={{ marginTop: 0 }}>
-                    Use at least 8 characters. You&apos;ll stay signed in after
-                    updating.
-                  </p>
-                  <PasswordField
-                    id="sec-current"
-                    label="Current password"
-                    autoComplete="current-password"
-                    value={currentPassword}
-                    onChange={setCurrentPassword}
-                    required
-                  />
-                  <PasswordField
-                    id="sec-new"
-                    label="New password"
-                    autoComplete="new-password"
-                    value={newPassword}
-                    onChange={setNewPassword}
-                    minLength={8}
-                    required
-                  />
-                  <PasswordField
-                    id="sec-confirm"
-                    label="Confirm new password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={setConfirmPassword}
-                    minLength={8}
-                    required
-                  />
-                  {passwordError ? <p className="error">{passwordError}</p> : null}
-                  {passwordInfo ? <p className="muted">{passwordInfo}</p> : null}
-                  <div className="profile-actions">
-                    <button
-                      className="btn btn-primary"
-                      type="submit"
-                      disabled={
-                        passwordBusy ||
-                        !currentPassword ||
-                        newPassword.length < 8 ||
-                        newPassword !== confirmPassword
-                      }
-                    >
-                      Update Password
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          ) : null}
-
-          {tab === 'twoFactor' ? (
-            <div>
-              <h2 className="profile-section-title">
-                Two-Factor Authentication
-              </h2>
-              <p className="muted">
-                Uses Google Authenticator (or any TOTP-compatible app).
-              </p>
-              <p
-                className={`security-status${user.twoFactorEnabled ? ' on' : ''}`}
-              >
-                {user.twoFactorEnabled
-                  ? 'Enabled — code required at login'
-                  : 'Disabled — add an extra layer'}
-              </p>
-              {twoFactorError ? <p className="error">{twoFactorError}</p> : null}
-              {twoFactorInfo ? <p className="muted">{twoFactorInfo}</p> : null}
-
-              {user.twoFactorEnabled ? (
-                showDisableForm ? (
-                  <form
-                    className="profile-form-grid"
-                    onSubmit={onDisableTwoFactor}
-                  >
-                    <PasswordField
-                      id="sec-disable"
-                      label="Your password"
-                      autoComplete="current-password"
-                      value={disablePassword}
-                      onChange={setDisablePassword}
-                      required
-                    />
-                    <div className="profile-actions">
-                      <button
-                        className="btn btn-primary"
-                        type="submit"
-                        disabled={disableBusy || !disablePassword}
-                      >
-                        Confirm Disable
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => {
-                          setShowDisableForm(false);
-                          setDisablePassword('');
-                          setTwoFactorError(null);
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ color: 'var(--danger)' }}
-                    onClick={() => setShowDisableForm(true)}
-                  >
-                    Disable 2FA
-                  </button>
-                )
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  style={{ width: 'auto' }}
-                  onClick={() => navigate('/settings/2fa')}
-                >
-                  Enable 2FA
-                </button>
-              )}
-            </div>
-          ) : null}
-        </FadeSwap>
+        <BookStage
+          tab={tab}
+          turn={turn}
+          className="panel profile-panel book-profile-panel security-panel"
+        >
+          {(active) => renderTab(active)}
+        </BookStage>
 
         <p className="auth-footer">
           <Link to="/profile">Back to profile</Link>

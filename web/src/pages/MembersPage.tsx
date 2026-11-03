@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import * as orgApi from '../api/org';
 import { OrgDetail } from '../api/types';
 import { copyText } from '../lib/copyText';
+import { InviteSharePanel } from '../ui/InviteSharePanel';
 
 export function MembersPage() {
   const [org, setOrg] = useState<OrgDetail | null>(null);
@@ -24,6 +26,8 @@ export function MembersPage() {
     }
   }
 
+  const canInvite = !!org && (org.isOwner || org.myRole === 'COACH');
+
   return (
     <>
       <div className="topbar">
@@ -35,7 +39,7 @@ export function MembersPage() {
                 <button
                   type="button"
                   className="copyable-code"
-                  onClick={onCopyOrgCode}
+                  onClick={() => void onCopyOrgCode()}
                   aria-label="Copy org code"
                 >
                   Org code {org.orgCode}
@@ -51,6 +55,15 @@ export function MembersPage() {
       </div>
       <div className="content">
         {error ? <p className="error">{error}</p> : null}
+
+        {canInvite && org?.referralLink ? (
+          <InviteSharePanel
+            referralLink={org.referralLink}
+            orgCode={org.orgCode}
+            title="Invite To Join"
+          />
+        ) : null}
+
         <div className="list">
           {org?.members.map((m, index) => (
             <div key={m.userId} className="list-row" style={{ cursor: 'default' }}>
@@ -58,10 +71,12 @@ export function MembersPage() {
                 {index + 1}
               </span>
               <div>
-                <strong>
-                  {m.name}
-                  {m.isOwner ? ' · Owner' : ''}
-                </strong>
+                <Link className="member-name-link" to={`/members/${m.userId}`}>
+                  <strong>
+                    {m.name}
+                    {m.isOwner ? ' · Owner' : ''}
+                  </strong>
+                </Link>
                 <span>
                   {m.role ?? 'Owner'}
                   {m.inGameName ? ` · ${m.inGameName}` : ''}

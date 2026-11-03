@@ -393,11 +393,20 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       expect(JSON.stringify(res.body)).not.toMatch(/SecretIGN/);
     });
 
-    it('never leaks passwordHash/email on a teammate profile either', async () => {
+    it('never leaks passwordHash/email/phone on a teammate profile', async () => {
       const coach = await signup(server, { name: 'Coach' });
       const org = await createOrgAs(server, coach.accessToken, 'COACH');
       const player = await signup(server, { name: 'Player' });
       await joinOrgAs(server, player.accessToken, org.orgCode);
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .send({
+          inGameName: 'HiddenPhone',
+          inGameUid: 'UID-HIDE-1',
+          phone: '9988776655',
+        })
+        .expect(200);
 
       const res = await request(server)
         .get(`/users/${player.user.id}/profile`)
@@ -406,6 +415,40 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       const keys = Object.keys(res.body);
       expect(keys).not.toContain('passwordHash');
       expect(keys).not.toContain('email');
+      expect(res.body.phone).toBeNull();
+      expect(JSON.stringify(res.body)).not.toMatch(/9988776655/);
+    });
+
+    it('lets guild-only members view each other without roster seats', async () => {
+      const owner = await signup(server, { name: 'Owner' });
+      const org = await createOrgAs(server, owner.accessToken);
+      const guildMate = await signup(server, { name: 'Guild Mate' });
+
+      await request(server)
+        .post('/orgs/guild/join')
+        .set('Authorization', `Bearer ${guildMate.accessToken}`)
+        .send({ orgCode: org.orgCode })
+        .expect(201);
+
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${guildMate.accessToken}`)
+        .send({ inGameName: 'GuildIGN', inGameUid: 'UID-G1', phone: '9123456780' })
+        .expect(200);
+
+      const ownerSeesMate = await request(server)
+        .get(`/users/${guildMate.user.id}/profile`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200);
+      expect(ownerSeesMate.body.inGameName).toBe('GuildIGN');
+      expect(ownerSeesMate.body.phone).toBeNull();
+      expect(ownerSeesMate.body.role).toBeNull();
+
+      const mateSeesOwner = await request(server)
+        .get(`/users/${owner.user.id}/profile`)
+        .set('Authorization', `Bearer ${guildMate.accessToken}`)
+        .expect(200);
+      expect(mateSeesOwner.body.id).toBe(owner.user.id);
     });
   });
 });

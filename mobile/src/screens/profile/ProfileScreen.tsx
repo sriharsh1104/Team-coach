@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  Alert,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
@@ -20,6 +19,7 @@ import { SoftPressable } from '../../ui/SoftPressable';
 import { FadeSwap } from '../../ui/FadeSwap';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { PhoneField } from '../../ui/PhoneField';
+import { Toast, useToast } from '../../ui/Toast';
 import { sharedStyles, formatRoleBadge } from '../shared';
 import { useAuth } from '../../auth/AuthContext';
 import { coercePhoneToE164 } from '../../lib/phone';
@@ -39,6 +39,7 @@ function isFormComplete(inGameName: string, inGameUid: string, phone: string) {
 
 export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean } = {}) {
   const { refreshUser } = useAuth();
+  const { message: toastMessage, showToast } = useToast();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [tab, setTab] = useState<ProfileTab>('user');
@@ -107,6 +108,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
               profile={profile}
               mustComplete={mustComplete}
               onUpdated={onProfileUpdated}
+              showToast={showToast}
             />
           )}
           {tab === 'game' && (
@@ -114,19 +116,26 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
               profile={profile}
               mustComplete={mustComplete}
               onUpdated={onProfileUpdated}
+              showToast={showToast}
             />
           )}
           {tab === 'devices' && (
             <DevicesProfileSection
               profile={profile}
               onDevicesChanged={load}
+              showToast={showToast}
             />
           )}
           {tab === 'social' && (
-            <SocialProfileSection profile={profile} onUpdated={onProfileUpdated} />
+            <SocialProfileSection
+              profile={profile}
+              onUpdated={onProfileUpdated}
+              showToast={showToast}
+            />
           )}
         </FadeSwap>
       </ScrollView>
+      <Toast message={toastMessage} />
     </Screen>
   );
 }
@@ -135,10 +144,12 @@ function UserProfileSection({
   profile,
   mustComplete,
   onUpdated,
+  showToast,
 }: {
   profile: Profile;
   mustComplete: boolean;
   onUpdated: (updated: Profile) => void;
+  showToast: (message: string) => void;
 }) {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(mustComplete);
@@ -161,12 +172,11 @@ function UserProfileSection({
       onUpdated(updated);
       if (!mustComplete) {
         setIsEditing(false);
-        Alert.alert('Saved', 'Your profile was updated.');
+        showToast('Saved — your profile was updated.');
       }
     } catch (err: any) {
-      Alert.alert(
-        'Could not save',
-        err?.response?.data?.message?.toString() ?? 'Please try again.',
+      showToast(
+        err?.response?.data?.message?.toString() ?? 'Could not save. Please try again.',
       );
     } finally {
       setIsSaving(false);
@@ -234,10 +244,12 @@ function GameProfileSection({
   profile,
   mustComplete,
   onUpdated,
+  showToast,
 }: {
   profile: Profile;
   mustComplete: boolean;
   onUpdated: (updated: Profile) => void;
+  showToast: (message: string) => void;
 }) {
   const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
@@ -265,12 +277,11 @@ function GameProfileSection({
       onUpdated(updated);
       if (!mustComplete) {
         setIsEditing(false);
-        Alert.alert('Saved', 'Your profile was updated.');
+        showToast('Saved — your profile was updated.');
       }
     } catch (err: any) {
-      Alert.alert(
-        'Could not save',
-        err?.response?.data?.message?.toString() ?? 'Please try again.',
+      showToast(
+        err?.response?.data?.message?.toString() ?? 'Could not save. Please try again.',
       );
     } finally {
       setIsSaving(false);
@@ -346,9 +357,11 @@ function GameProfileSection({
 function DevicesProfileSection({
   profile,
   onDevicesChanged,
+  showToast,
 }: {
   profile: Profile;
   onDevicesChanged: () => Promise<void>;
+  showToast: (message: string) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [deviceName, setDeviceName] = useState('');
@@ -364,15 +377,23 @@ function DevicesProfileSection({
       setDeviceModel('');
       await onDevicesChanged();
     } catch (err: any) {
-      Alert.alert('Could not add device', err?.response?.data?.message ?? '');
+      showToast(
+        err?.response?.data?.message?.toString() ?? 'Could not add device. Please try again.',
+      );
     } finally {
       setIsAddingDevice(false);
     }
   };
 
   const onRemoveDevice = async (id: string) => {
-    await usersApi.removeDevice(id);
-    await onDevicesChanged();
+    try {
+      await usersApi.removeDevice(id);
+      await onDevicesChanged();
+    } catch (err: any) {
+      showToast(
+        err?.response?.data?.message?.toString() ?? 'Could not remove device. Please try again.',
+      );
+    }
   };
 
   if (!isEditing) {
@@ -468,9 +489,11 @@ function DevicesProfileSection({
 function SocialProfileSection({
   profile,
   onUpdated,
+  showToast,
 }: {
   profile: Profile;
   onUpdated: (updated: Profile) => void;
+  showToast: (message: string) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -490,11 +513,10 @@ function SocialProfileSection({
       });
       onUpdated(updated);
       setIsEditing(false);
-      Alert.alert('Saved', 'Your profile was updated.');
+      showToast('Saved — your profile was updated.');
     } catch (err: any) {
-      Alert.alert(
-        'Could not save',
-        err?.response?.data?.message?.toString() ?? 'Please try again.',
+      showToast(
+        err?.response?.data?.message?.toString() ?? 'Could not save. Please try again.',
       );
     } finally {
       setIsSaving(false);

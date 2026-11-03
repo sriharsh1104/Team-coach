@@ -27,6 +27,23 @@ const PROFILE_SELECT = {
   },
 } as const;
 
+/** Peer profiles: game + devices + social — never phone or email. */
+const PEER_PROFILE_SELECT = {
+  id: true,
+  name: true,
+  avatarUrl: true,
+  roles: true,
+  inGameName: true,
+  inGameUid: true,
+  whatsappUrl: true,
+  instagramUrl: true,
+  discordUrl: true,
+  youtubeUrl: true,
+  devices: {
+    select: { id: true, name: true, model: true },
+  },
+} as const;
+
 // A profile counts as complete once the three compulsory fields are filled —
 // everything else (social links) stays optional. Shared by the forced
 // post-login gate (AuthService/AuthController) and anywhere else that needs
@@ -196,17 +213,28 @@ export class UsersService {
       return this.getMyProfile(requesterId);
     }
 
-    const [requesterMembership, targetMembership] = await Promise.all([
+    const [
+      requesterMembership,
+      targetMembership,
+      requesterGuild,
+      targetGuild,
+    ] = await Promise.all([
       this.prisma.membership.findFirst({ where: { userId: requesterId } }),
       this.prisma.membership.findFirst({ where: { userId: targetUserId } }),
+      this.prisma.guildMembership.findFirst({ where: { userId: requesterId } }),
+      this.prisma.guildMembership.findFirst({ where: { userId: targetUserId } }),
     ]);
 
-    const shareOrg =
-      requesterMembership &&
-      targetMembership &&
+    const shareRoster =
+      !!requesterMembership &&
+      !!targetMembership &&
       requesterMembership.orgId === targetMembership.orgId;
+    const shareGuild =
+      !!requesterGuild &&
+      !!targetGuild &&
+      requesterGuild.orgId === targetGuild.orgId;
 
-    if (!shareOrg) {
+    if (!shareRoster && !shareGuild) {
       throw new ForbiddenException(
         'You can only view profiles of members in your own org',
       );
@@ -214,13 +242,14 @@ export class UsersService {
 
     const profile = await this.prisma.user.findUniqueOrThrow({
       where: { id: targetUserId },
-      select: PROFILE_SELECT,
+      select: PEER_PROFILE_SELECT,
     });
 
     return {
       ...profile,
-      role: targetMembership.role,
-      isOwner: targetMembership.isOwner,
+      phone: null,
+      role: targetMembership?.role ?? null,
+      isOwner: targetMembership?.isOwner ?? false,
     };
   }
 }

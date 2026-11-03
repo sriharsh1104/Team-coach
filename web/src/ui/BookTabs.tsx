@@ -20,6 +20,10 @@ export function useBookTabs(tabs: string[], initial: string) {
     if (next === tab) return;
     const from = tabs.indexOf(tab);
     const to = tabs.indexOf(next);
+    if (from < 0 || to < 0) {
+      setTab(next);
+      return;
+    }
     const dir: Dir = to > from ? 'next' : 'prev';
     setTurn({ id: tab, dir });
     setTab(next);
@@ -44,11 +48,17 @@ export function BookStage({
   return (
     <div className={`book-stage${className ? ` ${className}` : ''}`}>
       {turn ? (
-        <div className={`book-page is-leaving leave-${turn.dir}`}>
+        <div
+          key={`leave-${turn.id}`}
+          className={`book-page is-leaving leave-${turn.dir}`}
+        >
           {children(turn.id)}
         </div>
       ) : null}
-      <div className={`book-page${turn ? ` enter-${turn.dir}` : ''}`}>
+      <div
+        key={`page-${tab}`}
+        className={`book-page${turn ? ` enter-${turn.dir}` : ''}`}
+      >
         {children(tab)}
       </div>
     </div>

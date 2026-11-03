@@ -94,6 +94,30 @@ describe('JoinOrgScreen', () => {
     });
   });
 
+  it('forwards a pasted https invite URL as referralToken', async () => {
+    const setOrg = jest.fn();
+    mockedUseAuth.mockReturnValue({ setOrg });
+    mockedOrgApi.joinOrg.mockResolvedValue({
+      id: 'org-1',
+      name: 'Alpha Squad',
+      orgCode: '75HCP3',
+      referralLink: 'https://app.test/join/7vrQ3WST1LbnAM0ziUcBGrUk',
+      myRole: 'PLAYER',
+      isOwner: false,
+    });
+    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
+
+    fireEvent.changeText(
+      screen.getByPlaceholderText('Org code or invite link'),
+      'https://app.test/join/7vrQ3WST1LbnAM0ziUcBGrUk',
+    );
+    await pressAndSettle('Join');
+
+    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({
+      referralToken: 'https://app.test/join/7vrQ3WST1LbnAM0ziUcBGrUk',
+    });
+  });
+
   it('shows an alert and does not call setOrg on failure', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const setOrg = jest.fn();

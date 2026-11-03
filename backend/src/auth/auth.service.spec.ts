@@ -158,7 +158,7 @@ describe('AuthService (unit)', () => {
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'existing-id' },
-        data: { googleId: 'google-sub-123' },
+        data: { googleId: 'google-sub-123', emailVerified: true },
       });
       expect(prisma.user.create).not.toHaveBeenCalled();
       expect(mailerService.sendGeneratedPassword).not.toHaveBeenCalled();

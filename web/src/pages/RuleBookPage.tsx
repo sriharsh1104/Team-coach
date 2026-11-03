@@ -1,5 +1,3 @@
-import { useState } from 'react';
-import { FadeSwap } from '../ui/FadeSwap';
 import {
   FINAL_PRINCIPLE_LINES,
   GAMEPLAY_RULES,
@@ -7,6 +5,7 @@ import {
   OFFICIAL_FF_RULES,
   Rule,
 } from './home/ruleBookData';
+import { BookStage, useBookTabs } from '../ui/BookTabs';
 
 type TabId = 'mindset' | 'gameplay' | 'principle' | 'official';
 
@@ -16,6 +15,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'principle', label: 'Principle' },
   { id: 'official', label: 'FF Official' },
 ];
+const TAB_IDS = TABS.map((t) => t.id);
 
 function SectionHeader({
   eyebrow,
@@ -61,8 +61,68 @@ function RuleList({ rules }: { rules: Rule[] }) {
   );
 }
 
+function renderSection(tab: string) {
+  if (tab === 'mindset') {
+    return (
+      <div>
+        <SectionHeader
+          eyebrow="Part 1"
+          title="Mindset & Discipline"
+          countLabel={`${MINDSET_RULES.length} rules`}
+        />
+        <RuleList rules={MINDSET_RULES} />
+      </div>
+    );
+  }
+  if (tab === 'gameplay') {
+    return (
+      <div>
+        <SectionHeader
+          eyebrow="Part 2"
+          title="Gameplay & Practice"
+          countLabel={`${GAMEPLAY_RULES.length} rules`}
+        />
+        <RuleList rules={GAMEPLAY_RULES} />
+      </div>
+    );
+  }
+  if (tab === 'principle') {
+    return (
+      <div>
+        <SectionHeader
+          eyebrow="Closing"
+          title="Final Team Principle"
+          countLabel="1 focus"
+        />
+        <div className="principle-card">
+          {FINAL_PRINCIPLE_LINES.map((line) => (
+            <div key={line} className="principle-row">
+              {line}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionHeader
+        eyebrow="Garena FFWS"
+        title="Free Fire Esports Official Rules"
+        countLabel={`${OFFICIAL_FF_RULES.length} points`}
+      />
+      <p className="rulebook-source muted">
+        Condensed from Garena Free Fire World Series competition rulebooks
+        (FFWS Africa 2026 Fall / MENA 2026 Spring). Always follow the live
+        event PDF for that tournament.
+      </p>
+      <RuleList rules={OFFICIAL_FF_RULES} />
+    </div>
+  );
+}
+
 export function RuleBookPage() {
-  const [tab, setTab] = useState<TabId>('mindset');
+  const { tab, openTab, turn } = useBookTabs(TAB_IDS, 'mindset');
 
   return (
     <>
@@ -73,75 +133,24 @@ export function RuleBookPage() {
         </div>
       </div>
       <div className="content rulebook-page">
-        <nav className="profile-tabs rulebook-tabs" aria-label="Rule book sections">
+        <nav className="pill-switch rulebook-pill" aria-label="Rule book sections" role="tablist">
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
-              className={`profile-tab${tab === t.id ? ' active' : ''}`}
-              onClick={() => setTab(t.id)}
+              role="tab"
+              aria-selected={tab === t.id}
+              className={`pill-switch-btn${tab === t.id ? ' active' : ''}`}
+              onClick={() => openTab(t.id)}
             >
               {t.label}
             </button>
           ))}
         </nav>
 
-        <FadeSwap contentKey={tab}>
-          {tab === 'mindset' ? (
-            <div>
-              <SectionHeader
-                eyebrow="Part 1"
-                title="Mindset & Discipline"
-                countLabel={`${MINDSET_RULES.length} rules`}
-              />
-              <RuleList rules={MINDSET_RULES} />
-            </div>
-          ) : null}
-
-          {tab === 'gameplay' ? (
-            <div>
-              <SectionHeader
-                eyebrow="Part 2"
-                title="Gameplay & Practice"
-                countLabel={`${GAMEPLAY_RULES.length} rules`}
-              />
-              <RuleList rules={GAMEPLAY_RULES} />
-            </div>
-          ) : null}
-
-          {tab === 'principle' ? (
-            <div>
-              <SectionHeader
-                eyebrow="Closing"
-                title="Final Team Principle"
-                countLabel="1 focus"
-              />
-              <div className="principle-card">
-                {FINAL_PRINCIPLE_LINES.map((line) => (
-                  <div key={line} className="principle-row">
-                    {line}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {tab === 'official' ? (
-            <div>
-              <SectionHeader
-                eyebrow="Garena FFWS"
-                title="Free Fire Esports Official Rules"
-                countLabel={`${OFFICIAL_FF_RULES.length} points`}
-              />
-              <p className="rulebook-source muted">
-                Condensed from Garena Free Fire World Series competition
-                rulebooks (FFWS Africa 2026 Fall / MENA 2026 Spring). Always
-                follow the live event PDF for that tournament.
-              </p>
-              <RuleList rules={OFFICIAL_FF_RULES} />
-            </div>
-          ) : null}
-        </FadeSwap>
+        <BookStage tab={tab} turn={turn} className="rulebook-stage">
+          {(active) => renderSection(active)}
+        </BookStage>
       </div>
     </>
   );

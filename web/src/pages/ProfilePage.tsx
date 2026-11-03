@@ -170,6 +170,14 @@ function RoleChips({
   );
 }
 
+function isRequiredProfileFilled(profile: {
+  phone?: string | null;
+  inGameName?: string | null;
+  inGameUid?: string | null;
+}) {
+  return !!(profile.phone && profile.inGameName && profile.inGameUid);
+}
+
 export function ProfilePage() {
   const { user, org, refreshUser } = useAuth();
   const navigate = useNavigate();
@@ -221,6 +229,30 @@ export function ProfilePage() {
 
   const roleBadge = formatRoleBadge(profile.role, profile.isOwner);
   const current = profile;
+  const userDone = !!current.phone;
+  const gameDone = !!(current.inGameName && current.inGameUid);
+
+  function canOpenTab(next: ProfileTab) {
+    if (!onboarding) return true;
+    if (next === 'user') return true;
+    if (next === 'game') return userDone;
+    // Devices / Social only after required User + Game are saved.
+    return userDone && gameDone;
+  }
+
+  function tryOpenTab(next: ProfileTab) {
+    if (!canOpenTab(next)) {
+      setError(
+        !userDone
+          ? 'Save your name and phone first.'
+          : 'Save your in-game name and UID first.',
+      );
+      openTab(!userDone ? 'user' : 'game');
+      return;
+    }
+    setError(null);
+    openTab(next);
+  }
 
   async function onRequiredSaved(updated: Profile, fromTab: ProfileTab) {
     await onProfileUpdated(updated);
@@ -235,8 +267,15 @@ export function ProfilePage() {
     }
   }
 
-  function finishProfileGate() {
-    if (!user) return;
+  async function finishProfileGate() {
+    const me = await usersApi.getMyProfile();
+    setProfile(me);
+    await refreshUser();
+    if (!isRequiredProfileFilled(me)) {
+      setError('Phone, in-game name, and UID are required before you continue.');
+      openTab(!me.phone ? 'user' : 'game');
+      return;
+    }
     navigate(postAuthPath({ profileComplete: true }, org));
   }
 
@@ -283,7 +322,7 @@ export function ProfilePage() {
         profile={current}
         onUpdated={onProfileUpdated}
         mustComplete={onboarding}
-        onContinue={finishProfileGate}
+        onContinue={() => void finishProfileGate()}
       />
     );
   }
@@ -309,13 +348,15 @@ export function ProfilePage() {
             Continue to skip ahead.
           </p>
         ) : null}
+        {error ? <p className="error">{error}</p> : null}
         <nav className="profile-tabs" aria-label="Profile sections">
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               className={`profile-tab${tab === t.id ? ' active' : ''}`}
-              onClick={() => openTab(t.id)}
+              onClick={() => tryOpenTab(t.id)}
+              aria-disabled={onboarding && !canOpenTab(t.id)}
             >
               {t.label}
             </button>

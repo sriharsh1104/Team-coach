@@ -7,8 +7,11 @@ import {
   StatExtraction,
   StatMode,
 } from '../../api/types';
+import { BookStage, useBookTabs } from '../../ui/BookTabs';
 import { SesLoader } from '../../ui/SesLoader';
 import { ExtractionReviewModal } from './ExtractionReviewModal';
+
+const VIEW_TABS = ['board', 'days'] as const;
 
 function pendingLabel(
   status: StatExtraction['status'],
@@ -30,7 +33,11 @@ export function GrindPanel({
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [history, setHistory] = useState<ModeHistoryEntry[]>([]);
   const [pending, setPending] = useState<StatExtraction[]>([]);
-  const [viewTab, setViewTab] = useState<'board' | 'days'>('board');
+  const {
+    tab: viewTab,
+    openTab: openViewTab,
+    turn: viewTurn,
+  } = useBookTabs([...VIEW_TABS], 'board');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -237,7 +244,7 @@ export function GrindPanel({
         </section>
       ) : null}
 
-      <nav className="stats-subtabs" aria-label="Grind view">
+      <nav className="stats-subtabs" aria-label="Grind view" role="tablist">
         {(
           [
             ['board', 'Leaderboard'],
@@ -247,96 +254,105 @@ export function GrindPanel({
           <button
             key={id}
             type="button"
+            role="tab"
+            aria-selected={viewTab === id}
             className={`stats-subtab${viewTab === id ? ' active' : ''}`}
-            onClick={() => setViewTab(id)}
+            onClick={() => openViewTab(id)}
           >
             {text}
           </button>
         ))}
       </nav>
 
-      {viewTab === 'board' ? (
-        <div className="record-table-wrap">
-          <table className="record-table points-table">
-            <thead>
-              <tr>
-                <th className="record-sno">#</th>
-                <th>Player</th>
-                <th className="points-col">K</th>
-                <th className="points-col">D</th>
-                <th className="points-col">A</th>
-                <th className="points-col">DMG</th>
-                <th className="points-col">Matches</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leaderboard.map((row, i) => (
-                <tr key={row.userId} className={i < 3 ? `points-row-${i + 1}` : undefined}>
-                  <td className="record-sno">{i + 1}</td>
-                  <td>
-                    <strong>{row.name}</strong>
-                  </td>
-                  <td className="points-col">{row.kills}</td>
-                  <td className="points-col">{row.deaths}</td>
-                  <td className="points-col">{row.assists}</td>
-                  <td className="points-col">{row.damage}</td>
-                  <td className="points-col">{row.matches}</td>
-                </tr>
-              ))}
-              {leaderboard.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="muted">
-                    No {label} stats yet — upload a scoreboard to start.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="record-table-wrap">
-          <table className="record-table">
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Player</th>
-                <th className="points-col">K</th>
-                <th className="points-col">D</th>
-                <th className="points-col">A</th>
-                <th className="points-col">DMG</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((entry) => (
-                <tr key={entry.id}>
-                  <td>
-                    {new Date(entry.recordedAt).toLocaleString(undefined, {
-                      day: 'numeric',
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </td>
-                  <td>
-                    <strong>{entry.name}</strong>
-                  </td>
-                  <td className="points-col">{entry.kills}</td>
-                  <td className="points-col">{entry.deaths}</td>
-                  <td className="points-col">{entry.assists}</td>
-                  <td className="points-col">{entry.damage}</td>
-                </tr>
-              ))}
-              {history.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="muted">
-                    No recent entries.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <BookStage tab={viewTab} turn={viewTurn} className="stats-sub-stage">
+        {(active) =>
+          active === 'board' ? (
+            <div className="record-table-wrap">
+              <table className="record-table points-table">
+                <thead>
+                  <tr>
+                    <th className="record-sno">#</th>
+                    <th>Player</th>
+                    <th className="points-col">K</th>
+                    <th className="points-col">D</th>
+                    <th className="points-col">A</th>
+                    <th className="points-col">DMG</th>
+                    <th className="points-col">Matches</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.map((row, i) => (
+                    <tr
+                      key={row.userId}
+                      className={i < 3 ? `points-row-${i + 1}` : undefined}
+                    >
+                      <td className="record-sno">{i + 1}</td>
+                      <td>
+                        <strong>{row.name}</strong>
+                      </td>
+                      <td className="points-col">{row.kills}</td>
+                      <td className="points-col">{row.deaths}</td>
+                      <td className="points-col">{row.assists}</td>
+                      <td className="points-col">{row.damage}</td>
+                      <td className="points-col">{row.matches}</td>
+                    </tr>
+                  ))}
+                  {leaderboard.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="muted">
+                        No {label} stats yet — upload a scoreboard to start.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="record-table-wrap">
+              <table className="record-table">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Player</th>
+                    <th className="points-col">K</th>
+                    <th className="points-col">D</th>
+                    <th className="points-col">A</th>
+                    <th className="points-col">DMG</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>
+                        {new Date(entry.recordedAt).toLocaleString(undefined, {
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td>
+                        <strong>{entry.name}</strong>
+                      </td>
+                      <td className="points-col">{entry.kills}</td>
+                      <td className="points-col">{entry.deaths}</td>
+                      <td className="points-col">{entry.assists}</td>
+                      <td className="points-col">{entry.damage}</td>
+                    </tr>
+                  ))}
+                  {history.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="muted">
+                        No recent entries.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+      </BookStage>
 
       {reviewing ? (
         <ExtractionReviewModal

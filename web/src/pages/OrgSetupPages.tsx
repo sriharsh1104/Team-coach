@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
+import { extractInviteToken } from '../auth/invitePending';
 import { SesLoader } from '../ui/SesLoader';
 
 export function OrgChoicePage() {
@@ -86,7 +87,7 @@ export function CreateOrgPage() {
 }
 
 export function JoinOrgPage() {
-  const { setOrg } = useAuth();
+  const { setOrg, setGuild } = useAuth();
   const navigate = useNavigate();
   const [orgCode, setOrgCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -97,13 +98,20 @@ export function JoinOrgPage() {
     setBusy(true);
     setError(null);
     try {
-      const org = await orgApi.joinOrg({ orgCode: orgCode.trim() });
+      const trimmed = orgCode.trim();
+      const token = extractInviteToken(trimmed);
+      const org = await orgApi.joinOrg(
+        trimmed.length === 6 && !trimmed.includes('/')
+          ? { orgCode: trimmed.toUpperCase() }
+          : { referralToken: token || trimmed },
+      );
       setOrg({
         id: org.id,
         name: org.name,
         role: org.myRole,
         isOwner: org.isOwner,
       });
+      setGuild({ id: org.id, name: org.name, role: 'MEMBER' });
       navigate('/app');
     } catch (err: unknown) {
       const msg =
@@ -122,11 +130,12 @@ export function JoinOrgPage() {
       <form className="auth-card" onSubmit={onSubmit}>
         <h1 className="brand">Join org</h1>
         <div className="field">
-          <label htmlFor="code">Org code</label>
+          <label htmlFor="code">Org code or invite link</label>
           <input
             id="code"
             value={orgCode}
             onChange={(e) => setOrgCode(e.target.value)}
+            placeholder="6-char code or /join/… link"
             required
           />
         </div>

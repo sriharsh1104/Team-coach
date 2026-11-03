@@ -109,6 +109,8 @@ export interface GuildDetail {
   id: string;
   name: string;
   orgCode: string | null;
+  /** Full /join/<token> URL for owners / coaches / guild leadership; null otherwise. */
+  referralLink: string | null;
   myGuildRole: GuildRole;
   onRoster: boolean;
   canManageRoster: boolean;

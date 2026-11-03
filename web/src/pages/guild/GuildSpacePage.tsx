@@ -1,10 +1,40 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import * as orgApi from '../../api/org';
-import { GuildDetail, GuildRole, MembershipRole } from '../../api/types';
+import {
+  GuildDetail,
+  GuildMemberRow,
+  GuildRole,
+  GuildRosterMember,
+  MembershipRole,
+} from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { copyText } from '../../lib/copyText';
+import { BookStage, useBookTabs } from '../../ui/BookTabs';
+import { InviteSharePanel } from '../../ui/InviteSharePanel';
 import { SesLoader } from '../../ui/SesLoader';
+
+const PAGE_SIZE = 10;
+const GUILD_TABS = [
+  { id: 'members', label: 'Members' },
+  { id: 'roster', label: 'Roster' },
+] as const;
+type GuildTabId = (typeof GUILD_TABS)[number]['id'];
+const GUILD_TAB_IDS = GUILD_TABS.map((t) => t.id);
+
+function paginate<T>(items: T[], page: number, pageSize: number) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize) || 1);
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * pageSize;
+  return {
+    slice: items.slice(start, start + pageSize),
+    safePage,
+    totalPages,
+    total: items.length,
+    from: items.length === 0 ? 0 : start + 1,
+    to: Math.min(start + pageSize, items.length),
+  };
+}
 
 const GUILD_ROLE_LABEL: Record<GuildRole, string> = {
   MEMBER: 'Member',
@@ -174,12 +204,61 @@ function GuildSetup({
   );
 }
 
+function ListPagination({
+  total,
+  from,
+  to,
+  page,
+  totalPages,
+  onPage,
+}: {
+  total: number;
+  from: number;
+  to: number;
+  page: number;
+  totalPages: number;
+  onPage: (next: number) => void;
+}) {
+  if (total <= PAGE_SIZE) return null;
+  return (
+    <div className="records-pagination">
+      <span className="muted">
+        {from}–{to} of {total}
+      </span>
+      <div className="records-pagination-actions">
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={page <= 1}
+          onClick={() => onPage(page - 1)}
+        >
+          Previous
+        </button>
+        <span className="records-page-label">
+          {page} / {totalPages}
+        </span>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={page >= totalPages}
+          onClick={() => onPage(page + 1)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function GuildHome() {
   const { user, refreshUser } = useAuth();
   const [detail, setDetail] = useState<GuildDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [membersPage, setMembersPage] = useState(1);
+  const [rosterPage, setRosterPage] = useState(1);
+  const { tab, openTab, turn } = useBookTabs(GUILD_TAB_IDS, 'members');
 
   async function onCopyOrgCode() {
     if (!detail?.orgCode) return;
@@ -201,6 +280,12 @@ function GuildHome() {
     // Initial load only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function switchTab(next: GuildTabId) {
+    openTab(next);
+    if (next === 'members') setMembersPage(1);
+    else setRosterPage(1);
+  }
 
   async function onAdd(userId: string, role: MembershipRole) {
     setBusyId(userId);
@@ -228,7 +313,11 @@ function GuildHome() {
     }
   }
 
-  const waiting = detail?.members.filter((member) => !member.onRoster) ?? [];
+  const guildMembers = detail?.members ?? [];
+  const roster = detail?.roster ?? [];
+  const waitingCount = guildMembers.filter((m) => !m.onRoster).length;
+  const membersPaging = paginate(guildMembers, membersPage, PAGE_SIZE);
+  const rosterPaging = paginate(roster, rosterPage, PAGE_SIZE);
 
   return (
     <>
@@ -252,111 +341,249 @@ function GuildHome() {
               'Roster is view only'
             )}
             {detail ? ` · ${GUILD_ROLE_LABEL[detail.myGuildRole]}` : ''}
+            {detail
+              ? ` · ${guildMembers.length} member(s) · ${roster.length} on roster`
+              : ''}
           </p>
         </div>
       </div>
       <div className="content">
         {error ? <p className="error">{error}</p> : null}
-        <h2 className="sidebar-label" style={{ marginLeft: 0 }}>
-          Roster
-        </h2>
-        <div className="list">
-          {detail?.roster.map((member) => (
-            <div key={member.userId} className="list-row" style={{ cursor: 'default' }}>
-              <div>
-                <strong>
-                  {personLabel(member.name, member.inGameName)}
-                  {member.isOwner ? ' · Owner' : ''}
-                </strong>
-                <span>
-                  {member.role ? ROSTER_ROLE_LABEL[member.role] : 'Owner'}
-                </span>
-              </div>
-              {detail.canManageRoster && !member.isOwner && member.userId !== user?.id ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={busyId === member.userId}
-                  onClick={() => onRemove(member.userId)}
-                >
-                  Remove
-                </button>
-              ) : null}
-            </div>
-          ))}
-          {detail && detail.roster.length === 0 ? (
-            <p className="muted">No one is on the roster yet.</p>
-          ) : null}
-        </div>
 
-        {detail?.canManageRoster ? (
-          <>
-            <h2 className="sidebar-label" style={{ margin: '22px 0 10px' }}>
-              Guild members
-            </h2>
-            <p className="muted">
-              Add someone here to put them on the esports roster. Removing them
-              from the roster keeps their guild seat.
-            </p>
-            <div className="list">
-              {waiting.map((member) => (
-                <AddRow
-                  key={member.userId}
-                  label={personLabel(member.name, member.inGameName)}
-                  roleLabel={GUILD_ROLE_LABEL[member.guildRole]}
-                  busy={busyId === member.userId}
-                  onAdd={(role) => onAdd(member.userId, role)}
-                />
-              ))}
-              {waiting.length === 0 ? (
-                <p className="muted">Everyone in the guild is already on the roster.</p>
-              ) : null}
-            </div>
-          </>
+        {detail?.referralLink ? (
+          <InviteSharePanel
+            referralLink={detail.referralLink}
+            orgCode={detail.orgCode}
+            title="Invite To Join"
+          />
         ) : null}
+
+        <nav className="pill-switch" aria-label="Guild lists" role="tablist">
+          {GUILD_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              className={`pill-switch-btn${tab === t.id ? ' active' : ''}`}
+              onClick={() => switchTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+
+        <BookStage tab={tab} turn={turn} className="guild-list-stage">
+          {(active) =>
+            active === 'members' ? (
+              <MembersTab
+                members={membersPaging.slice}
+                canManage={!!detail?.canManageRoster}
+                busyId={busyId}
+                waitingCount={waitingCount}
+                total={membersPaging.total}
+                onAdd={onAdd}
+                paging={membersPaging}
+                onPage={setMembersPage}
+              />
+            ) : (
+              <RosterTab
+                roster={rosterPaging.slice}
+                canManage={!!detail?.canManageRoster}
+                selfId={user?.id}
+                busyId={busyId}
+                onRemove={onRemove}
+                paging={rosterPaging}
+                onPage={setRosterPage}
+              />
+            )
+          }
+        </BookStage>
       </div>
       {busyId ? <SesLoader label="Updating roster" /> : null}
     </>
   );
 }
 
-function AddRow({
+function MembersTab({
+  members,
+  canManage,
+  busyId,
+  waitingCount,
+  total,
+  onAdd,
+  paging,
+  onPage,
+}: {
+  members: GuildMemberRow[];
+  canManage: boolean;
+  busyId: string | null;
+  waitingCount: number;
+  total: number;
+  onAdd: (userId: string, role: MembershipRole) => void;
+  paging: ReturnType<typeof paginate<GuildMemberRow>>;
+  onPage: (page: number) => void;
+}) {
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Everyone who joined the guild. Tap a name to open their game profile
+        (devices + social — phone and email stay private).
+      </p>
+      <div className="list">
+        {members.map((member) => (
+          <div
+            key={member.userId}
+            className="list-row guild-add-row"
+            style={{ cursor: 'default' }}
+          >
+            <div>
+              <Link
+                className="member-name-link"
+                to={`/members/${member.userId}`}
+              >
+                <strong>
+                  {personLabel(member.name, member.inGameName)}
+                  {member.isOwner ? ' · Owner' : ''}
+                </strong>
+              </Link>
+              <span>
+                {GUILD_ROLE_LABEL[member.guildRole]}
+                {member.onRoster
+                  ? member.rosterRole
+                    ? ` · Roster ${ROSTER_ROLE_LABEL[member.rosterRole]}`
+                    : ' · On roster'
+                  : ' · Not on roster'}
+              </span>
+            </div>
+            {canManage && !member.onRoster ? (
+              <AddActions
+                label={personLabel(member.name, member.inGameName)}
+                busy={busyId === member.userId}
+                onAdd={(role) => onAdd(member.userId, role)}
+              />
+            ) : null}
+          </div>
+        ))}
+        {total === 0 ? <p className="muted">No guild members yet.</p> : null}
+      </div>
+      {canManage && waitingCount === 0 && total > 0 ? (
+        <p className="muted" style={{ marginTop: 12 }}>
+          Everyone in the guild is already on the roster.
+        </p>
+      ) : null}
+      <ListPagination
+        total={paging.total}
+        from={paging.from}
+        to={paging.to}
+        page={paging.safePage}
+        totalPages={paging.totalPages}
+        onPage={onPage}
+      />
+    </>
+  );
+}
+
+function RosterTab({
+  roster,
+  canManage,
+  selfId,
+  busyId,
+  onRemove,
+  paging,
+  onPage,
+}: {
+  roster: GuildRosterMember[];
+  canManage: boolean;
+  selfId?: string;
+  busyId: string | null;
+  onRemove: (userId: string) => void;
+  paging: ReturnType<typeof paginate<GuildRosterMember>>;
+  onPage: (page: number) => void;
+}) {
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Esports roster seats. Tap a name for their game profile.
+      </p>
+      <div className="list">
+        {roster.map((member) => (
+          <div
+            key={member.userId}
+            className="list-row"
+            style={{ cursor: 'default' }}
+          >
+            <div>
+              <Link
+                className="member-name-link"
+                to={`/members/${member.userId}`}
+              >
+                <strong>
+                  {personLabel(member.name, member.inGameName)}
+                  {member.isOwner ? ' · Owner' : ''}
+                </strong>
+              </Link>
+              <span>
+                {member.role ? ROSTER_ROLE_LABEL[member.role] : 'Owner'}
+              </span>
+            </div>
+            {canManage && !member.isOwner && member.userId !== selfId ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busyId === member.userId}
+                onClick={() => onRemove(member.userId)}
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
+        ))}
+        {paging.total === 0 ? (
+          <p className="muted">No one is on the roster yet.</p>
+        ) : null}
+      </div>
+      <ListPagination
+        total={paging.total}
+        from={paging.from}
+        to={paging.to}
+        page={paging.safePage}
+        totalPages={paging.totalPages}
+        onPage={onPage}
+      />
+    </>
+  );
+}
+
+function AddActions({
   label,
-  roleLabel,
   busy,
   onAdd,
 }: {
   label: string;
-  roleLabel: string;
   busy: boolean;
   onAdd: (role: MembershipRole) => void;
 }) {
   const [role, setRole] = useState<MembershipRole>('PLAYER');
   return (
-    <div className="list-row guild-add-row" style={{ cursor: 'default' }}>
-      <div>
-        <strong>{label}</strong>
-        <span>{roleLabel}</span>
-      </div>
-      <div className="guild-add-actions">
-        <select
-          aria-label={`Roster role for ${label}`}
-          value={role}
-          onChange={(e) => setRole(e.target.value as MembershipRole)}
-        >
-          <option value="PLAYER">Player</option>
-          <option value="COACH">Coach</option>
-          <option value="ANALYST">Analyst</option>
-        </select>
-        <button
-          type="button"
-          className="btn btn-primary topbar-add-btn"
-          disabled={busy}
-          onClick={() => onAdd(role)}
-        >
-          Add
-        </button>
-      </div>
+    <div className="guild-add-actions">
+      <select
+        aria-label={`Roster role for ${label}`}
+        value={role}
+        onChange={(e) => setRole(e.target.value as MembershipRole)}
+      >
+        <option value="PLAYER">Player</option>
+        <option value="COACH">Coach</option>
+        <option value="ANALYST">Analyst</option>
+      </select>
+      <button
+        type="button"
+        className="btn btn-primary topbar-add-btn"
+        disabled={busy}
+        onClick={() => onAdd(role)}
+      >
+        Add
+      </button>
     </div>
   );
 }

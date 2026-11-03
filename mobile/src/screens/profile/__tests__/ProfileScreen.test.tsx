@@ -159,7 +159,7 @@ describe('ProfileScreen', () => {
         fireEvent.press(screen.getByText('Save'));
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Invalid name');
+      await screen.findByText('Invalid name');
     });
   });
 
@@ -238,7 +238,7 @@ describe('ProfileScreen', () => {
         fireEvent.press(screen.getByText('Save'));
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Invalid role');
+      await screen.findByText('Invalid role');
     });
 
     it('IGN/UID stay optional outside mustComplete mode — Save is never blocked', async () => {
@@ -400,7 +400,7 @@ describe('ProfileScreen', () => {
         fireEvent.press(screen.getByText('Save'));
       });
 
-      expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Invalid URL');
+      await screen.findByText('Invalid URL');
     });
   });
 
@@ -458,7 +458,7 @@ describe('ProfileScreen', () => {
       });
 
       expect(mockRefreshUser).toHaveBeenCalledTimes(1);
-      expect(Alert.alert).not.toHaveBeenCalledWith('Saved', expect.anything());
+      expect(screen.queryByText(/^Saved/)).toBeNull();
     });
   });
 });

@@ -26,10 +26,13 @@ export function JoinOrgScreen({}: Props) {
     try {
       const trimmed = orgCode.trim();
       // Role is always PLAYER on join — the org owner promotes coaches /
-      // analysts from the roster afterwards.
+      // analysts from the roster afterwards. Backend also accepts a full
+      // https://…/join/<token> URL as referralToken.
+      const looksLikeOrgCode =
+        trimmed.length === ORG_CODE_LENGTH && !/[/:.]/.test(trimmed);
       const org = await orgApi.joinOrg(
-        trimmed.length === ORG_CODE_LENGTH
-          ? { orgCode: trimmed }
+        looksLikeOrgCode
+          ? { orgCode: trimmed.toUpperCase() }
           : { referralToken: trimmed },
       );
       setOrg({ id: org.id, name: org.name, role: org.myRole, isOwner: org.isOwner });

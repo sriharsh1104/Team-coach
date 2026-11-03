@@ -12,23 +12,24 @@ const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const LOWER = 'abcdefghjkmnpqrstuvwxyz';
 const DIGITS = '23456789';
 const SPECIAL = '!@#$%^&*';
-const ALL = UPPER + LOWER + DIGITS + SPECIAL;
 
 function pick(charset: string): string {
   return charset[randomInt(charset.length)];
 }
 
-// Generated once per new Google signup and emailed in plaintext — guaranteed
-// to satisfy PASSWORD_REGEX so it always works for a later email+password
-// login, by construction rather than by chance.
-export function generateRandomPassword(length = 16): string {
-  const chars = [pick(UPPER), pick(LOWER), pick(DIGITS), pick(SPECIAL)];
-  for (let i = chars.length; i < length; i += 1) {
-    chars.push(pick(ALL));
+/**
+ * Google-signup password emailed in plaintext.
+ * Exactly 8 chars: 1 uppercase, 1 digit, 1 special, rest lowercase letters.
+ * Always satisfies PASSWORD_REGEX.
+ */
+export function generateRandomPassword(_length = 8): string {
+  const size = 8;
+  const chars = [pick(UPPER), pick(DIGITS), pick(SPECIAL)];
+  while (chars.length < size) {
+    chars.push(pick(LOWER));
   }
 
-  // Fisher-Yates shuffle so the guaranteed classes aren't always in the same
-  // leading positions.
+  // Fisher-Yates so required classes aren't always in fixed positions.
   for (let i = chars.length - 1; i > 0; i -= 1) {
     const j = randomInt(i + 1);
     [chars[i], chars[j]] = [chars[j], chars[i]];

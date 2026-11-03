@@ -1,17 +1,25 @@
-import { FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { FormEvent, useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PasswordField } from '../auth/PasswordField';
 import { useAuth } from '../auth/AuthContext';
+import { extractInviteToken, savePendingInvite } from '../auth/invitePending';
+import { postAuthPath } from '../auth/postAuthPath';
 import { SesLoader } from '../ui/SesLoader';
 
 export function SignupPage() {
   const { signup } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const invite = extractInviteToken(searchParams.get('invite') || '');
+    if (invite) savePendingInvite(invite);
+  }, [searchParams]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -25,7 +33,7 @@ export function SignupPage() {
         });
         return;
       }
-      navigate('/app');
+      navigate(postAuthPath(challenge.user, challenge.org));
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string | string[] } } })
@@ -86,7 +94,16 @@ export function SignupPage() {
         </button>
 
         <p className="auth-footer">
-          Already have an account? <Link to="/login">Sign in</Link>
+          Already have an account?{' '}
+          <Link
+            to={
+              searchParams.get('invite')
+                ? `/login?invite=${encodeURIComponent(searchParams.get('invite')!)}`
+                : '/login'
+            }
+          >
+            Sign in
+          </Link>
         </p>
       </form>
       {busy ? <SesLoader label="Creating account" /> : null}

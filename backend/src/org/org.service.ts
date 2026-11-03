@@ -33,6 +33,42 @@ const generateReferralToken = customAlphabet(
   24,
 );
 
+/** Accept raw tokens or pasted invite URLs like https://app/join/TOKEN. */
+export function normalizeReferralToken(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+
+  try {
+    if (trimmed.includes('://') || trimmed.startsWith('/join/')) {
+      const url = trimmed.includes('://')
+        ? new URL(trimmed)
+        : new URL(trimmed, 'https://placeholder.local');
+      const parts = url.pathname.split('/').filter(Boolean);
+      const joinIdx = parts.indexOf('join');
+      if (joinIdx >= 0 && parts[joinIdx + 1]) {
+        return decodeURIComponent(parts[joinIdx + 1]);
+      }
+      const fromQuery = url.searchParams.get('token');
+      if (fromQuery) return fromQuery.trim();
+    }
+  } catch {
+    /* fall through */
+  }
+
+  const pathMatch = trimmed.match(/(?:^|\/)join\/([A-Za-z0-9_-]+)/);
+  if (pathMatch) return pathMatch[1];
+  return trimmed;
+}
+
+function referralLinkFor(token: string) {
+  const base = (process.env.WEB_PUBLIC_URL || 'http://localhost:5173').replace(
+    /\/$/,
+    '',
+  );
+  return `${base}/join/${token}`;
+}
+
 @Injectable()
 export class OrgService {
   constructor(private readonly prisma: PrismaService) {}
@@ -160,10 +196,11 @@ export class OrgService {
 
     await this.assertUserHasNoOrg(userId);
 
+    const referralToken = normalizeReferralToken(dto.referralToken);
     const org = await this.prisma.org.findFirst({
       where: dto.orgCode
         ? { orgCode: dto.orgCode.toUpperCase() }
-        : { referralToken: dto.referralToken },
+        : { referralToken },
     });
     if (!org) {
       throw new NotFoundException('No org found for that code or link');
@@ -212,7 +249,7 @@ export class OrgService {
       id: membership.org.id,
       name: membership.org.name,
       orgCode: membership.org.orgCode,
-      referralLink: membership.org.referralToken,
+      referralLink: referralLinkFor(membership.org.referralToken),
       myRole: membership.role,
       isOwner: membership.isOwner,
       historyVisibleToNewMembers: membership.org.historyVisibleToNewMembers,
@@ -374,10 +411,11 @@ export class OrgService {
       );
     }
 
+    const referralToken = normalizeReferralToken(dto.referralToken);
     const org = await this.prisma.org.findFirst({
       where: dto.orgCode
         ? { orgCode: dto.orgCode.toUpperCase() }
-        : { referralToken: dto.referralToken },
+        : { referralToken },
     });
     if (!org) {
       throw new NotFoundException('No org found for that code or link');
@@ -455,10 +493,15 @@ export class OrgService {
       guild.role === GuildRole.ELDER ||
       guild.role === GuildRole.ACTIVE_LEADER;
 
+    const canShareInvite = canManage || leadership;
+
     return {
       id: guild.org.id,
       name: guild.org.name,
-      orgCode: canManage || leadership ? guild.org.orgCode : null,
+      orgCode: canShareInvite ? guild.org.orgCode : null,
+      referralLink: canShareInvite
+        ? referralLinkFor(guild.org.referralToken)
+        : null,
       myGuildRole: guild.role,
       onRoster: !!roster,
       canManageRoster: canManage,
@@ -585,7 +628,7 @@ export class OrgService {
       id: org.id,
       name: org.name,
       orgCode: org.orgCode,
-      referralLink: org.referralToken,
+      referralLink: referralLinkFor(org.referralToken),
       myRole: role,
       isOwner,
     };

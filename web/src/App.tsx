@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
+import { postAuthPath } from './auth/postAuthPath';
 import { AppShell } from './layout/AppShell';
 import { ChatPage } from './pages/ChatPage';
 import { GuildSpacePage } from './pages/guild/GuildSpacePage';
@@ -7,6 +8,7 @@ import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { ManageTournamentRecordsPage } from './pages/ManageTournamentRecordsPage';
 import { MapsPage } from './pages/MapsPage';
+import { MemberProfilePage } from './pages/MemberProfilePage';
 import { MembersPage } from './pages/MembersPage';
 import { PointsTablePage } from './pages/PointsTablePage';
 import {
@@ -22,6 +24,7 @@ import { SignupPage } from './pages/SignupPage';
 import { SocialHandlesPage } from './pages/SocialHandlesPage';
 import { TwoFactorPage } from './pages/TwoFactorPage';
 import { TwoFactorSetupPage } from './pages/TwoFactorSetupPage';
+import { InviteJoinPage } from './pages/InviteJoinPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { SesLoader } from './ui/SesLoader';
 
@@ -56,9 +59,9 @@ function GuildTools() {
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { isLoading, user, org } = useAuth();
   if (isLoading) return <SesLoader label="Loading" />;
-  if (user && !user.profileComplete) return <Navigate to="/profile" replace />;
-  if (user && org && !org.isOwner) return <Navigate to="/app" replace />;
-  if (user) return <Navigate to="/guild" replace />;
+  if (user) {
+    return <Navigate to={postAuthPath(user, org)} replace />;
+  }
   return children;
 }
 
@@ -85,6 +88,7 @@ export default function App() {
       />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/2fa" element={<TwoFactorPage />} />
+      <Route path="/join/:token" element={<InviteJoinPage />} />
 
       <Route
         path="/org"
@@ -142,6 +146,14 @@ export default function App() {
           <Route path="/guild/chat" element={<ChatPage variant="guild" />} />
         </Route>
         <Route path="/profile" element={<ProfilePage />} />
+        <Route
+          path="/members/:userId"
+          element={
+            <RequireProfileComplete>
+              <MemberProfilePage />
+            </RequireProfileComplete>
+          }
+        />
         <Route
           path="/settings"
           element={

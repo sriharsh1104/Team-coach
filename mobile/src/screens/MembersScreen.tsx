@@ -57,7 +57,8 @@ export function MembersScreen({ navigation }: Props) {
             <View style={styles.inviteCard}>
               <Text style={styles.inviteTitle}>Invite Players</Text>
               <Text style={styles.inviteHint}>
-                Share your org code or invite link so players can join.
+                Share the org code or invite link (QR on web). New players join
+                your roster as Player after signup if they are not on another team.
               </Text>
               <View style={styles.inviteRow}>
                 <View style={styles.inviteTextCol}>

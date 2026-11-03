@@ -347,7 +347,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const coach = await signup();
       const org = await createOrgAs(coach.accessToken, 'COACH');
       expect(org.orgCode).toMatch(/^[A-Z0-9]{6}$/);
-      expect(org.referralLink).toEqual(expect.any(String));
+      expect(org.referralLink).toMatch(/\/join\/[A-Za-z0-9]+$/);
       expect(org.myRole).toBe('COACH');
     });
 
@@ -408,11 +408,30 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const org = await createOrgAs(coach.accessToken);
       const player = await signup();
 
-      await request(server)
+      const res = await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .send({ referralToken: org.referralLink })
         .expect(201);
+      expect(res.body.id).toBe(org.id);
+      expect(res.body.myRole).toBe('PLAYER');
+    });
+
+    it('accepts a pasted /join/<token> URL as referralToken', async () => {
+      const coach = await signup();
+      const org = await createOrgAs(coach.accessToken);
+      const player = await signup();
+      const token = String(org.referralLink).split('/join/').pop();
+
+      const res = await request(server)
+        .post('/orgs/join')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .send({
+          referralToken: `https://example.test/join/${token}?utm=qr`,
+        })
+        .expect(201);
+      expect(res.body.id).toBe(org.id);
+      expect(res.body.myRole).toBe('PLAYER');
     });
 
     it('404s on an unknown org code rather than leaking anything', async () => {

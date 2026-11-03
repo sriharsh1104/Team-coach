@@ -1,17 +1,19 @@
-import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { STAT_MODES, StatMode } from '../api/types';
+import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { GrindPanel } from './stats/GrindPanel';
 import { SchedulePanel } from './stats/SchedulePanel';
 
-function isGrind(mode: StatMode) {
+const MODE_IDS = STAT_MODES.map((item) => item.mode);
+
+function isGrind(mode: string) {
   return mode === 'BR' || mode === 'CS';
 }
 
 export function StatsPage() {
   const { org } = useAuth();
   const isReviewer = org?.role === 'COACH' || org?.isOwner === true;
-  const [mode, setMode] = useState<StatMode>('BR');
+  const { tab: mode, openTab, turn } = useBookTabs(MODE_IDS, 'BR');
 
   const hint = isGrind(mode)
     ? `${mode} grind — upload Free Fire scoreboards. Gemini Flash OCR matches teammates for the leaderboard.`
@@ -29,15 +31,17 @@ export function StatsPage() {
       </div>
 
       <div className="content stats-page">
-        <nav className="stats-mode-track" aria-label="Stats mode">
+        <nav className="stats-mode-track" aria-label="Stats mode" role="tablist">
           {STAT_MODES.map((item) => {
             const active = mode === item.mode;
             return (
               <button
                 key={item.mode}
                 type="button"
+                role="tab"
+                aria-selected={active}
                 className={`stats-mode-chip${active ? ' active' : ''}`}
-                onClick={() => setMode(item.mode)}
+                onClick={() => openTab(item.mode)}
                 aria-pressed={active}
               >
                 {item.label}
@@ -46,14 +50,20 @@ export function StatsPage() {
           })}
         </nav>
 
-        {isGrind(mode) ? (
-          <GrindPanel mode={mode} isReviewer={isReviewer} />
-        ) : (
-          <SchedulePanel
-            key={mode}
-            eventType={mode === 'TOURNAMENT' ? 'TOURNAMENT' : 'SCRIM'}
-          />
-        )}
+        <BookStage tab={mode} turn={turn} className="stats-book-stage">
+          {(active) =>
+            isGrind(active) ? (
+              <GrindPanel
+                mode={active as Extract<StatMode, 'BR' | 'CS'>}
+                isReviewer={isReviewer}
+              />
+            ) : (
+              <SchedulePanel
+                eventType={active === 'TOURNAMENT' ? 'TOURNAMENT' : 'SCRIM'}
+              />
+            )
+          }
+        </BookStage>
       </div>
     </>
   );
