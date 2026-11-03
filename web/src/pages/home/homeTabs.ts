@@ -10,5 +10,5 @@ export const HOME_TABS: Array<{ id: HomeTabId; label: string }> = [
   { id: 'tournaments', label: 'What We Provide' },
   { id: 'records', label: 'Record' },
   { id: 'players', label: 'Roster' },
-  { id: 'guild', label: 'Guild' },
+  { id: 'guild', label: 'Guild Login' },
 ];

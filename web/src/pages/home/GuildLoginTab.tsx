@@ -117,73 +117,28 @@ export function GuildLoginTab() {
     }
   }
 
-  const signingUp = mode === 'signup';
-
   return (
     <div className="guild-login-card">
-      <div className="auth-mode" role="tablist" aria-label="Account">
-        <span
-          className={`auth-mode-pill${signingUp ? ' signup' : ''}`}
-          aria-hidden="true"
-        />
-        <button
-          type="button"
-          role="tab"
-          id="auth-tab-login"
-          aria-selected={!signingUp}
-          aria-controls="auth-panel"
-          className={signingUp ? '' : 'active'}
-          onClick={() => switchMode('login')}
-        >
-          Log in
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="auth-tab-signup"
-          aria-selected={signingUp}
-          aria-controls="auth-panel"
-          className={signingUp ? 'active' : ''}
-          onClick={() => switchMode('signup')}
-        >
-          Sign up
-        </button>
-      </div>
-
-      <div
-        key={mode}
-        id="auth-panel"
-        role="tabpanel"
-        aria-labelledby={signingUp ? 'auth-tab-signup' : 'auth-tab-login'}
-        className="auth-mode-copy"
-      >
-        <h2>{signingUp ? 'Create your account' : 'Welcome back'}</h2>
-        <p className="landing-section-lead">
-          {signingUp
-            ? 'Then join a guild with its org code, or start a new org.'
-            : 'Sign in to your guild. This does not add you to the esports roster.'}
-        </p>
-      </div>
+      <h2>{mode === 'signup' ? 'Sign up' : 'Guild login'}</h2>
+      <p className="landing-section-lead">
+        {mode === 'signup'
+          ? 'Create an account, then join a guild with its org code or start a new org.'
+          : 'Sign in to your guild. This does not add you to the esports roster.'}
+      </p>
 
       <form className="team-login-form" onSubmit={onSubmit}>
-        <div
-          className={`auth-extra${signingUp ? ' open' : ''}`}
-          aria-hidden={!signingUp}
-        >
-          <div className="auth-extra-inner">
-            <div className="field">
-              <label htmlFor="guild-name">Name</label>
-              <input
-                id="guild-name"
-                autoComplete="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required={signingUp}
-                tabIndex={signingUp ? 0 : -1}
-              />
-            </div>
+        {mode === 'signup' ? (
+          <div className="field">
+            <label htmlFor="guild-name">Name</label>
+            <input
+              id="guild-name"
+              autoComplete="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </div>
-        </div>
+        ) : null}
         <div className="field">
           <label htmlFor="guild-email">Email</label>
           <input
@@ -198,31 +153,26 @@ export function GuildLoginTab() {
         <PasswordField
           id="guild-password"
           label="Password"
-          autoComplete={signingUp ? 'new-password' : 'current-password'}
+          autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
           value={password}
           onChange={setPassword}
           required
         />
-        <div
-          className={`auth-extra${signingUp ? ' open' : ''}`}
-          aria-hidden={!signingUp}
-        >
-          <div className="auth-extra-inner">
-            <p className="team-password-hint">
-              At least 8 characters, with an uppercase letter, a lowercase
-              letter, a number, and a special character.
-            </p>
-          </div>
-        </div>
+        {mode === 'signup' ? (
+          <p className="team-password-hint">
+            At least 8 characters, with an uppercase letter, a lowercase letter,
+            a number, and a special character.
+          </p>
+        ) : null}
         {error ? <p className="error">{error}</p> : null}
         <button className="landing-cta" type="submit" disabled={busy}>
           {busy
-            ? signingUp
+            ? mode === 'signup'
               ? 'Creating…'
               : 'Signing in…'
-            : signingUp
+            : mode === 'signup'
               ? 'Create account'
-              : 'Sign in'}
+              : 'Sign in to Guild'}
         </button>
 
         <p className="team-auth-or">or</p>
@@ -232,6 +182,24 @@ export function GuildLoginTab() {
           onError={setError}
         />
       </form>
+
+      <p className="team-auth-switch">
+        {mode === 'login' ? (
+          <>
+            New here?{' '}
+            <button type="button" onClick={() => switchMode('signup')}>
+              Create an account
+            </button>
+          </>
+        ) : (
+          <>
+            Already have an account?{' '}
+            <button type="button" onClick={() => switchMode('login')}>
+              Log in
+            </button>
+          </>
+        )}
+      </p>
     </div>
   );
 }
