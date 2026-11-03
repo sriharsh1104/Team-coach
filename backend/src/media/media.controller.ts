@@ -17,7 +17,7 @@ import { createReadStream, existsSync } from 'fs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MediaService } from './media.service';
-import { MediaStorageService } from './media-storage.service';
+import { MediaStorageService, localMediaType } from './media-storage.service';
 import { UploadMediaDto } from './dto/upload-media.dto';
 import { mediaFileInterceptorOptions } from './multer-options';
 
@@ -71,6 +71,12 @@ export class MediaController {
     if (!result.filePath || !existsSync(result.filePath)) {
       return res.status(404).end();
     }
+    // Without an explicit Content-Type, the browser MIME-sniffs the raw
+    // bytes — an uploaded file whose content looks like HTML/SVG could then
+    // be rendered and executed in this origin. nosniff forces it to trust
+    // the (safely-allowlisted, see localMediaType) type declared here instead.
+    res.setHeader('Content-Type', localMediaType(key));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     return createReadStream(result.filePath).pipe(res);
   }
 }

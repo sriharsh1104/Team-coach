@@ -1,5 +1,5 @@
 import * as request from 'supertest';
-import { uniqueEmail } from './test-app';
+import { uniqueEmail, uniqueOrgName } from './test-app';
 import { sentOtps } from './mailer-mock';
 
 // Signup now only returns a challenge (full verification required — see
@@ -28,7 +28,7 @@ export async function createOrgAs(
   server: any,
   token: string,
   role: 'PLAYER' | 'COACH' | 'ANALYST' = 'COACH',
-  name = 'Test Org',
+  name = uniqueOrgName(),
 ) {
   const res = await request(server)
     .post('/orgs')

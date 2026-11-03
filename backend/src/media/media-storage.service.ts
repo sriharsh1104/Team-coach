@@ -11,6 +11,25 @@ const generateLocalKey = customAlphabet(
   32,
 );
 
+// Extension allowlist only — anything not listed here (including .svg/.html,
+// which can't end up here anyway since multer-options.ts rejects svg+xml and
+// everything non-image/video) falls back to the inert application/octet-stream
+// rather than letting a browser sniff the raw bytes and render/execute them.
+const LOCAL_MEDIA_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+};
+
+export function localMediaType(fileKey: string): string {
+  return LOCAL_MEDIA_TYPES[extname(fileKey).toLowerCase()] ?? 'application/octet-stream';
+}
+
 export type StoredMedia = {
   /** DB fileKey — local filename OR `image:public_id` / `video:public_id`. */
   fileKey: string;
@@ -133,21 +152,7 @@ export class MediaStorageService {
 
     const { readFile } = await import('fs/promises');
     const buffer = await readFile(this.localFilePath(fileKey));
-    const ext = extname(fileKey).toLowerCase();
-    const mediaType =
-      (
-        {
-          '.jpg': 'image/jpeg',
-          '.jpeg': 'image/jpeg',
-          '.png': 'image/png',
-          '.gif': 'image/gif',
-          '.webp': 'image/webp',
-          '.mp4': 'video/mp4',
-          '.mov': 'video/quicktime',
-          '.webm': 'video/webm',
-        } as Record<string, string>
-      )[ext] ?? 'application/octet-stream';
-    return { buffer, mediaType };
+    return { buffer, mediaType: localMediaType(fileKey) };
   }
 
   private async uploadToCloudinary(

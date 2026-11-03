@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import * as speakeasy from 'speakeasy';
-import { createTestApp, getPrisma, resetDatabase, uniqueEmail } from './utils/test-app';
+import { createTestApp, getPrisma, resetDatabase, uniqueEmail, uniqueOrgName } from './utils/test-app';
 import { sentOtps } from './utils/mailer-mock';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -47,7 +47,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
     const res = await request(server)
       .post('/orgs')
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: 'Test Org', role })
+      .send({ name: uniqueOrgName(), role })
       .expect(201);
     return res.body;
   }

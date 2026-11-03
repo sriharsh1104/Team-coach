@@ -21,11 +21,11 @@ export function activeMentionQuery(
   return { start: at, query };
 }
 
-export function filterMentionables(
-  candidates: MentionCandidate[],
+export function filterMentionables<T extends MentionCandidate>(
+  candidates: T[],
   query: string,
   limit = 6,
-): MentionCandidate[] {
+): T[] {
   const q = normalizeIgnKey(query);
   const withIgn = candidates.filter((c) => c.inGameName);
   return withIgn

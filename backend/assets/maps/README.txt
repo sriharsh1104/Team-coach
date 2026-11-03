@@ -1,6 +1,8 @@
-Free Fire map overviews + Sacred primary/secondary drop drone views.
+Map overviews + Sacred drop images live on Cloudinary:
 
-Served by GET /maps/files/<path> (public, for <img src>).
-Catalog: GET /maps (JWT).
+  folder: <CLOUDINARY_FOLDER>/maps   (default team-coach/maps)
+  delivery: https://res.cloudinary.com/<CLOUD>/image/upload/<folder>/maps/<path>.jpg
 
-Do not put these large images in web/public — keep the Vite bundle light.
+Catalog API (GET /maps) returns those HTTPS URLs when CLOUDINARY_CLOUD_NAME is set.
+Local JPGs are not kept in the repo — upload with a one-off script if you need to refresh assets.
+GET /maps/files/* remains only as a local/dev fallback if files exist under this folder.

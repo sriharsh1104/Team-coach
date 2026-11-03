@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { copyText } from '../lib/copyText';
+import { publicInviteUrl } from '../lib/publicInviteUrl';
 import { InviteQr } from './InviteQr';
 
 export function InviteSharePanel({
@@ -14,9 +15,10 @@ export function InviteSharePanel({
   hint?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const shareUrl = publicInviteUrl(referralLink);
 
   async function onCopy() {
-    const ok = await copyText(referralLink);
+    const ok = await copyText(shareUrl);
     if (ok) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
@@ -29,7 +31,7 @@ export function InviteSharePanel({
       <p className="muted invite-hint">{hint}</p>
       <div className="invite-layout">
         <InviteQr
-          url={referralLink}
+          url={shareUrl}
           label="Scan To Join"
           size={168}
           fileName={`invite-${orgCode || 'org'}.png`}
@@ -40,7 +42,7 @@ export function InviteSharePanel({
             <input
               id="invite-link"
               readOnly
-              value={referralLink}
+              value={shareUrl}
               onFocus={(e) => e.currentTarget.select()}
             />
             <button

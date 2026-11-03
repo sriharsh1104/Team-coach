@@ -27,9 +27,3 @@ export const TIEBREAKERS: Array<{ order: number; rule: string }> = [
   { order: 2, rule: 'Higher total eliminations in the series' },
   { order: 3, rule: 'Better placement in the last match of the series' },
 ];
-
-export function matchPoints(placementRank: number, eliminations: number): number {
-  const row = PLACEMENT_POINTS.find((r) => r.rank === placementRank);
-  const placement = row?.points ?? 0;
-  return placement + eliminations * ELIMINATION_POINTS;
-}

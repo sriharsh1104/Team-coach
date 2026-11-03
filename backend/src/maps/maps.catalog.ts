@@ -5,7 +5,7 @@ export type MapDropDto = {
   name: string;
   tier: DropTier;
   note: string;
-  /** Path under GET /maps/files/... */
+  /** Relative path under Cloudinary …/maps/ (or local assets/maps). */
   imagePath: string;
 };
 

@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MembershipRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MembershipService } from '../membership/membership.service';
@@ -32,6 +33,7 @@ export class WebsiteService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly memberships: MembershipService,
+    private readonly configService: ConfigService,
   ) {}
 
   /** If coaches wipe the table (or migration seed never ran), restore sheet. */
@@ -68,10 +70,18 @@ export class WebsiteService {
     };
   }
 
+  // WebsiteTournamentRecord has no orgId — it's a single global table backing
+  // the public sacredesports.com Records tab, not per-org data. Without this
+  // check, "coach/owner of *any* org" would let anyone sign up, create a
+  // throwaway org (free and instant via POST /orgs), and edit/delete the
+  // public site's content. PRIMARY_ORG_ID pins writes to the one real org.
   private async assertCoachOrOwner(userId: string) {
     const membership = await this.memberships.getMembership(userId);
+    const primaryOrgId = this.configService.get<string>('PRIMARY_ORG_ID');
     const allowed =
-      membership.isOwner || membership.role === MembershipRole.COACH;
+      !!primaryOrgId &&
+      membership.orgId === primaryOrgId &&
+      (membership.isOwner || membership.role === MembershipRole.COACH);
     if (!allowed) {
       throw new ForbiddenException('Only coaches can update tournament records');
     }

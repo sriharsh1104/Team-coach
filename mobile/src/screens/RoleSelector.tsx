@@ -11,7 +11,8 @@ const ROLE_OPTIONS: { value: MembershipRole; label: string }[] = [
 ];
 
 interface Props {
-  value: MembershipRole;
+  // Null for an owner who hasn't chosen a roster seat yet — no pill shows active.
+  value: MembershipRole | null;
   onChange: (role: MembershipRole) => void;
 }
 

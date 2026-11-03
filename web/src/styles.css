@@ -4073,10 +4073,15 @@ a:hover {
 
 /* ——— Points table (FFWS BR scoring) ——— */
 .points-page {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   gap: 22px;
-  max-width: 920px;
+  align-items: start;
+  max-width: 1100px;
+}
+
+.points-table-tie {
+  min-width: 0;
 }
 
 .points-panel {
@@ -4146,6 +4151,12 @@ a:hover {
 .points-formula {
   margin: 0;
   font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .points-page {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {

@@ -122,10 +122,11 @@ const styles = StyleSheet.create({
     // Don't shrink to the clip width — we need the natural text width.
     flexShrink: 0,
   },
+  // RN-web-only CSS props with no equivalent in React Native's own style
+  // types — keeps the text on one unbroken line for measuring + scrolling.
   trackWeb: {
-    // @ts-expect-error RN-web CSS — keep one unbroken line for measure + scroll
     whiteSpace: 'nowrap',
     width: 'max-content',
     maxWidth: 'none',
-  },
+  } as any,
 });

@@ -81,3 +81,11 @@ export function uniqueEmail(prefix: string): string {
   emailCounter += 1;
   return `${prefix}-${Date.now()}-${emailCounter}@example.com`;
 }
+
+// Org.name is unique (20261103143000_unique_profile_and_org_name) — any
+// fixture/test creating more than one org needs distinct names.
+let orgNameCounter = 0;
+export function uniqueOrgName(prefix = 'Test Org'): string {
+  orgNameCounter += 1;
+  return `${prefix}-${Date.now()}-${orgNameCounter}`;
+}
