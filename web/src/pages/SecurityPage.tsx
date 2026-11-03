@@ -39,6 +39,8 @@ export function SecurityPage() {
   const [twoFactorInfo, setTwoFactorInfo] = useState<string | null>(null);
 
   if (!user) return null;
+  // Narrowed local — nested render helpers don't keep the null check.
+  const me = user;
 
   async function onChangePassword(e: FormEvent) {
     e.preventDefault();
@@ -86,7 +88,7 @@ export function SecurityPage() {
       return (
         <div>
           <h2 className="profile-section-title">Change Password</h2>
-          {!user.hasPassword ? (
+          {!me.hasPassword ? (
             <p className="muted">
               This account signs in with Google and has no password to change.
             </p>
@@ -146,15 +148,15 @@ export function SecurityPage() {
         <p className="muted">
           Uses Google Authenticator (or any TOTP-compatible app).
         </p>
-        <p className={`security-status${user.twoFactorEnabled ? ' on' : ''}`}>
-          {user.twoFactorEnabled
+        <p className={`security-status${me.twoFactorEnabled ? ' on' : ''}`}>
+          {me.twoFactorEnabled
             ? 'Enabled — code required at login'
             : 'Disabled — add an extra layer'}
         </p>
         {twoFactorError ? <p className="error">{twoFactorError}</p> : null}
         {twoFactorInfo ? <p className="muted">{twoFactorInfo}</p> : null}
 
-        {user.twoFactorEnabled ? (
+        {me.twoFactorEnabled ? (
           showDisableForm ? (
             <form className="profile-form-grid" onSubmit={onDisableTwoFactor}>
               <PasswordField

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ROLE_LABELS, knownRolesOnly } from '../api/roles';
+import { knownRolesOnly, roleLabel } from '../api/roles';
 import * as usersApi from '../api/users';
 import { MembershipRole, Profile } from '../api/types';
 import { copyText } from '../lib/copyText';
@@ -134,7 +134,7 @@ export function MemberProfilePage() {
             <p className="member-role-chips">
               {gameRoles.map((role) => (
                 <span key={role} className="role-chip">
-                  {ROLE_LABELS[role] ?? role}
+                  {roleLabel(role)}
                 </span>
               ))}
             </p>

@@ -17,6 +17,7 @@ import {
   filterMentionables,
   insertMention,
   splitMentionParts,
+  type MentionCandidate,
 } from '../lib/chatMentions';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -239,7 +240,7 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
     applyDraft(next, start + emoji.length);
   }
 
-  function pickMention(mate: ChatTeammate) {
+  function pickMention(mate: MentionCandidate) {
     if (!mentionState || !mate.inGameName) return;
     const { text, caret: nextCaret } = insertMention(
       draft,
