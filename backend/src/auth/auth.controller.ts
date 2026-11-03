@@ -114,10 +114,7 @@ export class AuthController {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: currentUser.userId },
     });
-    const membership = await this.prisma.membership.findFirst({
-      where: { userId: currentUser.userId },
-      include: { org: true },
-    });
+    const session = await this.authService.currentSession(currentUser.userId);
 
     return {
       id: user.id,
@@ -128,14 +125,8 @@ export class AuthController {
       profileComplete: isProfileComplete(user),
       hasPassword: !!user.passwordHash,
       twoFactorEnabled: user.twoFactorEnabled,
-      org: membership
-        ? {
-            id: membership.org.id,
-            name: membership.org.name,
-            role: membership.role,
-            isOwner: membership.isOwner,
-          }
-        : null,
+      org: session.org,
+      guild: session.guild,
     };
   }
 }

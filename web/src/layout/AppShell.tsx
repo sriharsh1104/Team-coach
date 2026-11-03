@@ -1,19 +1,34 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
+type NavItem = { to: string; label: string; end?: boolean };
+
+const ROSTER_NAV: NavItem[] = [
+  { to: '/app', label: 'Chats', end: true },
+  { to: '/app/members', label: 'Team Members' },
+  { to: '/app/profile', label: 'Profile' },
+  { to: '/app/tournament-records', label: 'Records' },
+  { to: '/app/stats', label: 'Stats' },
+  { to: '/app/maps', label: 'Maps' },
+  { to: '/app/points-table', label: 'Points Table' },
+  { to: '/app/rule-book', label: 'Rule Book' },
+  { to: '/app/social', label: 'Social Handles' },
+];
+
 export function AppShell() {
-  const { user, org, logout } = useAuth();
+  const { user, org, guild, logout } = useAuth();
   const navigate = useNavigate();
-  const nav = [
-    { to: '/app', label: 'Chats', end: true },
-    { to: '/app/members', label: 'Team Members' },
-    { to: '/app/profile', label: 'Profile' },
-    { to: '/app/tournament-records', label: 'Records', end: false },
-    { to: '/app/stats', label: 'Stats', end: false },
-    { to: '/app/maps', label: 'Maps', end: false },
-    { to: '/app/points-table', label: 'Points Table', end: false },
-    { to: '/app/rule-book', label: 'Rule Book' },
-    { to: '/app/social', label: 'Social Handles' },
+  const showRoster = !!org;
+  const showGuild = !!guild && (!org || org.isOwner);
+
+  if (!showRoster && !showGuild) {
+    return <Outlet />;
+  }
+
+  const guildNav: NavItem[] = [
+    { to: '/guild/chat', label: 'Guild Chat' },
+    { to: '/guild', label: 'Guild Roster', end: true },
+    ...(!org ? [{ to: '/guild/profile', label: 'Profile' }] : []),
   ];
 
   return (
@@ -24,20 +39,42 @@ export function AppShell() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           Sacred Esports
-          <small>{org?.name ?? 'Team Coach'}</small>
+          <small>{org?.name ?? guild?.name ?? 'Team Coach'}</small>
         </div>
-        {nav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) =>
-              `nav-item${isActive ? ' active' : ''}`
-            }
-          >
-            {item.label}
-          </NavLink>
-        ))}
+        {showRoster && showGuild ? (
+          <div className="sidebar-label">Roster</div>
+        ) : null}
+        {showRoster
+          ? ROSTER_NAV.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `nav-item${isActive ? ' active' : ''}`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))
+          : null}
+        {showGuild ? (
+          <>
+            {showRoster ? <div className="sidebar-split">Guild</div> : null}
+            {guildNav.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `nav-item${isActive ? ' active' : ''}`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </>
+        ) : null}
         <div className="sidebar-foot">
           <div className="muted" style={{ padding: '0 10px 10px' }}>
             {user?.name}
@@ -48,9 +85,9 @@ export function AppShell() {
             type="button"
             className="btn btn-ghost"
             style={{ width: '100%', justifyContent: 'flex-start' }}
-            onClick={async () => {
-              await logout();
-              navigate('/login');
+            onClick={() => {
+              navigate('/');
+              void logout();
             }}
           >
             Log out

@@ -7,8 +7,8 @@ import { useAuth } from '../auth/AuthContext';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-export function ChatPage() {
-  const { user, org } = useAuth();
+export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' }) {
+  const { user, org, guild } = useAuth();
   const [channels, setChannels] = useState<ChatChannel[]>([]);
   const [teammates, setTeammates] = useState<ChatTeammate[]>([]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -32,11 +32,29 @@ export function ChatPage() {
   );
 
   useEffect(() => {
+    if (variant === 'guild') {
+      setChannels([
+        {
+          channelKey: 'guild',
+          type: 'ORG',
+          title: 'Guild Chat',
+          peerUserId: null,
+          peerAvatarUrl: null,
+          memberCount: null,
+          unreadCount: 0,
+          lastMessageAt: null,
+          lastPreview: null,
+        },
+      ]);
+      setTeammates([]);
+      setActiveKey('guild');
+      return;
+    }
     chatApi.getChatChannels().then((data) => {
       setChannels(data.channels);
       setTeammates(data.teammates);
     });
-  }, []);
+  }, [variant]);
 
   useEffect(() => {
     if (!activeKey) return;
@@ -152,8 +170,12 @@ export function ChatPage() {
     <>
       <div className="topbar">
         <div>
-          <h1>{org?.name ?? 'Team Chat'}</h1>
-          <p>Web client · same Nest API as mobile</p>
+          <h1>
+            {variant === 'guild'
+              ? (guild?.name ?? 'Guild Chat')
+              : (org?.name ?? 'Team Chat')}
+          </h1>
+          <p>{variant === 'guild' ? 'Guild chat' : 'Team chat'}</p>
         </div>
         {!connected && activeKey ? (
           <span className="muted">Connecting…</span>
@@ -181,26 +203,30 @@ export function ChatPage() {
                 </button>
               ))}
             </div>
-            <h2 style={{ marginTop: 18 }}>Direct</h2>
-            <div className="list">
-              {teammates.length === 0 ? (
-                <p className="muted">No teammates yet.</p>
-              ) : (
-                teammates.map((t) => (
-                  <button
-                    key={t.userId}
-                    type="button"
-                    className="list-row"
-                    onClick={() => openChannel(t.channelKey)}
-                  >
-                    <div>
-                      <strong>{t.name}</strong>
-                      <span>Direct message</span>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
+            {variant === 'roster' ? (
+              <>
+                <h2 style={{ marginTop: 18 }}>Direct</h2>
+                <div className="list">
+                  {teammates.length === 0 ? (
+                    <p className="muted">No teammates yet.</p>
+                  ) : (
+                    teammates.map((t) => (
+                      <button
+                        key={t.userId}
+                        type="button"
+                        className="list-row"
+                        onClick={() => openChannel(t.channelKey)}
+                      >
+                        <div>
+                          <strong>{t.name}</strong>
+                          <span>Direct message</span>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            ) : null}
           </div>
 
           <div className="chat-thread">

@@ -8,6 +8,7 @@ import { JoinOrgDto } from './dto/join-org.dto';
 import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 import { RemoveMemberDto } from './dto/remove-member.dto';
+import { AddRosterMemberDto } from './dto/add-roster-member.dto';
 import { UpdateOrgSettingsDto } from './dto/update-org-settings.dto';
 
 // A 6-character org code is guessable by brute force without a limit here —
@@ -36,6 +37,36 @@ export class OrgController {
   @Get('me')
   getMine(@CurrentUser() user: { userId: string }) {
     return this.orgService.getMyOrgWithMembers(user.userId);
+  }
+
+  @Throttle({ default: { limit: joinThrottleLimit, ttl: 60000 } })
+  @Post('guild/join')
+  joinGuild(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: JoinOrgDto,
+  ) {
+    return this.orgService.joinGuild(user.userId, dto);
+  }
+
+  @Get('guild/me')
+  getMyGuild(@CurrentUser() user: { userId: string }) {
+    return this.orgService.getMyGuild(user.userId);
+  }
+
+  @Post('guild/roster')
+  addToRoster(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: AddRosterMemberDto,
+  ) {
+    return this.orgService.addGuildMemberToRoster(user.userId, dto);
+  }
+
+  @Post('guild/roster/remove')
+  removeFromRoster(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: RemoveMemberDto,
+  ) {
+    return this.orgService.removeFromRoster(user.userId, dto);
   }
 
   @Patch('members/role')

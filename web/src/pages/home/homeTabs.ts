@@ -3,8 +3,7 @@ export type HomeTabId =
   | 'tournaments'
   | 'records'
   | 'players'
-  | 'guild'
-  | 'team-login';
+  | 'guild';
 
 export const HOME_TABS: Array<{ id: HomeTabId; label: string }> = [
   { id: 'home', label: 'Home' },
@@ -12,5 +11,4 @@ export const HOME_TABS: Array<{ id: HomeTabId; label: string }> = [
   { id: 'records', label: 'Record' },
   { id: 'players', label: 'Roster' },
   { id: 'guild', label: 'Guild' },
-  { id: 'team-login', label: 'Team login' },
 ];

@@ -5,7 +5,7 @@ import { PasswordField } from '../../auth/PasswordField';
 import { useAuth } from '../../auth/AuthContext';
 
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-const RECORDS = '/app/tournament-records';
+const GUILD_HOME = '/guild';
 
 function errorMessage(err: unknown, fallback: string) {
   const msg = (err as { response?: { data?: { message?: string | string[] } } })
@@ -13,11 +13,7 @@ function errorMessage(err: unknown, fallback: string) {
   return Array.isArray(msg) ? msg.join(', ') : msg?.toString() || fallback;
 }
 
-/**
- * Website tab for Sacred roster only — after login they land on in-app
- * tournament records (players, coaches, owners).
- */
-export function TeamLoginTab() {
+export function GuildLoginTab() {
   const { login, signup, loginWithGoogle, user, org } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -27,21 +23,21 @@ export function TeamLoginTab() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (user && org) {
+  if (user) {
     return (
-      <section className="landing-section landing-tab-panel team-login-panel">
+      <div className="guild-login-card">
         <p className="landing-section-lead">
-          You&apos;re signed in as {user.name}. Open tournament records for the
-          roster.
+          You&apos;re signed in as {user.name}. Guild membership stays separate
+          from the esports roster.
         </p>
         <button
           type="button"
           className="landing-cta"
-          onClick={() => navigate(RECORDS)}
+          onClick={() => navigate(org && !org.isOwner ? '/app' : GUILD_HOME)}
         >
-          View tournament records
+          {org && !org.isOwner ? 'Open team' : 'Open guild'}
         </button>
-      </section>
+      </div>
     );
   }
 
@@ -65,7 +61,11 @@ export function TeamLoginTab() {
         const challenge = await signup(email.trim(), password, name.trim());
         if (challenge && 'requiresEmailVerification' in challenge) {
           navigate('/verify-email', {
-            state: { challengeToken: challenge.challengeToken, email },
+            state: {
+              challengeToken: challenge.challengeToken,
+              email,
+              next: GUILD_HOME,
+            },
           });
           return;
         }
@@ -73,12 +73,12 @@ export function TeamLoginTab() {
         const challenge = await login(email.trim(), password);
         if (challenge && 'requiresTwoFactor' in challenge) {
           navigate('/2fa', {
-            state: { challengeToken: challenge.challengeToken, next: RECORDS },
+            state: { challengeToken: challenge.challengeToken, next: GUILD_HOME },
           });
           return;
         }
       }
-      navigate(RECORDS);
+      navigate(GUILD_HOME);
     } catch (err: unknown) {
       setError(
         errorMessage(err, mode === 'signup' ? 'Signup failed' : 'Login failed'),
@@ -95,11 +95,11 @@ export function TeamLoginTab() {
       const challenge = await loginWithGoogle(idToken);
       if (challenge && 'requiresTwoFactor' in challenge) {
         navigate('/2fa', {
-          state: { challengeToken: challenge.challengeToken, next: RECORDS },
+          state: { challengeToken: challenge.challengeToken, next: GUILD_HOME },
         });
         return;
       }
-      navigate(RECORDS);
+      navigate(GUILD_HOME);
     } catch (err: unknown) {
       setError(errorMessage(err, 'Google sign-in failed'));
     } finally {
@@ -108,20 +108,20 @@ export function TeamLoginTab() {
   }
 
   return (
-    <section className="landing-section landing-tab-panel team-login-panel">
-      <h2>{mode === 'signup' ? 'Sign up' : 'Log in'}</h2>
+    <div className="guild-login-card">
+      <h2>{mode === 'signup' ? 'Sign up' : 'Guild login'}</h2>
       <p className="landing-section-lead">
         {mode === 'signup'
-          ? 'Create a Sacred account, then open tournament records.'
-          : 'Sacred players, coaches, and owners — sign in to view tournament records. Coaches and owners can also update them.'}
+          ? 'Create an account, then join a guild with its org code or start a new org.'
+          : 'Sign in to your guild. This does not add you to the esports roster.'}
       </p>
 
       <form className="team-login-form" onSubmit={onSubmit}>
         {mode === 'signup' ? (
           <div className="field">
-            <label htmlFor="team-name">Name</label>
+            <label htmlFor="guild-name">Name</label>
             <input
-              id="team-name"
+              id="guild-name"
               autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -130,9 +130,9 @@ export function TeamLoginTab() {
           </div>
         ) : null}
         <div className="field">
-          <label htmlFor="team-email">Email</label>
+          <label htmlFor="guild-email">Email</label>
           <input
-            id="team-email"
+            id="guild-email"
             type="email"
             autoComplete="email"
             value={email}
@@ -141,7 +141,7 @@ export function TeamLoginTab() {
           />
         </div>
         <PasswordField
-          id="team-password"
+          id="guild-password"
           label="Password"
           autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
           value={password}
@@ -162,7 +162,7 @@ export function TeamLoginTab() {
               : 'Signing in…'
             : mode === 'signup'
               ? 'Create account'
-              : 'Sign in to Records'}
+              : 'Sign in to Guild'}
         </button>
 
         <p className="team-auth-or">or</p>
@@ -190,6 +190,6 @@ export function TeamLoginTab() {
           </>
         )}
       </p>
-    </section>
+    </div>
   );
 }

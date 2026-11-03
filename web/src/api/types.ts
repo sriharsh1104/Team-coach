@@ -1,5 +1,7 @@
 export type MembershipRole = 'PLAYER' | 'COACH' | 'ANALYST';
 
+export type GuildRole = 'MEMBER' | 'ELDER' | 'ACTIVE_LEADER' | 'LEADER';
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -18,10 +20,17 @@ export interface OrgSummary {
   isOwner: boolean;
 }
 
+export interface GuildSummary {
+  id: string;
+  name: string;
+  role: GuildRole;
+}
+
 export interface AuthResponse {
   accessToken: string;
   user: AuthUser;
   org: OrgSummary | null;
+  guild: GuildSummary | null;
 }
 
 export interface TwoFactorChallengeResponse {
@@ -66,6 +75,41 @@ export interface OrgDetail {
   isOwner: boolean;
   historyVisibleToNewMembers: boolean;
   members: OrgMember[];
+}
+
+export interface GuildJoinResponse {
+  id: string;
+  name: string;
+  role: GuildRole;
+}
+
+export interface GuildRosterMember {
+  userId: string;
+  name: string;
+  inGameName: string | null;
+  role: MembershipRole;
+  isOwner: boolean;
+}
+
+export interface GuildMemberRow {
+  userId: string;
+  name: string;
+  inGameName: string | null;
+  guildRole: GuildRole;
+  onRoster: boolean;
+  rosterRole: MembershipRole | null;
+  isOwner: boolean;
+}
+
+export interface GuildDetail {
+  id: string;
+  name: string;
+  orgCode: string | null;
+  myGuildRole: GuildRole;
+  onRoster: boolean;
+  canManageRoster: boolean;
+  roster: GuildRosterMember[];
+  members: GuildMemberRow[];
 }
 
 export interface ChatMessage {

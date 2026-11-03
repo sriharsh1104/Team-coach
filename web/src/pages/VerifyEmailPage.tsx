@@ -9,6 +9,7 @@ export function VerifyEmailPage() {
   const state = (location.state || {}) as {
     challengeToken?: string;
     email?: string;
+    next?: string;
   };
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export function VerifyEmailPage() {
     setError(null);
     try {
       await completeEmailVerification(state.challengeToken!, code.trim());
-      navigate('/app');
+      navigate(state.next === '/guild' ? '/guild' : '/app');
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string | string[] } } })

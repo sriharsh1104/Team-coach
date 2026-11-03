@@ -1,5 +1,11 @@
 import { apiClient } from './client';
-import { MembershipRole, OrgCreateJoinResponse, OrgDetail } from './types';
+import {
+  GuildDetail,
+  GuildJoinResponse,
+  MembershipRole,
+  OrgCreateJoinResponse,
+  OrgDetail,
+} from './types';
 
 export function createOrg(name: string, role: MembershipRole) {
   return apiClient
@@ -15,4 +21,26 @@ export function joinOrg(code: { orgCode?: string; referralToken?: string }) {
 
 export function getMyOrg() {
   return apiClient.get<OrgDetail>('/orgs/me').then((res) => res.data);
+}
+
+export function joinGuild(code: { orgCode?: string; referralToken?: string }) {
+  return apiClient
+    .post<GuildJoinResponse>('/orgs/guild/join', code)
+    .then((res) => res.data);
+}
+
+export function getMyGuild() {
+  return apiClient.get<GuildDetail>('/orgs/guild/me').then((res) => res.data);
+}
+
+export function addGuildMemberToRoster(targetUserId: string, role: MembershipRole) {
+  return apiClient
+    .post('/orgs/guild/roster', { targetUserId, role })
+    .then((res) => res.data);
+}
+
+export function removeFromRoster(targetUserId: string) {
+  return apiClient
+    .post('/orgs/guild/roster/remove', { targetUserId })
+    .then((res) => res.data);
 }

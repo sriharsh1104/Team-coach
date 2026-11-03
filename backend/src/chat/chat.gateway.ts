@@ -11,7 +11,7 @@ import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
-import { ChatService, ORG_CHANNEL } from './chat.service';
+import { ChatService, GUILD_CHANNEL, ORG_CHANNEL } from './chat.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 
@@ -47,11 +47,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
         if (user.tokenVersion !== payload.tokenVersion) {
           throw new Error('Session has been logged out');
         }
-        const orgId = await this.chatService.getOrgIdForUser(payload.sub);
+        const ctx = await this.chatService.getChatContext(payload.sub);
 
-        const data: SocketData = { userId: user.id, userName: user.name, orgId };
+        const data: SocketData = {
+          userId: user.id,
+          userName: user.name,
+          orgId: ctx.orgId,
+        };
         socket.data = data;
-        await socket.join(this.roomFor(orgId, ORG_CHANNEL));
+        if (ctx.roster) {
+          await socket.join(this.roomFor(ctx.orgId, ORG_CHANNEL));
+        }
+        await socket.join(this.roomFor(ctx.orgId, GUILD_CHANNEL));
         next();
       } catch (err) {
         this.logger.warn(`Rejected socket connection: ${(err as Error).message}`);

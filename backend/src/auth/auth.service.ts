@@ -19,7 +19,7 @@ import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
 import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendEmailVerificationDto } from './dto/resend-email-verification.dto';
-import { User } from '@prisma/client';
+import { GuildRole, User } from '@prisma/client';
 import { isProfileComplete } from '../users/users.service';
 import {
   generateBackupCodes,
@@ -432,11 +432,45 @@ export class AuthService {
     });
   }
 
+  async currentSession(userId: string) {
+    const [membership, guild] = await Promise.all([
+      this.prisma.membership.findFirst({
+        where: { userId },
+        include: { org: true },
+      }),
+      this.prisma.guildMembership.findFirst({
+        where: { userId },
+        include: { org: true },
+      }),
+    ]);
+
+    return {
+      org: membership
+        ? {
+            id: membership.org.id,
+            name: membership.org.name,
+            role: membership.role,
+            isOwner: membership.isOwner,
+          }
+        : null,
+      guild: guild
+        ? {
+            id: guild.org.id,
+            name: guild.org.name,
+            role: guild.role,
+          }
+        : membership
+          ? {
+              id: membership.org.id,
+              name: membership.org.name,
+              role: membership.isOwner ? GuildRole.LEADER : GuildRole.MEMBER,
+            }
+          : null,
+    };
+  }
+
   private async buildAuthResponse(user: User) {
-    const membership = await this.prisma.membership.findFirst({
-      where: { userId: user.id },
-      include: { org: true },
-    });
+    const session = await this.currentSession(user.id);
 
     const accessToken = await this.jwtService.signAsync({
       sub: user.id,
@@ -456,14 +490,8 @@ export class AuthService {
         hasPassword: !!user.passwordHash,
         twoFactorEnabled: user.twoFactorEnabled,
       },
-      org: membership
-        ? {
-            id: membership.org.id,
-            name: membership.org.name,
-            role: membership.role,
-            isOwner: membership.isOwner,
-          }
-        : null,
+      org: session.org,
+      guild: session.guild,
     };
   }
 }

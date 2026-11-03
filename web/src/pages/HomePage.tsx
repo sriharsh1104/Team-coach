@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { HomeHeroTab } from './home/HomeHeroTab';
 import { HOME_TABS, HomeTabId } from './home/homeTabs';
 import { SocialFooter } from './home/SocialFooter';
-import { TeamLoginTab } from './home/TeamLoginTab';
 import { GuildTab } from './home/GuildTab';
 import { RecordsTab } from './home/RecordsTab';
 import { TeamPlayersTab } from './home/TeamPlayersTab';
@@ -26,8 +25,6 @@ function TabView({ id }: { id: HomeTabId }) {
       return <TeamPlayersTab />;
     case 'guild':
       return <GuildTab />;
-    case 'team-login':
-      return <TeamLoginTab />;
   }
 }
 
@@ -55,9 +52,7 @@ export function HomePage() {
   }
 
   return (
-    <div
-      className={`landing${tab === 'team-login' ? ' landing--team-login' : ''}`}
-    >
+    <div className="landing">
       <div className="brand-watermark" aria-hidden="true">
         <img src="/sacred-logo-transparent.png" alt="" />
       </div>

@@ -13,6 +13,13 @@ enum MembershipRole {
   ANALYST
 }
 
+enum GuildRole {
+  MEMBER
+  ELDER
+  ACTIVE_LEADER
+  LEADER
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -61,6 +68,7 @@ model User {
   emailVerificationCode EmailVerificationCode?
 
   memberships        Membership[]
+  guildMemberships   GuildMembership[]
   devices            Device[]
   mediaPosts         MediaPost[]
   chatMessages       ChatMessage[]
@@ -110,6 +118,7 @@ model Org {
   historyVisibleToNewMembers Boolean @default(true)
 
   memberships        Membership[]
+  guildMemberships   GuildMembership[]
   mediaPosts         MediaPost[]
   chatMessages       ChatMessage[]
   chatReadStates     ChatReadState[]
@@ -324,6 +333,23 @@ model Membership {
   org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([userId, orgId])
+}
+
+// Community seat inside an org. Separate from Membership, which is the
+// esports roster (chat, records, scrims). Joining with a guild code creates
+// only this row.
+model GuildMembership {
+  id        String    @id @default(cuid())
+  role      GuildRole @default(MEMBER)
+  userId    String
+  orgId     String
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
 }
 
 // Public marketing-site tournament ledger (sacredesports.com Records tab).

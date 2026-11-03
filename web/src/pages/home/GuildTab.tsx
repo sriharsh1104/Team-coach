@@ -1,3 +1,5 @@
+import { GuildLoginTab } from './GuildLoginTab';
+
 const GUILD = {
   name: 'Sacred Esports',
   id: '3015174327',
@@ -31,6 +33,7 @@ function PersonRow({ ign, role }: { ign: string; role?: string }) {
 export function GuildTab() {
   return (
     <section className="landing-section landing-tab-panel guild-section">
+      <div className="guild-layout">
       <article className="guild-profile">
         <div className="guild-logo-wrap">
           <img src={GUILD.logo} alt="Sacred Esports guild logo" />
@@ -52,6 +55,8 @@ export function GuildTab() {
           </ul>
         </div>
       </article>
+      <GuildLoginTab />
+      </div>
     </section>
   );
 }

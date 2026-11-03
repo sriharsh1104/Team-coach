@@ -1,7 +1,8 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { AppShell } from './layout/AppShell';
 import { ChatPage } from './pages/ChatPage';
+import { GuildSpacePage } from './pages/guild/GuildSpacePage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { ManageTournamentRecordsPage } from './pages/ManageTournamentRecordsPage';
@@ -28,17 +29,24 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return children;
 }
 
-function RequireOrg({ children }: { children: React.ReactNode }) {
+function RequireOrg() {
   const { org } = useAuth();
-  if (!org) return <Navigate to="/org" replace />;
-  return children;
+  if (!org) return <Navigate to="/guild" replace />;
+  return <Outlet />;
+}
+
+function GuildTools() {
+  const { org, guild } = useAuth();
+  if (org && !org.isOwner) return <Navigate to="/app" replace />;
+  if (!org && !guild) return <Navigate to="/guild" replace />;
+  return <Outlet />;
 }
 
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { isLoading, user, org } = useAuth();
   if (isLoading) return <div className="app-loading">Loading…</div>;
-  if (user && org) return <Navigate to="/app" replace />;
-  if (user && !org) return <Navigate to="/org" replace />;
+  if (user && org && !org.isOwner) return <Navigate to="/app" replace />;
+  if (user) return <Navigate to="/guild" replace />;
   return children;
 }
 
@@ -92,30 +100,34 @@ export default function App() {
         }
       />
 
-      {/* Authenticated team workspace */}
       <Route
-        path="/app"
         element={
           <RequireAuth>
-            <RequireOrg>
-              <AppShell />
-            </RequireOrg>
+            <AppShell />
           </RequireAuth>
         }
       >
-        <Route index element={<ChatPage />} />
-        <Route path="members" element={<MembersPage />} />
-        <Route path="profile" element={<ProfilePage />} />
-        <Route
-          path="tournament-records"
-          element={<ManageTournamentRecordsPage />}
-        />
-        <Route path="stats" element={<StatsPage />} />
-        <Route path="scrims" element={<Navigate to="/app/stats" replace />} />
-        <Route path="maps" element={<MapsPage />} />
-        <Route path="points-table" element={<PointsTablePage />} />
-        <Route path="rule-book" element={<RuleBookPage />} />
-        <Route path="social" element={<SocialHandlesPage />} />
+        <Route path="/guild" element={<GuildSpacePage />} />
+        <Route element={<GuildTools />}>
+          <Route path="/guild/chat" element={<ChatPage variant="guild" />} />
+          <Route path="/guild/profile" element={<ProfilePage />} />
+        </Route>
+
+        <Route path="/app" element={<RequireOrg />}>
+          <Route index element={<ChatPage />} />
+          <Route path="members" element={<MembersPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route
+            path="tournament-records"
+            element={<ManageTournamentRecordsPage />}
+          />
+          <Route path="stats" element={<StatsPage />} />
+          <Route path="scrims" element={<Navigate to="/app/stats" replace />} />
+          <Route path="maps" element={<MapsPage />} />
+          <Route path="points-table" element={<PointsTablePage />} />
+          <Route path="rule-book" element={<RuleBookPage />} />
+          <Route path="social" element={<SocialHandlesPage />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

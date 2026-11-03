@@ -11,6 +11,7 @@ import { PushNotificationService, PushMessage } from '../common/push-notificatio
 
 const HISTORY_LIMIT = 50;
 export const ORG_CHANNEL = 'org';
+export const GUILD_CHANNEL = 'guild';
 
 @Injectable()
 export class ChatService {
@@ -35,6 +36,40 @@ export class ChatService {
     return (await this.getMembershipForUser(userId)).orgId;
   }
 
+  /** Roster org, or the guild org when the user has no roster seat. */
+  async getChatContext(userId: string) {
+    const [roster, guild] = await Promise.all([
+      this.prisma.membership.findFirst({ where: { userId } }),
+      this.prisma.guildMembership.findFirst({ where: { userId } }),
+    ]);
+    const orgId = roster?.orgId ?? guild?.orgId;
+    if (!orgId) {
+      throw new NotFoundException('You are not part of an org yet');
+    }
+    return { orgId, roster: !!roster };
+  }
+
+  private async resolveChannel(userId: string, channelKey: string) {
+    if (channelKey === GUILD_CHANNEL) {
+      const guild = await this.prisma.guildMembership.findFirst({
+        where: { userId },
+      });
+      const roster = guild
+        ? null
+        : await this.prisma.membership.findFirst({ where: { userId } });
+      const orgId = guild?.orgId ?? roster?.orgId;
+      if (!orgId) {
+        throw new NotFoundException('You are not part of a guild yet');
+      }
+      await this.assertChannelAccess(userId, orgId, channelKey);
+      return { orgId, joinedAt: guild?.createdAt ?? roster!.createdAt };
+    }
+
+    const membership = await this.getMembershipForUser(userId);
+    await this.assertChannelAccess(userId, membership.orgId, channelKey);
+    return { orgId: membership.orgId, joinedAt: membership.createdAt };
+  }
+
   /** Sorted DM channel key so either side resolves the same room. */
   dmChannelKey(userA: string, userB: string): string {
     const [a, b] = [userA, userB].sort();
@@ -52,6 +87,23 @@ export class ChatService {
   }
 
   async assertChannelAccess(userId: string, orgId: string, channelKey: string) {
+    if (channelKey === GUILD_CHANNEL) {
+      const [guild, roster] = await Promise.all([
+        this.prisma.guildMembership.findFirst({ where: { userId, orgId } }),
+        this.prisma.membership.findFirst({ where: { userId, orgId } }),
+      ]);
+      if (!guild && !roster) {
+        throw new ForbiddenException('You are not in this guild');
+      }
+      return;
+    }
+
+    const roster = await this.prisma.membership.findFirst({
+      where: { userId, orgId },
+    });
+    if (!roster) {
+      throw new ForbiddenException('Roster chat is only for the esports roster');
+    }
     if (channelKey === ORG_CHANNEL) return;
     const peerId = this.parseDmPeer(channelKey, userId);
     if (!peerId) {
@@ -135,21 +187,19 @@ export class ChatService {
   // loaded on the client to fetch the next (older) page. Omit it for the
   // initial/most-recent page.
   async listMessages(userId: string, channelKey = ORG_CHANNEL, before?: string) {
-    const membership = await this.getMembershipForUser(userId);
-    const orgId = membership.orgId;
-    await this.assertChannelAccess(userId, orgId, channelKey);
+    const place = await this.resolveChannel(userId, channelKey);
+    const orgId = place.orgId;
 
-    // The group channel's history can be capped to "since I joined" per-org
-    // — a DM only ever has messages from after it started anyway, so this
-    // never applies there.
+    // Group channels can be capped to "since I joined". A DM only ever has
+    // messages from after it started, so this never applies there.
     let historyCutoff: Date | undefined;
-    if (channelKey === ORG_CHANNEL) {
+    if (channelKey === ORG_CHANNEL || channelKey === GUILD_CHANNEL) {
       const org = await this.prisma.org.findUnique({
         where: { id: orgId },
         select: { historyVisibleToNewMembers: true },
       });
       if (org && !org.historyVisibleToNewMembers) {
-        historyCutoff = membership.createdAt;
+        historyCutoff = place.joinedAt;
       }
     }
 
@@ -183,9 +233,7 @@ export class ChatService {
   // one channel, newest first. Same `before` id-cursor convention as
   // listMessages; a page shorter than HISTORY_LIMIT means there's no more.
   async listMedia(userId: string, channelKey = ORG_CHANNEL, before?: string) {
-    const membership = await this.getMembershipForUser(userId);
-    const orgId = membership.orgId;
-    await this.assertChannelAccess(userId, orgId, channelKey);
+    const { orgId } = await this.resolveChannel(userId, channelKey);
 
     const messages = await this.prisma.chatMessage.findMany({
       where: { orgId, channelKey, mediaUrl: { not: null } },
@@ -216,18 +264,17 @@ export class ChatService {
     const query = q.trim().slice(0, 100);
     if (!query) return [];
 
-    const membership = await this.getMembershipForUser(userId);
-    const orgId = membership.orgId;
-    await this.assertChannelAccess(userId, orgId, channelKey);
+    const place = await this.resolveChannel(userId, channelKey);
+    const orgId = place.orgId;
 
     let historyCutoff: Date | undefined;
-    if (channelKey === ORG_CHANNEL) {
+    if (channelKey === ORG_CHANNEL || channelKey === GUILD_CHANNEL) {
       const org = await this.prisma.org.findUnique({
         where: { id: orgId },
         select: { historyVisibleToNewMembers: true },
       });
       if (org && !org.historyVisibleToNewMembers) {
-        historyCutoff = membership.createdAt;
+        historyCutoff = place.joinedAt;
       }
     }
 
@@ -256,9 +303,7 @@ export class ChatService {
   // simple, cheap filter (not a true URL validator); the client extracts and
   // renders the actual link(s) from each message's text.
   async listLinks(userId: string, channelKey = ORG_CHANNEL, before?: string) {
-    const membership = await this.getMembershipForUser(userId);
-    const orgId = membership.orgId;
-    await this.assertChannelAccess(userId, orgId, channelKey);
+    const { orgId } = await this.resolveChannel(userId, channelKey);
 
     const messages = await this.prisma.chatMessage.findMany({
       where: {
@@ -289,9 +334,8 @@ export class ChatService {
       mediaType?: 'IMAGE' | 'VIDEO';
     },
   ) {
-    const orgId = await this.getOrgIdForUser(userId);
     const channelKey = input.channelKey?.trim() || ORG_CHANNEL;
-    await this.assertChannelAccess(userId, orgId, channelKey);
+    const { orgId } = await this.resolveChannel(userId, channelKey);
 
     const text = input.text?.trim() || null;
     if (!text && !input.mediaUrl) {
@@ -329,8 +373,7 @@ export class ChatService {
   }
 
   async markRead(userId: string, channelKey = ORG_CHANNEL) {
-    const orgId = await this.getOrgIdForUser(userId);
-    await this.assertChannelAccess(userId, orgId, channelKey);
+    const { orgId } = await this.resolveChannel(userId, channelKey);
     const now = new Date();
     await this.prisma.chatReadState.upsert({
       where: {
@@ -345,8 +388,7 @@ export class ChatService {
   // Who else has read up to this channel's latest point — the backing data
   // for a WhatsApp-style "Seen by" list. Excludes the requester themselves.
   async getReadReceipts(userId: string, channelKey = ORG_CHANNEL) {
-    const orgId = await this.getOrgIdForUser(userId);
-    await this.assertChannelAccess(userId, orgId, channelKey);
+    const { orgId } = await this.resolveChannel(userId, channelKey);
 
     const states = await this.prisma.chatReadState.findMany({
       where: { orgId, channelKey, userId: { not: userId } },
@@ -364,8 +406,7 @@ export class ChatService {
   // marked the moment a client's socket actually receives a channel's messages,
   // not when the user has necessarily looked at them (see markRead for "read").
   async markDelivered(userId: string, channelKey = ORG_CHANNEL) {
-    const orgId = await this.getOrgIdForUser(userId);
-    await this.assertChannelAccess(userId, orgId, channelKey);
+    const { orgId } = await this.resolveChannel(userId, channelKey);
     const now = new Date();
     await this.prisma.chatDeliveryState.upsert({
       where: {
@@ -379,8 +420,7 @@ export class ChatService {
 
   // Mirrors getReadReceipts exactly, for the "delivered to" list.
   async getDeliveryReceipts(userId: string, channelKey = ORG_CHANNEL) {
-    const orgId = await this.getOrgIdForUser(userId);
-    await this.assertChannelAccess(userId, orgId, channelKey);
+    const { orgId } = await this.resolveChannel(userId, channelKey);
 
     const states = await this.prisma.chatDeliveryState.findMany({
       where: { orgId, channelKey, userId: { not: userId } },
@@ -438,29 +478,54 @@ export class ChatService {
     channelKey: string,
     senderId: string,
   ) {
-    const memberships = await this.prisma.membership.findMany({
+    const rosterMembers = await this.prisma.membership.findMany({
       where: { orgId, userId: { not: senderId } },
       include: { user: { select: { id: true, expoPushToken: true } } },
     });
 
-    const recipients =
-      channelKey === ORG_CHANNEL
-        ? memberships
-        : memberships.filter((m) => {
-            const peer = this.parseDmPeer(channelKey, senderId);
-            return peer === m.userId;
-          });
+    const rosterRecipients = rosterMembers.map((member) => ({
+      userId: member.userId,
+      expoPushToken: member.user.expoPushToken,
+    }));
+    let recipients = rosterRecipients;
+    if (channelKey === GUILD_CHANNEL) {
+      const guildMembers = await this.prisma.guildMembership.findMany({
+        where: { orgId, userId: { not: senderId } },
+        include: { user: { select: { expoPushToken: true } } },
+      });
+      const byId = new Map<string, { userId: string; expoPushToken: string | null }>();
+      for (const member of guildMembers) {
+        byId.set(member.userId, {
+          userId: member.userId,
+          expoPushToken: member.user.expoPushToken,
+        });
+      }
+      for (const member of rosterRecipients) byId.set(member.userId, member);
+      recipients = [...byId.values()];
+    } else if (channelKey !== ORG_CHANNEL) {
+      recipients = rosterMembers
+        .filter((member) => this.parseDmPeer(channelKey, senderId) === member.userId)
+        .map((member) => ({
+          userId: member.userId,
+          expoPushToken: member.user.expoPushToken,
+        }));
+    }
 
     const messages: PushMessage[] = [];
     for (const m of recipients) {
-      const token = m.user.expoPushToken;
+      const token = m.expoPushToken;
       if (!this.pushNotifications.isValidExpoPushToken(token)) continue;
       const unread = await this.countUnread(m.userId, orgId, channelKey);
       if (unread <= 0) continue;
       const isDm = channelKey.startsWith('dm:');
       messages.push({
         to: token,
-        title: isDm ? 'Direct Message' : 'Team Chat',
+        title:
+          channelKey === GUILD_CHANNEL
+            ? 'Guild Chat'
+            : isDm
+              ? 'Direct Message'
+              : 'Team Chat',
         // Count only — never include message text.
         body:
           unread === 1

@@ -11,6 +11,7 @@ import {
   AuthResponse,
   AuthUser,
   EmailVerificationChallengeResponse,
+  GuildSummary,
   OrgSummary,
   TwoFactorChallengeResponse,
 } from '../api/types';
@@ -32,6 +33,7 @@ interface AuthContextValue {
   isLoading: boolean;
   user: AuthUser | null;
   org: OrgSummary | null;
+  guild: GuildSummary | null;
   signup: (
     email: string,
     password: string,
@@ -58,6 +60,7 @@ interface AuthContextValue {
   refreshOrg: () => Promise<void>;
   refreshUser: () => Promise<void>;
   setOrg: (org: OrgSummary) => void;
+  setGuild: (guild: GuildSummary) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -66,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [org, setOrgState] = useState<OrgSummary | null>(null);
+  const [guild, setGuildState] = useState<GuildSummary | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -78,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const me = await authApi.me();
         setUser(toAuthUser(me));
         setOrgState(me.org);
+        setGuildState(me.guild);
       } catch {
         localStorage.removeItem(TOKEN_STORAGE_KEY);
       } finally {
@@ -90,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(TOKEN_STORAGE_KEY, response.accessToken);
     setUser(response.user);
     setOrgState(response.org);
+    setGuildState(response.guild);
   }, []);
 
   const signup = useCallback(
@@ -151,21 +157,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     setUser(null);
     setOrgState(null);
+    setGuildState(null);
   }, []);
 
   const refreshOrg = useCallback(async () => {
     const me = await authApi.me();
     setOrgState(me.org);
+    setGuildState(me.guild);
   }, []);
 
   const refreshUser = useCallback(async () => {
     const me = await authApi.me();
     setUser(toAuthUser(me));
     setOrgState(me.org);
+    setGuildState(me.guild);
   }, []);
 
   const setOrg = useCallback((next: OrgSummary) => {
     setOrgState(next);
+  }, []);
+
+  const setGuild = useCallback((next: GuildSummary) => {
+    setGuildState(next);
   }, []);
 
   return (
@@ -174,6 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         user,
         org,
+        guild,
         signup,
         completeEmailVerification,
         resendEmailVerification,
@@ -185,6 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshOrg,
         refreshUser,
         setOrg,
+        setGuild,
       }}
     >
       {children}

@@ -49,6 +49,9 @@ describe('AuthService (unit)', () => {
       membership: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      guildMembership: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       ...prismaOverrides,
     } as unknown as PrismaService;
 

@@ -1518,7 +1518,31 @@ a:hover {
 }
 
 .guild-section {
-  max-width: 980px;
+  max-width: 1100px;
+}
+
+.guild-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 380px);
+  gap: 22px;
+  align-items: start;
+}
+
+.guild-login-card {
+  padding: 22px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.guild-login-card h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.guild-login-card .landing-section-lead {
+  margin: 0 0 16px;
+  text-align: left;
 }
 
 .guild-profile {
@@ -1731,6 +1755,7 @@ a:hover {
 
   .roster-layout,
   .player-grid,
+  .guild-layout,
   .guild-profile,
   .guild-groups {
     grid-template-columns: 1fr;
@@ -1992,6 +2017,22 @@ a:hover {
   border-color: rgba(201, 204, 209, 0.22);
 }
 
+.sidebar-label,
+.sidebar-split {
+  margin: 4px 10px 2px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.sidebar-split {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
 .sidebar-foot {
   margin-top: auto;
   padding-top: 12px;
@@ -2052,6 +2093,79 @@ a:hover {
   padding: 0;
   display: flex;
   flex-direction: column;
+}
+
+.guild-workspace {
+  min-height: 0;
+}
+
+.guild-split {
+  display: grid;
+  grid-template-columns: minmax(280px, 420px) 1fr;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.guild-side {
+  overflow: auto;
+  padding: 16px 18px 28px;
+  border-right: 1px solid var(--border);
+}
+
+.guild-side h2 {
+  margin: 22px 0 10px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.guild-side h2:first-child {
+  margin-top: 0;
+}
+
+.guild-add-row {
+  align-items: center;
+}
+
+.guild-side .list-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.guild-add-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guild-add-actions select {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.guild-profile-form {
+  max-width: 360px;
+}
+
+@media (max-width: 860px) {
+  .guild-split {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .guild-side {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .guild-split .chat-thread {
+    min-height: 70vh;
+  }
 }
 
 .panel {

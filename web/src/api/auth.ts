@@ -2,6 +2,7 @@ import { apiClient } from './client';
 import {
   AuthResponse,
   AuthUser,
+  GuildSummary,
   LoginResult,
   OrgSummary,
   SignupResult,
@@ -48,7 +49,9 @@ export function verifyTwoFactor(
 
 export function me() {
   return apiClient
-    .get<AuthUser & { org: OrgSummary | null }>('/auth/me')
+    .get<AuthUser & { org: OrgSummary | null; guild: GuildSummary | null }>(
+      '/auth/me',
+    )
     .then((res) => res.data);
 }
 

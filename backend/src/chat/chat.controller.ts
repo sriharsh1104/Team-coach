@@ -152,7 +152,7 @@ export class ChatController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
-    await this.chatService.getOrgIdForUser(user.userId);
+    await this.chatService.getChatContext(user.userId);
     const mediaType = file.mimetype.startsWith('video/') ? 'VIDEO' : 'IMAGE';
     const stored = await this.storage.storeUploadedFile(file);
 
@@ -208,7 +208,7 @@ export class ChatController {
     ) {
       throw new NotFoundException('File not found');
     }
-    await this.chatService.getOrgIdForUser(payload.sub);
+    await this.chatService.getChatContext(payload.sub);
 
     if (this.storage.isCloudinaryKey(key)) {
       const redirectUrl = this.storage.buildDeliveryUrl(key);
