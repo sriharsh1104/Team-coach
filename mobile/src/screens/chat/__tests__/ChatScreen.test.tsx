@@ -61,6 +61,12 @@ beforeEach(() => {
     user: { id: 'user-1', email: 'me@example.com', name: 'Me', avatarUrl: null },
   });
   mockedChatApi.getChatHistory.mockResolvedValue([]);
+  mockedChatApi.getChatChannels = jest.fn().mockResolvedValue({
+    channels: [],
+    teammates: [],
+    mentionables: [],
+    totalUnread: 0,
+  });
   mockedChatApi.markChatRead = jest.fn().mockResolvedValue({ unreadCount: 0 });
   mockedChatApi.getReadReceipts = jest.fn().mockResolvedValue([]);
   mockedChatApi.getDeliveryReceipts = jest.fn().mockResolvedValue([]);
@@ -208,7 +214,7 @@ describe('ChatScreen', () => {
     await pressAndSettle('Send');
     expect(fakeSocket.emit).not.toHaveBeenCalledWith('message:send', expect.anything());
 
-    fireEvent.changeText(screen.getByPlaceholderText('Message…'), '   ');
+    fireEvent.changeText(screen.getByPlaceholderText('Message… @IGN to mention'), '   ');
     await pressAndSettle('Send');
     expect(fakeSocket.emit).not.toHaveBeenCalledWith(
       'message:send',
@@ -219,7 +225,7 @@ describe('ChatScreen', () => {
   it('sends a trimmed message and clears the draft', async () => {
     const fakeSocket = await connectAndSettle();
 
-    const input = screen.getByPlaceholderText('Message…');
+    const input = screen.getByPlaceholderText('Message… @IGN to mention');
     fireEvent.changeText(input, '  gl hf  ');
     await pressAndSettle('Send');
 
@@ -264,7 +270,7 @@ describe('ChatScreen', () => {
 
       fireEvent.press(screen.getByText('😀'));
 
-      expect(screen.getByPlaceholderText('Message…').props.value).toBe('😀');
+      expect(screen.getByPlaceholderText('Message… @IGN to mention').props.value).toBe('😀');
       // Still open — picking an emoji doesn't dismiss the panel.
       expect(screen.getByText('😀')).toBeTruthy();
     });

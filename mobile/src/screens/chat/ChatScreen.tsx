@@ -17,14 +17,45 @@ import { Socket } from 'socket.io-client';
 import { getToken } from '../../storage/tokenStorage';
 import * as chatApi from '../../api/chat';
 import { ReadReceipt, DeliveryReceipt } from '../../api/chat';
-import { ChatMessage } from '../../api/types';
+import { ChatMessage, ChatTeammate } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { Screen } from '../../brand/Screen';
 import { sharedStyles, formatRoleBadge } from '../shared';
 import { AttachMenu, AttachOption } from './AttachMenu';
 import { MediaViewerModal } from './MediaViewerModal';
 import { MessageInfoModal } from './MessageInfoModal';
+import {
+  activeMentionQuery,
+  filterMentionables,
+  insertMention,
+  splitMentionParts,
+} from './chatMentions';
 import { colors } from '../../theme';
+
+function MessageText({
+  text,
+  knownIgns,
+  mine,
+}: {
+  text: string;
+  knownIgns: string[];
+  mine: boolean;
+}) {
+  const parts = splitMentionParts(text, knownIgns);
+  return (
+    <Text style={mine ? styles.textMine : styles.text}>
+      {parts.map((p, i) =>
+        p.type === 'mention' ? (
+          <Text key={i} style={mine ? styles.mentionMine : styles.mention}>
+            {p.value}
+          </Text>
+        ) : (
+          <Text key={i}>{p.value}</Text>
+        ),
+      )}
+    </Text>
+  );
+}
 
 // "Teammate · Coach" / "Owner Coach · Coach (Owner)" — role badge is shown
 // next to the name for everyone but yourself (you already know your own role).
@@ -53,6 +84,8 @@ export function ChatScreen({
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [draft, setDraft] = useState('');
+  const [caret, setCaret] = useState(0);
+  const [mentionables, setMentionables] = useState<ChatTeammate[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
   const [receipts, setReceipts] = useState<ReadReceipt[]>([]);
@@ -77,6 +110,40 @@ export function ChatScreen({
 
   messagesRef.current = messages;
   hasOlderRef.current = hasOlderMessages;
+
+  const knownIgns = useMemo(
+    () =>
+      mentionables
+        .map((m) => m.inGameName)
+        .filter((v): v is string => !!v),
+    [mentionables],
+  );
+
+  const mentionState = useMemo(
+    () => activeMentionQuery(draft, caret),
+    [draft, caret],
+  );
+
+  const mentionSuggestions = useMemo(() => {
+    if (!mentionState) return [];
+    return filterMentionables(mentionables, mentionState.query);
+  }, [mentionState, mentionables]);
+
+  useEffect(() => {
+    let cancelled = false;
+    chatApi
+      .getChatChannels()
+      .then((data) => {
+        if (cancelled) return;
+        setMentionables(data.mentionables ?? data.teammates ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setMentionables([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -353,7 +420,23 @@ export function ChatScreen({
     if (!text || !socketRef.current) return;
     emitMessage({ text });
     setDraft('');
+    setCaret(0);
   }, [draft, emitMessage]);
+
+  const pickMention = useCallback(
+    (mate: ChatTeammate) => {
+      if (!mentionState || !mate.inGameName) return;
+      const { text, caret: nextCaret } = insertMention(
+        draft,
+        caret,
+        mentionState.start,
+        mate.inGameName,
+      );
+      setDraft(text);
+      setCaret(nextCaret);
+    },
+    [mentionState, draft, caret],
+  );
 
   const onPickMedia = async (option: AttachOption) => {
     setShowAttach(false);
@@ -555,9 +638,11 @@ export function ChatScreen({
                     </Pressable>
                   ) : null}
                   {item.text ? (
-                    <Text style={isMine ? styles.textMine : styles.text}>
-                      {item.text}
-                    </Text>
+                    <MessageText
+                      text={item.text}
+                      knownIgns={knownIgns}
+                      mine={isMine}
+                    />
                   ) : null}
                 </View>
                 {showSeen && (
@@ -586,9 +671,29 @@ export function ChatScreen({
       {showAttach && (
         <AttachMenu
           onPickMedia={onPickMedia}
-          onPickEmoji={(emoji) => setDraft((prev) => prev + emoji)}
+          onPickEmoji={(emoji) => {
+            setDraft((prev) => {
+              const next = prev + emoji;
+              setCaret(next.length);
+              return next;
+            });
+          }}
         />
       )}
+      {mentionSuggestions.length > 0 ? (
+        <View style={styles.mentionMenu}>
+          {mentionSuggestions.map((mate) => (
+            <Pressable
+              key={mate.userId}
+              style={styles.mentionOption}
+              onPress={() => pickMention(mate)}
+            >
+              <Text style={styles.mentionIgn}>@{mate.inGameName}</Text>
+              <Text style={styles.mentionName}>{mate.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       <View style={styles.inputRow}>
         <Pressable
           onPress={() => setShowAttach((v) => !v)}
@@ -600,10 +705,16 @@ export function ChatScreen({
         </Pressable>
         <TextInput
           style={[sharedStyles.input, { flex: 1, marginBottom: 0 }]}
-          placeholder="Message…"
+          placeholder="Message… @IGN to mention"
           placeholderTextColor="#8b8f97"
           value={draft}
-          onChangeText={setDraft}
+          onChangeText={(text) => {
+            setDraft(text);
+            setCaret(text.length);
+          }}
+          onSelectionChange={(e) => {
+            setCaret(e.nativeEvent.selection.end);
+          }}
           onSubmitEditing={onSend}
         />
         <Pressable
@@ -693,6 +804,26 @@ const styles = StyleSheet.create({
   sender: { fontSize: 11, color: '#9aa0a6', marginBottom: 2 },
   text: { color: '#f2f3f5' },
   textMine: { color: '#0a0a0c' },
+  mention: { color: colors.link, fontWeight: '700' },
+  mentionMine: { color: '#1a2a8a', fontWeight: '700' },
+  mentionMenu: {
+    marginHorizontal: 12,
+    marginBottom: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(20,20,24,0.96)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+  },
+  mentionOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  mentionIgn: { color: colors.link, fontWeight: '700', fontSize: 14 },
+  mentionName: { color: colors.textMuted, fontSize: 12 },
   media: { width: 200, height: 160, borderRadius: 8, marginBottom: 6 },
   videoThumb: {
     width: 200,

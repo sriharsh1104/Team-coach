@@ -13,6 +13,21 @@ const HISTORY_LIMIT = 50;
 export const ORG_CHANNEL = 'org';
 export const GUILD_CHANNEL = 'guild';
 
+/** Tokens after `@` until whitespace — Free Fire IGNs like SES-SRI. */
+const MENTION_TOKEN_RE = /@([^\s@]+)/g;
+
+function normalizeIgnKey(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s~_\-.]+/g, '');
+}
+
+function extractMentionTokens(text: string): string[] {
+  const tokens: string[] = [];
+  for (const match of text.matchAll(MENTION_TOKEN_RE)) {
+    if (match[1]) tokens.push(match[1]);
+  }
+  return [...new Set(tokens)];
+}
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -124,7 +139,11 @@ export class ChatService {
     const orgId = await this.getOrgIdForUser(userId);
     const members = await this.prisma.membership.findMany({
       where: { orgId, userId: { not: userId } },
-      include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+      include: {
+        user: {
+          select: { id: true, name: true, avatarUrl: true, inGameName: true },
+        },
+      },
       orderBy: { user: { name: 'asc' } },
     });
     const memberCount = members.length + 1; // teammates + self
@@ -154,6 +173,45 @@ export class ChatService {
     // Only surface DMs that already have messages, plus always show group.
     const activeDms = dms.filter((d) => d.lastMessageAt || d.unreadCount > 0);
 
+    // Guild seats (for @IGN autocomplete in guild chat) — may overlap roster.
+    const guildSeats = await this.prisma.guildMembership.findMany({
+      where: { orgId, userId: { not: userId } },
+      include: {
+        user: {
+          select: { id: true, name: true, avatarUrl: true, inGameName: true },
+        },
+      },
+    });
+    const mentionById = new Map<
+      string,
+      {
+        userId: string;
+        name: string;
+        avatarUrl: string | null;
+        inGameName: string | null;
+        channelKey: string;
+      }
+    >();
+    for (const m of members) {
+      mentionById.set(m.user.id, {
+        userId: m.user.id,
+        name: m.user.name,
+        avatarUrl: m.user.avatarUrl,
+        inGameName: m.user.inGameName,
+        channelKey: this.dmChannelKey(userId, m.user.id),
+      });
+    }
+    for (const g of guildSeats) {
+      if (mentionById.has(g.user.id)) continue;
+      mentionById.set(g.user.id, {
+        userId: g.user.id,
+        name: g.user.name,
+        avatarUrl: g.user.avatarUrl,
+        inGameName: g.user.inGameName,
+        channelKey: this.dmChannelKey(userId, g.user.id),
+      });
+    }
+
     return {
       channels: [
         {
@@ -177,8 +235,10 @@ export class ChatService {
         userId: m.user.id,
         name: m.user.name,
         avatarUrl: m.user.avatarUrl,
+        inGameName: m.user.inGameName,
         channelKey: this.dmChannelKey(userId, m.user.id),
       })),
+      mentionables: [...mentionById.values()],
       totalUnread: groupUnread + activeDms.reduce((sum, d) => sum + d.unreadCount, 0),
     };
   }
@@ -356,9 +416,25 @@ export class ChatService {
     // Sender has obviously read up through this message.
     await this.markRead(userId, channelKey);
 
-    // Push count-only notifications to offline teammates (no message body).
-    void this.notifyUnreadCounts(orgId, channelKey, userId).catch((err) =>
-      this.logger.warn(`Chat push failed: ${(err as Error).message}`),
+    const mentionedIds = text
+      ? await this.resolveMentionedUserIds(orgId, channelKey, text, userId)
+      : [];
+
+    // @IGN mentions get a dedicated push; everyone else gets count-only unread.
+    if (mentionedIds.length > 0) {
+      void this.notifyMentions(
+        orgId,
+        channelKey,
+        userId,
+        senderName,
+        mentionedIds,
+        text!,
+      ).catch((err) =>
+        this.logger.warn(`Chat mention push failed: ${(err as Error).message}`),
+      );
+    }
+    void this.notifyUnreadCounts(orgId, channelKey, userId, mentionedIds).catch(
+      (err) => this.logger.warn(`Chat push failed: ${(err as Error).message}`),
     );
 
     const senderMembership = await this.prisma.membership.findFirst({
@@ -473,11 +549,134 @@ export class ChatService {
     return '';
   }
 
+  /** Match `@IGN` tokens in text to channel members (case/punctuation tolerant). */
+  private async resolveMentionedUserIds(
+    orgId: string,
+    channelKey: string,
+    text: string,
+    senderId: string,
+  ): Promise<string[]> {
+    const tokens = extractMentionTokens(text);
+    if (tokens.length === 0) return [];
+
+    const candidates = await this.loadMentionCandidates(orgId, channelKey, senderId);
+    if (candidates.length === 0) return [];
+
+    const byKey = new Map<string, string>();
+    for (const c of candidates) {
+      if (!c.inGameName) continue;
+      byKey.set(normalizeIgnKey(c.inGameName), c.userId);
+    }
+
+    const mentioned = new Set<string>();
+    for (const token of tokens) {
+      const id = byKey.get(normalizeIgnKey(token));
+      if (id) mentioned.add(id);
+    }
+    return [...mentioned];
+  }
+
+  private async loadMentionCandidates(
+    orgId: string,
+    channelKey: string,
+    senderId: string,
+  ): Promise<Array<{ userId: string; inGameName: string | null }>> {
+    if (channelKey === GUILD_CHANNEL) {
+      const [guild, roster] = await Promise.all([
+        this.prisma.guildMembership.findMany({
+          where: { orgId, userId: { not: senderId } },
+          include: { user: { select: { id: true, inGameName: true } } },
+        }),
+        this.prisma.membership.findMany({
+          where: { orgId, userId: { not: senderId } },
+          include: { user: { select: { id: true, inGameName: true } } },
+        }),
+      ]);
+      const byId = new Map<string, { userId: string; inGameName: string | null }>();
+      for (const m of [...guild, ...roster]) {
+        byId.set(m.userId, {
+          userId: m.userId,
+          inGameName: m.user.inGameName,
+        });
+      }
+      return [...byId.values()];
+    }
+
+    if (channelKey === ORG_CHANNEL) {
+      const roster = await this.prisma.membership.findMany({
+        where: { orgId, userId: { not: senderId } },
+        include: { user: { select: { id: true, inGameName: true } } },
+      });
+      return roster.map((m) => ({
+        userId: m.userId,
+        inGameName: m.user.inGameName,
+      }));
+    }
+
+    // DM — only the peer can be mentioned (still useful for highlight UX).
+    const peerId = this.parseDmPeer(channelKey, senderId);
+    if (!peerId) return [];
+    const peer = await this.prisma.user.findUnique({
+      where: { id: peerId },
+      select: { id: true, inGameName: true },
+    });
+    return peer ? [{ userId: peer.id, inGameName: peer.inGameName }] : [];
+  }
+
+  private async notifyMentions(
+    orgId: string,
+    channelKey: string,
+    senderId: string,
+    senderName: string,
+    mentionedUserIds: string[],
+    text: string,
+  ) {
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: mentionedUserIds } },
+      select: { id: true, expoPushToken: true, inGameName: true },
+    });
+
+    const channelLabel =
+      channelKey === GUILD_CHANNEL
+        ? 'Guild Chat'
+        : channelKey.startsWith('dm:')
+          ? 'Direct Message'
+          : 'Team Chat';
+
+    // Prefer the first matched @token that points at this user for the body.
+    const tokens = extractMentionTokens(text);
+    const messages: PushMessage[] = [];
+    for (const u of users) {
+      if (!this.pushNotifications.isValidExpoPushToken(u.expoPushToken)) continue;
+      const ign = u.inGameName ?? 'you';
+      const matched =
+        tokens.find(
+          (t) =>
+            u.inGameName &&
+            normalizeIgnKey(t) === normalizeIgnKey(u.inGameName),
+        ) ?? ign;
+      messages.push({
+        to: u.expoPushToken,
+        title: `${senderName} mentioned you`,
+        // No full message body — just who was tagged and where.
+        body: `@${matched} in ${channelLabel}`,
+        data: {
+          channelKey,
+          type: 'chat_mention',
+          mentionedBy: senderId,
+        },
+      });
+    }
+    await this.pushNotifications.send(messages);
+  }
+
   private async notifyUnreadCounts(
     orgId: string,
     channelKey: string,
     senderId: string,
+    skipUserIds: string[] = [],
   ) {
+    const skip = new Set(skipUserIds);
     const rosterMembers = await this.prisma.membership.findMany({
       where: { orgId, userId: { not: senderId } },
       include: { user: { select: { id: true, expoPushToken: true } } },
@@ -513,6 +712,7 @@ export class ChatService {
 
     const messages: PushMessage[] = [];
     for (const m of recipients) {
+      if (skip.has(m.userId)) continue;
       const token = m.expoPushToken;
       if (!this.pushNotifications.isValidExpoPushToken(token)) continue;
       const unread = await this.countUnread(m.userId, orgId, channelKey);

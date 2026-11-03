@@ -425,6 +425,12 @@ describe('Phase 1D — Chat (e2e)', () => {
       expect(res.body.teammates).toHaveLength(1);
       expect(res.body.teammates[0].userId).toBe(player.user.id);
       expect(res.body.teammates[0].channelKey).toMatch(/^dm:/);
+      expect(res.body.teammates[0]).toHaveProperty('inGameName');
+      expect(res.body.mentionables).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ userId: player.user.id }),
+        ]),
+      );
       expect(res.body.totalUnread).toBe(0);
     });
 

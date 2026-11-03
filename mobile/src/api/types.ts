@@ -81,12 +81,16 @@ export interface ChatTeammate {
   userId: string;
   name: string;
   avatarUrl: string | null;
+  /** Free Fire IGN — used for @mentions in chat. */
+  inGameName: string | null;
   channelKey: string;
 }
 
 export interface ChatChannelsResponse {
   channels: ChatChannel[];
   teammates: ChatTeammate[];
+  /** Roster + guild seats for @IGN autocomplete (may overlap teammates). */
+  mentionables: ChatTeammate[];
   totalUnread: number;
 }
 

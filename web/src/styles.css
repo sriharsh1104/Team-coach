@@ -3163,12 +3163,94 @@ a:hover {
   gap: 8px;
   padding: 12px 16px 16px;
   border-top: 1px solid var(--border);
+  align-items: center;
+}
+
+.composer input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
 }
 
 .composer .btn-primary {
   width: auto;
   margin: 0;
   padding-inline: 18px;
+  flex-shrink: 0;
+}
+
+.composer-emoji-toggle {
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.emoji-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  align-items: center;
+}
+
+.emoji-bar-btn {
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1.2;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.emoji-bar-btn:hover {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.emoji-bar-hint {
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.mention-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  max-height: 180px;
+  overflow: auto;
+}
+
+.mention-option {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.mention-option span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.mention-option:hover,
+.mention-option.active {
+  background: color-mix(in srgb, var(--link) 16%, transparent);
+}
+
+.chat-mention {
+  color: var(--link);
+  font-weight: 600;
 }
 
 .search-inline {

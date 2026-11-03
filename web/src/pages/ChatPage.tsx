@@ -1,19 +1,60 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import { Socket } from 'socket.io-client';
 import * as chatApi from '../api/chat';
 import { TOKEN_STORAGE_KEY } from '../api/client';
 import { ChatChannel, ChatMessage, ChatTeammate } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import {
+  CHAT_EMOJIS,
+  activeMentionQuery,
+  filterMentionables,
+  insertMention,
+  splitMentionParts,
+} from '../lib/chatMentions';
 
 const SEARCH_DEBOUNCE_MS = 300;
+
+function MessageBody({
+  text,
+  knownIgns,
+}: {
+  text: string | null;
+  knownIgns: string[];
+}) {
+  if (!text) return null;
+  const parts = splitMentionParts(text, knownIgns);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.type === 'mention' ? (
+          <span key={i} className="chat-mention">
+            {p.value}
+          </span>
+        ) : (
+          <span key={i}>{p.value}</span>
+        ),
+      )}
+    </>
+  );
+}
 
 export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' }) {
   const { user, org, guild } = useAuth();
   const [channels, setChannels] = useState<ChatChannel[]>([]);
   const [teammates, setTeammates] = useState<ChatTeammate[]>([]);
+  const [mentionables, setMentionables] = useState<ChatTeammate[]>([]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
+  const [caret, setCaret] = useState(0);
+  const [showEmoji, setShowEmoji] = useState(false);
   const [connected, setConnected] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
@@ -21,8 +62,10 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
   const [matchIds, setMatchIds] = useState<string[]>([]);
   const [matchIndex, setMatchIndex] = useState(0);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   messagesRef.current = messages;
 
@@ -30,6 +73,28 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
     () => channels.find((c) => c.channelKey === activeKey) ?? null,
     [channels, activeKey],
   );
+
+  const knownIgns = useMemo(
+    () =>
+      mentionables
+        .map((m) => m.inGameName)
+        .filter((v): v is string => !!v),
+    [mentionables],
+  );
+
+  const mentionState = useMemo(
+    () => activeMentionQuery(draft, caret),
+    [draft, caret],
+  );
+
+  const mentionSuggestions = useMemo(() => {
+    if (!mentionState) return [];
+    return filterMentionables(mentionables, mentionState.query);
+  }, [mentionState, mentionables]);
+
+  useEffect(() => {
+    setMentionIndex(0);
+  }, [mentionState?.query, mentionState?.start]);
 
   useEffect(() => {
     if (variant === 'guild') {
@@ -48,11 +113,15 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
       ]);
       setTeammates([]);
       setActiveKey('guild');
+      chatApi.getChatChannels().then((data) => {
+        setMentionables(data.mentionables ?? data.teammates ?? []);
+      }).catch(() => setMentionables([]));
       return;
     }
     chatApi.getChatChannels().then((data) => {
       setChannels(data.channels);
       setTeammates(data.teammates);
+      setMentionables(data.mentionables ?? data.teammates ?? []);
     });
   }, [variant]);
 
@@ -143,6 +212,42 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
   function openChannel(channelKey: string) {
     setActiveKey(channelKey);
     setSearchOpen(false);
+    setShowEmoji(false);
+  }
+
+  function syncCaret() {
+    const el = inputRef.current;
+    if (el) setCaret(el.selectionStart ?? el.value.length);
+  }
+
+  function applyDraft(next: string, nextCaret: number) {
+    setDraft(next);
+    setCaret(nextCaret);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(nextCaret, nextCaret);
+    });
+  }
+
+  function pickEmoji(emoji: string) {
+    const el = inputRef.current;
+    const start = el?.selectionStart ?? draft.length;
+    const end = el?.selectionEnd ?? draft.length;
+    const next = draft.slice(0, start) + emoji + draft.slice(end);
+    applyDraft(next, start + emoji.length);
+  }
+
+  function pickMention(mate: ChatTeammate) {
+    if (!mentionState || !mate.inGameName) return;
+    const { text, caret: nextCaret } = insertMention(
+      draft,
+      caret,
+      mentionState.start,
+      mate.inGameName,
+    );
+    applyDraft(text, nextCaret);
   }
 
   function onSend(e: FormEvent) {
@@ -151,6 +256,34 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
     if (!text || !socketRef.current || !activeKey) return;
     socketRef.current.emit('message:send', { channelKey: activeKey, text });
     setDraft('');
+    setCaret(0);
+    setShowEmoji(false);
+  }
+
+  function onComposerKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (mentionSuggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setMentionIndex((i) => (i + 1) % mentionSuggestions.length);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setMentionIndex(
+        (i) => (i - 1 + mentionSuggestions.length) % mentionSuggestions.length,
+      );
+      return;
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      const pick = mentionSuggestions[mentionIndex];
+      if (pick) {
+        e.preventDefault();
+        pickMention(pick);
+      }
+    }
+    if (e.key === 'Escape') {
+      setCaret(draft.length);
+    }
   }
 
   function goMatch(delta: number) {
@@ -219,7 +352,11 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
                       >
                         <div>
                           <strong>{t.name}</strong>
-                          <span>Direct message</span>
+                          <span>
+                            {t.inGameName
+                              ? `@${t.inGameName}`
+                              : 'Direct message'}
+                          </span>
                         </div>
                       </button>
                     ))
@@ -304,17 +441,74 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
                         {!mine ? (
                           <div className="sender">{m.senderName}</div>
                         ) : null}
-                        {m.text}
+                        <MessageBody text={m.text} knownIgns={knownIgns} />
                       </div>
                     );
                   })}
                 </div>
 
+                {showEmoji ? (
+                  <div className="emoji-bar" role="listbox" aria-label="Emoji">
+                    {CHAT_EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        className="emoji-bar-btn"
+                        onClick={() => pickEmoji(emoji)}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                    <span className="emoji-bar-hint muted">
+                      Or type / paste any emoji
+                    </span>
+                  </div>
+                ) : null}
+
+                {mentionSuggestions.length > 0 ? (
+                  <div className="mention-menu" role="listbox" aria-label="Mention">
+                    {mentionSuggestions.map((mate, i) => (
+                      <button
+                        key={mate.userId}
+                        type="button"
+                        className={`mention-option${
+                          i === mentionIndex ? ' active' : ''
+                        }`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          pickMention(mate);
+                        }}
+                      >
+                        <strong>@{mate.inGameName}</strong>
+                        <span>{mate.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
                 <form className="composer" onSubmit={onSend}>
+                  <button
+                    type="button"
+                    className="btn btn-icon composer-emoji-toggle"
+                    onClick={() => setShowEmoji((v) => !v)}
+                    aria-label="Emoji"
+                    aria-pressed={showEmoji}
+                  >
+                    😊
+                  </button>
                   <input
+                    ref={inputRef}
                     value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Message…"
+                    onChange={(e) => {
+                      setDraft(e.target.value);
+                      setCaret(e.target.selectionStart ?? e.target.value.length);
+                    }}
+                    onClick={syncCaret}
+                    onKeyUp={syncCaret}
+                    onSelect={syncCaret}
+                    onKeyDown={onComposerKeyDown}
+                    placeholder="Message… use @IGN to mention"
+                    aria-label="Message"
                   />
                   <button
                     className="btn btn-primary"
