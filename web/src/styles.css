@@ -1545,6 +1545,101 @@ a:hover {
   text-align: left;
 }
 
+.auth-mode {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  margin: 0 0 18px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-mode-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 10px;
+  background: var(--chrome);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.auth-mode-pill.signup {
+  transform: translateX(100%);
+}
+
+.auth-mode button {
+  position: relative;
+  z-index: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: color 0.28s ease;
+}
+
+.auth-mode button.active {
+  color: var(--chrome-ink);
+}
+
+.auth-mode-copy {
+  animation: auth-copy-in 0.32s ease;
+}
+
+@keyframes auth-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.auth-extra {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.24s ease;
+}
+
+.auth-extra.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.auth-extra-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.auth-extra .field {
+  margin-bottom: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-mode-pill,
+  .auth-extra,
+  .auth-mode button {
+    transition: none;
+  }
+
+  .auth-mode-copy {
+    animation: none;
+  }
+}
+
 .guild-profile {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
