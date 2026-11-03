@@ -8,7 +8,7 @@ const OFFICERS = [
   { ign: 'SES-SRI', role: 'Leader' },
   { ign: 'DJEXO', role: 'Active Leader' },
   { ign: 'SES-NEPEX07', role: 'Elder' },
-  { ign: 'SES-MUSAFA07', role: 'Elder' },
+  { ign: 'SES-MUFASA7!', role: 'Elder' },
   { ign: 'SES-MINNIE', role: 'Elder' },
 ];
 

@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as mediasoup from 'mediasoup';
 import { Router, Worker } from 'mediasoup/node/lib/types';
@@ -37,10 +43,18 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     if (!this.isSelfHosted()) return;
 
-    this.worker = await mediasoup.createWorker({
-      rtcMinPort: Number(this.configService.get('MEDIASOUP_MIN_PORT', '40000')),
-      rtcMaxPort: Number(this.configService.get('MEDIASOUP_MAX_PORT', '40100')),
-    });
+    try {
+      this.worker = await mediasoup.createWorker({
+        rtcMinPort: Number(this.configService.get('MEDIASOUP_MIN_PORT', '40000')),
+        rtcMaxPort: Number(this.configService.get('MEDIASOUP_MAX_PORT', '40100')),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `mediasoup worker did not start (${message}). Voice stays off until VOICE_SELF_HOSTED=false or the worker binary is installed.`,
+      );
+      return;
+    }
     this.worker.on('died', () => {
       this.logger.error('mediasoup worker died, restart the server');
     });
@@ -56,6 +70,9 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getOrCreateRoom(orgId: string): Promise<RoomState> {
+    if (!this.worker) {
+      throw new ServiceUnavailableException('Voice worker is not running');
+    }
     let room = this.rooms.get(orgId);
     if (!room) {
       const router = await this.worker.createRouter({ mediaCodecs: MEDIA_CODECS });

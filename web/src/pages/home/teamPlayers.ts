@@ -20,7 +20,7 @@ export const TEAM_PLAYERS: TeamPlayer[] = [
   {
     id: 'p2',
     name: 'MUFASA',
-    ign: 'SES-MUFASA07',
+    ign: 'SES-MUFASA7!',
     role: 'Player',
     inGameRoles: ['SNIPER'],
     bio: 'Sniper lane — long-range picks and mid-to-late zone info for the pack.',

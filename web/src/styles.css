@@ -105,15 +105,9 @@ a:hover {
 .landing-nav {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   padding: 20px clamp(20px, 4vw, 48px);
-}
-
-.landing-nav-brand {
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: -0.03em;
 }
 
 .landing-tabs {

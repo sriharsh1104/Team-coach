@@ -63,7 +63,6 @@ export function HomePage() {
       </div>
 
       <header className="landing-nav">
-        <div className="landing-nav-brand">Sacred Esports</div>
         <nav className="landing-tabs" aria-label="Home sections">
           {HOME_TABS.map((t) => (
             <button
