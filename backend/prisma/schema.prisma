@@ -33,9 +33,11 @@ model User {
   // In-game role tags, e.g. ["IGL", "SNIPER"]. A player can hold several.
   roles String[] @default([])
 
-  inGameName String?
-  inGameUid  String?
-  phone      String?
+  // Unique when set — incomplete profiles may leave these null (Postgres
+  // allows multiple NULLs under a UNIQUE constraint).
+  inGameName String? @unique
+  inGameUid  String? @unique
+  phone      String? @unique
 
   whatsappUrl  String?
   instagramUrl String?
@@ -106,8 +108,9 @@ model Device {
 
 model Org {
   id            String   @id @default(cuid())
-  name          String
-  orgCode       String   @unique // short code a player types in to join
+  // Display name — also enforced case-insensitively in OrgService.createOrg.
+  name          String   @unique
+  orgCode       String   @unique // short code a player types in to join (= public org id)
   referralToken String   @unique // long token embedded in a shareable join link
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -315,18 +318,18 @@ model PlayerStat {
 }
 
 model Membership {
-  id        String         @id @default(cuid())
-  role      MembershipRole
+  id        String          @id @default(cuid())
+  // Null for an owner who has not chosen a roster seat. Owner is a flag,
+  // not a coach/player/analyst seat, until they pick one from their profile.
+  role      MembershipRole?
   userId    String
   orgId     String
-  createdAt DateTime       @default(now())
+  createdAt DateTime        @default(now())
 
   // Exactly one membership per org should have this set — the org creator,
   // by default, transferable via OrgService.transferOwnership. Orthogonal to
-  // `role`: the owner still holds one real functional role (COACH/ANALYST/
-  // PLAYER) alongside it, so e.g. "owner who is also a player" is isOwner:
-  // true, role: PLAYER. Enforced in application code (OrgService), not a DB
-  // constraint, consistent with how the player/coach/analyst caps work.
+  // `role`: the owner may also hold a functional role (COACH/ANALYST/PLAYER),
+  // but that choice is optional. Enforced in application code (OrgService).
   isOwner Boolean @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

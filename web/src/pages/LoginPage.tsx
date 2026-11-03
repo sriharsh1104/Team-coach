@@ -2,6 +2,8 @@ import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PasswordField } from '../auth/PasswordField';
 import { useAuth } from '../auth/AuthContext';
+import { postAuthPath } from '../auth/postAuthPath';
+import { SesLoader } from '../ui/SesLoader';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -17,17 +19,17 @@ export function LoginPage() {
     setBusy(true);
     try {
       const challenge = await login(email.trim(), password);
-      if (challenge && 'requiresEmailVerification' in challenge) {
+      if ('requiresEmailVerification' in challenge) {
         navigate('/verify-email', {
           state: { challengeToken: challenge.challengeToken, email },
         });
         return;
       }
-      if (challenge && 'requiresTwoFactor' in challenge) {
+      if ('requiresTwoFactor' in challenge) {
         navigate('/2fa', { state: { challengeToken: challenge.challengeToken } });
         return;
       }
-      navigate('/app');
+      navigate(postAuthPath(challenge.user, challenge.org));
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string | string[] } } })
@@ -74,7 +76,7 @@ export function LoginPage() {
 
         {error ? <p className="error">{error}</p> : null}
         <button className="btn btn-primary" type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
+          Sign in
         </button>
 
         <p className="auth-footer">
@@ -83,6 +85,7 @@ export function LoginPage() {
           <Link to="/">← Back to Sacred home</Link>
         </p>
       </form>
+      {busy ? <SesLoader label="Signing in" /> : null}
     </div>
   );
 }

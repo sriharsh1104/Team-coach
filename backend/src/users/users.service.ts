@@ -1,8 +1,10 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
@@ -37,24 +39,111 @@ export function isProfileComplete(user: {
   return !!(user.inGameName && user.inGameUid && user.phone);
 }
 
+/** Digits only; strip IN trunk `0` / country `91` so +91-… and 10-digit match. */
+export function normalizePhone(phone: string) {
+  let digits = phone.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    digits = digits.slice(2);
+  } else if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+  return digits;
+}
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async updateMyProfile(userId: string, dto: UpdateProfileDto) {
-    const [updated, membership] = await Promise.all([
-      this.prisma.user.update({
-        where: { id: userId },
-        data: dto,
-        select: PROFILE_SELECT,
-      }),
-      this.prisma.membership.findFirst({ where: { userId } }),
-    ]);
-    return {
-      ...updated,
-      role: membership?.role ?? null,
-      isOwner: membership?.isOwner ?? false,
-    };
+    const data: UpdateProfileDto = { ...dto };
+    if (typeof data.phone === 'string') {
+      data.phone = normalizePhone(data.phone);
+    }
+    if (typeof data.inGameName === 'string') {
+      data.inGameName = data.inGameName.trim();
+    }
+    if (typeof data.inGameUid === 'string') {
+      data.inGameUid = data.inGameUid.trim();
+    }
+
+    await this.assertUniqueProfileFields(userId, data);
+
+    try {
+      const [updated, membership] = await Promise.all([
+        this.prisma.user.update({
+          where: { id: userId },
+          data,
+          select: PROFILE_SELECT,
+        }),
+        this.prisma.membership.findFirst({ where: { userId } }),
+      ]);
+      return {
+        ...updated,
+        role: membership?.role ?? null,
+        isOwner: membership?.isOwner ?? false,
+      };
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(this.uniqueConflictMessage(err));
+      }
+      throw err;
+    }
+  }
+
+  private async assertUniqueProfileFields(
+    userId: string,
+    data: UpdateProfileDto,
+  ) {
+    if (data.phone) {
+      const taken = await this.prisma.user.findFirst({
+        where: { phone: data.phone, id: { not: userId } },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new ConflictException('That phone number is already in use');
+      }
+    }
+
+    if (data.inGameName) {
+      const taken = await this.prisma.user.findFirst({
+        where: {
+          inGameName: { equals: data.inGameName, mode: 'insensitive' },
+          id: { not: userId },
+        },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new ConflictException('That in-game name is already in use');
+      }
+    }
+
+    if (data.inGameUid) {
+      const taken = await this.prisma.user.findFirst({
+        where: {
+          inGameUid: { equals: data.inGameUid, mode: 'insensitive' },
+          id: { not: userId },
+        },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new ConflictException('That UID is already in use');
+      }
+    }
+  }
+
+  private uniqueConflictMessage(err: Prisma.PrismaClientKnownRequestError) {
+    const target = err.meta?.target;
+    const fields = Array.isArray(target) ? target.join(',') : String(target ?? '');
+    if (fields.includes('phone')) return 'That phone number is already in use';
+    if (fields.includes('inGameName')) {
+      return 'That in-game name is already in use';
+    }
+    if (fields.includes('inGameUid')) return 'That UID is already in use';
+    if (fields.includes('email')) return 'That email is already in use';
+    return 'That value is already in use';
   }
 
   async getMyProfile(userId: string) {

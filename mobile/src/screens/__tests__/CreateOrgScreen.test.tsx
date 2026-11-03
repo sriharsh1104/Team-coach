@@ -32,45 +32,7 @@ describe('CreateOrgScreen', () => {
     expect(mockedOrgApi.createOrg).not.toHaveBeenCalled();
   });
 
-  it('defaults to COACH, and switches to PLAYER when tapped', async () => {
-    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
-    mockedOrgApi.createOrg.mockResolvedValue({
-      id: 'org-1',
-      name: 'Alpha Squad',
-      orgCode: 'ABC123',
-      referralLink: 'token123',
-      myRole: 'PLAYER',
-      isOwner: true,
-    });
-    render(<CreateOrgScreen navigation={navigation} route={{} as any} />);
-
-    fireEvent.changeText(screen.getByPlaceholderText('Org / team name'), 'Alpha Squad');
-    fireEvent.press(screen.getByText('Player'));
-    await pressAndSettle('Create Org');
-
-    expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad', 'PLAYER');
-  });
-
-  it('offers Analyst as a third role option', async () => {
-    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
-    mockedOrgApi.createOrg.mockResolvedValue({
-      id: 'org-1',
-      name: 'Alpha Squad',
-      orgCode: 'ABC123',
-      referralLink: 'token123',
-      myRole: 'ANALYST',
-      isOwner: true,
-    });
-    render(<CreateOrgScreen navigation={navigation} route={{} as any} />);
-
-    fireEvent.changeText(screen.getByPlaceholderText('Org / team name'), 'Alpha Squad');
-    fireEvent.press(screen.getByText('Analyst'));
-    await pressAndSettle('Create Org');
-
-    expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad', 'ANALYST');
-  });
-
-  it('trims the org name and calls setOrg with the created org on success', async () => {
+  it('trims the org name and creates the founder as owner with no roster role', async () => {
     const setOrg = jest.fn();
     mockedUseAuth.mockReturnValue({ setOrg });
     mockedOrgApi.createOrg.mockResolvedValue({
@@ -78,7 +40,7 @@ describe('CreateOrgScreen', () => {
       name: 'Alpha Squad',
       orgCode: 'ABC123',
       referralLink: 'token123',
-      myRole: 'COACH',
+      myRole: null,
       isOwner: true,
     });
     render(<CreateOrgScreen navigation={navigation} route={{} as any} />);
@@ -86,11 +48,11 @@ describe('CreateOrgScreen', () => {
     fireEvent.changeText(screen.getByPlaceholderText('Org / team name'), '  Alpha Squad  ');
     await pressAndSettle('Create Org');
 
-    expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad', 'COACH');
+    expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad');
     expect(setOrg).toHaveBeenCalledWith({
       id: 'org-1',
       name: 'Alpha Squad',
-      role: 'COACH',
+      role: null,
       isOwner: true,
     });
   });

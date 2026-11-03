@@ -112,6 +112,58 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .expect(400);
     });
 
+    it('rejects duplicate phone, IGN (case-insensitive), and UID with 409', async () => {
+      const holder = await signup(server);
+      const saved = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${holder.accessToken}`)
+        .send({
+          phone: '+91 98765 43210',
+          inGameName: 'UniqueIGN',
+          inGameUid: 'UID-UNIQUE-1',
+        })
+        .expect(200);
+      // Stored as digits without country code so +91 / 0 / bare 10-digit collide.
+      expect(saved.body.phone).toBe('9876543210');
+
+      const other = await signup(server);
+
+      const phoneDup = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${other.accessToken}`)
+        .send({ phone: '9876543210' })
+        .expect(409);
+      expect(phoneDup.body.message).toMatch(/phone/i);
+
+      const phoneDupAlt = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${other.accessToken}`)
+        .send({ phone: '+919876543210' })
+        .expect(409);
+      expect(phoneDupAlt.body.message).toMatch(/phone/i);
+
+      const ignDup = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${other.accessToken}`)
+        .send({ inGameName: 'uniqueign' })
+        .expect(409);
+      expect(ignDup.body.message).toMatch(/in-game name/i);
+
+      const uidDup = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${other.accessToken}`)
+        .send({ inGameUid: 'UID-UNIQUE-1' })
+        .expect(409);
+      expect(uidDup.body.message).toMatch(/UID/i);
+
+      const uidDupCase = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${other.accessToken}`)
+        .send({ inGameUid: 'uid-unique-1' })
+        .expect(409);
+      expect(uidDupCase.body.message).toMatch(/UID/i);
+    });
+
     it('rejects a role outside the fixed role list', async () => {
       const user = await signup(server);
       await request(server)

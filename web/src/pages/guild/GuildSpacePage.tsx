@@ -3,6 +3,8 @@ import { Navigate } from 'react-router-dom';
 import * as orgApi from '../../api/org';
 import { GuildDetail, GuildRole, MembershipRole } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
+import { copyText } from '../../lib/copyText';
+import { SesLoader } from '../../ui/SesLoader';
 
 const GUILD_ROLE_LABEL: Record<GuildRole, string> = {
   MEMBER: 'Member',
@@ -44,14 +46,13 @@ function GuildSetup({
   setOrg: (org: {
     id: string;
     name: string;
-    role: MembershipRole;
+    role: MembershipRole | null;
     isOwner: boolean;
   }) => void;
   setGuild: (guild: { id: string; name: string; role: GuildRole }) => void;
 }) {
   const [mode, setMode] = useState<'choice' | 'create' | 'join'>('choice');
   const [name, setName] = useState('');
-  const [role, setRole] = useState<MembershipRole>('COACH');
   const [orgCode, setOrgCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -61,7 +62,7 @@ function GuildSetup({
     setBusy(true);
     setError(null);
     try {
-      const created = await orgApi.createOrg(name.trim(), role);
+      const created = await orgApi.createOrg(name.trim());
       setOrg({
         id: created.id,
         name: created.name,
@@ -128,7 +129,7 @@ function GuildSetup({
             </div>
             {error ? <p className="error">{error}</p> : null}
             <button className="btn btn-primary" type="submit" disabled={busy}>
-              {busy ? 'Joining…' : 'Join guild'}
+              Join guild
             </button>
             <p className="auth-footer">
               <button type="button" className="btn btn-ghost" onClick={() => setMode('choice')}>
@@ -142,8 +143,8 @@ function GuildSetup({
           <form onSubmit={onCreate}>
             <h1 className="brand">Create Org</h1>
             <p className="auth-sub">
-              You become the guild leader and the roster owner. Share the org
-              code so members can join the guild.
+              You become the owner. Next you&apos;ll fill in your profile. A
+              coach can be you or someone else — that choice is optional.
             </p>
             <div className="field">
               <label htmlFor="new-org-name">Org name</label>
@@ -154,21 +155,9 @@ function GuildSetup({
                 required
               />
             </div>
-            <div className="field">
-              <label htmlFor="new-org-role">Your roster role</label>
-              <select
-                id="new-org-role"
-                value={role}
-                onChange={(e) => setRole(e.target.value as MembershipRole)}
-              >
-                <option value="COACH">Coach</option>
-                <option value="ANALYST">Analyst</option>
-                <option value="PLAYER">Player</option>
-              </select>
-            </div>
             {error ? <p className="error">{error}</p> : null}
             <button className="btn btn-primary" type="submit" disabled={busy}>
-              {busy ? 'Creating…' : 'Create org'}
+              Create org
             </button>
             <p className="auth-footer">
               <button type="button" className="btn btn-ghost" onClick={() => setMode('choice')}>
@@ -178,6 +167,9 @@ function GuildSetup({
           </form>
         ) : null}
       </div>
+      {busy ? (
+        <SesLoader label={mode === 'join' ? 'Joining guild' : 'Creating org'} />
+      ) : null}
     </div>
   );
 }
@@ -187,6 +179,16 @@ function GuildHome() {
   const [detail, setDetail] = useState<GuildDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function onCopyOrgCode() {
+    if (!detail?.orgCode) return;
+    const ok = await copyText(detail.orgCode);
+    if (ok) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    }
+  }
 
   async function load() {
     const next = await orgApi.getMyGuild();
@@ -234,7 +236,21 @@ function GuildHome() {
         <div>
           <h1>{detail?.name ?? 'Guild'}</h1>
           <p>
-            {detail?.orgCode ? `Guild code ${detail.orgCode}` : 'Roster is view only'}
+            {detail?.orgCode ? (
+              <>
+                <button
+                  type="button"
+                  className="copyable-code"
+                  onClick={onCopyOrgCode}
+                  aria-label="Copy guild code"
+                >
+                  Guild code {detail.orgCode}
+                </button>
+                {copied ? ' · Copied' : ''}
+              </>
+            ) : (
+              'Roster is view only'
+            )}
             {detail ? ` · ${GUILD_ROLE_LABEL[detail.myGuildRole]}` : ''}
           </p>
         </div>
@@ -252,7 +268,9 @@ function GuildHome() {
                   {personLabel(member.name, member.inGameName)}
                   {member.isOwner ? ' · Owner' : ''}
                 </strong>
-                <span>{ROSTER_ROLE_LABEL[member.role]}</span>
+                <span>
+                  {member.role ? ROSTER_ROLE_LABEL[member.role] : 'Owner'}
+                </span>
               </div>
               {detail.canManageRoster && !member.isOwner && member.userId !== user?.id ? (
                 <button
@@ -297,6 +315,7 @@ function GuildHome() {
           </>
         ) : null}
       </div>
+      {busyId ? <SesLoader label="Updating roster" /> : null}
     </>
   );
 }

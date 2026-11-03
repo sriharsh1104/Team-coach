@@ -59,3 +59,27 @@ export function me() {
 export function logout() {
   return apiClient.post('/auth/logout').then(() => undefined);
 }
+
+export function changePassword(currentPassword: string, newPassword: string) {
+  return apiClient
+    .patch<AuthResponse>('/auth/password', { currentPassword, newPassword })
+    .then((res) => res.data);
+}
+
+export function setupTwoFactor() {
+  return apiClient
+    .post<{ secret: string; qrCodeDataUrl: string }>('/auth/2fa/setup')
+    .then((res) => res.data);
+}
+
+export function enableTwoFactor(code: string) {
+  return apiClient
+    .post<{ backupCodes: string[] }>('/auth/2fa/enable', { code })
+    .then((res) => res.data);
+}
+
+export function disableTwoFactor(password: string) {
+  return apiClient
+    .post('/auth/2fa/disable', { password })
+    .then(() => undefined);
+}

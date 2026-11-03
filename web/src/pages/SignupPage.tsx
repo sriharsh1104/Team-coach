@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PasswordField } from '../auth/PasswordField';
 import { useAuth } from '../auth/AuthContext';
+import { SesLoader } from '../ui/SesLoader';
 
 export function SignupPage() {
   const { signup } = useAuth();
@@ -81,13 +82,14 @@ export function SignupPage() {
 
         {error ? <p className="error">{error}</p> : null}
         <button className="btn btn-primary" type="submit" disabled={busy}>
-          {busy ? 'Creating…' : 'Create account'}
+          Create account
         </button>
 
         <p className="auth-footer">
           Already have an account? <Link to="/login">Sign in</Link>
         </p>
       </form>
+      {busy ? <SesLoader label="Creating account" /> : null}
     </div>
   );
 }

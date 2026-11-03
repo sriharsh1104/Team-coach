@@ -12,6 +12,7 @@ import {
   updateTournamentRecord,
 } from '../api/tournamentRecords';
 import { useAuth } from '../auth/AuthContext';
+import { SesLoader } from '../ui/SesLoader';
 
 const EMPTY: TournamentRecordInput = {
   name: '',
@@ -408,17 +409,14 @@ export function ManageTournamentRecordsPage() {
                   type="submit"
                   disabled={busy}
                 >
-                  {busy
-                    ? 'Saving…'
-                    : editingId
-                      ? 'Save changes'
-                      : 'Add record'}
+                  {editingId ? 'Save changes' : 'Add record'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       ) : null}
+      {busy ? <SesLoader label="Saving record" /> : null}
     </>
   );
 }

@@ -10,6 +10,7 @@ import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 import { RemoveMemberDto } from './dto/remove-member.dto';
 import { AddRosterMemberDto } from './dto/add-roster-member.dto';
 import { UpdateOrgSettingsDto } from './dto/update-org-settings.dto';
+import { SetOwnRosterRoleDto } from './dto/set-own-roster-role.dto';
 
 // A 6-character org code is guessable by brute force without a limit here —
 // tighter than the app-wide default. Relaxed in tests, see app.module.ts.
@@ -37,6 +38,14 @@ export class OrgController {
   @Get('me')
   getMine(@CurrentUser() user: { userId: string }) {
     return this.orgService.getMyOrgWithMembers(user.userId);
+  }
+
+  @Patch('me/role')
+  setOwnRole(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: SetOwnRosterRoleDto,
+  ) {
+    return this.orgService.setOwnRosterRole(user.userId, dto);
   }
 
   @Throttle({ default: { limit: joinThrottleLimit, ttl: 60000 } })

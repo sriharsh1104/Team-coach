@@ -7,9 +7,15 @@ import {
   OrgDetail,
 } from './types';
 
-export function createOrg(name: string, role: MembershipRole) {
+export function createOrg(name: string) {
   return apiClient
-    .post<OrgCreateJoinResponse>('/orgs', { name, role })
+    .post<OrgCreateJoinResponse>('/orgs', { name })
+    .then((res) => res.data);
+}
+
+export function setOwnRosterRole(role: MembershipRole | null) {
+  return apiClient
+    .patch<{ role: MembershipRole | null }>('/orgs/me/role', { role })
     .then((res) => res.data);
 }
 

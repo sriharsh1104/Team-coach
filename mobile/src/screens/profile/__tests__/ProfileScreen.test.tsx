@@ -8,6 +8,43 @@ import { useAuth } from '../../../auth/AuthContext';
 
 jest.mock('../../../api/users');
 jest.mock('../../../auth/AuthContext');
+jest.mock('../../../ui/PhoneField', () => {
+  const React = require('react');
+  const { TextInput } = require('react-native');
+  function toE164(national: string) {
+    const digits = String(national).replace(/\D/g, '');
+    if (!digits) return '';
+    if (digits.length === 10) return `+91${digits}`;
+    if (digits.startsWith('91') && digits.length >= 12) return `+${digits}`;
+    return `+${digits}`;
+  }
+  function nationalFromE164(value?: string) {
+    if (!value) return '';
+    const digits = String(value).replace(/\D/g, '');
+    if (digits.length > 10 && digits.startsWith('91')) return digits.slice(2);
+    return digits;
+  }
+  return {
+    PhoneField: ({
+      value,
+      onChange,
+    }: {
+      value: string;
+      onChange: (e164: string) => void;
+    }) => {
+      const [text, setText] = React.useState(() => nationalFromE164(value));
+      return React.createElement(TextInput, {
+        value: text,
+        placeholder: 'Phone number',
+        keyboardType: 'phone-pad',
+        onChangeText: (next: string) => {
+          setText(next);
+          onChange(toE164(next));
+        },
+      });
+    },
+  };
+});
 const mockedUsersApi = usersApi as jest.Mocked<typeof usersApi>;
 const mockedUseAuth = useAuth as jest.Mock;
 
@@ -18,7 +55,7 @@ const baseProfile = {
   roles: ['IGL'],
   inGameName: 'ShadowStrike',
   inGameUid: 'UID-0001',
-  phone: '9999999999',
+  phone: '+919999999999',
   whatsappUrl: null,
   instagramUrl: null,
   discordUrl: 'https://discord.gg/example',
@@ -67,7 +104,7 @@ describe('ProfileScreen', () => {
       await screen.findByText('Coach (Owner)');
       expect(screen.getAllByText('Player 1').length).toBeGreaterThan(0);
       expect(screen.getByText('player1@example.com')).toBeTruthy();
-      expect(screen.getByText('9999999999')).toBeTruthy();
+      expect(screen.getByText('+919999999999')).toBeTruthy();
       expect(screen.getByText('Edit')).toBeTruthy();
       expect(screen.queryByText('Name *')).toBeNull();
     });
@@ -93,7 +130,7 @@ describe('ProfileScreen', () => {
 
       expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
         name: 'New Name',
-        phone: '9999999999',
+        phone: '+919999999999',
       });
       await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
       expect(screen.queryByText('Name *')).toBeNull();
@@ -393,19 +430,19 @@ describe('ProfileScreen', () => {
         ...baseProfile,
         inGameName: null,
         inGameUid: null,
-        phone: '9999999999',
+        phone: '+919999999999',
       });
       render(<ProfileScreen mustComplete />);
       await screen.findByText('Name *');
 
       // Saving the User tab alone (phone filled) isn't enough — IGN/UID still empty.
-      fireEvent.changeText(screen.getByPlaceholderText('Your phone number'), '9999999999');
+      fireEvent.changeText(screen.getByPlaceholderText('Phone number'), '9999999999');
       await act(async () => {
         fireEvent.press(screen.getByText('Continue'));
       });
       expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
         name: 'Player 1',
-        phone: '9999999999',
+        phone: '+919999999999',
       });
       expect(mockRefreshUser).not.toHaveBeenCalled();
 

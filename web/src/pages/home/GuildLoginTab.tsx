@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { GoogleSignInButton } from '../../auth/GoogleSignInButton';
 import { PasswordField } from '../../auth/PasswordField';
 import { useAuth } from '../../auth/AuthContext';
+import { postAuthPath } from '../../auth/postAuthPath';
+import { SesLoader } from '../../ui/SesLoader';
 
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const GUILD_HOME = '/guild';
@@ -59,7 +61,7 @@ export function GuildLoginTab() {
     try {
       if (mode === 'signup') {
         const challenge = await signup(email.trim(), password, name.trim());
-        if (challenge && 'requiresEmailVerification' in challenge) {
+        if ('requiresEmailVerification' in challenge) {
           navigate('/verify-email', {
             state: {
               challengeToken: challenge.challengeToken,
@@ -69,26 +71,28 @@ export function GuildLoginTab() {
           });
           return;
         }
-      } else {
-        const challenge = await login(email.trim(), password);
-        if (challenge && 'requiresEmailVerification' in challenge) {
-          navigate('/verify-email', {
-            state: {
-              challengeToken: challenge.challengeToken,
-              email,
-              next: GUILD_HOME,
-            },
-          });
-          return;
-        }
-        if (challenge && 'requiresTwoFactor' in challenge) {
-          navigate('/2fa', {
-            state: { challengeToken: challenge.challengeToken, next: GUILD_HOME },
-          });
-          return;
-        }
+        navigate(postAuthPath(challenge.user, challenge.org));
+        return;
       }
-      navigate(GUILD_HOME);
+
+      const challenge = await login(email.trim(), password);
+      if ('requiresEmailVerification' in challenge) {
+        navigate('/verify-email', {
+          state: {
+            challengeToken: challenge.challengeToken,
+            email,
+            next: GUILD_HOME,
+          },
+        });
+        return;
+      }
+      if ('requiresTwoFactor' in challenge) {
+        navigate('/2fa', {
+          state: { challengeToken: challenge.challengeToken, next: GUILD_HOME },
+        });
+        return;
+      }
+      navigate(postAuthPath(challenge.user, challenge.org));
     } catch (err: unknown) {
       setError(
         errorMessage(err, mode === 'signup' ? 'Signup failed' : 'Login failed'),
@@ -103,13 +107,13 @@ export function GuildLoginTab() {
     setBusy(true);
     try {
       const challenge = await loginWithGoogle(idToken);
-      if (challenge && 'requiresTwoFactor' in challenge) {
+      if ('requiresTwoFactor' in challenge) {
         navigate('/2fa', {
           state: { challengeToken: challenge.challengeToken, next: GUILD_HOME },
         });
         return;
       }
-      navigate(GUILD_HOME);
+      navigate(postAuthPath(challenge.user, challenge.org));
     } catch (err: unknown) {
       setError(errorMessage(err, 'Google sign-in failed'));
     } finally {
@@ -216,13 +220,7 @@ export function GuildLoginTab() {
         </div>
         {error ? <p className="error">{error}</p> : null}
         <button className="landing-cta" type="submit" disabled={busy}>
-          {busy
-            ? signingUp
-              ? 'Creating…'
-              : 'Signing in…'
-            : signingUp
-              ? 'Create account'
-              : 'Sign in'}
+          {signingUp ? 'Create account' : 'Sign in'}
         </button>
 
         <p className="team-auth-or">or</p>
@@ -232,6 +230,9 @@ export function GuildLoginTab() {
           onError={setError}
         />
       </form>
+      {busy ? (
+        <SesLoader label={signingUp ? 'Creating account' : 'Signing in'} />
+      ) : null}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import * as orgApi from '../api/org';
-import { MembershipRole } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import { SesLoader } from '../ui/SesLoader';
 
 export function OrgChoicePage() {
   return (
@@ -28,7 +28,6 @@ export function CreateOrgPage() {
   const { setOrg } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
-  const [role, setRole] = useState<MembershipRole>('COACH');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,14 +36,14 @@ export function CreateOrgPage() {
     setBusy(true);
     setError(null);
     try {
-      const org = await orgApi.createOrg(name.trim(), role);
+      const org = await orgApi.createOrg(name.trim());
       setOrg({
         id: org.id,
         name: org.name,
         role: org.myRole,
         isOwner: org.isOwner,
       });
-      navigate('/app');
+      navigate('/guild');
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string | string[] } } })
@@ -61,6 +60,9 @@ export function CreateOrgPage() {
     <div className="auth-shell">
       <form className="auth-card" onSubmit={onSubmit}>
         <h1 className="brand">Create org</h1>
+        <p className="auth-sub">
+          You become the owner. Next you&apos;ll fill in your profile.
+        </p>
         <div className="field">
           <label htmlFor="orgName">Org name</label>
           <input
@@ -70,18 +72,6 @@ export function CreateOrgPage() {
             required
           />
         </div>
-        <div className="field">
-          <label htmlFor="role">Your role</label>
-          <select
-            id="role"
-            value={role}
-            onChange={(e) => setRole(e.target.value as MembershipRole)}
-          >
-            <option value="COACH">Coach</option>
-            <option value="ANALYST">Analyst</option>
-            <option value="PLAYER">Player</option>
-          </select>
-        </div>
         {error ? <p className="error">{error}</p> : null}
         <button className="btn btn-primary" type="submit" disabled={busy}>
           Create
@@ -90,6 +80,7 @@ export function CreateOrgPage() {
           <Link to="/org">Back</Link>
         </p>
       </form>
+      {busy ? <SesLoader label="Creating org" /> : null}
     </div>
   );
 }
@@ -147,6 +138,7 @@ export function JoinOrgPage() {
           <Link to="/org">Back</Link>
         </p>
       </form>
+      {busy ? <SesLoader label="Joining org" /> : null}
     </div>
   );
 }

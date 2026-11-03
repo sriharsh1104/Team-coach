@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import * as orgApi from '../api/org';
 import { OrgDetail } from '../api/types';
+import { copyText } from '../lib/copyText';
 
 export function MembersPage() {
   const [org, setOrg] = useState<OrgDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     orgApi
@@ -13,15 +15,37 @@ export function MembersPage() {
       .catch(() => setError('Could not load members'));
   }, []);
 
+  async function onCopyOrgCode() {
+    if (!org?.orgCode) return;
+    const ok = await copyText(org.orgCode);
+    if (ok) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    }
+  }
+
   return (
     <>
       <div className="topbar">
         <div>
           <h1>Team Members</h1>
           <p>
-            {org
-              ? `Org code ${org.orgCode} · ${org.members.length} member(s)`
-              : 'Loading…'}
+            {org ? (
+              <>
+                <button
+                  type="button"
+                  className="copyable-code"
+                  onClick={onCopyOrgCode}
+                  aria-label="Copy org code"
+                >
+                  Org code {org.orgCode}
+                </button>
+                {copied ? ' · Copied' : ''}
+                {` · ${org.members.length} member(s)`}
+              </>
+            ) : (
+              'Loading…'
+            )}
           </p>
         </div>
       </div>
@@ -39,7 +63,7 @@ export function MembersPage() {
                   {m.isOwner ? ' · Owner' : ''}
                 </strong>
                 <span>
-                  {m.role}
+                  {m.role ?? 'Owner'}
                   {m.inGameName ? ` · ${m.inGameName}` : ''}
                 </span>
               </div>

@@ -7,6 +7,30 @@
 // present — true on web too, which is why VoiceChannelScreen has a .web.tsx
 // stub; Jest has the identical problem and needs the identical treatment).
 
+// RN 0.76 Animated.View flushes a native queue whose invariant breaks under
+// Jest when babel inlines NODE_ENV away from 'test'. No-op the helper.
+jest.mock('react-native/src/private/animated/NativeAnimatedHelper', () => ({
+  __esModule: true,
+  default: {
+    API: {
+      flushQueue: jest.fn(),
+      setWaitingForIdentifier: jest.fn(),
+      unsetWaitingForIdentifier: jest.fn(),
+    },
+    addListener: jest.fn(),
+    removeListeners: jest.fn(),
+    shouldUseNativeDriver: () => false,
+  },
+  API: {
+    flushQueue: jest.fn(),
+    setWaitingForIdentifier: jest.fn(),
+    unsetWaitingForIdentifier: jest.fn(),
+  },
+  addListener: jest.fn(),
+  removeListeners: jest.fn(),
+  shouldUseNativeDriver: () => false,
+}));
+
 jest.mock('@expo/vector-icons', () => {
   const React = require('react');
   const { Text } = require('react-native');
@@ -130,3 +154,4 @@ jest.mock('react-native-compressor', () => ({
   Video: { compress: jest.fn(async (uri: string) => uri) },
   getFileSize: jest.fn(async () => 1_000_000),
 }));
+

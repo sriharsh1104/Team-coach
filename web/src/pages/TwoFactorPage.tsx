@@ -1,6 +1,8 @@
 import { FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { postAuthPath } from '../auth/postAuthPath';
+import { SesLoader } from '../ui/SesLoader';
 
 export function TwoFactorPage() {
   const { completeTwoFactorLogin } = useAuth();
@@ -11,7 +13,6 @@ export function TwoFactorPage() {
     next?: string;
   };
   const challengeToken = state.challengeToken;
-  const nextPath = state.next || '/app';
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,8 +34,14 @@ export function TwoFactorPage() {
     setBusy(true);
     setError(null);
     try {
-      await completeTwoFactorLogin(challengeToken, { code: code.trim() });
-      navigate(nextPath);
+      const auth = await completeTwoFactorLogin(challengeToken, {
+        code: code.trim(),
+      });
+      navigate(
+        state.next && auth.user.profileComplete
+          ? state.next
+          : postAuthPath(auth.user, auth.org),
+      );
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string | string[] } } })
@@ -66,6 +73,7 @@ export function TwoFactorPage() {
           Continue
         </button>
       </form>
+      {busy ? <SesLoader label="Verifying" /> : null}
     </div>
   );
 }

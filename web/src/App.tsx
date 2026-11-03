@@ -16,16 +16,27 @@ import {
 } from './pages/OrgSetupPages';
 import { ProfilePage } from './pages/ProfilePage';
 import { RuleBookPage } from './pages/RuleBookPage';
+import { SecurityPage } from './pages/SecurityPage';
 import { StatsPage } from './pages/StatsPage';
 import { SignupPage } from './pages/SignupPage';
 import { SocialHandlesPage } from './pages/SocialHandlesPage';
 import { TwoFactorPage } from './pages/TwoFactorPage';
+import { TwoFactorSetupPage } from './pages/TwoFactorSetupPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
+import { SesLoader } from './ui/SesLoader';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isLoading, user } = useAuth();
-  if (isLoading) return <div className="app-loading">Loading…</div>;
+  if (isLoading) return <SesLoader label="Loading" />;
   if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function RequireProfileComplete({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (user && !user.profileComplete) {
+    return <Navigate to="/profile" replace />;
+  }
   return children;
 }
 
@@ -44,7 +55,8 @@ function GuildTools() {
 
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { isLoading, user, org } = useAuth();
-  if (isLoading) return <div className="app-loading">Loading…</div>;
+  if (isLoading) return <SesLoader label="Loading" />;
+  if (user && !user.profileComplete) return <Navigate to="/profile" replace />;
   if (user && org && !org.isOwner) return <Navigate to="/app" replace />;
   if (user) return <Navigate to="/guild" replace />;
   return children;
@@ -53,7 +65,6 @@ function PublicOnly({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
-      {/* Public marketing site — no login required */}
       <Route path="/" element={<HomePage />} />
 
       <Route
@@ -79,7 +90,9 @@ export default function App() {
         path="/org"
         element={
           <RequireAuth>
-            <OrgChoicePage />
+            <RequireProfileComplete>
+              <OrgChoicePage />
+            </RequireProfileComplete>
           </RequireAuth>
         }
       />
@@ -87,7 +100,9 @@ export default function App() {
         path="/org/create"
         element={
           <RequireAuth>
-            <CreateOrgPage />
+            <RequireProfileComplete>
+              <CreateOrgPage />
+            </RequireProfileComplete>
           </RequireAuth>
         }
       />
@@ -95,7 +110,9 @@ export default function App() {
         path="/org/join"
         element={
           <RequireAuth>
-            <JoinOrgPage />
+            <RequireProfileComplete>
+              <JoinOrgPage />
+            </RequireProfileComplete>
           </RequireAuth>
         }
       />
@@ -107,14 +124,57 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route path="/guild" element={<GuildSpacePage />} />
-        <Route element={<GuildTools />}>
+        <Route
+          path="/guild"
+          element={
+            <RequireProfileComplete>
+              <GuildSpacePage />
+            </RequireProfileComplete>
+          }
+        />
+        <Route
+          element={
+            <RequireProfileComplete>
+              <GuildTools />
+            </RequireProfileComplete>
+          }
+        >
           <Route path="/guild/chat" element={<ChatPage variant="guild" />} />
         </Route>
         <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/social" element={<SocialHandlesPage />} />
+        <Route
+          path="/settings"
+          element={
+            <RequireProfileComplete>
+              <SecurityPage />
+            </RequireProfileComplete>
+          }
+        />
+        <Route
+          path="/settings/2fa"
+          element={
+            <RequireProfileComplete>
+              <TwoFactorSetupPage />
+            </RequireProfileComplete>
+          }
+        />
+        <Route
+          path="/social"
+          element={
+            <RequireProfileComplete>
+              <SocialHandlesPage />
+            </RequireProfileComplete>
+          }
+        />
 
-        <Route path="/app" element={<RequireOrg />}>
+        <Route
+          path="/app"
+          element={
+            <RequireProfileComplete>
+              <RequireOrg />
+            </RequireProfileComplete>
+          }
+        >
           <Route index element={<ChatPage />} />
           <Route path="members" element={<MembersPage />} />
           <Route path="profile" element={<Navigate to="/profile" replace />} />

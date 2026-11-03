@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FadeSwap } from '../ui/FadeSwap';
 import {
   FINAL_PRINCIPLE_LINES,
   GAMEPLAY_RULES,
@@ -85,60 +86,62 @@ export function RuleBookPage() {
           ))}
         </nav>
 
-        {tab === 'mindset' ? (
-          <div>
-            <SectionHeader
-              eyebrow="Part 1"
-              title="Mindset & Discipline"
-              countLabel={`${MINDSET_RULES.length} rules`}
-            />
-            <RuleList rules={MINDSET_RULES} />
-          </div>
-        ) : null}
-
-        {tab === 'gameplay' ? (
-          <div>
-            <SectionHeader
-              eyebrow="Part 2"
-              title="Gameplay & Practice"
-              countLabel={`${GAMEPLAY_RULES.length} rules`}
-            />
-            <RuleList rules={GAMEPLAY_RULES} />
-          </div>
-        ) : null}
-
-        {tab === 'principle' ? (
-          <div>
-            <SectionHeader
-              eyebrow="Closing"
-              title="Final Team Principle"
-              countLabel="1 focus"
-            />
-            <div className="principle-card">
-              {FINAL_PRINCIPLE_LINES.map((line) => (
-                <div key={line} className="principle-row">
-                  {line}
-                </div>
-              ))}
+        <FadeSwap contentKey={tab}>
+          {tab === 'mindset' ? (
+            <div>
+              <SectionHeader
+                eyebrow="Part 1"
+                title="Mindset & Discipline"
+                countLabel={`${MINDSET_RULES.length} rules`}
+              />
+              <RuleList rules={MINDSET_RULES} />
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {tab === 'official' ? (
-          <div>
-            <SectionHeader
-              eyebrow="Garena FFWS"
-              title="Free Fire Esports Official Rules"
-              countLabel={`${OFFICIAL_FF_RULES.length} points`}
-            />
-            <p className="rulebook-source muted">
-              Condensed from Garena Free Fire World Series competition rulebooks
-              (FFWS Africa 2026 Fall / MENA 2026 Spring). Always follow the live
-              event PDF for that tournament.
-            </p>
-            <RuleList rules={OFFICIAL_FF_RULES} />
-          </div>
-        ) : null}
+          {tab === 'gameplay' ? (
+            <div>
+              <SectionHeader
+                eyebrow="Part 2"
+                title="Gameplay & Practice"
+                countLabel={`${GAMEPLAY_RULES.length} rules`}
+              />
+              <RuleList rules={GAMEPLAY_RULES} />
+            </div>
+          ) : null}
+
+          {tab === 'principle' ? (
+            <div>
+              <SectionHeader
+                eyebrow="Closing"
+                title="Final Team Principle"
+                countLabel="1 focus"
+              />
+              <div className="principle-card">
+                {FINAL_PRINCIPLE_LINES.map((line) => (
+                  <div key={line} className="principle-row">
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {tab === 'official' ? (
+            <div>
+              <SectionHeader
+                eyebrow="Garena FFWS"
+                title="Free Fire Esports Official Rules"
+                countLabel={`${OFFICIAL_FF_RULES.length} points`}
+              />
+              <p className="rulebook-source muted">
+                Condensed from Garena Free Fire World Series competition
+                rulebooks (FFWS Africa 2026 Fall / MENA 2026 Spring). Always
+                follow the live event PDF for that tournament.
+              </p>
+              <RuleList rules={OFFICIAL_FF_RULES} />
+            </div>
+          ) : null}
+        </FadeSwap>
       </div>
     </>
   );

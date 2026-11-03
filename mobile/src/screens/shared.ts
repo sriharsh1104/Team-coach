@@ -9,7 +9,7 @@ export function formatRoleBadge(
   role: MembershipRole | null,
   isOwner: boolean,
 ): string | null {
-  if (!role) return null;
+  if (!role) return isOwner ? 'Owner' : null;
   const label = role.charAt(0) + role.slice(1).toLowerCase();
   return `${label}${isOwner ? ' (Owner)' : ''}`;
 }

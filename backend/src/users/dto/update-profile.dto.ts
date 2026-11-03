@@ -45,7 +45,7 @@ export class UpdateProfileDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(20)
+  @MaxLength(16)
   phone?: string;
 
   @IsOptional()

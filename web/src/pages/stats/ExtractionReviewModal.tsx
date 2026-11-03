@@ -7,6 +7,7 @@ import {
   OrgMember,
   StatExtraction,
 } from '../../api/types';
+import { SesLoader } from '../../ui/SesLoader';
 
 const POLL_MS = 3000;
 
@@ -304,7 +305,7 @@ export function ExtractionReviewModal({
                   disabled={busy}
                   onClick={onRetry}
                 >
-                  {busy ? 'Retrying…' : 'Retry OCR'}
+                  Retry OCR
                 </button>
               </>
             ) : null}
@@ -333,9 +334,7 @@ export function ExtractionReviewModal({
                   type="submit"
                   disabled={busy}
                 >
-                  {busy
-                    ? 'Saving…'
-                    : `Confirm (${teammateRows.length} teammate${teammateRows.length === 1 ? '' : 's'})`}
+                  {`Confirm (${teammateRows.length} teammate${teammateRows.length === 1 ? '' : 's'})`}
                 </button>
               </>
             ) : null}
@@ -353,6 +352,7 @@ export function ExtractionReviewModal({
           </div>
         </form>
       </div>
+      {busy ? <SesLoader label="Saving extraction" /> : null}
     </div>
   );
 }

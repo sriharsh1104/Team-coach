@@ -16,7 +16,7 @@ export interface AuthUser {
 export interface OrgSummary {
   id: string;
   name: string;
-  role: MembershipRole;
+  role: MembershipRole | null;
   isOwner: boolean;
 }
 
@@ -55,7 +55,7 @@ export interface OrgMember {
   userId: string;
   name: string;
   avatarUrl: string | null;
-  role: MembershipRole;
+  role: MembershipRole | null;
   isOwner: boolean;
   inGameName?: string | null;
   inGameRoles: string[];
@@ -66,7 +66,7 @@ export interface OrgCreateJoinResponse {
   name: string;
   orgCode: string;
   referralLink: string;
-  myRole: MembershipRole;
+  myRole: MembershipRole | null;
   isOwner: boolean;
 }
 
@@ -75,7 +75,7 @@ export interface OrgDetail {
   name: string;
   orgCode: string;
   referralLink: string;
-  myRole: MembershipRole;
+  myRole: MembershipRole | null;
   isOwner: boolean;
   historyVisibleToNewMembers: boolean;
   members: OrgMember[];
@@ -91,7 +91,7 @@ export interface GuildRosterMember {
   userId: string;
   name: string;
   inGameName: string | null;
-  role: MembershipRole;
+  role: MembershipRole | null;
   isOwner: boolean;
 }
 

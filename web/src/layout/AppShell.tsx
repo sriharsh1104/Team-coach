@@ -1,5 +1,7 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { AccountMenu } from './AccountMenu';
+import { RouteTransition } from '../ui/RouteTransition';
 
 type NavItem = { to: string; label: string; end?: boolean };
 
@@ -19,13 +21,22 @@ const COMMON_NAV: NavItem[] = [
 ];
 
 export function AppShell() {
-  const { user, org, guild, logout } = useAuth();
-  const navigate = useNavigate();
+  const { user, org, guild } = useAuth();
+  const location = useLocation();
   const showRoster = !!org;
   const showGuild = !!guild && (!org || org.isOwner);
+  const needsProfile = !!user && !user.profileComplete;
+
+  if (needsProfile && location.pathname !== '/profile') {
+    return <Navigate to="/profile" replace />;
+  }
 
   if (!showRoster && !showGuild) {
-    return <Outlet />;
+    return (
+      <RouteTransition className="auth-route-fade">
+        <Outlet />
+      </RouteTransition>
+    );
   }
 
   const guildNav: NavItem[] = [
@@ -43,8 +54,8 @@ export function AppShell() {
           Sacred Esports
           <small>{org?.name ?? guild?.name ?? 'Team Coach'}</small>
         </div>
-        {showRoster && showGuild ? (
-          <div className="sidebar-label">Roster</div>
+        {showRoster ? (
+          <div className="sidebar-label">Esports Arena</div>
         ) : null}
         {showRoster
           ? ROSTER_NAV.map((item) => (
@@ -52,6 +63,7 @@ export function AppShell() {
                 key={item.to}
                 to={item.to}
                 end={item.end}
+                viewTransition
                 className={({ isActive }) =>
                   `nav-item${isActive ? ' active' : ''}`
                 }
@@ -68,6 +80,7 @@ export function AppShell() {
                 key={item.to}
                 to={item.to}
                 end={item.end}
+                viewTransition
                 className={({ isActive }) =>
                   `nav-item${isActive ? ' active' : ''}`
                 }
@@ -82,6 +95,7 @@ export function AppShell() {
           <NavLink
             key={item.to}
             to={item.to}
+            viewTransition
             className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
           >
             {item.label}
@@ -93,21 +107,15 @@ export function AppShell() {
             <br />
             <span style={{ fontSize: 12 }}>{user?.email}</span>
           </div>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ width: '100%', justifyContent: 'flex-start' }}
-            onClick={() => {
-              navigate('/');
-              void logout();
-            }}
-          >
-            Log out
-          </button>
         </div>
       </aside>
       <div className="main">
-        <Outlet />
+        <div className="shell-header-actions">
+          <AccountMenu />
+        </div>
+        <RouteTransition>
+          <Outlet />
+        </RouteTransition>
       </div>
     </div>
   );

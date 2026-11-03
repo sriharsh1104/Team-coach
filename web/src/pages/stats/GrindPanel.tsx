@@ -7,6 +7,7 @@ import {
   StatExtraction,
   StatMode,
 } from '../../api/types';
+import { SesLoader } from '../../ui/SesLoader';
 import { ExtractionReviewModal } from './ExtractionReviewModal';
 
 function pendingLabel(
@@ -172,10 +173,11 @@ export function GrindPanel({
             disabled={uploading}
             onClick={() => inputRef.current?.click()}
           >
-            {uploading ? 'Uploading…' : 'Choose screenshots'}
+            Choose screenshots
           </button>
         </div>
       </div>
+      {uploading ? <SesLoader label="Uploading screenshots" /> : null}
 
       {error ? <p className="error">{error}</p> : null}
       {notice ? <p className="stats-notice">{notice}</p> : null}

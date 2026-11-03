@@ -1,9 +1,9 @@
 import { apiClient } from './client';
 import { MembershipRole, OrgCreateJoinResponse, OrgDetail } from './types';
 
-export function createOrg(name: string, role: MembershipRole) {
+export function createOrg(name: string) {
   return apiClient
-    .post<OrgCreateJoinResponse>('/orgs', { name, role })
+    .post<OrgCreateJoinResponse>('/orgs', { name })
     .then((res) => res.data);
 }
 

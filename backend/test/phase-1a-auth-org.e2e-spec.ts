@@ -351,6 +351,34 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       expect(org.myRole).toBe('COACH');
     });
 
+    it('creates the founder as owner with no roster role when none is sent', async () => {
+      const owner = await signup();
+      const res = await request(server)
+        .post('/orgs')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ name: 'Owner Org' })
+        .expect(201);
+
+      expect(res.body.isOwner).toBe(true);
+      expect(res.body.myRole).toBeNull();
+    });
+
+    it('rejects creating an org with a duplicate name (case-insensitive)', async () => {
+      const first = await signup();
+      await request(server)
+        .post('/orgs')
+        .set('Authorization', `Bearer ${first.accessToken}`)
+        .send({ name: 'Unique Arena' })
+        .expect(201);
+
+      const second = await signup();
+      await request(server)
+        .post('/orgs')
+        .set('Authorization', `Bearer ${second.accessToken}`)
+        .send({ name: 'unique arena' })
+        .expect(409);
+    });
+
     it('refuses to let a user create a second org once they already belong to one', async () => {
       const coach = await signup();
       await createOrgAs(coach.accessToken);

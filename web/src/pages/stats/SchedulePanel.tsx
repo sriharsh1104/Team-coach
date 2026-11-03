@@ -10,6 +10,7 @@ import {
   StatExtraction,
   StatMode,
 } from '../../api/types';
+import { SesLoader } from '../../ui/SesLoader';
 import { ExtractionReviewModal } from './ExtractionReviewModal';
 
 type RoundDraft = {
@@ -419,7 +420,7 @@ export function SchedulePanel({ eventType }: { eventType: ScrimEventType }) {
                               fileRef.current?.click();
                             }}
                           >
-                            {uploadForId === event.id ? 'OCR…' : 'Upload result'}
+                            Upload result
                           </button>
                           <button
                             type="button"
@@ -685,13 +686,17 @@ export function SchedulePanel({ eventType }: { eventType: ScrimEventType }) {
                   type="submit"
                   disabled={busy}
                 >
-                  {busy ? 'Saving…' : editing ? 'Save changes' : `Add ${type === 'TOURNAMENT' ? 'Tournament' : 'Scrim'}`}
+                  {editing
+                    ? 'Save changes'
+                    : `Add ${type === 'TOURNAMENT' ? 'Tournament' : 'Scrim'}`}
                 </button>
               </div>
             </form>
           </div>
         </div>
       ) : null}
+      {busy ? <SesLoader label="Saving event" /> : null}
+      {uploadForId ? <SesLoader label="Running OCR" /> : null}
     </>
   );
 }

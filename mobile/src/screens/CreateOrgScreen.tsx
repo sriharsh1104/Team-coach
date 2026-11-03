@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { Text, TextInput, Alert, StyleSheet } from 'react-native';
+import { Text, TextInput, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
-import { MembershipRole } from '../api/types';
 import { OrgSetupStackParamList } from '../navigation/types';
 import { authStyles } from './shared';
-import { RoleSelector } from './RoleSelector';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
@@ -16,13 +14,12 @@ type Props = NativeStackScreenProps<OrgSetupStackParamList, 'CreateOrg'>;
 export function CreateOrgScreen({}: Props) {
   const { setOrg } = useAuth();
   const [name, setName] = useState('');
-  const [role, setRole] = useState<MembershipRole>('COACH');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const onSubmit = async () => {
     setIsSubmitting(true);
     try {
-      const org = await orgApi.createOrg(name.trim(), role);
+      const org = await orgApi.createOrg(name.trim());
       Alert.alert(
         'Org created',
         `Share this with your team:\n\nOrg code: ${org.orgCode}`,
@@ -41,6 +38,9 @@ export function CreateOrgScreen({}: Props) {
   return (
     <FormScreen>
       <Text style={authStyles.title}>Create an Org</Text>
+      <Text style={{ color: '#9aa0a6', textAlign: 'center', marginBottom: 16 }}>
+        You become the owner. A coach can be you or someone else.
+      </Text>
       <TextInput
         style={authStyles.input}
         placeholder="Org / team name"
@@ -48,8 +48,6 @@ export function CreateOrgScreen({}: Props) {
         value={name}
         onChangeText={setName}
       />
-      <Text style={roleStyles.label}>I am joining this org as a:</Text>
-      <RoleSelector value={role} onChange={setRole} />
       <SoftPressable
         style={[
           authStyles.button,
@@ -64,7 +62,3 @@ export function CreateOrgScreen({}: Props) {
     </FormScreen>
   );
 }
-
-const roleStyles = StyleSheet.create({
-  label: { marginBottom: 8, color: '#9aa0a6' },
-});

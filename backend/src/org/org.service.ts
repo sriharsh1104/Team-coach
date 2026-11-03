@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { customAlphabet } from 'nanoid';
-import { GuildRole, MembershipRole } from '@prisma/client';
+import { GuildRole, MembershipRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { JoinOrgDto } from './dto/join-org.dto';
@@ -14,12 +14,12 @@ import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 import { RemoveMemberDto } from './dto/remove-member.dto';
 import { AddRosterMemberDto } from './dto/add-roster-member.dto';
+import { SetOwnRosterRoleDto } from './dto/set-own-roster-role.dto';
 
-// Independent per-role caps. The org owner's own functional role still
-// counts against whichever of these it is (owner is a flag, not a 4th
-// seat). Roster shape the product targets: 1 owner + up to 2 coaches +
-// 1 analyst + 5 players. Joiners always enter as PLAYER; only the owner
-// can promote/demote (see changeMemberRole).
+// Independent per-role caps. An owner with no roster role does not take a
+// seat. If they later choose one, that seat counts here. Roster shape the
+// product targets: 1 owner + up to 2 coaches + 1 analyst + 5 players.
+// Joiners always enter as PLAYER; only the owner can promote/demote.
 const ROLE_CAPS: Partial<Record<MembershipRole, number>> = {
   [MembershipRole.COACH]: 2,
   [MembershipRole.ANALYST]: 1,
@@ -40,30 +40,115 @@ export class OrgService {
   async createOrg(userId: string, dto: CreateOrgDto) {
     await this.assertUserHasNoOrg(userId);
 
-    const org = await this.prisma.$transaction(async (tx) => {
-      const createdOrg = await tx.org.create({
-        data: {
-          name: dto.name,
-          orgCode: generateOrgCode(),
-          referralToken: generateReferralToken(),
-        },
-      });
-
-      await tx.membership.create({
-        data: { userId, orgId: createdOrg.id, role: dto.role, isOwner: true },
-      });
-      await tx.guildMembership.create({
-        data: {
-          userId,
-          orgId: createdOrg.id,
-          role: GuildRole.LEADER,
-        },
-      });
-
-      return createdOrg;
+    const name = dto.name.trim();
+    const existingName = await this.prisma.org.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' } },
+      select: { id: true },
     });
+    if (existingName) {
+      throw new ConflictException('An org with that name already exists');
+    }
 
-    return this.toOrgResponse(org, dto.role, true);
+    try {
+      const org = await this.prisma.$transaction(async (tx) => {
+        const createdOrg = await tx.org.create({
+          data: {
+            name,
+            orgCode: generateOrgCode(),
+            referralToken: generateReferralToken(),
+          },
+        });
+
+        await tx.membership.create({
+          data: {
+            userId,
+            orgId: createdOrg.id,
+            role: dto.role ?? null,
+            isOwner: true,
+          },
+        });
+        await tx.guildMembership.create({
+          data: {
+            userId,
+            orgId: createdOrg.id,
+            role: GuildRole.LEADER,
+          },
+        });
+
+        return createdOrg;
+      });
+
+      return this.toOrgResponse(org, dto.role ?? null, true);
+    } catch (err) {
+      // Race on name, or vanishingly rare orgCode collision.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const target = err.meta?.target;
+        const fields = Array.isArray(target)
+          ? target.join(',')
+          : String(target ?? '');
+        if (fields.includes('name')) {
+          throw new ConflictException('An org with that name already exists');
+        }
+        if (fields.includes('orgCode')) {
+          throw new ConflictException(
+            'Could not allocate a unique org code — please try again',
+          );
+        }
+        throw new ConflictException('That org value is already in use');
+      }
+      throw err;
+    }
+  }
+
+  async setOwnRosterRole(userId: string, dto: SetOwnRosterRoleDto) {
+    const membership = await this.prisma.membership.findFirst({
+      where: { userId },
+    });
+    if (!membership) {
+      throw new NotFoundException('You are not part of an org yet');
+    }
+    if (!membership.isOwner) {
+      throw new ForbiddenException('Only the owner can choose their roster role');
+    }
+
+    const role = dto.role ?? null;
+    if (membership.role === role) {
+      return { role };
+    }
+
+    if (role) {
+      await this.prisma.$transaction(async (tx) => {
+        const cap = ROLE_CAPS[role];
+        if (cap !== undefined) {
+          const currentCount = await tx.membership.count({
+            where: {
+              orgId: membership.orgId,
+              role,
+              userId: { not: userId },
+            },
+          });
+          if (currentCount >= cap) {
+            throw new ConflictException(
+              `This org already has the maximum of ${cap} ${role.toLowerCase()}(s)`,
+            );
+          }
+        }
+        await tx.membership.update({
+          where: { id: membership.id },
+          data: { role },
+        });
+      });
+    } else {
+      await this.prisma.membership.update({
+        where: { id: membership.id },
+        data: { role: null },
+      });
+    }
+
+    return { role };
   }
 
   async joinOrg(userId: string, dto: JoinOrgDto) {
@@ -493,7 +578,7 @@ export class OrgService {
 
   private toOrgResponse(
     org: { id: string; name: string; orgCode: string; referralToken: string },
-    role: MembershipRole,
+    role: MembershipRole | null,
     isOwner: boolean,
   ) {
     return {

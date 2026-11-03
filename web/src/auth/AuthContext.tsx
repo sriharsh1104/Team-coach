@@ -38,25 +38,27 @@ interface AuthContextValue {
     email: string,
     password: string,
     name: string,
-  ) => Promise<EmailVerificationChallengeResponse | void>;
+  ) => Promise<AuthResponse | EmailVerificationChallengeResponse>;
   completeEmailVerification: (
     challengeToken: string,
     code: string,
-  ) => Promise<void>;
+  ) => Promise<AuthResponse>;
   resendEmailVerification: (challengeToken: string) => Promise<void>;
   login: (
     email: string,
     password: string,
   ) => Promise<
-    TwoFactorChallengeResponse | EmailVerificationChallengeResponse | void
+    | AuthResponse
+    | TwoFactorChallengeResponse
+    | EmailVerificationChallengeResponse
   >;
   loginWithGoogle: (
     idToken: string,
-  ) => Promise<TwoFactorChallengeResponse | void>;
+  ) => Promise<AuthResponse | TwoFactorChallengeResponse>;
   completeTwoFactorLogin: (
     challengeToken: string,
     payload: { code?: string; backupCode?: string },
-  ) => Promise<void>;
+  ) => Promise<AuthResponse>;
   applyAuthResponse: (response: AuthResponse) => Promise<void>;
   logout: () => Promise<void>;
   refreshOrg: () => Promise<void>;
@@ -105,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await authApi.signup(email, password, name);
       if ('requiresEmailVerification' in result) return result;
       await applyAuthResponse(result);
+      return result;
     },
     [applyAuthResponse],
   );
@@ -113,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (challengeToken: string, code: string) => {
       const response = await authApi.verifyEmailSignup(challengeToken, code);
       await applyAuthResponse(response);
+      return response;
     },
     [applyAuthResponse],
   );
@@ -128,6 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return result;
       }
       await applyAuthResponse(result);
+      return result;
     },
     [applyAuthResponse],
   );
@@ -137,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await authApi.googleLogin(idToken);
       if ('requiresTwoFactor' in result) return result;
       await applyAuthResponse(result);
+      return result;
     },
     [applyAuthResponse],
   );
@@ -148,6 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ) => {
       const response = await authApi.verifyTwoFactor(challengeToken, payload);
       await applyAuthResponse(response);
+      return response;
     },
     [applyAuthResponse],
   );

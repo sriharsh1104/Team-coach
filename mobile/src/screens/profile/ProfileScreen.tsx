@@ -19,8 +19,10 @@ import { ButtonLabel } from '../../ui/ButtonLabel';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { FadeSwap } from '../../ui/FadeSwap';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
+import { PhoneField } from '../../ui/PhoneField';
 import { sharedStyles, formatRoleBadge } from '../shared';
 import { useAuth } from '../../auth/AuthContext';
+import { coercePhoneToE164 } from '../../lib/phone';
 import { colors } from '../../theme';
 
 type ProfileTab = 'user' | 'game' | 'devices' | 'social';
@@ -144,7 +146,9 @@ function UserProfileSection({
   const [name, setName] = useState(profile.name);
   const [phone, setPhone] = useState(profile.phone ?? '');
 
-  const canSave = name.trim().length > 0 && (!mustComplete || phone.trim().length > 0);
+  const phoneE164 = coercePhoneToE164(phone);
+  const canSave =
+    name.trim().length > 0 && (!mustComplete || phoneE164.length > 0);
 
   const onSave = async () => {
     if (!canSave) return;
@@ -152,7 +156,7 @@ function UserProfileSection({
     try {
       const updated = await usersApi.updateMyProfile({
         name: name.trim(),
-        phone: phone || undefined,
+        phone: phoneE164 || undefined,
       });
       onUpdated(updated);
       if (!mustComplete) {
@@ -201,12 +205,7 @@ function UserProfileSection({
       )}
 
       <Text style={styles.sectionLabel}>Phone {mustComplete ? '*' : ''}</Text>
-      <CopyableInput
-        placeholder="Your phone number"
-        keyboardType="phone-pad"
-        value={phone}
-        onChangeText={setPhone}
-      />
+      <PhoneField value={phone} onChange={setPhone} />
       {mustComplete && <Text style={styles.requiredHint}>* Required</Text>}
 
       <SoftPressable
