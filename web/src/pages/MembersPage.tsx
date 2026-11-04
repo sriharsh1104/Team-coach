@@ -2,65 +2,40 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as orgApi from '../api/org';
 import { OrgDetail } from '../api/types';
-import { copyText } from '../lib/copyText';
 import { InviteSharePanel } from '../ui/InviteSharePanel';
 
 export function MembersPage() {
   const [org, setOrg] = useState<OrgDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     orgApi
       .getMyOrg()
       .then(setOrg)
-      .catch(() => setError('Could not load members'));
+      .catch(() => setError('Could not load roster'));
   }, []);
-
-  async function onCopyOrgCode() {
-    if (!org?.orgCode) return;
-    const ok = await copyText(org.orgCode);
-    if (ok) {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    }
-  }
-
-  const canInvite = !!org && (org.isOwner || org.myRole === 'COACH');
 
   return (
     <>
       <div className="topbar">
         <div>
-          <h1>Team Members</h1>
+          <h1>Roster</h1>
           <p>
-            {org ? (
-              <>
-                <button
-                  type="button"
-                  className="copyable-code"
-                  onClick={() => void onCopyOrgCode()}
-                  aria-label="Copy org code"
-                >
-                  Org code {org.orgCode}
-                </button>
-                {copied ? ' · Copied' : ''}
-                {` · ${org.members.length} member(s)`}
-              </>
-            ) : (
-              'Loading…'
-            )}
+            {org
+              ? `${org.members.length} roster member(s)`
+              : 'Loading…'}
           </p>
         </div>
       </div>
       <div className="content">
         {error ? <p className="error">{error}</p> : null}
 
-        {canInvite && org?.referralLink ? (
+        {org?.canInviteRoster && org.rosterReferralLink ? (
           <InviteSharePanel
-            referralLink={org.referralLink}
-            orgCode={org.orgCode}
-            title="Invite To Join"
+            referralLink={org.rosterReferralLink}
+            orgCode={org.rosterCode}
+            title="Esports Roster Invite"
+            hint="Owner/coach only. Separate from the guild code. Share this roster link (or roster code) — already registered users can join without leaving the platform. They land on the guild + roster as Player."
           />
         ) : null}
 

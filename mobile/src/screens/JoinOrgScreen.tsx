@@ -12,13 +12,19 @@ import { AuthBackButton } from '../ui/AuthBackButton';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
 
-// Org codes are always 8 characters (see org.service.ts's generateOrgCode);
-// referral tokens are always 24 (generateReferralToken) — long enough that
-// the two never collide, so one input field can accept either.
-const ORG_CODE_LENGTH = 8;
+const CODE_LENGTH = 8;
+
+function extractInviteRef(raw: string): string | undefined {
+  const match = raw.trim().match(/[?&]ref=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+function isRosterInvite(raw: string): boolean {
+  return /[?&]seat=roster(?:&|$)/.test(raw.trim());
+}
 
 export function JoinOrgScreen({ navigation }: Props) {
-  const { setOrg } = useAuth();
+  const { setGuild, setOrg } = useAuth();
   const [orgCode, setOrgCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -26,17 +32,58 @@ export function JoinOrgScreen({ navigation }: Props) {
     setIsSubmitting(true);
     try {
       const trimmed = orgCode.trim();
-      // Role is always PLAYER on join — the org owner promotes coaches /
-      // analysts from the roster afterwards. Backend also accepts a full
-      // https://…/join/<token> URL as referralToken.
-      const looksLikeOrgCode =
-        trimmed.length === ORG_CODE_LENGTH && !/[/:.]/.test(trimmed);
-      const org = await orgApi.joinOrg(
-        looksLikeOrgCode
-          ? { orgCode: trimmed.toUpperCase() }
-          : { referralToken: trimmed },
-      );
-      setOrg({ id: org.id, name: org.name, role: org.myRole, isOwner: org.isOwner });
+      const looksLikeCode =
+        trimmed.length === CODE_LENGTH && !/[/:.]/.test(trimmed);
+      const invitedByUserId = extractInviteRef(trimmed);
+      const rosterSeat = isRosterInvite(trimmed);
+
+      if (rosterSeat) {
+        const joined = await orgApi.joinOrg(
+          looksLikeCode
+            ? { rosterCode: trimmed.toUpperCase() }
+            : { referralToken: trimmed },
+        );
+        setOrg({
+          id: joined.id,
+          name: joined.name,
+          role: joined.myRole,
+          isOwner: joined.isOwner,
+        });
+        setGuild({ id: joined.id, name: joined.name, role: 'MEMBER' });
+        return;
+      }
+
+      if (looksLikeCode) {
+        // Typed code: try guild first, then roster (codes are distinct).
+        try {
+          const joined = await orgApi.joinGuild({
+            orgCode: trimmed.toUpperCase(),
+          });
+          setGuild({ id: joined.id, name: joined.name, role: joined.role });
+          return;
+        } catch (err: unknown) {
+          const status = (err as { response?: { status?: number } })?.response
+            ?.status;
+          if (status !== 404) throw err;
+          const joined = await orgApi.joinOrg({
+            rosterCode: trimmed.toUpperCase(),
+          });
+          setOrg({
+            id: joined.id,
+            name: joined.name,
+            role: joined.myRole,
+            isOwner: joined.isOwner,
+          });
+          setGuild({ id: joined.id, name: joined.name, role: 'MEMBER' });
+          return;
+        }
+      }
+
+      const joined = await orgApi.joinGuild({
+        referralToken: trimmed,
+        invitedByUserId,
+      });
+      setGuild({ id: joined.id, name: joined.name, role: joined.role });
     } catch {
       // API message is shown by the global axios → toaster interceptor.
     } finally {
@@ -47,13 +94,14 @@ export function JoinOrgScreen({ navigation }: Props) {
   return (
     <FormScreen>
       <AuthBackButton onPress={() => navigation.navigate('OrgChoice')} />
-      <Text style={authStyles.title}>Join an Org</Text>
+      <Text style={authStyles.title}>Join with invite</Text>
       <Text style={{ textAlign: 'center', color: '#9aa0a6', marginBottom: 16 }}>
-        You join as a Player. The org owner can promote you to Coach or Analyst.
+        Paste a guild or roster invite link, or enter the matching code.
+        Already registered users can join without signing up again.
       </Text>
       <TextInput
         style={authStyles.input}
-        placeholder="Org code or invite link"
+        placeholder="Code or invite link"
         placeholderTextColor="#8b8f97"
         autoCapitalize="none"
         value={orgCode}

@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 import {
   GuildDetail,
+  GuildJoinResponse,
   MembershipRole,
   OrgCreateJoinResponse,
   OrgDetail,
@@ -12,10 +13,25 @@ export function createOrg(name: string) {
     .then((res) => res.data);
 }
 
-// Joiners are always admitted as PLAYER — the owner promotes elevated roles.
-export function joinOrg(code: { orgCode?: string; referralToken?: string }) {
+/** Esports roster invite — uses rosterCode / rosterReferralToken. */
+export function joinOrg(code: {
+  rosterCode?: string;
+  orgCode?: string;
+  referralToken?: string;
+}) {
   return apiClient
     .post<OrgCreateJoinResponse>('/orgs/join', code)
+    .then((res) => res.data);
+}
+
+/** Guild invite — guild seat only (orgCode / guild referralToken). */
+export function joinGuild(code: {
+  orgCode?: string;
+  referralToken?: string;
+  invitedByUserId?: string;
+}) {
+  return apiClient
+    .post<GuildJoinResponse>('/orgs/guild/join', code)
     .then((res) => res.data);
 }
 

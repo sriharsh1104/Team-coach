@@ -354,7 +354,8 @@ function GuildHome() {
           <InviteSharePanel
             referralLink={detail.referralLink}
             orgCode={detail.orgCode}
-            title="Invite To Join"
+            title="Invite & Referral"
+            inviteCount={detail.myInviteCount}
           />
         ) : null}
 

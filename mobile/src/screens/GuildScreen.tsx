@@ -142,20 +142,27 @@ export function GuildScreen({ navigation }: Props) {
                 {members.length === 1 ? '' : 's'} · {roster.length} on roster
               </Text>
             ) : null}
-            {detail?.orgCode && detail.referralLink ? (
+            {detail?.referralLink ? (
               <View style={styles.inviteCard}>
-                <Text style={styles.inviteTitle}>Invite To Guild</Text>
+                <Text style={styles.inviteTitle}>Invite & Referral</Text>
                 <Text style={styles.inviteHint}>
-                  Anyone who joins with this code or link becomes a guild
-                  member first — add them to the roster below when ready.
+                  Share your link (or guild code). People join the guild only.
+                  Owner/coach can add them to the esports roster below, or share
+                  a roster invite from Roster.
                 </Text>
-                <View style={styles.inviteRow}>
-                  <View style={styles.inviteTextCol}>
-                    <Text style={styles.inviteLabel}>Guild Code</Text>
-                    <Text style={styles.inviteValue}>{detail.orgCode}</Text>
+                <Text style={styles.inviteCount}>
+                  Your invites: {detail.myInviteCount} guild member
+                  {detail.myInviteCount === 1 ? '' : 's'}
+                </Text>
+                {detail.orgCode ? (
+                  <View style={styles.inviteRow}>
+                    <View style={styles.inviteTextCol}>
+                      <Text style={styles.inviteLabel}>Guild Code</Text>
+                      <Text style={styles.inviteValue}>{detail.orgCode}</Text>
+                    </View>
+                    <CopyButton value={detail.orgCode} />
                   </View>
-                  <CopyButton value={detail.orgCode} />
-                </View>
+                ) : null}
                 <View style={styles.inviteRow}>
                   <View style={styles.inviteTextCol}>
                     <Text style={styles.inviteLabel}>Invite Link</Text>
@@ -319,7 +326,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.045)',
   },
   inviteTitle: { color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 4 },
-  inviteHint: { color: colors.textMuted, fontSize: 12, marginBottom: 12, lineHeight: 16 },
+  inviteHint: { color: colors.textMuted, fontSize: 12, marginBottom: 8, lineHeight: 16 },
+  inviteCount: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
   inviteRow: {
     flexDirection: 'row',
     alignItems: 'center',

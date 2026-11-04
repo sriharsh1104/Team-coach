@@ -30,7 +30,7 @@ export function OrgChoiceScreen({ navigation }: Props) {
         onPress={() => navigation.navigate('JoinOrg')}
         pressScale={0.98}
       >
-        <ButtonLabel icon="enter">Join an Org</ButtonLabel>
+        <ButtonLabel icon="enter">Join a Guild</ButtonLabel>
       </SoftPressable>
       <Text style={authStyles.link} onPress={logout}>
         Log Out

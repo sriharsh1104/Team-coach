@@ -56,7 +56,7 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
     const coach = await signup(server, { name: 'Coach' });
     const org = await createOrgAs(server, coach.accessToken, 'COACH');
     const player = await signup(server, { name: 'Player' });
-    await joinOrgAs(server, player.accessToken, org.orgCode);
+    await joinOrgAs(server, player.accessToken, org.rosterCode);
     return { coach, org, player };
   }
 

@@ -27,7 +27,7 @@ export type MainStackParamList = {
   TwoFactorSetup: undefined;
   MemberProfile: { userId: string; name: string };
   MediaFeed: undefined;
-  Chat: undefined;
+  Chat: { channelKey?: string } | undefined;
   Scrims: undefined;
   AddEditScrim: { scrim?: ScrimEvent; defaultType?: 'SCRIM' | 'TOURNAMENT' } | undefined;
   Stats: { mode?: StatMode } | undefined;

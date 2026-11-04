@@ -7,7 +7,7 @@ type NavItem = { to: string; label: string; end?: boolean };
 
 const ROSTER_NAV: NavItem[] = [
   { to: '/app', label: 'Chats', end: true },
-  { to: '/app/members', label: 'Team Members' },
+  { to: '/app/members', label: 'Roster' },
   { to: '/app/media', label: 'Media' },
   { to: '/app/tournament-records', label: 'Records' },
   { to: '/app/stats', label: 'Stats' },

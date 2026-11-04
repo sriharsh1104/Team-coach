@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
 import {
@@ -14,18 +14,24 @@ import { SesLoader } from '../ui/SesLoader';
 function errorMessage(err: unknown) {
   const msg = (err as { response?: { data?: { message?: string | string[] } } })
     ?.response?.data?.message;
-  return Array.isArray(msg) ? msg.join(', ') : msg?.toString() || 'Could not join';
+  return Array.isArray(msg)
+    ? msg.join(', ')
+    : msg?.toString() || 'Could not join';
 }
 
 /**
  * /join/:token — shareable invite + QR target.
- * New users: stash token → signup/login → profile → auto-join as PLAYER on roster.
- * Existing users with no other org: join immediately after auth.
+ * Default: guild only. `?seat=roster` (owner/coach share link) joins guild +
+ * esports roster as Player.
  */
 export function InviteJoinPage() {
   const { token: rawToken } = useParams<{ token: string }>();
+  const [searchParams] = useSearchParams();
   const token = extractInviteToken(rawToken || '');
-  const { isLoading, user, org, setOrg, setGuild } = useAuth();
+  const invitedByUserId = searchParams.get('ref')?.trim() || undefined;
+  const seat =
+    searchParams.get('seat') === 'roster' ? ('roster' as const) : ('guild' as const);
+  const { isLoading, user, org, guild, setOrg, setGuild } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,12 +41,15 @@ export function InviteJoinPage() {
       setError('This invite link is missing a code.');
       return;
     }
-    savePendingInvite(token);
+    savePendingInvite(token, invitedByUserId, seat);
 
     if (isLoading) return;
 
     if (!user) {
-      navigate(`/signup?invite=${encodeURIComponent(token)}`, { replace: true });
+      const qs = new URLSearchParams({ invite: token });
+      if (invitedByUserId) qs.set('ref', invitedByUserId);
+      if (seat === 'roster') qs.set('seat', 'roster');
+      navigate(`/signup?${qs.toString()}`, { replace: true });
       return;
     }
 
@@ -49,7 +58,7 @@ export function InviteJoinPage() {
       return;
     }
 
-    if (org) {
+    if (org || (seat === 'guild' && guild)) {
       clearPendingInvite();
       navigate(postAuthPath(user, org), { replace: true });
       return;
@@ -60,17 +69,28 @@ export function InviteJoinPage() {
       setBusy(true);
       setError(null);
       try {
-        const joined = await orgApi.joinOrg({ referralToken: token });
-        if (cancelled) return;
-        setOrg({
-          id: joined.id,
-          name: joined.name,
-          role: joined.myRole,
-          isOwner: joined.isOwner,
-        });
-        setGuild({ id: joined.id, name: joined.name, role: 'MEMBER' });
-        clearPendingInvite();
-        navigate('/app', { replace: true });
+        if (seat === 'roster') {
+          const joined = await orgApi.joinOrg({ referralToken: token });
+          if (cancelled) return;
+          setOrg({
+            id: joined.id,
+            name: joined.name,
+            role: joined.myRole,
+            isOwner: joined.isOwner,
+          });
+          setGuild({ id: joined.id, name: joined.name, role: 'MEMBER' });
+          clearPendingInvite();
+          navigate('/app', { replace: true });
+        } else {
+          const joined = await orgApi.joinGuild({
+            referralToken: token,
+            invitedByUserId,
+          });
+          if (cancelled) return;
+          setGuild({ id: joined.id, name: joined.name, role: joined.role });
+          clearPendingInvite();
+          navigate('/guild', { replace: true });
+        }
       } catch (err) {
         if (cancelled) return;
         setError(errorMessage(err));
@@ -85,9 +105,12 @@ export function InviteJoinPage() {
     };
   }, [
     token,
+    invitedByUserId,
+    seat,
     isLoading,
     user,
     org,
+    guild,
     navigate,
     setOrg,
     setGuild,
@@ -102,7 +125,9 @@ export function InviteJoinPage() {
           <p className="auth-footer">
             <Link to="/">Back home</Link>
             {' · '}
-            <Link to={token ? inviteJoinPath(token) : '/signup'}>Try again</Link>
+            <Link to={token ? inviteJoinPath(token, invitedByUserId, seat) : '/signup'}>
+              Try again
+            </Link>
           </p>
         </div>
       </div>
@@ -112,7 +137,15 @@ export function InviteJoinPage() {
   return (
     <>
       {(isLoading || busy || !user) && (
-        <SesLoader label={busy ? 'Joining team' : 'Opening invite'} />
+        <SesLoader
+          label={
+            busy
+              ? seat === 'roster'
+                ? 'Joining roster'
+                : 'Joining guild'
+              : 'Opening invite'
+          }
+        />
       )}
     </>
   );

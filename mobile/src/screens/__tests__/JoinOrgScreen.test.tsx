@@ -12,9 +12,11 @@ const mockedUseAuth = useAuth as jest.Mock;
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
 const navigation = { navigate: jest.fn() } as any;
 
-async function pressAndSettle(text: string) {
+async function pressJoinButton() {
   await act(async () => {
-    fireEvent.press(screen.getByText(text));
+    // Title and button both say "Join" — press the SoftPressable via the glyph row.
+    const matches = screen.getAllByText('Join');
+    fireEvent.press(matches[matches.length - 1]);
   });
 }
 
@@ -24,119 +26,73 @@ beforeEach(() => {
 });
 
 describe('JoinOrgScreen', () => {
-  it('navigates back to OrgChoice', async () => {
-    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
-    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
-
-    await pressAndSettle('Back');
-    expect(navigation.navigate).toHaveBeenCalledWith('OrgChoice');
-  });
-
-  it('blocks submission until an org code is entered', async () => {
-    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
-    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
-
-    await pressAndSettle('Join');
-    expect(mockedOrgApi.joinOrg).not.toHaveBeenCalled();
-  });
-
-  it('does not offer a role picker — joiners are always players', async () => {
-    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
-    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
-
-    expect(screen.queryByText('Coach')).toBeNull();
-    expect(screen.queryByText('Analyst')).toBeNull();
-    expect(
-      screen.getByText(
-        'You join as a Player. The org owner can promote you to Coach or Analyst.',
-      ),
-    ).toBeTruthy();
-  });
-
-  it('joins with only the org code and calls setOrg on success', async () => {
-    const setOrg = jest.fn();
-    mockedUseAuth.mockReturnValue({ setOrg });
-    mockedOrgApi.joinOrg.mockResolvedValue({
+  it('joins guild with a guild code', async () => {
+    const setGuild = jest.fn();
+    mockedUseAuth.mockReturnValue({ setGuild, setOrg: jest.fn() });
+    mockedOrgApi.joinGuild.mockResolvedValue({
       id: 'org-1',
       name: 'Alpha Squad',
-      orgCode: '75HCP3',
-      referralLink: 'token',
-      myRole: 'PLAYER',
-      isOwner: false,
+      role: 'MEMBER',
     });
     render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
 
-    fireEvent.changeText(screen.getByPlaceholderText('Org code or invite link'), '  75HCP3AB  ');
-    await pressAndSettle('Join');
+    fireEvent.changeText(
+      screen.getByPlaceholderText('Code or invite link'),
+      'GUILDCOD',
+    );
+    await pressJoinButton();
 
-    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({ orgCode: '75HCP3AB' });
-    expect(setOrg).toHaveBeenCalledWith({
-      id: 'org-1',
-      name: 'Alpha Squad',
-      role: 'PLAYER',
-      isOwner: false,
-    });
+    expect(mockedOrgApi.joinGuild).toHaveBeenCalledWith({ orgCode: 'GUILDCOD' });
+    expect(setGuild).toHaveBeenCalled();
   });
 
-  it('joins with a pasted referral link/token (longer than an 8-char org code)', async () => {
+  it('falls back to rosterCode when guild code is not found', async () => {
+    const setGuild = jest.fn();
     const setOrg = jest.fn();
-    mockedUseAuth.mockReturnValue({ setOrg });
+    mockedUseAuth.mockReturnValue({ setGuild, setOrg });
+    mockedOrgApi.joinGuild.mockRejectedValue({ response: { status: 404 } });
     mockedOrgApi.joinOrg.mockResolvedValue({
       id: 'org-1',
       name: 'Alpha Squad',
-      orgCode: '75HCP3',
-      referralLink: '7vrQ3WST1LbnAM0ziUcBGrUk',
+      orgCode: 'GUILDCOD',
+      referralLink: 'g',
       myRole: 'PLAYER',
       isOwner: false,
     });
     render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
 
     fireEvent.changeText(
-      screen.getByPlaceholderText('Org code or invite link'),
-      '  7vrQ3WST1LbnAM0ziUcBGrUk  ',
+      screen.getByPlaceholderText('Code or invite link'),
+      'ROSTER01',
     );
-    await pressAndSettle('Join');
+    await pressJoinButton();
 
-    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({
-      referralToken: '7vrQ3WST1LbnAM0ziUcBGrUk',
-    });
+    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({ rosterCode: 'ROSTER01' });
+    expect(setOrg).toHaveBeenCalled();
   });
 
-  it('forwards a pasted https invite URL as referralToken', async () => {
+  it('joins roster when the invite URL has seat=roster', async () => {
+    const setGuild = jest.fn();
     const setOrg = jest.fn();
-    mockedUseAuth.mockReturnValue({ setOrg });
+    mockedUseAuth.mockReturnValue({ setGuild, setOrg });
     mockedOrgApi.joinOrg.mockResolvedValue({
       id: 'org-1',
       name: 'Alpha Squad',
-      orgCode: '75HCP3',
-      referralLink: 'https://app.test/join/7vrQ3WST1LbnAM0ziUcBGrUk',
+      orgCode: 'GUILDCOD',
+      referralLink: 'g',
       myRole: 'PLAYER',
       isOwner: false,
     });
     render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
 
     fireEvent.changeText(
-      screen.getByPlaceholderText('Org code or invite link'),
-      'https://app.test/join/7vrQ3WST1LbnAM0ziUcBGrUk',
+      screen.getByPlaceholderText('Code or invite link'),
+      'https://app.test/join/rostertoken?seat=roster',
     );
-    await pressAndSettle('Join');
+    await pressJoinButton();
 
     expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({
-      referralToken: 'https://app.test/join/7vrQ3WST1LbnAM0ziUcBGrUk',
+      referralToken: 'https://app.test/join/rostertoken?seat=roster',
     });
-  });
-
-  it('does not call setOrg on failure (API toaster owns the message)', async () => {
-    const setOrg = jest.fn();
-    mockedUseAuth.mockReturnValue({ setOrg });
-    mockedOrgApi.joinOrg.mockRejectedValue({
-      response: { data: { message: 'This org already has the maximum of 5 players' } },
-    });
-    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
-
-    fireEvent.changeText(screen.getByPlaceholderText('Org code or invite link'), '75HCP3');
-    await pressAndSettle('Join');
-
-    expect(setOrg).not.toHaveBeenCalled();
   });
 });

@@ -17,9 +17,7 @@ function formatInGameRoles(roles: string[]): string | null {
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Members'>;
 
-// Plain roster viewer for every member, regardless of role — owner-only
-// management (change role, remove, transfer ownership) lives in
-// OrgSettingsScreen instead.
+/** Esports roster list. Owner/coach see a distinct roster code + invite link. */
 export function MembersScreen({ navigation }: Props) {
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -39,6 +37,11 @@ export function MembersScreen({ navigation }: Props) {
     setIsRefreshing(false);
   };
 
+  const canInviteRoster =
+    !!detail?.canInviteRoster &&
+    !!detail.rosterReferralLink &&
+    !!detail.rosterCode;
+
   return (
     <Screen>
       <FlatList
@@ -53,31 +56,42 @@ export function MembersScreen({ navigation }: Props) {
           />
         }
         ListHeaderComponent={
-          detail && (
-            <View style={styles.inviteCard}>
-              <Text style={styles.inviteTitle}>Invite Players</Text>
-              <Text style={styles.inviteHint}>
-                Share the org code or invite link (QR on web). New players join
-                your roster as Player after signup if they are not on another team.
-              </Text>
-              <View style={styles.inviteRow}>
-                <View style={styles.inviteTextCol}>
-                  <Text style={styles.inviteLabel}>Org Code</Text>
-                  <Text style={styles.inviteValue}>{detail.orgCode}</Text>
-                </View>
-                <CopyButton value={detail.orgCode} />
-              </View>
-              <View style={styles.inviteRow}>
-                <View style={styles.inviteTextCol}>
-                  <Text style={styles.inviteLabel}>Invite Link</Text>
-                  <Text style={styles.inviteValue} numberOfLines={1}>
-                    {detail.referralLink}
+          detail ? (
+            <View>
+              {canInviteRoster ? (
+                <View style={styles.inviteCard}>
+                  <Text style={styles.inviteTitle}>Esports Roster Invite</Text>
+                  <Text style={styles.inviteHint}>
+                    Owner/coach only. Roster code is separate from the guild
+                    code. Already registered users can open the link and join
+                    without a new signup.
                   </Text>
+                  <View style={styles.inviteRow}>
+                    <View style={styles.inviteTextCol}>
+                      <Text style={styles.inviteLabel}>Roster Code</Text>
+                      <Text style={styles.inviteValue}>{detail.rosterCode}</Text>
+                    </View>
+                    <CopyButton value={detail.rosterCode!} />
+                  </View>
+                  <View style={styles.inviteRow}>
+                    <View style={styles.inviteTextCol}>
+                      <Text style={styles.inviteLabel}>Roster Invite Link</Text>
+                      <Text style={styles.inviteValue} numberOfLines={1}>
+                        {detail.rosterReferralLink}
+                      </Text>
+                    </View>
+                    <CopyButton value={detail.rosterReferralLink!} />
+                  </View>
                 </View>
-                <CopyButton value={detail.referralLink} />
-              </View>
+              ) : (
+                <Text style={styles.rosterHint}>
+                  {detail.members.length} roster member
+                  {detail.members.length === 1 ? '' : 's'}. Only the owner or a
+                  coach can share roster invites.
+                </Text>
+              )}
             </View>
-          )
+          ) : null
         }
         contentContainerStyle={styles.listContent}
         renderItem={({ item, index }) => {
@@ -113,7 +127,13 @@ export function MembersScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   list: { flex: 1, backgroundColor: 'transparent' },
-  listContent: { padding: 24 },
+  listContent: { padding: 24, paddingBottom: 40 },
+  rosterHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
   inviteCard: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -122,8 +142,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: 'rgba(255,255,255,0.045)',
   },
-  inviteTitle: { color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 4 },
-  inviteHint: { color: colors.textMuted, fontSize: 12, marginBottom: 12, lineHeight: 16 },
+  inviteTitle: {
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  inviteHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginBottom: 12,
+    lineHeight: 16,
+  },
   inviteRow: {
     flexDirection: 'row',
     alignItems: 'center',

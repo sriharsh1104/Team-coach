@@ -32,9 +32,9 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
     const coach = await signup(server, { name: 'Coach' });
     const org = await createOrgAs(server, coach.accessToken, 'COACH');
     const player1 = await signup(server, { name: 'Player 1' });
-    await joinOrgAs(server, player1.accessToken, org.orgCode);
+    await joinOrgAs(server, player1.accessToken, org.rosterCode);
     const player2 = await signup(server, { name: 'Player 2' });
-    await joinOrgAs(server, player2.accessToken, org.orgCode);
+    await joinOrgAs(server, player2.accessToken, org.rosterCode);
     return { coach, org, player1, player2 };
   }
 
@@ -403,7 +403,7 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
       const owner = await signup(server, { name: 'Owner-Player' });
       const org = await createOrgAs(server, owner.accessToken, 'PLAYER');
       const teammate = await signup(server, { name: 'Teammate' });
-      await joinOrgAs(server, teammate.accessToken, org.orgCode);
+      await joinOrgAs(server, teammate.accessToken, org.rosterCode);
       const membership = await prisma.membership.findFirstOrThrow({ where: { userId: teammate.user.id } });
       const media = await uploadMedia(server, teammate.accessToken);
       const extraction = await seedExtraction(membership.orgId, media.id, teammate.user.id, []);

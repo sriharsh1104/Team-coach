@@ -19,7 +19,11 @@ export function setOwnRosterRole(role: MembershipRole | null) {
     .then((res) => res.data);
 }
 
-export function joinOrg(code: { orgCode?: string; referralToken?: string }) {
+export function joinOrg(code: {
+  rosterCode?: string;
+  orgCode?: string;
+  referralToken?: string;
+}) {
   return apiClient
     .post<OrgCreateJoinResponse>('/orgs/join', code)
     .then((res) => res.data);
@@ -29,7 +33,11 @@ export function getMyOrg() {
   return apiClient.get<OrgDetail>('/orgs/me').then((res) => res.data);
 }
 
-export function joinGuild(code: { orgCode?: string; referralToken?: string }) {
+export function joinGuild(code: {
+  orgCode?: string;
+  referralToken?: string;
+  invitedByUserId?: string;
+}) {
   return apiClient
     .post<GuildJoinResponse>('/orgs/guild/join', code)
     .then((res) => res.data);

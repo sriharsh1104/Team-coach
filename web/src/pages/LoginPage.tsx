@@ -17,7 +17,10 @@ export function LoginPage() {
 
   useEffect(() => {
     const invite = extractInviteToken(searchParams.get('invite') || '');
-    if (invite) savePendingInvite(invite);
+    const ref = searchParams.get('ref')?.trim() || undefined;
+    const seat =
+      searchParams.get('seat') === 'roster' ? ('roster' as const) : undefined;
+    if (invite) savePendingInvite(invite, ref, seat);
   }, [searchParams]);
 
   async function onSubmit(e: FormEvent) {

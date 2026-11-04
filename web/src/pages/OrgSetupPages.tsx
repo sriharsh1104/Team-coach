@@ -87,7 +87,7 @@ export function CreateOrgPage() {
 }
 
 export function JoinOrgPage() {
-  const { setOrg, setGuild } = useAuth();
+  const { setGuild, setOrg } = useAuth();
   const navigate = useNavigate();
   const [orgCode, setOrgCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -100,19 +100,54 @@ export function JoinOrgPage() {
     try {
       const trimmed = orgCode.trim();
       const token = extractInviteToken(trimmed);
-      const org = await orgApi.joinOrg(
-        trimmed.length === 8 && !trimmed.includes('/')
-          ? { orgCode: trimmed.toUpperCase() }
-          : { referralToken: token || trimmed },
-      );
-      setOrg({
-        id: org.id,
-        name: org.name,
-        role: org.myRole,
-        isOwner: org.isOwner,
-      });
-      setGuild({ id: org.id, name: org.name, role: 'MEMBER' });
-      navigate('/app');
+      const looksLikeOrgCode =
+        trimmed.length === 8 && !/[/:.]/.test(trimmed);
+      const rosterSeat = /[?&]seat=roster(?:&|$)/.test(trimmed);
+
+      if (rosterSeat) {
+        const joined = await orgApi.joinOrg(
+          looksLikeOrgCode
+            ? { rosterCode: trimmed.toUpperCase() }
+            : { referralToken: token || trimmed },
+        );
+        setOrg({
+          id: joined.id,
+          name: joined.name,
+          role: joined.myRole,
+          isOwner: joined.isOwner,
+        });
+        setGuild({ id: joined.id, name: joined.name, role: 'MEMBER' });
+        navigate('/app');
+      } else if (looksLikeOrgCode) {
+        try {
+          const joined = await orgApi.joinGuild({
+            orgCode: trimmed.toUpperCase(),
+          });
+          setGuild({ id: joined.id, name: joined.name, role: joined.role });
+          navigate('/guild');
+        } catch (err: unknown) {
+          const status = (err as { response?: { status?: number } })?.response
+            ?.status;
+          if (status !== 404) throw err;
+          const joined = await orgApi.joinOrg({
+            rosterCode: trimmed.toUpperCase(),
+          });
+          setOrg({
+            id: joined.id,
+            name: joined.name,
+            role: joined.myRole,
+            isOwner: joined.isOwner,
+          });
+          setGuild({ id: joined.id, name: joined.name, role: 'MEMBER' });
+          navigate('/app');
+        }
+      } else {
+        const joined = await orgApi.joinGuild({
+          referralToken: token || trimmed,
+        });
+        setGuild({ id: joined.id, name: joined.name, role: joined.role });
+        navigate('/guild');
+      }
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string | string[] } } })
@@ -128,9 +163,9 @@ export function JoinOrgPage() {
   return (
     <div className="auth-shell">
       <form className="auth-card" onSubmit={onSubmit}>
-        <h1 className="brand">Join org</h1>
+        <h1 className="brand">Join</h1>
         <div className="field">
-          <label htmlFor="code">Org code or invite link</label>
+          <label htmlFor="code">Guild / roster invite link or code</label>
           <input
             id="code"
             value={orgCode}
@@ -147,7 +182,7 @@ export function JoinOrgPage() {
           <Link to="/org">Back</Link>
         </p>
       </form>
-      {busy ? <SesLoader label="Joining org" /> : null}
+      {busy ? <SesLoader label="Joining" /> : null}
     </div>
   );
 }

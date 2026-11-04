@@ -47,7 +47,7 @@ describe('Phase 1D — Chat (e2e)', () => {
     const coach = await signup(server, { name: 'Coach' });
     const org = await createOrgAs(server, coach.accessToken, 'COACH');
     const player = await signup(server, { name: 'Player' });
-    await joinOrgAs(server, player.accessToken, org.orgCode);
+    await joinOrgAs(server, player.accessToken, org.rosterCode);
     return { coach, org, player };
   }
 
@@ -72,7 +72,7 @@ describe('Phase 1D — Chat (e2e)', () => {
         .expect(200);
 
       const player = await signup(server, { name: 'Player' });
-      await joinOrgAs(server, player.accessToken, org.orgCode);
+      await joinOrgAs(server, player.accessToken, org.rosterCode);
 
       const afterMessage = await prisma.chatMessage.create({
         data: {

@@ -457,7 +457,11 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const coach = await signup();
       const org = await createOrgAs(coach.accessToken, 'COACH');
       expect(org.orgCode).toMatch(/^[A-Z0-9]{8}$/);
-      expect(org.referralLink).toMatch(/\/join\/[A-Za-z0-9]+$/);
+      expect(org.rosterCode).toMatch(/^[A-Z0-9]{8}$/);
+      expect(org.orgCode).not.toBe(org.rosterCode);
+      expect(org.referralLink).toMatch(/\/join\/[A-Za-z0-9]+/);
+      expect(org.rosterReferralLink).toMatch(/\/join\/[A-Za-z0-9]+/);
+      expect(org.rosterReferralLink).toMatch(/seat=roster/);
       expect(org.myRole).toBe('COACH');
     });
 
@@ -507,7 +511,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const res = await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
       expect(res.body.id).toBe(org.id);
       expect(res.body.myRole).toBe('PLAYER');
@@ -521,7 +525,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const res = await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ referralToken: org.referralLink })
+        .send({ referralToken: org.rosterReferralLink })
         .expect(201);
       expect(res.body.id).toBe(org.id);
       expect(res.body.myRole).toBe('PLAYER');
@@ -531,13 +535,16 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const coach = await signup();
       const org = await createOrgAs(coach.accessToken);
       const player = await signup();
-      const token = String(org.referralLink).split('/join/').pop();
+      const token = String(org.rosterReferralLink)
+        .split('/join/')
+        .pop()!
+        .split('?')[0];
 
       const res = await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .send({
-          referralToken: `https://example.test/join/${token}?utm=qr`,
+          referralToken: `https://example.test/join/${token}?seat=roster&utm=qr`,
         })
         .expect(201);
       expect(res.body.id).toBe(org.id);
@@ -563,7 +570,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${sneaky.accessToken}`)
-        .send({ orgCode: org.orgCode, role: 'COACH' })
+        .send({ rosterCode: org.rosterCode, role: 'COACH' })
         .expect(400);
     });
 
@@ -575,7 +582,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const res = await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${joiner.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
       expect(res.body.myRole).toBe('PLAYER');
       expect(res.body.isOwner).toBe(false);
@@ -591,7 +598,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         await request(server)
           .post('/orgs/join')
           .set('Authorization', `Bearer ${player.accessToken}`)
-          .send({ orgCode: org.orgCode })
+          .send({ rosterCode: org.rosterCode })
           .expect(201);
       }
 
@@ -599,7 +606,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${sixthPlayer.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(409);
     }, 20000);
 
@@ -618,7 +625,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
           request(server)
             .post('/orgs/join')
             .set('Authorization', `Bearer ${player.accessToken}`)
-            .send({ orgCode: org.orgCode }),
+            .send({ rosterCode: org.rosterCode }),
         ),
       );
 
@@ -642,7 +649,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${second.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -655,7 +662,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${third.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -668,7 +675,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${analyst.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -681,7 +688,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${secondAnalyst.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -698,7 +705,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -723,7 +730,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const res = await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
       expect(res.body.isOwner).toBe(false);
     });
@@ -747,7 +754,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       const res = await request(server)
@@ -768,7 +775,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
       await request(server)
         .patch('/users/me')
@@ -800,7 +807,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -828,7 +835,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -886,7 +893,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       const res = await request(server)
@@ -911,7 +918,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${coach.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
       await request(server)
         .patch('/orgs/members/role')
@@ -922,7 +929,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -939,7 +946,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${coach2.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
       await request(server)
         .patch('/orgs/members/role')
@@ -951,7 +958,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${thirdPlayer.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -989,7 +996,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -1018,7 +1025,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${coach.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
       await request(server)
         .patch('/orgs/members/role')
@@ -1029,7 +1036,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
 
       await request(server)
@@ -1115,7 +1122,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/orgs/join')
         .set('Authorization', `Bearer ${coach.accessToken}`)
-        .send({ orgCode: org.orgCode })
+        .send({ rosterCode: org.rosterCode })
         .expect(201);
       await request(server)
         .patch('/orgs/members/role')

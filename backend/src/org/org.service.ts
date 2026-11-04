@@ -65,12 +65,59 @@ export function normalizeReferralToken(raw?: string): string | undefined {
   return trimmed;
 }
 
-function referralLinkFor(token: string) {
+function referralLinkFor(
+  token: string,
+  opts?: { invitedByUserId?: string; seat?: 'guild' | 'roster' },
+) {
   const base = (process.env.WEB_PUBLIC_URL || 'http://localhost:5173').replace(
     /\/$/,
     '',
   );
-  return `${base}/join/${token}`;
+  const url = new URL(`${base}/join/${token}`);
+  if (opts?.seat === 'roster') url.searchParams.set('seat', 'roster');
+  if (opts?.invitedByUserId) {
+    url.searchParams.set('ref', opts.invitedByUserId);
+  }
+  return url.toString();
+}
+
+/** Pull `ref` (inviter user id) from a pasted invite URL, if present. */
+export function extractInviteRef(raw?: string): string | undefined {
+  if (!raw?.trim()) return undefined;
+  const trimmed = raw.trim();
+  try {
+    if (trimmed.includes('://') || trimmed.startsWith('/join/')) {
+      const url = trimmed.includes('://')
+        ? new URL(trimmed)
+        : new URL(trimmed, 'http://localhost');
+      const ref = url.searchParams.get('ref')?.trim();
+      return ref || undefined;
+    }
+  } catch {
+    /* fall through */
+  }
+  const match = trimmed.match(/[?&]ref=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+/** `seat=roster` on invite URLs → join guild + esports roster. */
+export function extractInviteSeat(raw?: string): 'guild' | 'roster' {
+  if (!raw?.trim()) return 'guild';
+  const trimmed = raw.trim();
+  try {
+    if (trimmed.includes('://') || trimmed.startsWith('/join/') || trimmed.includes('?')) {
+      const url = trimmed.includes('://')
+        ? new URL(trimmed)
+        : new URL(
+            trimmed.startsWith('/') ? trimmed : `/?${trimmed.replace(/^\?/, '')}`,
+            'http://localhost',
+          );
+      if (url.searchParams.get('seat') === 'roster') return 'roster';
+    }
+  } catch {
+    /* fall through */
+  }
+  return /[?&]seat=roster(?:&|$)/.test(trimmed) ? 'roster' : 'guild';
 }
 
 @Injectable()
@@ -96,6 +143,8 @@ export class OrgService {
             name,
             orgCode: generateOrgCode(),
             referralToken: generateReferralToken(),
+            rosterCode: generateOrgCode(),
+            rosterReferralToken: generateReferralToken(),
           },
         });
 
@@ -132,9 +181,14 @@ export class OrgService {
         if (fields.includes('name')) {
           throw new ConflictException('An org with that name already exists');
         }
-        if (fields.includes('orgCode')) {
+        if (
+          fields.includes('orgCode') ||
+          fields.includes('rosterCode') ||
+          fields.includes('referralToken') ||
+          fields.includes('rosterReferralToken')
+        ) {
           throw new ConflictException(
-            'Could not allocate a unique org code — please try again',
+            'Could not allocate a unique invite code — please try again',
           );
         }
         if (fields.includes('userId')) {
@@ -195,27 +249,46 @@ export class OrgService {
     return { role };
   }
 
+  /**
+   * Esports roster invite. Looks up by rosterCode / rosterReferralToken
+   * (never guild orgCode). Existing platform users with no other org/guild
+   * can join; already-in-guild (same org) users get a roster seat only.
+   */
   async joinOrg(userId: string, dto: JoinOrgDto) {
-    if (!dto.orgCode && !dto.referralToken) {
+    const rosterCode = (dto.rosterCode || dto.orgCode)?.trim();
+    if (!rosterCode && !dto.referralToken) {
       throw new BadRequestException(
-        'Provide either an orgCode or a referralToken',
+        'Provide either a rosterCode or a roster invite link',
       );
     }
 
-    await this.assertUserHasNoOrg(userId);
-
     const referralToken = normalizeReferralToken(dto.referralToken);
     const org = await this.prisma.org.findFirst({
-      where: dto.orgCode
-        ? { orgCode: dto.orgCode.toUpperCase() }
-        : { referralToken },
+      where: rosterCode
+        ? { rosterCode: rosterCode.toUpperCase() }
+        : { rosterReferralToken: referralToken },
     });
     if (!org) {
-      throw new NotFoundException('No org found for that code or link');
+      throw new NotFoundException('No roster invite found for that code or link');
     }
 
-    // Joiners never pick their own elevated role — always PLAYER. The
-    // owner promotes to COACH / ANALYST from the roster afterwards.
+    const [existingRoster, existingGuild] = await Promise.all([
+      this.prisma.membership.findFirst({ where: { userId } }),
+      this.prisma.guildMembership.findFirst({ where: { userId } }),
+    ]);
+
+    if (existingRoster) {
+      throw new ConflictException(
+        existingRoster.orgId === org.id
+          ? 'You are already on this roster'
+          : 'You already belong to another org roster',
+      );
+    }
+    if (existingGuild && existingGuild.orgId !== org.id) {
+      throw new ConflictException('You already belong to another guild');
+    }
+
+    // Joiners never pick their own elevated role — always PLAYER.
     const role = MembershipRole.PLAYER;
 
     try {
@@ -234,9 +307,11 @@ export class OrgService {
         await tx.membership.create({
           data: { userId, orgId: org.id, role },
         });
-        await tx.guildMembership.create({
-          data: { userId, orgId: org.id, role: GuildRole.MEMBER },
-        });
+        if (!existingGuild) {
+          await tx.guildMembership.create({
+            data: { userId, orgId: org.id, role: GuildRole.MEMBER },
+          });
+        }
       });
     } catch (err) {
       this.rethrowAsConflictOnDuplicateMembership(err);
@@ -258,11 +333,23 @@ export class OrgService {
       throw new NotFoundException('You are not part of an org yet');
     }
 
+    const canInviteRoster =
+      membership.isOwner || membership.role === MembershipRole.COACH;
+
     return {
       id: membership.org.id,
       name: membership.org.name,
       orgCode: membership.org.orgCode,
       referralLink: referralLinkFor(membership.org.referralToken),
+      rosterCode: canInviteRoster ? membership.org.rosterCode : null,
+      // Distinct roster token — never the guild referralToken.
+      rosterReferralLink: canInviteRoster
+        ? referralLinkFor(membership.org.rosterReferralToken, {
+            seat: 'roster',
+            invitedByUserId: userId,
+          })
+        : null,
+      canInviteRoster,
       myRole: membership.role,
       isOwner: membership.isOwner,
       historyVisibleToNewMembers: membership.org.historyVisibleToNewMembers,
@@ -415,8 +502,9 @@ export class OrgService {
   }
 
   /**
-   * Guild code join. Creates a guild seat only — the esports roster stays
-   * unchanged until an owner or coach adds this person from the guild list.
+   * Guild code / invite-link join. Creates a guild seat only — the esports
+   * roster stays unchanged until an owner or coach adds this person from the
+   * guild list. Optional invitedByUserId attributes the seat to a referrer.
    */
   async joinGuild(userId: string, dto: JoinOrgDto) {
     if (!dto.orgCode && !dto.referralToken) {
@@ -450,14 +538,45 @@ export class OrgService {
       return { id: org.id, name: org.name, role: guild.role };
     }
 
+    const invitedByUserId = await this.resolveInviter(
+      org.id,
+      dto.invitedByUserId || extractInviteRef(dto.referralToken),
+      userId,
+    );
+
     try {
       const created = await this.prisma.guildMembership.create({
-        data: { userId, orgId: org.id, role: GuildRole.MEMBER },
+        data: {
+          userId,
+          orgId: org.id,
+          role: GuildRole.MEMBER,
+          invitedByUserId,
+        },
       });
       return { id: org.id, name: org.name, role: created.role };
     } catch (err) {
       this.rethrowAsConflictOnDuplicateMembership(err);
     }
+  }
+
+  /** Inviter must already belong to this org (guild and/or roster). */
+  private async resolveInviter(
+    orgId: string,
+    candidateId: string | undefined,
+    joiningUserId: string,
+  ): Promise<string | undefined> {
+    if (!candidateId || candidateId === joiningUserId) return undefined;
+    const [guildSeat, rosterSeat] = await Promise.all([
+      this.prisma.guildMembership.findFirst({
+        where: { userId: candidateId, orgId },
+        select: { userId: true },
+      }),
+      this.prisma.membership.findFirst({
+        where: { userId: candidateId, orgId },
+        select: { userId: true },
+      }),
+    ]);
+    return guildSeat || rosterSeat ? candidateId : undefined;
   }
 
   async getMyGuild(userId: string) {
@@ -511,15 +630,21 @@ export class OrgService {
       guild.role === GuildRole.ELDER ||
       guild.role === GuildRole.ACTIVE_LEADER;
 
-    const canShareInvite = canManage || leadership;
+    // Code is for managers/leadership; every guild member gets a personal
+    // referral link (`?ref=`) so invite totals can be attributed.
+    const canShareCode = canManage || leadership;
+    const myInviteCount = await this.prisma.guildMembership.count({
+      where: { orgId, invitedByUserId: userId },
+    });
 
     return {
       id: guild.org.id,
       name: guild.org.name,
-      orgCode: canShareInvite ? guild.org.orgCode : null,
-      referralLink: canShareInvite
-        ? referralLinkFor(guild.org.referralToken)
-        : null,
+      orgCode: canShareCode ? guild.org.orgCode : null,
+      referralLink: referralLinkFor(guild.org.referralToken, {
+        invitedByUserId: userId,
+      }),
+      myInviteCount,
       myGuildRole: guild.role,
       onRoster: !!roster,
       canManageRoster: canManage,
@@ -679,7 +804,14 @@ export class OrgService {
   }
 
   private toOrgResponse(
-    org: { id: string; name: string; orgCode: string; referralToken: string },
+    org: {
+      id: string;
+      name: string;
+      orgCode: string;
+      referralToken: string;
+      rosterCode?: string;
+      rosterReferralToken?: string;
+    },
     role: MembershipRole | null,
     isOwner: boolean,
   ) {
@@ -688,6 +820,10 @@ export class OrgService {
       name: org.name,
       orgCode: org.orgCode,
       referralLink: referralLinkFor(org.referralToken),
+      rosterCode: org.rosterCode ?? null,
+      rosterReferralLink: org.rosterReferralToken
+        ? referralLinkFor(org.rosterReferralToken, { seat: 'roster' })
+        : null,
       myRole: role,
       isOwner,
     };

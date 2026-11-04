@@ -17,6 +17,7 @@ import * as authApi from '../api/auth';
 import {
   AuthResponse,
   AuthUser,
+  GuildSummary,
   OrgSummary,
   TwoFactorChallengeResponse,
   EmailVerificationChallengeResponse,
@@ -40,6 +41,7 @@ interface AuthContextValue {
   isLoading: boolean;
   user: AuthUser | null;
   org: OrgSummary | null;
+  guild: GuildSummary | null;
   // True when a saved session exists but biometric unlock (enabled by the
   // user in Account Settings) hasn't been passed yet this app open.
   needsBiometricUnlock: boolean;
@@ -80,6 +82,7 @@ interface AuthContextValue {
   refreshOrg: () => Promise<void>;
   refreshUser: () => Promise<void>;
   setOrg: (org: OrgSummary) => void;
+  setGuild: (guild: GuildSummary) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -88,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [org, setOrgState] = useState<OrgSummary | null>(null);
+  const [guild, setGuildState] = useState<GuildSummary | null>(null);
   const [needsBiometricUnlock, setNeedsBiometricUnlock] = useState(false);
 
   // Restores a saved session on app open. Pulled out of the effect so
@@ -121,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const me = await authApi.me();
       setUser(toAuthUser(me));
       setOrgState(me.org);
+      setGuildState(me.guild);
       registerPushTokenWithBackend();
     } catch {
       await deleteToken();
@@ -147,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await setToken(response.accessToken);
     setUser(response.user);
     setOrgState(response.org);
+    setGuildState(response.guild ?? null);
     registerPushTokenWithBackend();
   }, []);
 
@@ -217,11 +223,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await deleteToken();
     setUser(null);
     setOrgState(null);
+    setGuildState(null);
   }, []);
 
   const refreshOrg = useCallback(async () => {
     const me = await authApi.me();
     setOrgState(me.org);
+    setGuildState(me.guild);
   }, []);
 
   // Re-fetches the user object itself — used after completing the forced
@@ -232,10 +240,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const me = await authApi.me();
     setUser(toAuthUser(me));
     setOrgState(me.org);
+    setGuildState(me.guild);
   }, []);
 
   const setOrg = useCallback((nextOrg: OrgSummary) => {
     setOrgState(nextOrg);
+  }, []);
+
+  const setGuild = useCallback((nextGuild: GuildSummary) => {
+    setGuildState(nextGuild);
   }, []);
 
   return (
@@ -244,6 +257,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         user,
         org,
+        guild,
         needsBiometricUnlock,
         retryBiometricUnlock,
         dismissBiometricLock,
@@ -258,6 +272,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshOrg,
         refreshUser,
         setOrg,
+        setGuild,
       }}
     >
       {children}

@@ -28,9 +28,9 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
     const coach = await signup(server, { name: 'Coach' });
     const org = await createOrgAs(server, coach.accessToken, 'COACH');
     const player1 = await signup(server, { name: 'Player 1' });
-    await joinOrgAs(server, player1.accessToken, org.orgCode);
+    await joinOrgAs(server, player1.accessToken, org.rosterCode);
     const player2 = await signup(server, { name: 'Player 2' });
-    await joinOrgAs(server, player2.accessToken, org.orgCode);
+    await joinOrgAs(server, player2.accessToken, org.rosterCode);
     return { coach, org, player1, player2 };
   }
 
@@ -209,7 +209,7 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
       const owner = await signup(server, { name: 'Owner-Player' });
       const org = await createOrgAs(server, owner.accessToken, 'PLAYER');
       const teammate = await signup(server, { name: 'Teammate' });
-      await joinOrgAs(server, teammate.accessToken, org.orgCode);
+      await joinOrgAs(server, teammate.accessToken, org.rosterCode);
       const scrim = await createScrimAs(server, teammate.accessToken);
 
       await request(server)

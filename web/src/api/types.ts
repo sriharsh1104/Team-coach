@@ -66,6 +66,8 @@ export interface OrgCreateJoinResponse {
   name: string;
   orgCode: string;
   referralLink: string;
+  rosterCode: string | null;
+  rosterReferralLink: string | null;
   myRole: MembershipRole | null;
   isOwner: boolean;
 }
@@ -75,6 +77,11 @@ export interface OrgDetail {
   name: string;
   orgCode: string;
   referralLink: string;
+  /** Owner/coach only — distinct from guild orgCode. */
+  rosterCode: string | null;
+  /** Owner/coach only — `/join/<rosterToken>?seat=roster`. */
+  rosterReferralLink: string | null;
+  canInviteRoster: boolean;
   myRole: MembershipRole | null;
   isOwner: boolean;
   historyVisibleToNewMembers: boolean;
@@ -109,8 +116,10 @@ export interface GuildDetail {
   id: string;
   name: string;
   orgCode: string | null;
-  /** Full /join/<token> URL for owners / coaches / guild leadership; null otherwise. */
+  /** Personal /join/<token>?ref=<me> link — guild join only, not roster. */
   referralLink: string | null;
+  /** How many guild members joined via this user's invite link. */
+  myInviteCount: number;
   myGuildRole: GuildRole;
   onRoster: boolean;
   canManageRoster: boolean;

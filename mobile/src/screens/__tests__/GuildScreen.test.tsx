@@ -16,7 +16,8 @@ const detail = {
   id: 'org-1',
   name: 'Alpha Squad',
   orgCode: '75HCP3',
-  referralLink: 'https://app.example.com/join/token',
+  referralLink: 'https://app.example.com/join/token?ref=user-1',
+  myInviteCount: 3,
   myGuildRole: 'LEADER',
   onRoster: true,
   canManageRoster: true,
@@ -63,10 +64,12 @@ beforeEach(() => {
 });
 
 describe('GuildScreen', () => {
-  it('shows the guild header, invite code/link, and every guild member with roster status', async () => {
+  it('shows Invite & Referral with invite count, code/link, and guild members', async () => {
     render(<GuildScreen navigation={navigation} route={{} as any} />);
 
     await screen.findByText('Alpha Squad');
+    expect(screen.getByText('Invite & Referral')).toBeTruthy();
+    expect(screen.getByText(/Your invites: 3 guild members/)).toBeTruthy();
     expect(screen.getByText('Guild Code')).toBeTruthy();
     expect(screen.getByText('75HCP3')).toBeTruthy();
     expect(screen.getByText('Waiting Member')).toBeTruthy();

@@ -75,6 +75,7 @@ model User {
 
   memberships        Membership[]
   guildMemberships   GuildMembership[]
+  guildInvites       GuildMembership[] @relation("GuildInvites")
   devices            Device[]
   mediaPosts         MediaPost[]
   chatMessages       ChatMessage[]
@@ -127,8 +128,12 @@ model Org {
   id            String   @id @default(cuid())
   // Display name — also enforced case-insensitively in OrgService.createOrg.
   name          String   @unique
-  orgCode       String   @unique // short code a player types in to join (= public org id)
-  referralToken String   @unique // long token embedded in a shareable join link
+  // Guild community join (not the esports roster).
+  orgCode       String   @unique
+  referralToken String   @unique
+  // Esports roster join — separate from guild code/token so invites never collide.
+  rosterCode          String @unique
+  rosterReferralToken String @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -367,14 +372,19 @@ model GuildMembership {
   role      GuildRole @default(MEMBER)
   userId    String
   orgId     String
+  // Who shared the invite/code that brought this member in (null = unknown /
+  // legacy / org-owner bootstrap). Used for per-user referral totals.
+  invitedByUserId String?
   createdAt DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org       Org   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invitedBy User? @relation("GuildInvites", fields: [invitedByUserId], references: [id], onDelete: SetNull)
 
   // One guild seat per user, same reasoning as Membership above.
   @@unique([userId])
   @@index([orgId])
+  @@index([invitedByUserId])
 }
 
 // Public marketing-site tournament ledger (sacredesports.com Records tab).

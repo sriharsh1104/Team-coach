@@ -39,11 +39,12 @@ export async function createOrgAs(
 }
 
 // Joiners are always PLAYER — elevated roles are assigned by the owner.
-export async function joinOrgAs(server: any, token: string, orgCode: string) {
+// Pass the org's rosterCode (not guild orgCode).
+export async function joinOrgAs(server: any, token: string, rosterCode: string) {
   const res = await request(server)
     .post('/orgs/join')
     .set('Authorization', `Bearer ${token}`)
-    .send({ orgCode })
+    .send({ rosterCode })
     .expect(201);
   return res.body;
 }

@@ -20,10 +20,17 @@ export interface OrgSummary {
   isOwner: boolean;
 }
 
+export interface GuildSummary {
+  id: string;
+  name: string;
+  role: GuildRole;
+}
+
 export interface AuthResponse {
   accessToken: string;
   user: AuthUser;
   org: OrgSummary | null;
+  guild: GuildSummary | null;
 }
 
 export interface TwoFactorChallengeResponse {
@@ -147,6 +154,8 @@ export interface OrgCreateJoinResponse {
   name: string;
   orgCode: string;
   referralLink: string;
+  rosterCode: string | null;
+  rosterReferralLink: string | null;
   myRole: MembershipRole | null;
   isOwner: boolean;
 }
@@ -156,6 +165,11 @@ export interface OrgDetail {
   name: string;
   orgCode: string;
   referralLink: string;
+  /** Owner/coach only — distinct from guild orgCode. */
+  rosterCode: string | null;
+  /** Owner/coach only — `/join/<rosterToken>?seat=roster`. */
+  rosterReferralLink: string | null;
+  canInviteRoster: boolean;
   myRole: MembershipRole | null;
   isOwner: boolean;
   historyVisibleToNewMembers: boolean;
@@ -185,12 +199,21 @@ export interface GuildDetail {
   name: string;
   // Non-null only for owners / coaches / guild leadership — see GET /orgs/guild/me.
   orgCode: string | null;
+  /** Personal invite link (`?ref=`) — joins guild only, not roster. */
   referralLink: string | null;
+  /** Guild joins attributed to this user's invite link. */
+  myInviteCount: number;
   myGuildRole: GuildRole;
   onRoster: boolean;
   canManageRoster: boolean;
   roster: GuildRosterMember[];
   members: GuildMemberRow[];
+}
+
+export interface GuildJoinResponse {
+  id: string;
+  name: string;
+  role: GuildRole;
 }
 
 export type ScrimEventType = 'SCRIM' | 'TOURNAMENT';

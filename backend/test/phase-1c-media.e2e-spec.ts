@@ -29,7 +29,7 @@ describe('Phase 1C — Media upload (e2e)', () => {
     const coach = await signup(server, { name: 'Coach' });
     const org = await createOrgAs(server, coach.accessToken, 'COACH');
     const player = await signup(server, { name: 'Player' });
-    await joinOrgAs(server, player.accessToken, org.orgCode);
+    await joinOrgAs(server, player.accessToken, org.rosterCode);
     return { coach, org, player };
   }
 
@@ -176,7 +176,7 @@ describe('Phase 1C — Media upload (e2e)', () => {
     it('filters by uploaderId', async () => {
       const { coach, org, player } = await setUpOrgWithPlayer();
       const player2 = await signup(server, { name: 'Player 2' });
-      await joinOrgAs(server, player2.accessToken, org.orgCode);
+      await joinOrgAs(server, player2.accessToken, org.rosterCode);
 
       await request(server)
         .post('/media')

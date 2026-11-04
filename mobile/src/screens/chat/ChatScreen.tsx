@@ -79,7 +79,7 @@ export function ChatScreen({
   onCloseSearch?: () => void;
 } = {}) {
   const { user } = useAuth();
-  const isGroup = channelKey === 'org';
+  const isGroup = channelKey === 'org' || channelKey === 'guild';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);

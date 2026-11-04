@@ -350,7 +350,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       const coach = await signup(server, { name: 'Coach' });
       const org = await createOrgAs(server, coach.accessToken, 'COACH');
       const player = await signup(server, { name: 'Player' });
-      await joinOrgAs(server, player.accessToken, org.orgCode);
+      await joinOrgAs(server, player.accessToken, org.rosterCode);
 
       await request(server)
         .patch('/users/me')
@@ -375,7 +375,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       const coach = await signup(server, { name: 'Coach' });
       const org = await createOrgAs(server, coach.accessToken, 'COACH');
       const player = await signup(server, { name: 'Player' });
-      await joinOrgAs(server, player.accessToken, org.orgCode);
+      await joinOrgAs(server, player.accessToken, org.rosterCode);
 
       const coachSeesPlayer = await request(server)
         .get(`/users/${player.user.id}/profile`)
@@ -405,7 +405,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       const coachA = await signup(server, { name: 'Coach A' });
       const orgA = await createOrgAs(server, coachA.accessToken, 'COACH');
       const playerA = await signup(server, { name: 'Player A' });
-      await joinOrgAs(server, playerA.accessToken, orgA.orgCode);
+      await joinOrgAs(server, playerA.accessToken, orgA.rosterCode);
       await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${playerA.accessToken}`)
@@ -424,7 +424,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       const coach = await signup(server, { name: 'Coach' });
       const org = await createOrgAs(server, coach.accessToken, 'COACH');
       const player = await signup(server, { name: 'Player' });
-      await joinOrgAs(server, player.accessToken, org.orgCode);
+      await joinOrgAs(server, player.accessToken, org.rosterCode);
       await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${player.accessToken}`)

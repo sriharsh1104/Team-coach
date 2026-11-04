@@ -6,13 +6,16 @@ import { InviteQr } from './InviteQr';
 export function InviteSharePanel({
   referralLink,
   orgCode,
-  title = 'Invite To Join',
-  hint = 'Share the link or QR. New people sign up, then join as Player if they are not already on another team.',
+  title = 'Invite & Referral',
+  hint = 'Share the link or QR. New people join the guild only — owners/coaches add them to the esports roster later.',
+  inviteCount,
 }: {
   referralLink: string;
   orgCode?: string | null;
   title?: string;
   hint?: string;
+  /** Total guild joins attributed to this user's invite link. */
+  inviteCount?: number;
 }) {
   const [copied, setCopied] = useState(false);
   const shareUrl = publicInviteUrl(referralLink);
@@ -29,6 +32,12 @@ export function InviteSharePanel({
     <div className="panel invite-panel">
       <h2 className="profile-section-title">{title}</h2>
       <p className="muted invite-hint">{hint}</p>
+      {typeof inviteCount === 'number' ? (
+        <p className="invite-count-note">
+          Your invites: <strong>{inviteCount}</strong> guild member
+          {inviteCount === 1 ? '' : 's'} joined via your link.
+        </p>
+      ) : null}
       <div className="invite-layout">
         <InviteQr
           url={shareUrl}
@@ -55,7 +64,7 @@ export function InviteSharePanel({
           </div>
           {orgCode ? (
             <p className="muted invite-org-code">
-              Org Code: <strong>{orgCode}</strong>
+              Code: <strong>{orgCode}</strong>
             </p>
           ) : null}
         </div>

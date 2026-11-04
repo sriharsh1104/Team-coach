@@ -1,5 +1,12 @@
 import { apiClient } from './client';
-import { AuthResponse, AuthUser, OrgSummary, LoginResult, SignupResult } from './types';
+import {
+  AuthResponse,
+  AuthUser,
+  GuildSummary,
+  OrgSummary,
+  LoginResult,
+  SignupResult,
+} from './types';
 
 // A brand-new signup is never usable immediately — it comes back as an
 // email-verification challenge instead of a session (see verifyEmailSignup).
@@ -44,7 +51,9 @@ export function verifyTwoFactor(
 
 export function me() {
   return apiClient
-    .get<AuthUser & { org: OrgSummary | null }>('/auth/me')
+    .get<AuthUser & { org: OrgSummary | null; guild: GuildSummary | null }>(
+      '/auth/me',
+    )
     .then((res) => res.data);
 }
 

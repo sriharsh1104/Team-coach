@@ -53,7 +53,7 @@ export function OrgHomeScreen({ navigation }: Props) {
       },
       {
         key: 'members',
-        label: 'Team Members',
+        label: 'Roster',
         onPress: () => navigation.navigate('Members'),
       },
       {
@@ -101,6 +101,12 @@ export function OrgHomeScreen({ navigation }: Props) {
         label: 'Guild',
         split: true,
         items: [
+          {
+            key: 'guildChat',
+            label: 'Guild Chat',
+            onPress: () =>
+              navigation.navigate('Chat', { channelKey: 'guild' }),
+          },
           {
             key: 'guildHome',
             label: 'Guild Roster',

@@ -69,17 +69,19 @@ const mainScreenOptions = {
 // current screen across a refresh so an F5 doesn't throw the user back to
 // OrgHome. Native builds don't need this ("refresh" isn't really a native
 // concept the same way), so it's web-only.
-type NavPhase = 'auth' | 'profileSetup' | 'orgSetup' | 'main';
+type NavPhase = 'auth' | 'profileSetup' | 'orgSetup' | 'guild' | 'main';
 const NAV_STATE_KEY = 'team-coach.navState';
 
 function computeNavPhase(
   user: { profileComplete: boolean } | null,
   org: unknown,
+  guild: unknown,
 ): NavPhase {
   if (!user) return 'auth';
   if (!user.profileComplete) return 'profileSetup';
-  if (!org) return 'orgSetup';
-  return 'main';
+  if (org) return 'main';
+  if (guild) return 'guild';
+  return 'orgSetup';
 }
 
 // Persisted state is only valid for the navigator tree it was captured
@@ -109,8 +111,8 @@ function persistNavState(phase: NavPhase, state: NavigationState | undefined) {
 }
 
 export function RootNavigator() {
-  const { isLoading, user, org, needsBiometricUnlock } = useAuth();
-  const phase = computeNavPhase(user, org);
+  const { isLoading, user, org, guild, needsBiometricUnlock } = useAuth();
+  const phase = computeNavPhase(user, org, guild);
   // Deliberately NOT memoized with useState: RootNavigator itself mounts
   // immediately (while isLoading is still true, before `phase` can possibly
   // be 'main' yet), and a useState initializer only runs on THAT first
@@ -165,12 +167,46 @@ export function RootNavigator() {
             {() => <ProfileScreen mustComplete />}
           </ProfileSetupStack.Screen>
         </ProfileSetupStack.Navigator>
-      ) : !org ? (
+      ) : !org && !guild ? (
         <OrgSetupStack.Navigator screenOptions={{ headerShown: false }}>
           <OrgSetupStack.Screen name="OrgChoice" component={OrgChoiceScreen} />
           <OrgSetupStack.Screen name="CreateOrg" component={CreateOrgScreen} />
           <OrgSetupStack.Screen name="JoinOrg" component={JoinOrgScreen} />
         </OrgSetupStack.Navigator>
+      ) : !org && guild ? (
+        <MainStack.Navigator screenOptions={mainScreenOptions}>
+          <MainStack.Screen
+            name="Guild"
+            component={GuildScreen}
+            options={{ title: 'Guild' }}
+          />
+          <MainStack.Screen
+            name="Profile"
+            component={ProfileScreen}
+            options={{ title: 'Profile' }}
+          />
+          <MainStack.Screen
+            name="AccountSettings"
+            component={AccountSettingsScreen}
+            options={{ title: 'Account Settings' }}
+          />
+          <MainStack.Screen
+            name="Chat"
+            options={{ title: 'Guild Chat' }}
+          >
+            {() => <ChatScreen channelKey="guild" />}
+          </MainStack.Screen>
+          <MainStack.Screen
+            name="SocialHandles"
+            component={SocialHandlesScreen}
+            options={{ title: 'Social Handles' }}
+          />
+          <MainStack.Screen
+            name="MemberProfile"
+            component={MemberProfileScreen}
+            options={({ route }) => ({ title: titleCase(route.params.name) })}
+          />
+        </MainStack.Navigator>
       ) : (
         <MainStack.Navigator screenOptions={mainScreenOptions}>
           <MainStack.Screen
@@ -186,7 +222,7 @@ export function RootNavigator() {
           <MainStack.Screen
             name="Members"
             component={MembersScreen}
-            options={{ title: 'Team Members' }}
+            options={{ title: 'Roster' }}
           />
           <MainStack.Screen
             name="Guild"
@@ -220,9 +256,15 @@ export function RootNavigator() {
           />
           <MainStack.Screen
             name="Chat"
-            component={ChatScreen}
-            options={{ title: 'Team Chat' }}
-          />
+            options={({ route }) => ({
+              title:
+                route.params?.channelKey === 'guild' ? 'Guild Chat' : 'Team Chat',
+            })}
+          >
+            {({ route }) => (
+              <ChatScreen channelKey={route.params?.channelKey ?? 'org'} />
+            )}
+          </MainStack.Screen>
           <MainStack.Screen
             name="Scrims"
             component={ScrimsListScreen}

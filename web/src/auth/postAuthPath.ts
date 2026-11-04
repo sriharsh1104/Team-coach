@@ -7,7 +7,7 @@ export function postAuthPath(
   const invite = peekPendingInvite();
   if (invite) {
     if (!user.profileComplete) return '/profile';
-    return inviteJoinPath(invite);
+    return inviteJoinPath(invite.token, invite.invitedByUserId, invite.seat);
   }
   if (!user.profileComplete) return '/profile';
   if (org && !org.isOwner) return '/app';

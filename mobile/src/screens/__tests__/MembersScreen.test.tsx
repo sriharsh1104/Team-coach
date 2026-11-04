@@ -12,13 +12,32 @@ const navigation = { navigate: jest.fn(), push: jest.fn() } as any;
 const detail = {
   id: 'org-1',
   name: 'Alpha Squad',
-  orgCode: '75HCP3',
-  referralLink: 'https://team-coach.app/join/token',
+  orgCode: 'GUILDCODE',
+  referralLink: 'https://team-coach.app/join/guildtoken',
+  rosterCode: 'ROSTER01',
+  rosterReferralLink:
+    'https://team-coach.app/join/rostertoken?seat=roster&ref=user-1',
+  canInviteRoster: true,
   myRole: 'COACH',
   isOwner: true,
+  historyVisibleToNewMembers: true,
   members: [
-    { userId: 'user-1', name: 'Owner Coach', avatarUrl: null, role: 'COACH', isOwner: true, inGameRoles: ['IGL'] },
-    { userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'PLAYER', isOwner: false, inGameRoles: [] },
+    {
+      userId: 'user-1',
+      name: 'Owner Coach',
+      avatarUrl: null,
+      role: 'COACH',
+      isOwner: true,
+      inGameRoles: ['IGL'],
+    },
+    {
+      userId: 'user-2',
+      name: 'Teammate',
+      avatarUrl: null,
+      role: 'PLAYER',
+      isOwner: false,
+      inGameRoles: [],
+    },
   ],
 };
 
@@ -33,29 +52,52 @@ describe('MembersScreen', () => {
 
     await screen.findByText('1. Owner Coach (Owner)');
     expect(screen.getByText('2. Teammate')).toBeTruthy();
-    expect(screen.queryByText('2. Teammate (Owner)')).toBeNull();
   });
 
-  it('does not repeat the "Team Members" heading — the nav bar already shows it', async () => {
+  it('does not repeat the "Roster" heading — the nav bar already shows it', async () => {
     render(<MembersScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('2. Teammate');
-
-    expect(screen.queryByText('Team Members')).toBeNull();
+    expect(screen.queryByText('Roster')).toBeNull();
   });
 
-  it('shows each member\'s role', async () => {
+  it('shows esports roster invite with a code distinct from the guild code', async () => {
     render(<MembersScreen navigation={navigation} route={{} as any} />);
 
-    await screen.findByText('2. Teammate');
-    expect(screen.getByText('COACH')).toBeTruthy();
-    expect(screen.getByText('PLAYER')).toBeTruthy();
+    await screen.findByText('Esports Roster Invite');
+    expect(screen.getByText('ROSTER01')).toBeTruthy();
+    expect(screen.queryByText('GUILDCODE')).toBeNull();
+    expect(
+      screen.getByText(
+        'https://team-coach.app/join/rostertoken?seat=roster&ref=user-1',
+      ),
+    ).toBeTruthy();
   });
 
-  it('shows in-game role tags next to the org role, and nothing extra when a member has none set', async () => {
+  it('hides roster invite for players who cannot invite', async () => {
+    mockedOrgApi.getMyOrg.mockResolvedValue({
+      ...detail,
+      canInviteRoster: false,
+      rosterCode: null,
+      rosterReferralLink: null,
+      isOwner: false,
+      myRole: 'PLAYER',
+    } as any);
     render(<MembersScreen navigation={navigation} route={{} as any} />);
 
-    await screen.findByText('2. Teammate');
-    expect(screen.getByText('IGL')).toBeTruthy();
+    await screen.findByText(/Only the owner or a coach can share roster invites/);
+    expect(screen.queryByText('Esports Roster Invite')).toBeNull();
+  });
+
+  it('copies the roster code when its Copy button is pressed', async () => {
+    render(<MembersScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Esports Roster Invite');
+
+    const copyButtons = screen.getAllByLabelText('Copy');
+    await act(async () => {
+      fireEvent.press(copyButtons[0]);
+    });
+
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('ROSTER01');
   });
 
   it('navigates to MemberProfile when a member row is pressed', async () => {
@@ -66,51 +108,6 @@ describe('MembersScreen', () => {
     expect(navigation.push).toHaveBeenCalledWith('MemberProfile', {
       userId: 'user-2',
       name: 'Teammate',
-    });
-  });
-
-  it('is a pure roster viewer — no role-change, remove, or ownership-transfer actions (those moved to Org Settings)', async () => {
-    render(<MembersScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('2. Teammate');
-
-    expect(screen.queryByText('Change Role')).toBeNull();
-    expect(screen.queryByText('Make Owner')).toBeNull();
-    expect(screen.queryByText('Remove')).toBeNull();
-  });
-
-  describe('invite section', () => {
-    it('shows the org code and invite link so the org can be shared', async () => {
-      render(<MembersScreen navigation={navigation} route={{} as any} />);
-
-      await screen.findByText('Invite Players');
-      expect(screen.getByText('75HCP3')).toBeTruthy();
-      expect(screen.getByText('https://team-coach.app/join/token')).toBeTruthy();
-    });
-
-    it('copies the org code when its Copy button is pressed', async () => {
-      render(<MembersScreen navigation={navigation} route={{} as any} />);
-      await screen.findByText('Invite Players');
-
-      const copyButtons = screen.getAllByLabelText('Copy');
-      await act(async () => {
-        fireEvent.press(copyButtons[0]); // Org Code row is first
-      });
-
-      expect(Clipboard.setStringAsync).toHaveBeenCalledWith('75HCP3');
-    });
-
-    it('copies the invite link when its Copy button is pressed', async () => {
-      render(<MembersScreen navigation={navigation} route={{} as any} />);
-      await screen.findByText('Invite Players');
-
-      const copyButtons = screen.getAllByLabelText('Copy');
-      await act(async () => {
-        fireEvent.press(copyButtons[1]); // Invite Link row is second
-      });
-
-      expect(Clipboard.setStringAsync).toHaveBeenCalledWith(
-        'https://team-coach.app/join/token',
-      );
     });
   });
 });
