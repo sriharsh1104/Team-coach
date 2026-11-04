@@ -27,6 +27,7 @@ import {
 } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { BookStage, useBookTabs } from '../../ui/BookTabs';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { colors } from '../../theme';
 import {
@@ -39,6 +40,7 @@ import { useOrgRealtimeOptional } from '../../realtime/OrgRealtimeProvider';
 import { groupEntriesByDay } from '../stats/dayGroups';
 
 type Tab = 'upcoming' | 'past' | 'results';
+const SCHEDULE_TAB_IDS: Tab[] = ['upcoming', 'past', 'results'];
 
 function lastRelevantDate(event: ScrimEvent): number {
   const last = event.rounds[event.rounds.length - 1];
@@ -65,7 +67,8 @@ export function MatchSchedulePanel({
   const [resultHistory, setResultHistory] = useState<ModeHistoryEntry[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [uploadingEventId, setUploadingEventId] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('upcoming');
+  const { tab, openTab, turn } = useBookTabs(SCHEDULE_TAB_IDS, 'upcoming');
+  const scheduleTab = tab as Tab;
 
   const mode: StatMode = eventType === 'TOURNAMENT' ? 'TOURNAMENT' : 'SCRIM';
   const typeLabel = eventType === 'TOURNAMENT' ? 'Tournament' : 'Scrim';
@@ -193,8 +196,6 @@ export function MatchSchedulePanel({
     [resultHistory],
   );
 
-  const listData = tab === 'upcoming' ? upcoming : past;
-
   return (
     <View style={styles.root}>
       <Text style={styles.hint}>
@@ -204,8 +205,8 @@ export function MatchSchedulePanel({
 
       <View style={styles.tabPad}>
         <SegmentedTabs
-          value={tab}
-          onChange={setTab}
+          value={scheduleTab}
+          onChange={(next) => openTab(next)}
           tabs={
             [
               { value: 'upcoming', label: 'Upcoming' },
@@ -216,91 +217,98 @@ export function MatchSchedulePanel({
         />
       </View>
 
-      {tab !== 'results' ? (
-        <FlatList
-          style={styles.list}
-          data={listData}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-          }
-          ListEmptyComponent={
-            <Text style={styles.empty}>
-              {tab === 'upcoming'
-                ? `No upcoming ${typeLabel.toLowerCase()}s. Add one below.`
-                : `No past ${typeLabel.toLowerCase()}s yet.`}
-            </Text>
-          }
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              <Text style={styles.meta}>
-                {new Date(item.scheduledAt).toLocaleString()} · by{' '}
-                {item.createdByName}
-                {item.rounds?.length
-                  ? ` · ${item.rounds.length} Round(s)`
-                  : ''}
-              </Text>
-              {item.platform ? (
-                <Pressable onPress={() => Linking.openURL(item.platform!)}>
-                  <Text style={styles.link}>{item.platform}</Text>
-                </Pressable>
-              ) : null}
-              {item.notes ? <Text style={styles.notes}>{item.notes}</Text> : null}
+      <BookStage tab={tab} turn={turn} style={styles.stage}>
+        {(active) =>
+          active !== 'results' ? (
+            <FlatList
+              style={styles.list}
+              data={active === 'upcoming' ? upcoming : past}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+              }
+              ListEmptyComponent={
+                <Text style={styles.empty}>
+                  {active === 'upcoming'
+                    ? `No upcoming ${typeLabel.toLowerCase()}s. Add one below.`
+                    : `No past ${typeLabel.toLowerCase()}s yet.`}
+                </Text>
+              }
+              renderItem={({ item }) => (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>{item.title}</Text>
+                  <Text style={styles.meta}>
+                    {new Date(item.scheduledAt).toLocaleString()} · by{' '}
+                    {item.createdByName}
+                    {item.rounds?.length
+                      ? ` · ${item.rounds.length} Round(s)`
+                      : ''}
+                  </Text>
+                  {item.platform ? (
+                    <Pressable onPress={() => Linking.openURL(item.platform!)}>
+                      <Text style={styles.link}>{item.platform}</Text>
+                    </Pressable>
+                  ) : null}
+                  {item.notes ? (
+                    <Text style={styles.notes}>{item.notes}</Text>
+                  ) : null}
 
-              <View style={styles.actionsRow}>
-                <SoftPressable
-                  style={styles.primaryAction}
-                  onPress={() => uploadResultForEvent(item)}
-                  disabled={uploadingEventId === item.id}
-                  accessibilityRole="button"
-                  accessibilityLabel="Upload Result"
-                  pressScale={0.97}
-                >
-                  {uploadingEventId === item.id ? (
-                    <ActivityIndicator color="#0a0a0c" />
-                  ) : (
-                    <Text style={styles.primaryActionText}>Upload Result</Text>
-                  )}
-                </SoftPressable>
-                {canEdit(item) && (
-                  <>
+                  <View style={styles.actionsRow}>
                     <SoftPressable
-                      onPress={() =>
-                        navigation.navigate('AddEditScrim', { scrim: item })
-                      }
-                      pressScale={0.96}
+                      style={styles.primaryAction}
+                      onPress={() => uploadResultForEvent(item)}
+                      disabled={uploadingEventId === item.id}
+                      accessibilityRole="button"
+                      accessibilityLabel="Upload Result"
+                      pressScale={0.97}
                     >
-                      <Text style={styles.action}>Edit</Text>
+                      {uploadingEventId === item.id ? (
+                        <ActivityIndicator color="#0a0a0c" />
+                      ) : (
+                        <Text style={styles.primaryActionText}>Upload Result</Text>
+                      )}
                     </SoftPressable>
-                    <SoftPressable onPress={() => onDelete(item)} pressScale={0.96}>
-                      <Text style={[styles.action, { color: colors.danger }]}>
-                        Delete
-                      </Text>
-                    </SoftPressable>
-                  </>
-                )}
-              </View>
-            </View>
-          )}
-        />
-      ) : (
-        <FlatList
-          style={styles.list}
-          data={resultDays}
-          keyExtractor={(item: { dayKey: string }) => item.dayKey}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-          }
-          ListEmptyComponent={
-            <Text style={styles.empty}>
-              No {typeLabel.toLowerCase()} results yet. Upload from a match
-              above.
-            </Text>
-          }
-          renderItem={({ item: group }: { item: any }) => (
+                    {canEdit(item) && (
+                      <>
+                        <SoftPressable
+                          onPress={() =>
+                            navigation.navigate('AddEditScrim', { scrim: item })
+                          }
+                          pressScale={0.96}
+                        >
+                          <Text style={styles.action}>Edit</Text>
+                        </SoftPressable>
+                        <SoftPressable
+                          onPress={() => onDelete(item)}
+                          pressScale={0.96}
+                        >
+                          <Text style={[styles.action, { color: colors.danger }]}>
+                            Delete
+                          </Text>
+                        </SoftPressable>
+                      </>
+                    )}
+                  </View>
+                </View>
+              )}
+            />
+          ) : (
+            <FlatList
+              style={styles.list}
+              data={resultDays}
+              keyExtractor={(item: { dayKey: string }) => item.dayKey}
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+              }
+              ListEmptyComponent={
+                <Text style={styles.empty}>
+                  No {typeLabel.toLowerCase()} results yet. Upload from a match
+                  above.
+                </Text>
+              }
+              renderItem={({ item: group }: { item: any }) => (
             <View style={styles.dayCard}>
               <View style={styles.dayHeader}>
                 <Text style={styles.dayTitle}>{group.label}</Text>
@@ -329,8 +337,10 @@ export function MatchSchedulePanel({
               ))}
             </View>
           )}
-        />
-      )}
+            />
+          )
+        }
+      </BookStage>
 
       <View style={styles.bottomBar}>
         <SoftPressable
@@ -359,6 +369,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   tabPad: { paddingHorizontal: 16 },
+  stage: { flex: 1 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 28 },

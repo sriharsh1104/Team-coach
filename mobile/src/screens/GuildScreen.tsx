@@ -16,6 +16,7 @@ import { colors } from '../theme';
 import { sharedStyles } from './shared';
 import { CopyButton } from './profile/CopyButton';
 import { RoleSelector } from './RoleSelector';
+import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { SoftPressable } from '../ui/SoftPressable';
 import { Toast, useToast } from '../ui/Toast';
@@ -47,6 +48,7 @@ function errorMessage(err: unknown, fallback: string) {
 }
 
 type GuildTab = 'members' | 'roster';
+const GUILD_TAB_IDS: GuildTab[] = ['members', 'roster'];
 const GUILD_TABS = [
   { value: 'members' as const, label: 'Members' },
   { value: 'roster' as const, label: 'Roster' },
@@ -62,7 +64,8 @@ const GUILD_TABS = [
 export function GuildScreen({ navigation }: Props) {
   const { user } = useAuth();
   const [detail, setDetail] = useState<GuildDetail | null>(null);
-  const [tab, setTab] = useState<GuildTab>('members');
+  const { tab, openTab, turn } = useBookTabs(GUILD_TAB_IDS, 'members');
+  const guildTab = tab as GuildTab;
   const [busyId, setBusyId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { message: toastMessage, showToast } = useToast();
@@ -121,100 +124,111 @@ export function GuildScreen({ navigation }: Props) {
 
   return (
     <Screen>
-      <FlatList<GuildMemberRow | GuildRosterMember>
-        style={styles.list}
-        data={tab === 'members' ? members : roster}
-        keyExtractor={(item) => item.userId}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.chrome}
-          />
-        }
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={
-          <>
-            <Text style={sharedStyles.title}>{detail?.name ?? 'Guild'}</Text>
-            {detail ? (
-              <Text style={styles.summary}>
-                {GUILD_ROLE_LABEL[detail.myGuildRole]} · {members.length} member
-                {members.length === 1 ? '' : 's'} · {roster.length} on roster
+      <View style={styles.root}>
+        <View style={styles.header}>
+          <Text style={sharedStyles.title}>{detail?.name ?? 'Guild'}</Text>
+          {detail ? (
+            <Text style={styles.summary}>
+              {GUILD_ROLE_LABEL[detail.myGuildRole]} · {members.length} member
+              {members.length === 1 ? '' : 's'} · {roster.length} on roster
+            </Text>
+          ) : null}
+          {detail?.referralLink ? (
+            <View style={styles.inviteCard}>
+              <Text style={styles.inviteTitle}>Invite & Referral</Text>
+              <Text style={styles.inviteHint}>
+                Share your link (or guild code). People join the guild only.
+                Owner/coach can add them to the esports roster below, or share
+                a roster invite from Roster.
               </Text>
-            ) : null}
-            {detail?.referralLink ? (
-              <View style={styles.inviteCard}>
-                <Text style={styles.inviteTitle}>Invite & Referral</Text>
-                <Text style={styles.inviteHint}>
-                  Share your link (or guild code). People join the guild only.
-                  Owner/coach can add them to the esports roster below, or share
-                  a roster invite from Roster.
-                </Text>
-                <Text style={styles.inviteCount}>
-                  Your invites: {detail.myInviteCount} guild member
-                  {detail.myInviteCount === 1 ? '' : 's'}
-                </Text>
-                {detail.orgCode ? (
-                  <View style={styles.inviteRow}>
-                    <View style={styles.inviteTextCol}>
-                      <Text style={styles.inviteLabel}>Guild Code</Text>
-                      <Text style={styles.inviteValue}>{detail.orgCode}</Text>
-                    </View>
-                    <CopyButton value={detail.orgCode} />
-                  </View>
-                ) : null}
+              <Text style={styles.inviteCount}>
+                Your invites: {detail.myInviteCount} guild member
+                {detail.myInviteCount === 1 ? '' : 's'}
+              </Text>
+              {detail.orgCode ? (
                 <View style={styles.inviteRow}>
                   <View style={styles.inviteTextCol}>
-                    <Text style={styles.inviteLabel}>Invite Link</Text>
-                    <Text style={styles.inviteValue} numberOfLines={1}>
-                      {detail.referralLink}
-                    </Text>
+                    <Text style={styles.inviteLabel}>Guild Code</Text>
+                    <Text style={styles.inviteValue}>{detail.orgCode}</Text>
                   </View>
-                  <CopyButton value={detail.referralLink} />
+                  <CopyButton value={detail.orgCode} />
                 </View>
+              ) : null}
+              <View style={styles.inviteRow}>
+                <View style={styles.inviteTextCol}>
+                  <Text style={styles.inviteLabel}>Invite Link</Text>
+                  <Text style={styles.inviteValue} numberOfLines={1}>
+                    {detail.referralLink}
+                  </Text>
+                </View>
+                <CopyButton value={detail.referralLink} />
               </View>
-            ) : null}
-            <SegmentedTabs tabs={GUILD_TABS} value={tab} onChange={setTab} />
-          </>
-        }
-        renderItem={({ item }) =>
-          'guildRole' in item ? (
-            <MemberRow
-              member={item}
-              canManage={canManage}
-              busy={busyId === item.userId}
-              onAdd={(role) => onAdd(item, role)}
-              onPress={() =>
-                navigation.push('MemberProfile', {
-                  userId: item.userId,
-                  name: item.name,
-                })
+            </View>
+          ) : null}
+          <SegmentedTabs
+            tabs={GUILD_TABS}
+            value={guildTab}
+            onChange={(next) => openTab(next)}
+          />
+        </View>
+
+        <BookStage tab={tab} turn={turn} style={styles.stage}>
+          {(active) => (
+            <FlatList<GuildMemberRow | GuildRosterMember>
+              style={styles.list}
+              data={active === 'members' ? members : roster}
+              keyExtractor={(item) => item.userId}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={onRefresh}
+                  tintColor={colors.chrome}
+                />
+              }
+              contentContainerStyle={styles.listContent}
+              renderItem={({ item }) =>
+                'guildRole' in item ? (
+                  <MemberRow
+                    member={item}
+                    canManage={canManage}
+                    busy={busyId === item.userId}
+                    onAdd={(role) => onAdd(item, role)}
+                    onPress={() =>
+                      navigation.push('MemberProfile', {
+                        userId: item.userId,
+                        name: item.name,
+                      })
+                    }
+                  />
+                ) : (
+                  <RosterRow
+                    member={item}
+                    canManage={canManage}
+                    selfId={user?.id}
+                    busy={busyId === item.userId}
+                    onRemove={() => onRemove(item)}
+                    onPress={() =>
+                      navigation.push('MemberProfile', {
+                        userId: item.userId,
+                        name: item.name,
+                      })
+                    }
+                  />
+                )
+              }
+              ListEmptyComponent={
+                detail ? (
+                  <Text style={styles.empty}>
+                    {active === 'members'
+                      ? 'No guild members yet.'
+                      : 'No one is on the roster yet.'}
+                  </Text>
+                ) : null
               }
             />
-          ) : (
-            <RosterRow
-              member={item}
-              canManage={canManage}
-              selfId={user?.id}
-              busy={busyId === item.userId}
-              onRemove={() => onRemove(item)}
-              onPress={() =>
-                navigation.push('MemberProfile', {
-                  userId: item.userId,
-                  name: item.name,
-                })
-              }
-            />
-          )
-        }
-        ListEmptyComponent={
-          detail ? (
-            <Text style={styles.empty}>
-              {tab === 'members' ? 'No guild members yet.' : 'No one is on the roster yet.'}
-            </Text>
-          ) : null
-        }
-      />
+          )}
+        </BookStage>
+      </View>
       <Toast message={toastMessage} />
     </Screen>
   );
@@ -308,8 +322,11 @@ function RosterRow({
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
+  header: { paddingHorizontal: 24, paddingTop: 24 },
+  stage: { flex: 1 },
   list: { flex: 1, backgroundColor: 'transparent' },
-  listContent: { padding: 24 },
+  listContent: { paddingHorizontal: 24, paddingBottom: 24 },
   summary: {
     color: colors.textMuted,
     fontSize: 13,

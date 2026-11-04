@@ -2966,7 +2966,8 @@ a:hover {
   margin-bottom: 18px;
 }
 
-.guild-list-stage {
+.guild-list-stage,
+.media-book-stage {
   flex-shrink: 0;
   overflow: visible;
   min-height: 0;

@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleProp, ViewStyle } from 'react-native';
 
-const SKIP_MOTION = process.env.NODE_ENV === 'test';
+/** Babel often inlines NODE_ENV away from 'test' under Jest — detect jest itself. */
+const SKIP_MOTION =
+  typeof jest !== 'undefined' || process.env.NODE_ENV === 'test';
 
 /**
  * Fades + lightly lifts children whenever `contentKey` changes — used for

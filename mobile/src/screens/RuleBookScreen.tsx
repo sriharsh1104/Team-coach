@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
-import { FadeSwap } from '../ui/FadeSwap';
+import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { colors } from '../theme';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'RuleBook'>;
 
 type RuleBookTab = 'mindset' | 'gameplay' | 'principle';
+
+const RULE_TAB_IDS: RuleBookTab[] = ['mindset', 'gameplay', 'principle'];
 
 type Rule = {
   number: number;
@@ -254,7 +256,7 @@ function RuleList({ rules }: { rules: Rule[] }) {
 }
 
 export function RuleBookScreen(_props: Props) {
-  const [tab, setTab] = useState<RuleBookTab>('mindset');
+  const { tab, openTab, turn } = useBookTabs(RULE_TAB_IDS, 'mindset');
 
   return (
     <Screen>
@@ -269,8 +271,8 @@ export function RuleBookScreen(_props: Props) {
         </Text>
 
         <SegmentedTabs
-          value={tab}
-          onChange={setTab}
+          value={tab as RuleBookTab}
+          onChange={(next) => openTab(next)}
           tabs={
             [
               { value: 'mindset', label: 'Mindset' },
@@ -280,53 +282,51 @@ export function RuleBookScreen(_props: Props) {
           }
         />
 
-        <FadeSwap contentKey={tab}>
-          {tab === 'mindset' && (
-            <View>
-              <SectionHeader
-                eyebrow="Part 1"
-                title="Mindset & Discipline"
-                countLabel={`${MINDSET_RULES.length} rules`}
-              />
-              <RuleList rules={MINDSET_RULES} />
-            </View>
-          )}
-
-          {tab === 'gameplay' && (
-            <View>
-              <SectionHeader
-                eyebrow="Part 2"
-                title="Gameplay & Practice"
-                countLabel={`${GAMEPLAY_RULES.length} rules`}
-              />
-              <RuleList rules={GAMEPLAY_RULES} />
-            </View>
-          )}
-
-          {tab === 'principle' && (
-            <View>
-              <SectionHeader
-                eyebrow="Closing"
-                title="Final Team Principle"
-                countLabel="1 focus"
-              />
-              <View style={styles.principleCard}>
-                {FINAL_PRINCIPLE_LINES.map((line, index) => (
-                  <View
-                    key={line}
-                    style={[
-                      styles.principleRow,
-                      index === FINAL_PRINCIPLE_LINES.length - 1 &&
-                        styles.principleRowLast,
-                    ]}
-                  >
-                    <Text style={styles.principleLine}>{line}</Text>
-                  </View>
-                ))}
+        <BookStage tab={tab} turn={turn}>
+          {(active) =>
+            active === 'mindset' ? (
+              <View>
+                <SectionHeader
+                  eyebrow="Part 1"
+                  title="Mindset & Discipline"
+                  countLabel={`${MINDSET_RULES.length} rules`}
+                />
+                <RuleList rules={MINDSET_RULES} />
               </View>
-            </View>
-          )}
-        </FadeSwap>
+            ) : active === 'gameplay' ? (
+              <View>
+                <SectionHeader
+                  eyebrow="Part 2"
+                  title="Gameplay & Practice"
+                  countLabel={`${GAMEPLAY_RULES.length} rules`}
+                />
+                <RuleList rules={GAMEPLAY_RULES} />
+              </View>
+            ) : (
+              <View>
+                <SectionHeader
+                  eyebrow="Closing"
+                  title="Final Team Principle"
+                  countLabel="1 focus"
+                />
+                <View style={styles.principleCard}>
+                  {FINAL_PRINCIPLE_LINES.map((line, index) => (
+                    <View
+                      key={line}
+                      style={[
+                        styles.principleRow,
+                        index === FINAL_PRINCIPLE_LINES.length - 1 &&
+                          styles.principleRowLast,
+                      ]}
+                    >
+                      <Text style={styles.principleLine}>{line}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )
+          }
+        </BookStage>
       </ScrollView>
     </Screen>
   );

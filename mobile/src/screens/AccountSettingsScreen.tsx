@@ -20,17 +20,20 @@ import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
-import { FadeSwap } from '../ui/FadeSwap';
+import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { Toast, useToast } from '../ui/Toast';
 import { colors } from '../theme';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'AccountSettings'>;
 type Tab = 'password' | 'twoFactor' | 'biometric';
 
+const ACCOUNT_TAB_IDS: Tab[] = ['password', 'twoFactor', 'biometric'];
+
 export function AccountSettingsScreen({ navigation }: Props) {
   const { user, applyAuthResponse, refreshUser } = useAuth();
   const { message: toastMessage, showToast } = useToast();
-  const [tab, setTab] = useState<Tab>('password');
+  const { tab, openTab, turn } = useBookTabs(ACCOUNT_TAB_IDS, 'password');
+  const accountTab = tab as Tab;
 
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
@@ -136,12 +139,12 @@ export function AccountSettingsScreen({ navigation }: Props) {
               ['biometric', 'Biometric', 'Biometric Login'],
             ] as const
           ).map(([value, label, a11y]) => {
-            const active = tab === value;
+            const active = accountTab === value;
             return (
               <SoftPressable
                 key={value}
                 style={[styles.tab, active && styles.tabActive]}
-                onPress={() => setTab(value)}
+                onPress={() => openTab(value)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={a11y}
@@ -158,181 +161,179 @@ export function AccountSettingsScreen({ navigation }: Props) {
           })}
         </ScrollView>
 
-        <FadeSwap contentKey={tab}>
-          {tab === 'password' && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Change Password</Text>
-              {!user.hasPassword ? (
-                <Text style={styles.hint}>
-                  This account signs in with Google and has no password to
-                  change.
-                </Text>
-              ) : (
-                <>
+        <BookStage tab={tab} turn={turn}>
+          {(active) =>
+            active === 'password' ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Change Password</Text>
+                {!user.hasPassword ? (
                   <Text style={styles.hint}>
-                    Use at least 8 characters. You&apos;ll stay signed in after
-                    updating.
+                    This account signs in with Google and has no password to
+                    change.
                   </Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Current password"
-                    placeholderTextColor={colors.textDim}
-                    secureTextEntry
-                    value={currentPassword}
-                    onChangeText={setCurrentPassword}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="New password"
-                    placeholderTextColor={colors.textDim}
-                    secureTextEntry
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Confirm new password"
-                    placeholderTextColor={colors.textDim}
-                    secureTextEntry
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                  />
-                  <SoftPressable
-                    style={[
-                      styles.primaryBtn,
-                      (isSavingPassword || !canChangePassword) &&
-                        styles.btnDisabled,
-                    ]}
-                    disabled={isSavingPassword || !canChangePassword}
-                    onPress={onChangePassword}
-                    pressScale={0.98}
-                  >
-                    <ButtonLabel icon="save">
-                      {isSavingPassword ? 'Saving…' : 'Update Password'}
-                    </ButtonLabel>
-                  </SoftPressable>
-                </>
-              )}
-            </View>
-          )}
-
-          {tab === 'twoFactor' && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Two-Factor Authentication</Text>
-              <Text style={styles.hint}>
-                Uses Google Authenticator (or any TOTP-compatible app).
-              </Text>
-              <View
-                style={[
-                  styles.statusPill,
-                  user.twoFactorEnabled
-                    ? styles.statusOn
-                    : styles.statusOff,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor: user.twoFactorEnabled
-                        ? '#86efac'
-                        : colors.textDim,
-                    },
-                  ]}
-                />
-                <Text style={styles.statusText}>
-                  {user.twoFactorEnabled
-                    ? 'Enabled — code required at login'
-                    : 'Disabled — add an extra layer'}
-                </Text>
-              </View>
-
-              {user.twoFactorEnabled ? (
-                showDisableForm ? (
+                ) : (
                   <>
+                    <Text style={styles.hint}>
+                      Use at least 8 characters. You&apos;ll stay signed in after
+                      updating.
+                    </Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="Your password"
+                      placeholder="Current password"
                       placeholderTextColor={colors.textDim}
                       secureTextEntry
-                      value={disablePassword}
-                      onChangeText={setDisablePassword}
+                      value={currentPassword}
+                      onChangeText={setCurrentPassword}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="New password"
+                      placeholderTextColor={colors.textDim}
+                      secureTextEntry
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Confirm new password"
+                      placeholderTextColor={colors.textDim}
+                      secureTextEntry
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
                     />
                     <SoftPressable
                       style={[
                         styles.primaryBtn,
-                        (isDisabling || !disablePassword) && styles.btnDisabled,
+                        (isSavingPassword || !canChangePassword) &&
+                          styles.btnDisabled,
                       ]}
-                      disabled={isDisabling || !disablePassword}
-                      onPress={onDisableTwoFactor}
+                      disabled={isSavingPassword || !canChangePassword}
+                      onPress={onChangePassword}
                       pressScale={0.98}
                     >
-                      <ButtonLabel icon="trash">
-                        {isDisabling ? 'Disabling…' : 'Confirm Disable'}
+                      <ButtonLabel icon="save">
+                        {isSavingPassword ? 'Saving…' : 'Update Password'}
                       </ButtonLabel>
                     </SoftPressable>
                   </>
+                )}
+              </View>
+            ) : active === 'twoFactor' ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Two-Factor Authentication</Text>
+                <Text style={styles.hint}>
+                  Uses Google Authenticator (or any TOTP-compatible app).
+                </Text>
+                <View
+                  style={[
+                    styles.statusPill,
+                    user.twoFactorEnabled
+                      ? styles.statusOn
+                      : styles.statusOff,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.statusDot,
+                      {
+                        backgroundColor: user.twoFactorEnabled
+                          ? '#86efac'
+                          : colors.textDim,
+                      },
+                    ]}
+                  />
+                  <Text style={styles.statusText}>
+                    {user.twoFactorEnabled
+                      ? 'Enabled — code required at login'
+                      : 'Disabled — add an extra layer'}
+                  </Text>
+                </View>
+
+                {user.twoFactorEnabled ? (
+                  showDisableForm ? (
+                    <>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Your password"
+                        placeholderTextColor={colors.textDim}
+                        secureTextEntry
+                        value={disablePassword}
+                        onChangeText={setDisablePassword}
+                      />
+                      <SoftPressable
+                        style={[
+                          styles.primaryBtn,
+                          (isDisabling || !disablePassword) && styles.btnDisabled,
+                        ]}
+                        disabled={isDisabling || !disablePassword}
+                        onPress={onDisableTwoFactor}
+                        pressScale={0.98}
+                      >
+                        <ButtonLabel icon="trash">
+                          {isDisabling ? 'Disabling…' : 'Confirm Disable'}
+                        </ButtonLabel>
+                      </SoftPressable>
+                    </>
+                  ) : (
+                    <SoftPressable
+                      style={styles.dangerBtn}
+                      onPress={() => setShowDisableForm(true)}
+                      pressScale={0.98}
+                    >
+                      <ButtonLabel icon="trash" color={colors.danger}>
+                        Disable 2FA
+                      </ButtonLabel>
+                    </SoftPressable>
+                  )
                 ) : (
                   <SoftPressable
-                    style={styles.dangerBtn}
-                    onPress={() => setShowDisableForm(true)}
+                    style={styles.primaryBtn}
+                    onPress={() => navigation.navigate('TwoFactorSetup')}
                     pressScale={0.98}
                   >
-                    <ButtonLabel icon="trash" color={colors.danger}>
-                      Disable 2FA
-                    </ButtonLabel>
+                    <ButtonLabel icon="check">Enable 2FA</ButtonLabel>
                   </SoftPressable>
-                )
-              ) : (
-                <SoftPressable
-                  style={styles.primaryBtn}
-                  onPress={() => navigation.navigate('TwoFactorSetup')}
-                  pressScale={0.98}
-                >
-                  <ButtonLabel icon="check">Enable 2FA</ButtonLabel>
-                </SoftPressable>
-              )}
-            </View>
-          )}
-
-          {tab === 'biometric' && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Biometric Login</Text>
-              {!biometricAvailable ? (
-                <Text style={styles.hint}>
-                  {Platform.OS === 'web'
-                    ? "Biometric login isn't available in this browser preview — try it on a real device."
-                    : "Biometric login isn't available on this device (no Face ID/Touch ID/fingerprint set up)."}
-                </Text>
-              ) : (
-                <View style={styles.settingRow}>
-                  <View style={styles.settingTextCol}>
-                    <Text style={styles.settingLead}>
-                      Unlock with Face ID / Touch ID
-                    </Text>
-                    <Text style={styles.hint}>
-                      Skip retyping passwords when you reopen the app on this
-                      device.
-                    </Text>
+                )}
+              </View>
+            ) : (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Biometric Login</Text>
+                {!biometricAvailable ? (
+                  <Text style={styles.hint}>
+                    {Platform.OS === 'web'
+                      ? "Biometric login isn't available in this browser preview — try it on a real device."
+                      : "Biometric login isn't available on this device (no Face ID/Touch ID/fingerprint set up)."}
+                  </Text>
+                ) : (
+                  <View style={styles.settingRow}>
+                    <View style={styles.settingTextCol}>
+                      <Text style={styles.settingLead}>
+                        Unlock with Face ID / Touch ID
+                      </Text>
+                      <Text style={styles.hint}>
+                        Skip retyping passwords when you reopen the app on this
+                        device.
+                      </Text>
+                    </View>
+                    <Switch
+                      disabled={isTogglingBiometric}
+                      value={biometricEnabled}
+                      onValueChange={onToggleBiometric}
+                      accessibilityLabel="Enable biometric login"
+                      trackColor={{
+                        false: '#3a3d44',
+                        true: 'rgba(201,204,209,0.55)',
+                      }}
+                      thumbColor={
+                        biometricEnabled ? colors.chrome : '#9aa0a6'
+                      }
+                    />
                   </View>
-                  <Switch
-                    disabled={isTogglingBiometric}
-                    value={biometricEnabled}
-                    onValueChange={onToggleBiometric}
-                    accessibilityLabel="Enable biometric login"
-                    trackColor={{
-                      false: '#3a3d44',
-                      true: 'rgba(201,204,209,0.55)',
-                    }}
-                    thumbColor={
-                      biometricEnabled ? colors.chrome : '#9aa0a6'
-                    }
-                  />
-                </View>
-              )}
-            </View>
-          )}
-        </FadeSwap>
+                )}
+              </View>
+            )
+          }
+        </BookStage>
       </ScrollView>
       <Toast message={toastMessage} />
     </Screen>

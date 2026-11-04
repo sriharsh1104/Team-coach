@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { resolveMediaUrl } from '../api/client';
 import * as mediaApi from '../api/media';
 import * as orgApi from '../api/org';
 import { MediaPost, OrgMember } from '../api/types';
+import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { SesLoader } from '../ui/SesLoader';
 
 function errorMessage(err: unknown, fallback: string) {
@@ -16,11 +17,17 @@ function errorMessage(err: unknown, fallback: string) {
  * teammate, filterable by uploader. Mirrors mobile's MediaFeedScreen. */
 export function MediaFeedPage() {
   const [members, setMembers] = useState<OrgMember[]>([]);
-  const [uploaderId, setUploaderId] = useState<string | null>(null);
   const [posts, setPosts] = useState<MediaPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewer, setViewer] = useState<MediaPost | null>(null);
+
+  const filterTabs = useMemo(
+    () => ['all', ...members.map((m) => m.userId)],
+    [members],
+  );
+  const { tab, openTab, turn } = useBookTabs(filterTabs, 'all');
+  const uploaderId = tab === 'all' ? null : tab;
 
   useEffect(() => {
     orgApi.getMyOrg().then((org) => setMembers(org.members)).catch(() => undefined);
@@ -59,9 +66,9 @@ export function MediaFeedPage() {
           <button
             type="button"
             role="tab"
-            aria-selected={uploaderId === null}
-            className={`pill-switch-btn${uploaderId === null ? ' active' : ''}`}
-            onClick={() => setUploaderId(null)}
+            aria-selected={tab === 'all'}
+            className={`pill-switch-btn${tab === 'all' ? ' active' : ''}`}
+            onClick={() => openTab('all')}
           >
             All
           </button>
@@ -70,9 +77,9 @@ export function MediaFeedPage() {
               key={m.userId}
               type="button"
               role="tab"
-              aria-selected={uploaderId === m.userId}
-              className={`pill-switch-btn${uploaderId === m.userId ? ' active' : ''}`}
-              onClick={() => setUploaderId(m.userId)}
+              aria-selected={tab === m.userId}
+              className={`pill-switch-btn${tab === m.userId ? ' active' : ''}`}
+              onClick={() => openTab(m.userId)}
             >
               {m.name}
             </button>
@@ -81,39 +88,49 @@ export function MediaFeedPage() {
 
         {error ? <p className="error">{error}</p> : null}
 
-        {loading ? (
-          <SesLoader label="Loading media" />
-        ) : (
-          <div className="media-grid">
-            {posts.map((post) => {
-              const url = resolveMediaUrl(post.url) ?? '';
-              return (
-                <button
-                  key={post.id}
-                  type="button"
-                  className="media-card"
-                  onClick={() => setViewer(post)}
-                >
-                  {post.type === 'IMAGE' ? (
-                    <img src={url} alt={post.caption ?? 'Upload'} className="media-thumb" />
-                  ) : (
-                    <div className="media-thumb media-thumb-video">▶</div>
-                  )}
-                  <div className="media-card-meta">
-                    <strong>{post.uploaderName}</strong>
-                    {post.caption ? (
-                      <span className="media-caption">{post.caption}</span>
-                    ) : null}
-                    <span className="muted">
-                      {new Date(post.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-            {posts.length === 0 ? <p className="muted">No uploads yet.</p> : null}
-          </div>
-        )}
+        <BookStage tab={tab} turn={turn} className="media-book-stage">
+          {() =>
+            loading ? (
+              <SesLoader label="Loading media" />
+            ) : (
+              <div className="media-grid">
+                {posts.map((post) => {
+                  const url = resolveMediaUrl(post.url) ?? '';
+                  return (
+                    <button
+                      key={post.id}
+                      type="button"
+                      className="media-card"
+                      onClick={() => setViewer(post)}
+                    >
+                      {post.type === 'IMAGE' ? (
+                        <img
+                          src={url}
+                          alt={post.caption ?? 'Upload'}
+                          className="media-thumb"
+                        />
+                      ) : (
+                        <div className="media-thumb media-thumb-video">▶</div>
+                      )}
+                      <div className="media-card-meta">
+                        <strong>{post.uploaderName}</strong>
+                        {post.caption ? (
+                          <span className="media-caption">{post.caption}</span>
+                        ) : null}
+                        <span className="muted">
+                          {new Date(post.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+                {posts.length === 0 ? (
+                  <p className="muted">No uploads yet.</p>
+                ) : null}
+              </div>
+            )
+          }
+        </BookStage>
       </div>
 
       {viewer ? (

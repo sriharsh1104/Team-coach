@@ -16,7 +16,7 @@ import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { SoftPressable } from '../../ui/SoftPressable';
-import { FadeSwap } from '../../ui/FadeSwap';
+import { BookStage, useBookTabs } from '../../ui/BookTabs';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { PhoneField } from '../../ui/PhoneField';
 import { Toast, useToast } from '../../ui/Toast';
@@ -30,6 +30,8 @@ import {
 import { colors } from '../../theme';
 
 type ProfileTab = 'user' | 'game' | 'devices' | 'social';
+
+const PROFILE_TAB_IDS: ProfileTab[] = ['user', 'game', 'devices', 'social'];
 
 // IGN, UID and phone are compulsory for every user — everything else
 // (socials) stays optional. Enforced here for both the one-time forced
@@ -46,7 +48,8 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
   const { message: toastMessage, showToast } = useToast();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [tab, setTab] = useState<ProfileTab>('user');
+  const { tab, openTab, turn } = useBookTabs(PROFILE_TAB_IDS, 'user');
+  const profileTab = tab as ProfileTab;
 
   const load = useCallback(async () => {
     const data = await usersApi.getMyProfile();
@@ -79,20 +82,20 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
 
   const tryOpenTab = (next: ProfileTab) => {
     if (!mustComplete) {
-      setTab(next);
+      openTab(next);
       return;
     }
     if (next === 'user') {
-      setTab('user');
+      openTab('user');
       return;
     }
     if (next === 'game') {
       if (!userDone) {
         showToast('Save your name and phone first.');
-        setTab('user');
+        openTab('user');
         return;
       }
-      setTab('game');
+      openTab('game');
       return;
     }
     // Devices / Social only after required User + Game are saved.
@@ -102,10 +105,10 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
           ? 'Save your name and phone first.'
           : 'Save your in-game name and UID first.',
       );
-      setTab(!userDone ? 'user' : 'game');
+      openTab(!userDone ? 'user' : 'game');
       return;
     }
-    setTab(next);
+    openTab(next);
   };
 
   if (isLoading || !profile) {
@@ -137,7 +140,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
         )}
 
         <SegmentedTabs
-          value={tab}
+          value={profileTab}
           onChange={tryOpenTab}
           tabs={
             [
@@ -149,46 +152,45 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
           }
         />
 
-        <FadeSwap contentKey={tab} style={styles.panelCard}>
-          {tab === 'user' && (
-            <UserProfileSection
-              profile={profile}
-              mustComplete={mustComplete}
-              onUpdated={onProfileUpdated}
-              onAdvance={() => setTab('game')}
-              showToast={showToast}
-            />
-          )}
-          {tab === 'game' && (
-            <GameProfileSection
-              profile={profile}
-              mustComplete={mustComplete}
-              onUpdated={onProfileUpdated}
-              onAdvance={() => setTab('devices')}
-              showToast={showToast}
-            />
-          )}
-          {tab === 'devices' && (
-            <DevicesProfileSection
-              profile={profile}
-              onDevicesChanged={load}
-              mustComplete={mustComplete}
-              onAdvance={() => setTab('social')}
-              showToast={showToast}
-            />
-          )}
-          {tab === 'social' && (
-            <SocialProfileSection
-              profile={profile}
-              mustComplete={mustComplete}
-              onUpdated={onProfileUpdated}
-              onAdvance={async () => {
-                await refreshUser();
-              }}
-              showToast={showToast}
-            />
-          )}
-        </FadeSwap>
+        <BookStage tab={tab} turn={turn} style={styles.panelCard}>
+          {(active) =>
+            active === 'user' ? (
+              <UserProfileSection
+                profile={profile}
+                mustComplete={mustComplete}
+                onUpdated={onProfileUpdated}
+                onAdvance={() => openTab('game')}
+                showToast={showToast}
+              />
+            ) : active === 'game' ? (
+              <GameProfileSection
+                profile={profile}
+                mustComplete={mustComplete}
+                onUpdated={onProfileUpdated}
+                onAdvance={() => openTab('devices')}
+                showToast={showToast}
+              />
+            ) : active === 'devices' ? (
+              <DevicesProfileSection
+                profile={profile}
+                onDevicesChanged={load}
+                mustComplete={mustComplete}
+                onAdvance={() => openTab('social')}
+                showToast={showToast}
+              />
+            ) : (
+              <SocialProfileSection
+                profile={profile}
+                mustComplete={mustComplete}
+                onUpdated={onProfileUpdated}
+                onAdvance={async () => {
+                  await refreshUser();
+                }}
+                showToast={showToast}
+              />
+            )
+          }
+        </BookStage>
       </ScrollView>
       <Toast message={toastMessage} />
     </Screen>
