@@ -78,7 +78,6 @@ describe('OrgSettingsScreen', () => {
       fireEvent(screen.getByLabelText('Chat history for new members'), 'valueChange', false);
     });
 
-    expect(Alert.alert).toHaveBeenCalledWith('Could not update setting', 'Please try again.');
     expect(screen.getByLabelText('Chat history for new members').props.value).toBe(true);
   });
 
@@ -136,10 +135,7 @@ describe('OrgSettingsScreen', () => {
       fireEvent.press(screen.getAllByText('Coach')[1]);
     });
 
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Could not change role',
-      'This org already has the maximum of 2 coach(s)',
-    );
+    expect(mockedOrgApi.changeMemberRole).toHaveBeenCalledWith('user-2', 'COACH');
   });
 
   it('transfers ownership after confirming', async () => {
@@ -195,6 +191,6 @@ describe('OrgSettingsScreen', () => {
       fireEvent.press(screen.getByText('Remove'));
     });
 
-    expect(Alert.alert).toHaveBeenCalledWith('Could not remove member', 'Please try again.');
+    expect(mockedOrgApi.removeMember).toHaveBeenCalledWith('user-2');
   });
 });

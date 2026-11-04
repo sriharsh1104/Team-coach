@@ -23,6 +23,15 @@ export type SideDrawerItem = {
   danger?: boolean;
 };
 
+export type SideDrawerSection = {
+  key: string;
+  /** Uppercase section heading (web `.sidebar-label` / `.sidebar-split`). */
+  label?: string;
+  /** Draw a top rule before the label — web Guild / Account splits. */
+  split?: boolean;
+  items: SideDrawerItem[];
+};
+
 /** Left slide-over menu — hamburger opens, backdrop or X closes. */
 export function SideDrawer({
   open,
@@ -30,13 +39,16 @@ export function SideDrawer({
   title,
   subtitle,
   items,
+  sections,
   footerItems = [],
 }: {
   open: boolean;
   onClose: () => void;
   title?: string;
   subtitle?: string;
-  items: SideDrawerItem[];
+  /** Flat list (legacy). Prefer `sections` for web-parity groupings. */
+  items?: SideDrawerItem[];
+  sections?: SideDrawerSection[];
   /** Pinned to the bottom of the drawer (e.g. Log Out). */
   footerItems?: SideDrawerItem[];
 }) {
@@ -54,6 +66,13 @@ export function SideDrawer({
       useNativeDriver: true,
     }).start();
   }, [open, slide]);
+
+  const resolvedSections: SideDrawerSection[] =
+    sections && sections.length > 0
+      ? sections.filter((s) => s.items.length > 0)
+      : items && items.length > 0
+        ? [{ key: 'main', items }]
+        : [];
 
   const renderItem = (item: SideDrawerItem) => (
     <SoftPressable
@@ -116,7 +135,23 @@ export function SideDrawer({
             contentContainerStyle={styles.items}
             showsVerticalScrollIndicator={false}
           >
-            {items.map(renderItem)}
+            {resolvedSections.map((section, index) => (
+              <View key={section.key} style={styles.section}>
+                {section.label ? (
+                  <Text
+                    style={[
+                      styles.sectionLabel,
+                      (section.split || index > 0) && styles.sectionSplit,
+                    ]}
+                  >
+                    {section.label}
+                  </Text>
+                ) : null}
+                <View style={styles.sectionItems}>
+                  {section.items.map(renderItem)}
+                </View>
+              </View>
+            ))}
           </ScrollView>
 
           {footerItems.length > 0 ? (
@@ -169,12 +204,14 @@ const styles = StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
   subtitle: {
     color: colors.textMuted,
     marginTop: 4,
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: '500',
   },
   closeBtn: {
     padding: 8,
@@ -187,7 +224,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   scroll: { flex: 1 },
-  items: { gap: 6, paddingBottom: 12 },
+  items: { gap: 4, paddingBottom: 12 },
+  section: { gap: 6 },
+  sectionLabel: {
+    marginHorizontal: 4,
+    marginBottom: 2,
+    color: colors.textDim,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  sectionSplit: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  sectionItems: { gap: 6 },
   footer: {
     gap: 6,
     borderTopWidth: StyleSheet.hairlineWidth,

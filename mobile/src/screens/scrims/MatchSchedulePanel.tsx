@@ -135,10 +135,7 @@ export function MatchSchedulePanel({
       await scrimsApi.deleteScrim(event.id);
       await load({ force: true });
     } catch (err: any) {
-      Alert.alert(
-        'Could not delete',
-        err?.response?.data?.message?.toString() ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     }
   };
 
@@ -179,11 +176,7 @@ export function MatchSchedulePanel({
       // shows a "still processing" state and polls until it's ready.
       navigation.navigate('ExtractionReview', { extraction: created[0] });
     } catch (err: any) {
-      Alert.alert(
-        'Could Not Extract Stats',
-        err?.response?.data?.message?.toString() ??
-          'Try a clearer Free Fire scoreboard screenshot.',
-      );
+      /* API error toasted by axios interceptor */
     } finally {
       setUploadingEventId(null);
     }

@@ -1,7 +1,37 @@
-import axios from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { beginLoader, endLoader } from '../ui/loaderBus';
+import { emitToast } from '../ui/toastBus';
 import { getToken, TOKEN_STORAGE_KEY } from '../storage/tokenStorage';
+import { apiErrorMessage } from './apiErrorMessage';
+
+type RequestConfigWithFlags = InternalAxiosRequestConfig & {
+  /** Set true to skip the global API-error toaster (e.g. silent /auth/me). */
+  skipErrorToast?: boolean;
+  /** Set true to skip the global SES loader overlay. */
+  skipLoader?: boolean;
+  __loaderStarted?: boolean;
+};
+
+function requestUrl(cfg?: RequestConfigWithFlags): string {
+  return `${cfg?.baseURL ?? ''}${cfg?.url ?? ''}`;
+}
+
+function shouldSkipErrorToast(error: AxiosError): boolean {
+  const cfg = error.config as RequestConfigWithFlags | undefined;
+  if (cfg?.skipErrorToast) return true;
+  // Bootstrapping session refresh — don't spam the UI on cold start / 401.
+  if (requestUrl(cfg).includes('/auth/me')) return true;
+  return false;
+}
+
+function shouldSkipLoader(cfg?: RequestConfigWithFlags): boolean {
+  if (cfg?.skipLoader) return true;
+  // Quiet background polls / session restore.
+  if (requestUrl(cfg).includes('/auth/me')) return true;
+  return false;
+}
 
 function resolveApiBaseUrl(): string {
   const configured =
@@ -33,9 +63,30 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use(async (requestConfig) => {
+  const cfg = requestConfig as RequestConfigWithFlags;
   const token = await getToken();
   if (token) {
-    requestConfig.headers.Authorization = `Bearer ${token}`;
+    cfg.headers.Authorization = `Bearer ${token}`;
   }
-  return requestConfig;
+  if (!shouldSkipLoader(cfg)) {
+    beginLoader();
+    cfg.__loaderStarted = true;
+  }
+  return cfg;
 });
+
+apiClient.interceptors.response.use(
+  (response) => {
+    const cfg = response.config as RequestConfigWithFlags;
+    if (cfg.__loaderStarted) endLoader();
+    return response;
+  },
+  (error: AxiosError) => {
+    const cfg = error.config as RequestConfigWithFlags | undefined;
+    if (cfg?.__loaderStarted) endLoader();
+    if (!shouldSkipErrorToast(error)) {
+      emitToast(apiErrorMessage(error));
+    }
+    return Promise.reject(error);
+  },
+);

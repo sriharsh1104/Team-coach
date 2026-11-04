@@ -1,11 +1,11 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as Google from 'expo-auth-session/providers/google';
 import * as ReactNavigation from '@react-navigation/native';
 import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { GoogleSignInButton } from '../GoogleSignInButton';
 import { useAuth } from '../AuthContext';
+import { emitToast } from '../../ui/toastBus';
 
 function renderButton() {
   return render(<GoogleSignInButton />);
@@ -17,6 +17,9 @@ jest.mock('expo-auth-session/providers/google', () => ({
 }));
 jest.mock('expo-constants', () => ({ expoConfig: { extra: {} } }));
 jest.mock('../AuthContext');
+jest.mock('../../ui/toastBus', () => ({
+  emitToast: jest.fn(),
+}));
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
   useNavigation: jest.fn(),
@@ -25,7 +28,10 @@ jest.mock('@react-navigation/native', () => ({
 const mockedUseIdTokenAuthRequest = Google.useIdTokenAuthRequest as jest.Mock;
 const mockedUseAuth = useAuth as jest.Mock;
 const mockedUseNavigation = ReactNavigation.useNavigation as jest.Mock;
-const mockedConstants = Constants as unknown as { expoConfig: { extra: Record<string, unknown> } };
+const mockedConstants = Constants as unknown as {
+  expoConfig: { extra: Record<string, unknown> };
+};
+const mockedEmitToast = emitToast as jest.Mock;
 
 const promptAsync = jest.fn();
 const loginWithGoogle = jest.fn();
@@ -33,7 +39,6 @@ const navigate = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockedConstants.expoConfig = { extra: {} };
   mockedUseAuth.mockReturnValue({ loginWithGoogle });
   mockedUseIdTokenAuthRequest.mockReturnValue([{}, null, promptAsync]);
@@ -41,16 +46,15 @@ beforeEach(() => {
 });
 
 describe('GoogleSignInButton', () => {
-  it('warns instead of prompting when Google sign-in is not configured', async () => {
+  it('toasts instead of prompting when Google sign-in is not configured', async () => {
     renderButton();
 
     await act(async () => {
       fireEvent.press(screen.getByText('Continue with Google'));
     });
 
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Google sign-in not configured',
-      'Add GOOGLE_WEB_CLIENT_ID / GOOGLE_ANDROID_CLIENT_ID to your mobile .env file.',
+    expect(mockedEmitToast).toHaveBeenCalledWith(
+      expect.stringContaining('not configured'),
     );
     expect(promptAsync).not.toHaveBeenCalled();
   });
@@ -77,7 +81,7 @@ describe('GoogleSignInButton', () => {
     });
 
     expect(promptAsync).toHaveBeenCalled();
-    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(mockedEmitToast).not.toHaveBeenCalled();
   });
 
   it('logs in with the id token on a successful response', async () => {
@@ -117,7 +121,7 @@ describe('GoogleSignInButton', () => {
     });
   });
 
-  it('shows an alert when loginWithGoogle rejects after a successful response', async () => {
+  it('toasts when loginWithGoogle rejects with a non-axios error', async () => {
     mockedConstants.expoConfig = { extra: { googleWebClientId: 'web-client-id' } };
     loginWithGoogle.mockRejectedValue({ message: 'Invalid Google token' });
     mockedUseIdTokenAuthRequest.mockReturnValue([
@@ -131,17 +135,19 @@ describe('GoogleSignInButton', () => {
       await Promise.resolve();
     });
 
-    expect(Alert.alert).toHaveBeenCalledWith('Google sign-in failed', 'Invalid Google token');
+    expect(mockedEmitToast).toHaveBeenCalledWith('Invalid Google token');
   });
 
-  it('shows an alert when the auth flow itself errors', async () => {
+  it('toasts when the auth flow itself errors', async () => {
     mockedConstants.expoConfig = { extra: { googleWebClientId: 'web-client-id' } };
     mockedUseIdTokenAuthRequest.mockReturnValue([{}, { type: 'error' }, promptAsync]);
     renderButton();
 
     await act(async () => {});
 
-    expect(Alert.alert).toHaveBeenCalledWith('Google sign-in failed', 'Please try again.');
+    expect(mockedEmitToast).toHaveBeenCalledWith(
+      'Google sign-in failed. Please try again.',
+    );
     expect(loginWithGoogle).not.toHaveBeenCalled();
   });
 });

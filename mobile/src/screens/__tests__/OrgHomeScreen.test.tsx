@@ -76,12 +76,17 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Org code copied')).toBeTruthy();
   });
 
-  it('opens the sidebar with all nav options (including owner-only Org Settings), with no Settings/Security or Logout in it', async () => {
+  it('opens the owner sidebar with Esports Arena / Guild / Account sections', async () => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');
 
     fireEvent.press(screen.getByLabelText('Open Menu'));
 
+    expect(screen.getByText('Sacred Esports')).toBeTruthy();
+    expect(screen.getByText('Esports Arena')).toBeTruthy();
+    expect(screen.getByText('Guild')).toBeTruthy();
+    expect(screen.getByText('Guild Roster')).toBeTruthy();
+    expect(screen.getByText('Account')).toBeTruthy();
     expect(screen.getByText('Chats')).toBeTruthy();
     expect(screen.getByText('Team Voice')).toBeTruthy();
     expect(screen.getByText('Media')).toBeTruthy();
@@ -91,12 +96,13 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Org Settings')).toBeTruthy();
     expect(screen.getByText('Profile')).toBeTruthy();
     expect(screen.getByText('Rule Book')).toBeTruthy();
+    expect(screen.getByText('Social Handles')).toBeTruthy();
     expect(screen.queryByText('Security')).toBeNull();
     expect(screen.queryByText('Logout')).toBeNull();
     expect(screen.queryByText('Log Out')).toBeNull();
   });
 
-  it('hides Org Settings from the sidebar when I am not the owner', async () => {
+  it('hides Guild and Org Settings from roster members who are not the owner', async () => {
     mockedUseAuth.mockReturnValue({
       logout,
       refreshOrg,
@@ -107,7 +113,13 @@ describe('OrgHomeScreen', () => {
     await screen.findByText('Alpha Squad');
 
     fireEvent.press(screen.getByLabelText('Open Menu'));
+    expect(screen.getByText('Esports Arena')).toBeTruthy();
+    expect(screen.getByText('Account')).toBeTruthy();
+    expect(screen.getByText('Chats')).toBeTruthy();
+    expect(screen.getByText('Profile')).toBeTruthy();
     expect(screen.queryByText('Org Settings')).toBeNull();
+    expect(screen.queryByText('Guild')).toBeNull();
+    expect(screen.queryByText('Guild Roster')).toBeNull();
   });
 
   it.each([

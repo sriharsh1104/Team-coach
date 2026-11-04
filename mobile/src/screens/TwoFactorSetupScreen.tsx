@@ -6,7 +6,6 @@ import {
   ScrollView,
   TextInput,
   Pressable,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -43,10 +42,7 @@ export function TwoFactorSetupScreen({ navigation }: Props) {
       setSecret(secret);
       setQrCodeDataUrl(qrCodeDataUrl);
     } catch (err: any) {
-      Alert.alert(
-        'Could not start setup',
-        err?.response?.data?.message ?? 'Check your password and try again.',
-      );
+      /* API error toasted by axios interceptor */
     } finally {
       setIsStarting(false);
     }
@@ -62,10 +58,7 @@ export function TwoFactorSetupScreen({ navigation }: Props) {
       await refreshUser();
       setBackupCodes(backupCodes);
     } catch (err: any) {
-      Alert.alert(
-        'Could not enable 2FA',
-        err?.response?.data?.message ?? 'Check the code and try again.',
-      );
+      /* API error toasted by axios interceptor */
     } finally {
       setIsEnabling(false);
     }

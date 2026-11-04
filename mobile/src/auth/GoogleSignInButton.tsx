@@ -1,13 +1,16 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Alert } from 'react-native';
+import { StyleSheet } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { isAxiosError } from 'axios';
 import { useAuth } from './AuthContext';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
+import { emitToast } from '../ui/toastBus';
+import { apiErrorMessage } from '../api/apiErrorMessage';
 import { AuthStackParamList } from '../navigation/types';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -34,10 +37,13 @@ export function GoogleSignInButton() {
           }
         })
         .catch((err) => {
-          Alert.alert('Google sign-in failed', err?.message ?? 'Unknown error');
+          // Axios API failures are toasted by the client interceptor.
+          if (!isAxiosError(err)) {
+            emitToast(apiErrorMessage(err, 'Google sign-in failed'));
+          }
         });
     } else if (response?.type === 'error') {
-      Alert.alert('Google sign-in failed', 'Please try again.');
+      emitToast('Google sign-in failed. Please try again.');
     }
   }, [response, loginWithGoogle, navigation]);
 
@@ -49,9 +55,8 @@ export function GoogleSignInButton() {
       disabled={isConfigured && !request}
       onPress={() => {
         if (!isConfigured) {
-          Alert.alert(
-            'Google sign-in not configured',
-            'Add GOOGLE_WEB_CLIENT_ID / GOOGLE_ANDROID_CLIENT_ID to your mobile .env file.',
+          emitToast(
+            'Google sign-in is not configured. Add GOOGLE_WEB_CLIENT_ID to your mobile .env.',
           );
           return;
         }

@@ -9,7 +9,7 @@ import { OrgDetail } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
-import { MenuButton, SideDrawer } from '../ui/SideDrawer';
+import { MenuButton, SideDrawer, SideDrawerSection } from '../ui/SideDrawer';
 import { SoftPressable } from '../ui/SoftPressable';
 import { Toast, useToast } from '../ui/Toast';
 import { ChatHubScreen } from './chat/ChatHubScreen';
@@ -23,6 +23,7 @@ export function OrgHomeScreen({ navigation }: Props) {
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const { message: toastMessage, showToast } = useToast();
   const insets = useSafeAreaInsets();
+  const isOwner = !!org?.isOwner;
 
   const copyOrgCode = async () => {
     if (!detail?.orgCode) return;
@@ -39,8 +40,10 @@ export function OrgHomeScreen({ navigation }: Props) {
     load();
   }, [load]);
 
-  const drawerItems = useMemo(
-    () => [
+  // Mirrors web AppShell: Esports Arena for roster, Guild for owners,
+  // Account for everyone. Non-owner roster members do not see Guild.
+  const drawerSections = useMemo((): SideDrawerSection[] => {
+    const arenaItems = [
       {
         key: 'chat',
         label: 'Chats',
@@ -49,9 +52,9 @@ export function OrgHomeScreen({ navigation }: Props) {
         },
       },
       {
-        key: 'voice',
-        label: 'Team Voice',
-        onPress: () => navigation.navigate('Voice'),
+        key: 'members',
+        label: 'Team Members',
+        onPress: () => navigation.navigate('Members'),
       },
       {
         key: 'media',
@@ -64,16 +67,16 @@ export function OrgHomeScreen({ navigation }: Props) {
         onPress: () => navigation.navigate('Stats', { mode: 'BR' }),
       },
       {
-        key: 'members',
-        label: 'Team Members',
-        onPress: () => navigation.navigate('Members'),
+        key: 'voice',
+        label: 'Team Voice',
+        onPress: () => navigation.navigate('Voice'),
       },
       {
-        key: 'guild',
-        label: 'Guild',
-        onPress: () => navigation.navigate('Guild'),
+        key: 'ruleBook',
+        label: 'Rule Book',
+        onPress: () => navigation.navigate('RuleBook'),
       },
-      ...(org?.isOwner
+      ...(isOwner
         ? [
             {
               key: 'orgSettings',
@@ -82,24 +85,51 @@ export function OrgHomeScreen({ navigation }: Props) {
             },
           ]
         : []),
+    ];
+
+    const sections: SideDrawerSection[] = [
       {
-        key: 'profile',
-        label: 'Profile',
-        onPress: () => navigation.navigate('Profile'),
+        key: 'arena',
+        label: 'Esports Arena',
+        items: arenaItems,
       },
-      {
-        key: 'ruleBook',
-        label: 'Rule Book',
-        onPress: () => navigation.navigate('RuleBook'),
-      },
-      {
-        key: 'socialHandles',
-        label: 'Social Handles',
-        onPress: () => navigation.navigate('SocialHandles'),
-      },
-    ],
-    [navigation, org?.isOwner],
-  );
+    ];
+
+    if (isOwner) {
+      sections.push({
+        key: 'guild',
+        label: 'Guild',
+        split: true,
+        items: [
+          {
+            key: 'guildHome',
+            label: 'Guild Roster',
+            onPress: () => navigation.navigate('Guild'),
+          },
+        ],
+      });
+    }
+
+    sections.push({
+      key: 'account',
+      label: 'Account',
+      split: true,
+      items: [
+        {
+          key: 'profile',
+          label: 'Profile',
+          onPress: () => navigation.navigate('Profile'),
+        },
+        {
+          key: 'socialHandles',
+          label: 'Social Handles',
+          onPress: () => navigation.navigate('SocialHandles'),
+        },
+      ],
+    });
+
+    return sections;
+  }, [navigation, isOwner]);
 
   return (
     <Screen>
@@ -147,9 +177,9 @@ export function OrgHomeScreen({ navigation }: Props) {
         <SideDrawer
           open={menuOpen}
           onClose={() => setMenuOpen(false)}
-          title={user?.name ?? 'Menu'}
-          subtitle={org?.name ?? detail?.name}
-          items={drawerItems}
+          title="Sacred Esports"
+          subtitle={org?.name ?? detail?.name ?? user?.name}
+          sections={drawerSections}
         />
       ) : null}
 

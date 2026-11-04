@@ -8,10 +8,11 @@ import { authStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
+import { AuthBackButton } from '../ui/AuthBackButton';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'CreateOrg'>;
 
-export function CreateOrgScreen({}: Props) {
+export function CreateOrgScreen({ navigation }: Props) {
   const { setOrg } = useAuth();
   const [name, setName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,11 +26,8 @@ export function CreateOrgScreen({}: Props) {
         `Share this with your team:\n\nOrg code: ${org.orgCode}`,
       );
       setOrg({ id: org.id, name: org.name, role: org.myRole, isOwner: org.isOwner });
-    } catch (err: any) {
-      Alert.alert(
-        'Could not create org',
-        err?.response?.data?.message ?? 'Please try again.',
-      );
+    } catch {
+      // API message is shown by the global axios → toaster interceptor.
     } finally {
       setIsSubmitting(false);
     }
@@ -37,6 +35,7 @@ export function CreateOrgScreen({}: Props) {
 
   return (
     <FormScreen>
+      <AuthBackButton onPress={() => navigation.navigate('OrgChoice')} />
       <Text style={authStyles.title}>Create an Org</Text>
       <Text style={{ color: '#9aa0a6', textAlign: 'center', marginBottom: 16 }}>
         You become the owner. A coach can be you or someone else.

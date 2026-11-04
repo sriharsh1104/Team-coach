@@ -24,6 +24,14 @@ beforeEach(() => {
 });
 
 describe('JoinOrgScreen', () => {
+  it('navigates back to OrgChoice', async () => {
+    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
+    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
+
+    await pressAndSettle('Back');
+    expect(navigation.navigate).toHaveBeenCalledWith('OrgChoice');
+  });
+
   it('blocks submission until an org code is entered', async () => {
     mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
     render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
@@ -118,8 +126,7 @@ describe('JoinOrgScreen', () => {
     });
   });
 
-  it('shows an alert and does not call setOrg on failure', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  it('does not call setOrg on failure (API toaster owns the message)', async () => {
     const setOrg = jest.fn();
     mockedUseAuth.mockReturnValue({ setOrg });
     mockedOrgApi.joinOrg.mockRejectedValue({
@@ -130,10 +137,6 @@ describe('JoinOrgScreen', () => {
     fireEvent.changeText(screen.getByPlaceholderText('Org code or invite link'), '75HCP3');
     await pressAndSettle('Join');
 
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Could not join org',
-      'This org already has the maximum of 5 players',
-    );
     expect(setOrg).not.toHaveBeenCalled();
   });
 });

@@ -90,7 +90,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
       const updated = await statsApi.retryExtraction(extraction.id);
       setExtraction(updated);
     } catch (err: any) {
-      Alert.alert('Could not retry', err?.response?.data?.message?.toString() ?? '');
+      /* API error toasted by axios interceptor */
     } finally {
       setIsRetrying(false);
     }
@@ -147,7 +147,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
       );
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert('Could not save', err?.response?.data?.message?.toString() ?? '');
+      /* API error toasted by axios interceptor */
     } finally {
       setIsSaving(false);
     }
@@ -164,10 +164,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
       await statsApi.rejectExtraction(extraction.id);
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert(
-        'Could not discard',
-        err?.response?.data?.message?.toString() ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     }
   };
 

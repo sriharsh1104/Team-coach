@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, TextInput, Alert } from 'react-native';
+import { Text, TextInput } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
 import { GoogleSignInButton } from '../auth/GoogleSignInButton';
@@ -28,11 +28,8 @@ export function LoginScreen({ navigation }: Props) {
           challengeToken: result.challengeToken,
         });
       }
-    } catch (err: any) {
-      Alert.alert(
-        'Login failed',
-        err?.response?.data?.message ?? 'Check your email and password.',
-      );
+    } catch {
+      // API message is shown by the global axios → toaster interceptor.
     } finally {
       setIsSubmitting(false);
     }

@@ -484,10 +484,7 @@ export function ChatScreen({
       });
       setDraft('');
     } catch (err: any) {
-      Alert.alert(
-        'Upload failed',
-        err?.response?.data?.message?.toString() ?? 'Could not upload media.',
-      );
+      /* API error toasted by axios interceptor */
     }
   };
 

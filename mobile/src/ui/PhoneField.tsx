@@ -20,7 +20,14 @@ export function PhoneField({ value, onChange, disabled }: Props) {
 
   function emit(nextCountry: ICountry | null, nextNational: string) {
     const cca2 = (nextCountry?.cca2 as CountryCode | undefined) ?? 'IN';
-    onChange(nationalToE164(nextNational, cca2));
+    const next = nationalToE164(nextNational, cca2);
+    // Keep the prefilled E.164 until the user actually edits the national number.
+    // Country init often fires with an empty national and would wipe the parent value.
+    if (!nextNational.trim() && initialE164) {
+      onChange(initialE164);
+      return;
+    }
+    onChange(next);
   }
 
   return (

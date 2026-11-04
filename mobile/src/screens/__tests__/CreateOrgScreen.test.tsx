@@ -24,6 +24,14 @@ beforeEach(() => {
 });
 
 describe('CreateOrgScreen', () => {
+  it('navigates back to OrgChoice', async () => {
+    mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
+    render(<CreateOrgScreen navigation={navigation} route={{} as any} />);
+
+    await pressAndSettle('Back');
+    expect(navigation.navigate).toHaveBeenCalledWith('OrgChoice');
+  });
+
   it('blocks submission until a name is entered', async () => {
     mockedUseAuth.mockReturnValue({ setOrg: jest.fn() });
     render(<CreateOrgScreen navigation={navigation} route={{} as any} />);
@@ -57,8 +65,7 @@ describe('CreateOrgScreen', () => {
     });
   });
 
-  it('shows an alert and does not call setOrg when creation fails', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  it('does not call setOrg when creation fails (API toaster owns the message)', async () => {
     const setOrg = jest.fn();
     mockedUseAuth.mockReturnValue({ setOrg });
     mockedOrgApi.createOrg.mockRejectedValue({
@@ -69,7 +76,6 @@ describe('CreateOrgScreen', () => {
     fireEvent.changeText(screen.getByPlaceholderText('Org / team name'), 'Alpha Squad');
     await pressAndSettle('Create Org');
 
-    expect(alertSpy).toHaveBeenCalledWith('Could not create org', 'You already belong to an org');
     expect(setOrg).not.toHaveBeenCalled();
   });
 });

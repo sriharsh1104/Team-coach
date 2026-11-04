@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, TextInput, Alert } from 'react-native';
+import { Text, TextInput } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
@@ -8,6 +8,7 @@ import { authStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
+import { AuthBackButton } from '../ui/AuthBackButton';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
 
@@ -16,7 +17,7 @@ type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
 // the two never collide, so one input field can accept either.
 const ORG_CODE_LENGTH = 8;
 
-export function JoinOrgScreen({}: Props) {
+export function JoinOrgScreen({ navigation }: Props) {
   const { setOrg } = useAuth();
   const [orgCode, setOrgCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,11 +37,8 @@ export function JoinOrgScreen({}: Props) {
           : { referralToken: trimmed },
       );
       setOrg({ id: org.id, name: org.name, role: org.myRole, isOwner: org.isOwner });
-    } catch (err: any) {
-      Alert.alert(
-        'Could not join org',
-        err?.response?.data?.message ?? 'Check the code and try again.',
-      );
+    } catch {
+      // API message is shown by the global axios → toaster interceptor.
     } finally {
       setIsSubmitting(false);
     }
@@ -48,6 +46,7 @@ export function JoinOrgScreen({}: Props) {
 
   return (
     <FormScreen>
+      <AuthBackButton onPress={() => navigation.navigate('OrgChoice')} />
       <Text style={authStyles.title}>Join an Org</Text>
       <Text style={{ textAlign: 'center', color: '#9aa0a6', marginBottom: 16 }}>
         You join as a Player. The org owner can promote you to Coach or Analyst.

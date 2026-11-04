@@ -118,10 +118,7 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
       }
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert(
-        'Could not save',
-        err?.response?.data?.message?.toString() ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     } finally {
       setIsSaving(false);
     }
@@ -139,10 +136,7 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
       await scrimsApi.deleteScrim(existing.id);
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert(
-        'Could not delete',
-        err?.response?.data?.message?.toString() ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     }
   };
 

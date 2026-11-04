@@ -1,5 +1,4 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { LoginScreen } from '../LoginScreen';
 import { useAuth } from '../../auth/AuthContext';
@@ -61,8 +60,7 @@ describe('LoginScreen', () => {
     expect(login).toHaveBeenCalledWith('player1@example.com', 'password123');
   });
 
-  it('shows an alert with the server message when login fails', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  it('swallows login failures locally (API toaster is owned by the axios interceptor)', async () => {
     const login = jest.fn().mockRejectedValue({
       response: { data: { message: 'Invalid email or password' } },
     });
@@ -73,7 +71,8 @@ describe('LoginScreen', () => {
     fireEvent.changeText(screen.getByPlaceholderText('Password'), 'wrong');
     await pressAndSettle('Log In');
 
-    expect(alertSpy).toHaveBeenCalledWith('Login failed', 'Invalid email or password');
+    expect(login).toHaveBeenCalled();
+    expect(screen.getByText('Log In')).toBeTruthy();
   });
 
   it('navigates to TwoFactorChallenge instead of completing login when the account has 2FA enabled', async () => {

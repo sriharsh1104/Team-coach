@@ -6,7 +6,6 @@ import {
   Pressable,
   RefreshControl,
   Switch,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -62,10 +61,7 @@ export function OrgSettingsScreen({ navigation }: Props) {
       await refreshOrg();
       await load();
     } catch (err: any) {
-      Alert.alert(
-        'Could not change role',
-        err?.response?.data?.message ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     }
   };
 
@@ -81,10 +77,7 @@ export function OrgSettingsScreen({ navigation }: Props) {
       await refreshOrg();
       await load();
     } catch (err: any) {
-      Alert.alert(
-        'Could not transfer ownership',
-        err?.response?.data?.message ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     }
   };
 
@@ -97,10 +90,7 @@ export function OrgSettingsScreen({ navigation }: Props) {
       );
     } catch (err: any) {
       setDetail((prev) => (prev ? { ...prev, historyVisibleToNewMembers: !value } : prev));
-      Alert.alert(
-        'Could not update setting',
-        err?.response?.data?.message ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     }
   };
 
@@ -116,10 +106,7 @@ export function OrgSettingsScreen({ navigation }: Props) {
       showToast(`${member.name} removed`);
       await load();
     } catch (err: any) {
-      Alert.alert(
-        'Could not remove member',
-        err?.response?.data?.message ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     }
   };
 

@@ -124,7 +124,6 @@ describe('ExtractionReviewScreen', () => {
 
     await pressAndSettle('Confirm & Save 1 Teammate(s)');
 
-    expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Extraction already reviewed');
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 

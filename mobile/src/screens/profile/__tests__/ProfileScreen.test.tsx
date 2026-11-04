@@ -445,12 +445,12 @@ describe('ProfileScreen', () => {
         phone: '+919999999999',
       });
       expect(mockRefreshUser).not.toHaveBeenCalled();
+      // Auto-advance to Game profile after User Continue.
+      await screen.findByText('Role(s)');
 
       // Completing the Game tab (IGN + UID) on top of the now-saved phone
       // satisfies isProfileComplete and triggers refreshUser.
       mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
-      goToGameTab();
-      await screen.findByText('Role(s)');
       fireEvent.changeText(screen.getByPlaceholderText('Your in-game name'), 'ShadowStrike');
       fireEvent.changeText(screen.getByPlaceholderText('Your in-game UID'), 'UID-0001');
       await act(async () => {

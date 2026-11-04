@@ -60,9 +60,52 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
 
   const onProfileUpdated = async (updated: Profile) => {
     setProfile(updated);
-    if (mustComplete && isFormComplete(updated.inGameName ?? '', updated.inGameUid ?? '', updated.phone ?? '')) {
+    if (
+      mustComplete &&
+      isFormComplete(
+        updated.inGameName ?? '',
+        updated.inGameUid ?? '',
+        updated.phone ?? '',
+      )
+    ) {
       await refreshUser();
     }
+  };
+
+  const userDone = !!profile?.phone?.trim();
+  const gameDone = !!(
+    profile?.inGameName?.trim() && profile?.inGameUid?.trim()
+  );
+
+  const tryOpenTab = (next: ProfileTab) => {
+    if (!mustComplete) {
+      setTab(next);
+      return;
+    }
+    if (next === 'user') {
+      setTab('user');
+      return;
+    }
+    if (next === 'game') {
+      if (!userDone) {
+        showToast('Save your name and phone first.');
+        setTab('user');
+        return;
+      }
+      setTab('game');
+      return;
+    }
+    // Devices / Social only after required User + Game are saved.
+    if (!userDone || !gameDone) {
+      showToast(
+        !userDone
+          ? 'Save your name and phone first.'
+          : 'Save your in-game name and UID first.',
+      );
+      setTab(!userDone ? 'user' : 'game');
+      return;
+    }
+    setTab(next);
   };
 
   if (isLoading || !profile) {
@@ -95,7 +138,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
 
         <SegmentedTabs
           value={tab}
-          onChange={setTab}
+          onChange={tryOpenTab}
           tabs={
             [
               { value: 'user', label: 'User' },
@@ -112,6 +155,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
               profile={profile}
               mustComplete={mustComplete}
               onUpdated={onProfileUpdated}
+              onAdvance={() => setTab('game')}
               showToast={showToast}
             />
           )}
@@ -120,6 +164,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
               profile={profile}
               mustComplete={mustComplete}
               onUpdated={onProfileUpdated}
+              onAdvance={() => setTab('devices')}
               showToast={showToast}
             />
           )}
@@ -127,13 +172,19 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
             <DevicesProfileSection
               profile={profile}
               onDevicesChanged={load}
+              mustComplete={mustComplete}
+              onAdvance={() => setTab('social')}
               showToast={showToast}
             />
           )}
           {tab === 'social' && (
             <SocialProfileSection
               profile={profile}
+              mustComplete={mustComplete}
               onUpdated={onProfileUpdated}
+              onAdvance={async () => {
+                await refreshUser();
+              }}
               showToast={showToast}
             />
           )}
@@ -148,18 +199,23 @@ function UserProfileSection({
   profile,
   mustComplete,
   onUpdated,
+  onAdvance,
   showToast,
 }: {
   profile: Profile;
   mustComplete: boolean;
-  onUpdated: (updated: Profile) => void;
+  onUpdated: (updated: Profile) => void | Promise<void>;
+  onAdvance?: () => void;
   showToast: (message: string) => void;
 }) {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState(profile.name);
-  const [phone, setPhone] = useState(profile.phone ?? '');
+  // Normalize once so prefilled bare digits still pass mustComplete canSave.
+  const [phone, setPhone] = useState(
+    () => coercePhoneToE164(profile.phone) || profile.phone || '',
+  );
 
   const phoneE164 = coercePhoneToE164(phone);
   const canSave =
@@ -173,8 +229,10 @@ function UserProfileSection({
         name: name.trim(),
         phone: phoneE164 || undefined,
       });
-      onUpdated(updated);
-      if (!mustComplete) {
+      await onUpdated(updated);
+      if (mustComplete) {
+        onAdvance?.();
+      } else {
         setIsEditing(false);
         showToast('Saved — your profile was updated.');
       }
@@ -231,7 +289,7 @@ function UserProfileSection({
         onPress={onSave}
         pressScale={0.98}
       >
-        <ButtonLabel icon="save">
+        <ButtonLabel icon={mustComplete ? 'arrow-forward' : 'save'}>
           {isSaving ? 'Saving…' : mustComplete ? 'Continue' : 'Save'}
         </ButtonLabel>
       </SoftPressable>
@@ -248,11 +306,13 @@ function GameProfileSection({
   profile,
   mustComplete,
   onUpdated,
+  onAdvance,
   showToast,
 }: {
   profile: Profile;
   mustComplete: boolean;
-  onUpdated: (updated: Profile) => void;
+  onUpdated: (updated: Profile) => void | Promise<void>;
+  onAdvance?: () => void;
   showToast: (message: string) => void;
 }) {
   const [isEditing, setIsEditing] = useState(mustComplete);
@@ -278,8 +338,11 @@ function GameProfileSection({
         inGameName: inGameName || undefined,
         inGameUid: inGameUid || undefined,
       });
-      onUpdated(updated);
-      if (!mustComplete) {
+      await onUpdated(updated);
+      if (mustComplete) {
+        // Required fields done — optional Devices next (web parity).
+        onAdvance?.();
+      } else {
         setIsEditing(false);
         showToast('Saved — your profile was updated.');
       }
@@ -350,7 +413,7 @@ function GameProfileSection({
         onPress={onSave}
         pressScale={0.98}
       >
-        <ButtonLabel icon="save">
+        <ButtonLabel icon={mustComplete ? 'arrow-forward' : 'save'}>
           {isSaving ? 'Saving…' : mustComplete ? 'Continue' : 'Save'}
         </ButtonLabel>
       </SoftPressable>
@@ -361,13 +424,17 @@ function GameProfileSection({
 function DevicesProfileSection({
   profile,
   onDevicesChanged,
+  mustComplete = false,
+  onAdvance,
   showToast,
 }: {
   profile: Profile;
   onDevicesChanged: () => Promise<void>;
+  mustComplete?: boolean;
+  onAdvance?: () => void;
   showToast: (message: string) => void;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(mustComplete);
   const [deviceName, setDeviceName] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
   const [isAddingDevice, setIsAddingDevice] = useState(false);
@@ -486,20 +553,33 @@ function DevicesProfileSection({
           Done
         </ButtonLabel>
       </SoftPressable>
+      {mustComplete ? (
+        <SoftPressable
+          style={[sharedStyles.button, { marginTop: 12 }]}
+          onPress={() => onAdvance?.()}
+          pressScale={0.98}
+        >
+          <ButtonLabel icon="arrow-forward">Continue</ButtonLabel>
+        </SoftPressable>
+      ) : null}
     </View>
   );
 }
 
 function SocialProfileSection({
   profile,
+  mustComplete = false,
   onUpdated,
+  onAdvance,
   showToast,
 }: {
   profile: Profile;
-  onUpdated: (updated: Profile) => void;
+  mustComplete?: boolean;
+  onUpdated: (updated: Profile) => void | Promise<void>;
+  onAdvance?: () => void | Promise<void>;
   showToast: (message: string) => void;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState(profile.whatsappUrl ?? '');
   const [instagramUrl, setInstagramUrl] = useState(profile.instagramUrl ?? '');
@@ -525,9 +605,13 @@ function SocialProfileSection({
         discordUrl: discordUrl.trim() || undefined,
         youtubeUrl: youtubeUrl.trim() || undefined,
       });
-      onUpdated(updated);
-      setIsEditing(false);
-      showToast('Saved — your profile was updated.');
+      await onUpdated(updated);
+      if (mustComplete) {
+        await onAdvance?.();
+      } else {
+        setIsEditing(false);
+        showToast('Saved — your profile was updated.');
+      }
     } catch (err: any) {
       const msg = err?.response?.data?.message;
       showToast(
@@ -557,6 +641,15 @@ function SocialProfileSection({
             Edit
           </ButtonLabel>
         </SoftPressable>
+        {mustComplete ? (
+          <SoftPressable
+            style={[sharedStyles.button, { marginTop: 12 }]}
+            onPress={() => void onAdvance?.()}
+            pressScale={0.98}
+          >
+            <ButtonLabel icon="arrow-forward">Continue</ButtonLabel>
+          </SoftPressable>
+        ) : null}
       </View>
     );
   }
@@ -598,7 +691,9 @@ function SocialProfileSection({
         onPress={onSave}
         pressScale={0.98}
       >
-        <ButtonLabel icon="save">{isSaving ? 'Saving…' : 'Save'}</ButtonLabel>
+        <ButtonLabel icon="save">
+          {isSaving ? 'Saving…' : mustComplete ? 'Continue' : 'Save'}
+        </ButtonLabel>
       </SoftPressable>
     </View>
   );

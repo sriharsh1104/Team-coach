@@ -55,7 +55,7 @@ describe('TwoFactorSetupScreen', () => {
     render(<TwoFactorSetupScreen navigation={navigation} route={{} as any} />);
     await startSetup('WrongPass1!');
 
-    expect(Alert.alert).toHaveBeenCalledWith('Could not start setup', 'Incorrect password');
+    expect(Alert.alert).not.toHaveBeenCalled();
     expect(screen.getByText('Confirm your password')).toBeTruthy();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
@@ -102,7 +102,7 @@ describe('TwoFactorSetupScreen', () => {
     fireEvent.changeText(screen.getByPlaceholderText('6-digit code'), '000000');
     await pressAndSettle('Enable');
 
-    expect(Alert.alert).toHaveBeenCalledWith('Could not enable 2FA', 'Invalid code');
+    expect(Alert.alert).not.toHaveBeenCalled();
     expect(screen.queryByText('Two-Factor Authentication Enabled')).toBeNull();
   });
 });

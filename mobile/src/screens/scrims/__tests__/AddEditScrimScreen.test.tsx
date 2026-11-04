@@ -205,10 +205,6 @@ describe('AddEditScrimScreen', () => {
     );
     await pressAndSettle('Save');
 
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Could not save',
-      'A scrim already exists at that time',
-    );
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { SignupScreen } from '../SignupScreen';
 import { useAuth } from '../../auth/AuthContext';
@@ -26,10 +25,20 @@ function fillForm({
   name = 'Player One',
   email = 'player1@example.com',
   password = 'Password123!',
-}: { name?: string; email?: string; password?: string } = {}) {
+  confirmPassword = password,
+}: {
+  name?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+} = {}) {
   fireEvent.changeText(screen.getByPlaceholderText('Full name'), name);
   fireEvent.changeText(screen.getByPlaceholderText('Email'), email);
   fireEvent.changeText(screen.getByPlaceholderText('Password'), password);
+  fireEvent.changeText(
+    screen.getByPlaceholderText('Confirm password'),
+    confirmPassword,
+  );
 }
 
 beforeEach(() => {
@@ -37,7 +46,7 @@ beforeEach(() => {
 });
 
 describe('SignupScreen', () => {
-  it('blocks submission until name, email, and a strong password are all present', async () => {
+  it('blocks submission until name, email, strong password, and matching confirm are present', async () => {
     const signup = jest.fn();
     mockedUseAuth.mockReturnValue({ signup });
     renderScreen();
@@ -46,8 +55,12 @@ describe('SignupScreen', () => {
     await pressAndSettle('Sign Up');
     expect(signup).not.toHaveBeenCalled();
 
-    // Long enough but missing an uppercase letter and a special character.
     fillForm({ password: 'password123' });
+    await pressAndSettle('Sign Up');
+    expect(signup).not.toHaveBeenCalled();
+
+    fillForm({ password: 'Password123!', confirmPassword: 'Password123?' });
+    expect(screen.getByText('Passwords do not match.')).toBeTruthy();
     await pressAndSettle('Sign Up');
     expect(signup).not.toHaveBeenCalled();
 
@@ -64,7 +77,11 @@ describe('SignupScreen', () => {
     fillForm({ name: '  Player One  ', email: '  player1@example.com  ' });
     await pressAndSettle('Sign Up');
 
-    expect(signup).toHaveBeenCalledWith('player1@example.com', 'Password123!', 'Player One');
+    expect(signup).toHaveBeenCalledWith(
+      'player1@example.com',
+      'Password123!',
+      'Player One',
+    );
   });
 
   it('navigates to EmailVerification with the challenge token when the server requires it', async () => {
@@ -83,8 +100,7 @@ describe('SignupScreen', () => {
     });
   });
 
-  it('shows an alert on signup failure (e.g. duplicate email)', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  it('leaves API failures to the global toaster and stays on the form', async () => {
     const signup = jest.fn().mockRejectedValue({
       response: { data: { message: 'An account with this email already exists' } },
     });
@@ -94,10 +110,16 @@ describe('SignupScreen', () => {
     fillForm();
     await pressAndSettle('Sign Up');
 
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Signup failed',
-      'An account with this email already exists',
-    );
+    expect(signup).toHaveBeenCalled();
+    expect(screen.getByText('Sign Up')).toBeTruthy();
+  });
+
+  it('goes back to Login via the back control', () => {
+    mockedUseAuth.mockReturnValue({ signup: jest.fn() });
+    renderScreen();
+
+    fireEvent.press(screen.getByLabelText('Back'));
+    expect(navigation.navigate).toHaveBeenCalledWith('Login');
   });
 
   it('navigates to Login when the link is pressed', () => {

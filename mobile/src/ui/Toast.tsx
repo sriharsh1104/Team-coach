@@ -1,24 +1,30 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme';
+import { setToastListener } from './toastBus';
 
 interface Props {
   message: string | null;
 }
 
 /**
- * Fixed top-right banner. Each screen owns its own message state via
- * `useToast()` below — no global queue/context, since every call site today
- * just wants to show one short-lived confirmation or error at a time. No
- * fade animation — a plain show/hide keeps this simple and avoids Animated
- * timers outliving a test's render/unmount cycle.
+ * Fixed top-right banner. Prefer the app-root `ToastProvider` for API errors
+ * (wired through axios). Screens can still use local `useToast()` for
+ * success confirmations scoped to that screen.
  */
 export function Toast({ message }: Props) {
   if (!message) return null;
 
   return (
-    <View style={styles.container} pointerEvents="none">
-      <Text style={styles.text} numberOfLines={2}>
+    <View style={styles.container} pointerEvents="none" accessibilityLiveRegion="polite">
+      <Text style={styles.text} numberOfLines={3}>
         {message}
       </Text>
     </View>
@@ -38,11 +44,55 @@ export function useToast(durationMs = 2000) {
     [durationMs],
   );
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   return { message, showToast };
+}
+
+type ToastContextValue = {
+  showToast: (text: string, durationMs?: number) => void;
+};
+
+const ToastContext = createContext<ToastContextValue | null>(null);
+
+/** App-root host — one banner for API / global toasts. */
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [message, setMessage] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((text: string, durationMs = 4000) => {
+    if (timer.current) clearTimeout(timer.current);
+    setMessage(text);
+    timer.current = setTimeout(() => setMessage(null), durationMs);
+  }, []);
+
+  useEffect(() => {
+    setToastListener(showToast);
+    return () => {
+      setToastListener(null);
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [showToast]);
+
+  return (
+    <ToastContext.Provider value={{ showToast }}>
+      {children}
+      <Toast message={message} />
+    </ToastContext.Provider>
+  );
+}
+
+export function useAppToast() {
+  const ctx = useContext(ToastContext);
+  if (!ctx) {
+    throw new Error('useAppToast must be used inside ToastProvider');
+  }
+  return ctx;
 }
 
 const styles = StyleSheet.create({
@@ -50,12 +100,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 16,
     right: 16,
-    maxWidth: '70%',
+    maxWidth: '78%',
     backgroundColor: '#1c1c20',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 14,
     zIndex: 1000,
     elevation: 10,

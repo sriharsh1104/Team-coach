@@ -6,7 +6,6 @@ import {
   TextInput,
   Switch,
   Platform,
-  Alert,
   StyleSheet,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -69,10 +68,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
       setConfirmPassword('');
       showToast('Password changed');
     } catch (err: any) {
-      Alert.alert(
-        'Could not change password',
-        err?.response?.data?.message ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     } finally {
       setIsSavingPassword(false);
     }
@@ -87,10 +83,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
       setDisablePassword('');
       showToast('Two-factor authentication disabled');
     } catch (err: any) {
-      Alert.alert(
-        'Could not disable 2FA',
-        err?.response?.data?.message ?? 'Please try again.',
-      );
+      /* API error toasted by axios interceptor */
     } finally {
       setIsDisabling(false);
     }

@@ -165,7 +165,7 @@ describe('AccountSettingsScreen', () => {
     fireEvent.changeText(screen.getByPlaceholderText('Your password'), 'wrong');
     await pressAndSettle('Confirm Disable');
 
-    expect(Alert.alert).toHaveBeenCalledWith('Could not disable 2FA', 'Incorrect password');
+    expect(Alert.alert).not.toHaveBeenCalled();
   });
 
   describe('Biometric Login tab', () => {

@@ -221,11 +221,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
         `${created.length} screenshot(s) queued for processing${skippedNote}. We'll show them under Pending Review once they're ready.`,
       );
     } catch (err: any) {
-      Alert.alert(
-        'Could Not Queue Extraction',
-        err?.response?.data?.message?.toString() ??
-          'Try clearer Free Fire scoreboard screenshots.',
-      );
+      /* API error toasted by axios interceptor */
     } finally {
       setUploading(false);
     }
@@ -236,7 +232,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
       await statsApi.retryExtraction(id);
       await load(mode, { force: true });
     } catch (err: any) {
-      Alert.alert('Could not retry', err?.response?.data?.message?.toString() ?? '');
+      /* API error toasted by axios interceptor */
     }
   };
 
@@ -245,7 +241,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
       await statsApi.rejectExtraction(id);
       await load(mode, { force: true });
     } catch (err: any) {
-      Alert.alert('Could not discard', err?.response?.data?.message?.toString() ?? '');
+      /* API error toasted by axios interceptor */
     }
   };
 
