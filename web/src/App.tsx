@@ -8,6 +8,7 @@ import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { ManageTournamentRecordsPage } from './pages/ManageTournamentRecordsPage';
 import { MapsPage } from './pages/MapsPage';
+import { MediaFeedPage } from './pages/MediaFeedPage';
 import { MemberProfilePage } from './pages/MemberProfilePage';
 import { MembersPage } from './pages/MembersPage';
 import { PointsTablePage } from './pages/PointsTablePage';
@@ -16,6 +17,7 @@ import {
   JoinOrgPage,
   OrgChoicePage,
 } from './pages/OrgSetupPages';
+import { PlayerStatsPage } from './pages/stats/PlayerStatsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { RuleBookPage } from './pages/RuleBookPage';
 import { SecurityPage } from './pages/SecurityPage';
@@ -189,12 +191,14 @@ export default function App() {
         >
           <Route index element={<ChatPage />} />
           <Route path="members" element={<MembersPage />} />
+          <Route path="media" element={<MediaFeedPage />} />
           <Route path="profile" element={<Navigate to="/profile" replace />} />
           <Route
             path="tournament-records"
             element={<ManageTournamentRecordsPage />}
           />
           <Route path="stats" element={<StatsPage />} />
+          <Route path="stats/players/:userId" element={<PlayerStatsPage />} />
           <Route path="scrims" element={<Navigate to="/app/stats" replace />} />
           <Route path="maps" element={<MapsPage />} />
           <Route path="points-table" element={<PointsTablePage />} />

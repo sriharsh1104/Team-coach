@@ -311,6 +311,25 @@ export interface ModeHistoryResponse {
   nextCursor: string | null;
 }
 
+export interface PlayerStatEntry {
+  id: string;
+  userId: string;
+  mode: StatMode;
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  recordedAt: string;
+}
+
+export interface PlayerStatsDetail {
+  mode: StatMode;
+  totals: { kills: number; deaths: number; assists: number; damage: number };
+  matches: number;
+  entries: PlayerStatEntry[];
+  nextCursor: string | null;
+}
+
 export interface MediaPost {
   id: string;
   type: 'IMAGE' | 'VIDEO';

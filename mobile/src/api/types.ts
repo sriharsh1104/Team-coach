@@ -1,5 +1,7 @@
 export type MembershipRole = 'PLAYER' | 'COACH' | 'ANALYST';
 
+export type GuildRole = 'MEMBER' | 'ELDER' | 'ACTIVE_LEADER' | 'LEADER';
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -158,6 +160,37 @@ export interface OrgDetail {
   isOwner: boolean;
   historyVisibleToNewMembers: boolean;
   members: OrgMember[];
+}
+
+export interface GuildRosterMember {
+  userId: string;
+  name: string;
+  inGameName: string | null;
+  role: MembershipRole | null;
+  isOwner: boolean;
+}
+
+export interface GuildMemberRow {
+  userId: string;
+  name: string;
+  inGameName: string | null;
+  guildRole: GuildRole;
+  onRoster: boolean;
+  rosterRole: MembershipRole | null;
+  isOwner: boolean;
+}
+
+export interface GuildDetail {
+  id: string;
+  name: string;
+  // Non-null only for owners / coaches / guild leadership — see GET /orgs/guild/me.
+  orgCode: string | null;
+  referralLink: string | null;
+  myGuildRole: GuildRole;
+  onRoster: boolean;
+  canManageRoster: boolean;
+  roster: GuildRosterMember[];
+  members: GuildMemberRow[];
 }
 
 export type ScrimEventType = 'SCRIM' | 'TOURNAMENT';

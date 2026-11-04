@@ -61,6 +61,10 @@ model User {
   twoFactorSecret           String?
   twoFactorEnabled          Boolean  @default(false)
   twoFactorBackupCodeHashes String[] @default([])
+  // Absolute 30s time-step of the last TOTP code accepted (setup/enable or
+  // login) — rejects replaying the same or an older code within its validity
+  // window. Null until the first code is ever accepted.
+  lastTotpStep              Int?
 
   // False until the signup OTP is verified (/auth/verify-email) — true from
   // creation for Google accounts, since Google already requires a verified
@@ -85,6 +89,19 @@ model User {
 // this row rather than creating a new one. codeHash is bcrypt, same pattern
 // as User.twoFactorBackupCodeHashes. attempts caps wrong-code guesses before
 // the row is deleted and a fresh resend is required.
+// One row per logged-out access token — lets logout revoke the ONE session
+// that called it, not every device (tokenVersion on User is still bumped by
+// changePassword, which should kill every other session; this is narrower).
+// Rows are harmless to keep past expiresAt (the token itself would be
+// rejected by JWT expiry anyway by then) — no cleanup job required, just an
+// unbounded-but-slow-growing table in exchange for not needing a cron job.
+model RevokedToken {
+  jti       String   @id
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 model EmailVerificationCode {
   id        String   @id @default(cuid())
   userId    String   @unique
@@ -335,7 +352,11 @@ model Membership {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, orgId])
+  // A user has one roster seat, period — not just one per org. Enforced here
+  // at the DB level (not just the application's check-then-act
+  // assertUserHasNoOrg) so two concurrent join/create requests can't race
+  // past the "only one org" rule the application layer intends.
+  @@unique([userId])
 }
 
 // Community seat inside an org. Separate from Membership, which is the
@@ -351,7 +372,8 @@ model GuildMembership {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, orgId])
+  // One guild seat per user, same reasoning as Membership above.
+  @@unique([userId])
   @@index([orgId])
 }
 

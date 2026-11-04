@@ -19,6 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChatService } from '../chat/chat.service';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { MediasoupSfuService } from './mediasoup-sfu.service';
+import { WsRateLimiter } from '../common/ws-rate-limiter';
 
 interface VoiceSocketData {
   userId: string;
@@ -38,6 +39,12 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   server: Server;
 
   private readonly logger = new Logger(VoiceGateway.name);
+  // Shared across every signaling event — joining a busy room legitimately
+  // needs a handful of these per peer (one getRtpCapabilities, a couple of
+  // transports, one consume per other participant, ...); this bounds a
+  // single socket spamming createTransport/produce/consume to exhaust
+  // mediasoup worker resources, without getting in the way of real use.
+  private readonly signalingLimiter = new WsRateLimiter(50, 10_000);
 
   constructor(
     private readonly jwtService: JwtService,
@@ -119,10 +126,18 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     this.server
       .to(this.roomFor(data.orgId))
       .emit('peerLeft', { userId: data.userId });
+    this.signalingLimiter.clear(client.id);
+  }
+
+  private assertNotRateLimited(client: Socket) {
+    if (!this.signalingLimiter.allow(client.id)) {
+      throw new Error('Too many signaling requests — slow down');
+    }
   }
 
   @SubscribeMessage('getRtpCapabilities')
   async onGetRtpCapabilities(@ConnectedSocket() client: Socket) {
+    this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
     const room = await this.sfu.getOrCreateRoom(data.orgId);
     return room.router.rtpCapabilities;
@@ -130,6 +145,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   @SubscribeMessage('getProducers')
   onGetProducers(@ConnectedSocket() client: Socket) {
+    this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
     return this.sfu
       .listProducers(data.orgId)
@@ -138,6 +154,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   @SubscribeMessage('createTransport')
   async onCreateTransport(@ConnectedSocket() client: Socket) {
+    this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
     const transport = await this.sfu.createWebRtcTransport(data.orgId);
     data.transports.set(transport.id, transport);
@@ -155,6 +172,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { transportId: string; dtlsParameters: unknown },
   ) {
+    this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
     const transport = data.transports.get(body.transportId);
     if (!transport) throw new Error('Unknown transport');
@@ -168,6 +186,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     @MessageBody()
     body: { transportId: string; kind: 'audio'; rtpParameters: unknown },
   ) {
+    this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
     const transport = data.transports.get(body.transportId);
     if (!transport) throw new Error('Unknown transport');
@@ -204,6 +223,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
       rtpCapabilities: unknown;
     },
   ) {
+    this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
     const transport = data.transports.get(body.transportId);
     if (!transport) throw new Error('Unknown transport');
@@ -234,6 +254,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { consumerId: string },
   ) {
+    this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
     const consumer = data.consumers.get(body.consumerId);
     await consumer?.resume();

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { uploadMediaFile } from '../../api/media';
 import * as statsApi from '../../api/stats';
 import {
@@ -288,7 +289,12 @@ export function GrindPanel({
                     >
                       <td className="record-sno">{i + 1}</td>
                       <td>
-                        <strong>{row.name}</strong>
+                        <Link
+                          to={`/app/stats/players/${row.userId}?mode=${mode}`}
+                          className="member-name-link"
+                        >
+                          <strong>{row.name}</strong>
+                        </Link>
                       </td>
                       <td className="points-col">{row.kills}</td>
                       <td className="points-col">{row.deaths}</td>

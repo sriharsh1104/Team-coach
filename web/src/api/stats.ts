@@ -3,6 +3,7 @@ import {
   ExtractionRow,
   LeaderboardRow,
   ModeHistoryResponse,
+  PlayerStatsDetail,
   RequestExtractionsInput,
   RequestExtractionsResponse,
   StatExtraction,
@@ -65,6 +66,18 @@ export function getModeHistory(
 ) {
   return apiClient
     .get<ModeHistoryResponse>('/stats/history', {
+      params: { mode, ...pagination },
+    })
+    .then((res) => res.data);
+}
+
+export function getPlayerStats(
+  userId: string,
+  mode: StatMode,
+  pagination?: { cursor?: string; limit?: number },
+) {
+  return apiClient
+    .get<PlayerStatsDetail>(`/stats/players/${userId}`, {
       params: { mode, ...pagination },
     })
     .then((res) => res.data);

@@ -8,12 +8,14 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailerService } from '../mailer/mailer.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { TwoFactorSetupDto } from './dto/two-factor-setup.dto';
 import { TwoFactorEnableDto } from './dto/two-factor-enable.dto';
 import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
 import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
@@ -37,6 +39,12 @@ const BCRYPT_SALT_ROUNDS = 12;
 const EMAIL_OTP_BCRYPT_SALT_ROUNDS = 6;
 const EMAIL_OTP_TTL_MINUTES = 10;
 const MAX_EMAIL_OTP_ATTEMPTS = 5;
+// Per-IP throttling (auth.controller.ts) only caps one attacker IP — it does
+// nothing against a few requests spread across different IPs, each well
+// under that limit, all targeting the SAME inbox. This cooldown caps the
+// actual thing that matters (how often one address gets emailed) regardless
+// of how many IPs ask for it.
+const EMAIL_OTP_RESEND_COOLDOWN_SECONDS = 30;
 
 interface TwoFactorChallengePayload {
   sub: string;
@@ -72,15 +80,23 @@ export class AuthService {
       throw new ConflictException('An account with this email already exists');
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
-    const user = existing
-      ? await this.prisma.user.update({
-          where: { id: existing.id },
-          data: { passwordHash, name: dto.name },
-        })
-      : await this.prisma.user.create({
-          data: { email, passwordHash, name: dto.name },
-        });
+    // An existing-but-unverified record is left exactly as it is — only a
+    // fresh OTP gets sent. Nobody has proven they own this email yet at this
+    // point (that's the whole purpose of the OTP about to be sent), so
+    // accepting dto.password/dto.name here would let anyone who merely knows
+    // the address overwrite the real signer-upper's password before they
+    // ever get to verify. A resubmitted signup is treated the same as
+    // resend-verification — whoever verifies gets in with the password set
+    // on the *first* signup call, never a later one.
+    const user =
+      existing ??
+      (await this.prisma.user.create({
+        data: {
+          email,
+          passwordHash: await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS),
+          name: dto.name,
+        },
+      }));
 
     // Signup never returns a session directly — the account isn't usable
     // until the emailed code is verified (see verifyEmailSignup). Letting a
@@ -100,6 +116,23 @@ export class AuthService {
   }
 
   private async issueEmailVerificationCode(userId: string, email: string) {
+    const existing = await this.prisma.emailVerificationCode.findUnique({
+      where: { userId },
+      select: { expiresAt: true },
+    });
+    if (existing) {
+      // expiresAt is always (last-issued time + TTL) — back that out to get
+      // when this address was last actually emailed, without needing a
+      // dedicated column.
+      const lastSentAt = existing.expiresAt.getTime() - EMAIL_OTP_TTL_MINUTES * 60 * 1000;
+      const sinceLastSend = Date.now() - lastSentAt;
+      if (sinceLastSend < EMAIL_OTP_RESEND_COOLDOWN_SECONDS * 1000) {
+        throw new ConflictException(
+          'A code was just sent to this email — please wait before requesting another.',
+        );
+      }
+    }
+
     const code = generateEmailOtp();
     const codeHash = await bcrypt.hash(code, EMAIL_OTP_BCRYPT_SALT_ROUNDS);
     const expiresAt = new Date(Date.now() + EMAIL_OTP_TTL_MINUTES * 60 * 1000);
@@ -139,7 +172,14 @@ export class AuthService {
   async verifyEmailSignup(dto: VerifyEmailDto) {
     const user = await this.resolveEmailVerificationChallenge(dto.challengeToken);
     if (user.emailVerified) {
-      return this.buildAuthResponse(user);
+      // Minting a session here with no code check at all — on the strength
+      // of nothing but holding a (possibly stale, leaked, or long-expired-
+      // looking but still-valid-for-15-minutes) challengeToken — would let
+      // mere possession of that token log in indefinitely once the account
+      // happens to be verified by any means. A legitimate double-submit
+      // (two tabs, a retried request) just needs to be told to log in
+      // normally instead, not silently handed a free session.
+      throw new ConflictException('This email is already verified — please log in');
     }
 
     const record = await this.prisma.emailVerificationCode.findUnique({
@@ -336,11 +376,15 @@ export class AuthService {
     }
 
     if (dto.code) {
-      const valid = user.twoFactorSecret
-        ? verifyTwoFactorCode(user.twoFactorSecret, dto.code)
-        : false;
-      if (!valid) throw new UnauthorizedException('Invalid code');
-      return this.buildAuthResponse(user);
+      const result = user.twoFactorSecret
+        ? verifyTwoFactorCode(user.twoFactorSecret, dto.code, user.lastTotpStep)
+        : { valid: false };
+      if (!result.valid) throw new UnauthorizedException('Invalid code');
+      const updated = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastTotpStep: result.step },
+      });
+      return this.buildAuthResponse(updated);
     }
 
     if (dto.backupCode) {
@@ -364,8 +408,24 @@ export class AuthService {
     throw new BadRequestException('A code or backup code is required');
   }
 
-  async setupTwoFactor(userId: string) {
+  // Required before touching anything 2FA-related (setup/enable/disable) —
+  // a valid access token alone must never be enough to plant, replace, or
+  // remove a victim's 2FA, since a token can be stolen/leaked independently
+  // of the account password.
+  private async assertCurrentPassword(userId: string, password: string) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.passwordHash) {
+      throw new BadRequestException('This account has no password set');
+    }
+    const matches = await bcrypt.compare(password, user.passwordHash);
+    if (!matches) {
+      throw new UnauthorizedException('Incorrect password');
+    }
+    return user;
+  }
+
+  async setupTwoFactor(userId: string, dto: TwoFactorSetupDto) {
+    const user = await this.assertCurrentPassword(userId, dto.password);
     const { base32: secret, otpauthUrl } = generateTwoFactorSecret(user.email);
     await this.prisma.user.update({
       where: { id: userId },
@@ -376,12 +436,16 @@ export class AuthService {
   }
 
   async enableTwoFactor(userId: string, dto: TwoFactorEnableDto) {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const user = await this.assertCurrentPassword(userId, dto.password);
     if (!user.twoFactorSecret) {
       throw new BadRequestException('Call /auth/2fa/setup first');
     }
-    const valid = verifyTwoFactorCode(user.twoFactorSecret, dto.code);
-    if (!valid) {
+    const result = verifyTwoFactorCode(
+      user.twoFactorSecret,
+      dto.code,
+      user.lastTotpStep,
+    );
+    if (!result.valid) {
       throw new UnauthorizedException('Invalid code');
     }
 
@@ -391,21 +455,18 @@ export class AuthService {
     );
     await this.prisma.user.update({
       where: { id: userId },
-      data: { twoFactorEnabled: true, twoFactorBackupCodeHashes: hashes },
+      data: {
+        twoFactorEnabled: true,
+        twoFactorBackupCodeHashes: hashes,
+        lastTotpStep: result.step,
+      },
     });
 
     return { backupCodes };
   }
 
   async disableTwoFactor(userId: string, dto: TwoFactorDisableDto) {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    if (!user.passwordHash) {
-      throw new BadRequestException('This account has no password set');
-    }
-    const matches = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!matches) {
-      throw new UnauthorizedException('Incorrect password');
-    }
+    await this.assertCurrentPassword(userId, dto.password);
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -442,13 +503,23 @@ export class AuthService {
     return this.buildAuthResponse(updated);
   }
 
-  async logout(userId: string) {
-    // Bumping tokenVersion invalidates every outstanding token for this
-    // user (all devices/sessions), not just whichever one called this —
-    // simple, and fine for this app's scale; see JwtStrategy.validate.
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { tokenVersion: { increment: 1 } },
+  // `exp` is always present in practice — it comes from the verified JWT
+  // itself (JwtStrategy.validate), not something the caller supplies — the
+  // `| undefined` only reflects jsonwebtoken's own typing for a decoded
+  // payload. Falls back to a 30-day TTL in that in-practice-unreachable case
+  // so the revocation row still has a sane expiresAt rather than "now".
+  async logout(jti: string, exp?: number) {
+    // Revokes only THIS token/session — see JwtStrategy.validate and
+    // RevokedToken's own doc comment for why this is no longer the
+    // tokenVersion-bump used by changePassword (which should still kill
+    // every other session; a plain logout shouldn't).
+    const expiresAt = exp
+      ? new Date(exp * 1000)
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await this.prisma.revokedToken.upsert({
+      where: { jti },
+      create: { jti, expiresAt },
+      update: {},
     });
   }
 
@@ -496,6 +567,9 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       tokenVersion: user.tokenVersion,
+      // Gives this specific token an identity RevokedToken can target —
+      // without it, logout would have no way to revoke only this session.
+      jti: randomUUID(),
     });
 
     return {

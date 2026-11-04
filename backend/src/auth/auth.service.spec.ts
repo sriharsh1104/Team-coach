@@ -52,6 +52,9 @@ describe('AuthService (unit)', () => {
       guildMembership: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      revokedToken: {
+        upsert: jest.fn().mockResolvedValue({}),
+      },
       ...prismaOverrides,
     } as unknown as PrismaService;
 
@@ -339,15 +342,18 @@ describe('AuthService (unit)', () => {
   });
 
   describe('logout', () => {
-    it('increments tokenVersion, invalidating every outstanding token for that user', async () => {
+    it('revokes only the one token (by jti), not every session for the user', async () => {
       const { service, prisma } = buildService();
+      const exp = Math.floor(Date.now() / 1000) + 3600;
 
-      await service.logout('user-1');
+      await service.logout('token-jti-1', exp);
 
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: 'user-1' },
-        data: { tokenVersion: { increment: 1 } },
+      expect(prisma.revokedToken.upsert).toHaveBeenCalledWith({
+        where: { jti: 'token-jti-1' },
+        create: { jti: 'token-jti-1', expiresAt: new Date(exp * 1000) },
+        update: {},
       });
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 });

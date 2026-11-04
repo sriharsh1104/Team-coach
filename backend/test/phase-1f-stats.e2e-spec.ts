@@ -169,7 +169,7 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
       ]);
     });
 
-    it('the worker marks a QUEUED extraction FAILED when GEMINI_API_KEY is not configured, with a clear reason', async () => {
+    it('the worker marks a QUEUED extraction FAILED when GEMINI_API_KEY is not configured, with a generic reason (no internal details leaked)', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
       const media = await uploadMedia(server, player1.accessToken);
 
@@ -190,7 +190,13 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
         .set('Authorization', `Bearer ${player1.accessToken}`)
         .expect(200);
       expect(res.body.status).toBe('FAILED');
-      expect(res.body.failureReason).toMatch(/GEMINI_API_KEY/);
+      // The real error (which would otherwise mention GEMINI_API_KEY, a raw
+      // SDK message, or a local file path) is only logged server-side now —
+      // the API response gets a fixed, generic message instead.
+      expect(res.body.failureReason).toBe(
+        'Could not read stats from this screenshot — try retrying or a clearer image.',
+      );
+      expect(res.body.failureReason).not.toMatch(/GEMINI_API_KEY/);
     });
   });
 
@@ -480,6 +486,34 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
       // Unmatched outsiders are dropped from the stored rows on confirm.
       expect(updated.rows as any[]).toHaveLength(2);
       expect((updated.rows as any[]).every((r) => r.matchedUserId)).toBe(true);
+    });
+
+    it('SECURITY: drops a row whose matchedUserId was hand-edited to someone outside this org, instead of writing a PlayerStat for them', async () => {
+      const { coach, player1 } = await setUpOrgWithTwoPlayers();
+      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const media = await uploadMedia(server, player1.accessToken);
+
+      // A real member of a COMPLETELY different org — simulates a coach's
+      // PATCH /stats/extractions/:id edit setting matchedUserId to an
+      // arbitrary string, which the API only validates as @IsString().
+      const { player1: outsider } = await setUpOrgWithTwoPlayers();
+
+      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
+        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 5, deaths: 1, assists: 1 },
+        { rawName: 'Not Actually A Member', matchedUserId: outsider.user.id, kills: 99, deaths: 0, assists: 0 },
+      ]);
+
+      const res = await request(server)
+        .post(`/stats/extractions/${extraction.id}/confirm`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(201);
+      expect(res.body.confirmedRows).toBe(1);
+      expect(res.body.skippedRows).toBe(1);
+
+      const stats = await prisma.playerStat.findMany({ where: { extractionId: extraction.id } });
+      expect(stats).toHaveLength(1);
+      expect(stats[0].userId).toBe(player1.user.id);
+      expect(await prisma.playerStat.findFirst({ where: { userId: outsider.user.id } })).toBeNull();
     });
 
     it('refuses to confirm when no rows are matched to teammates', async () => {

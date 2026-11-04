@@ -11,10 +11,10 @@ import { SoftPressable } from '../ui/SoftPressable';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
 
-// Org codes are always 6 characters (see org.service.ts's generateOrgCode);
+// Org codes are always 8 characters (see org.service.ts's generateOrgCode);
 // referral tokens are always 24 (generateReferralToken) — long enough that
 // the two never collide, so one input field can accept either.
-const ORG_CODE_LENGTH = 6;
+const ORG_CODE_LENGTH = 8;
 
 export function JoinOrgScreen({}: Props) {
   const { setOrg } = useAuth();

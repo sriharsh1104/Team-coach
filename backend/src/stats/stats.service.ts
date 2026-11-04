@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -42,6 +43,8 @@ export function normalizeIgn(value: string): string {
 
 @Injectable()
 export class StatsService {
+  private readonly logger = new Logger(StatsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -192,11 +195,18 @@ export class StatsService {
       });
       this.notifyStatsChanged(extraction.orgId);
     } catch (err) {
+      // The raw error (fs path, Gemini SDK text, etc.) is only logged
+      // server-side — `failureReason` is returned to any org member who
+      // views this extraction, not just a reviewer, so it must never carry
+      // internal details like a local file path or a library's error text.
+      this.logger.warn(
+        `Extraction ${extractionId} failed: ${(err as Error).message}`,
+      );
       await this.prisma.statExtraction.update({
         where: { id: extractionId },
         data: {
           status: StatExtractionStatus.FAILED,
-          failureReason: (err as Error).message,
+          failureReason: 'Could not read stats from this screenshot — try retrying or a clearer image.',
         },
       });
       this.notifyStatsChanged(extraction.orgId);
@@ -298,7 +308,20 @@ export class StatsService {
     const rows = extraction.rows as unknown as ExtractionRow[];
     // Only org teammates with an explicit match are written — outsiders on the
     // Free Fire scoreboard (unmatched IGNs) are never saved to PlayerStat.
-    const confirmableRows = rows.filter((r) => r.matchedUserId);
+    // matchedUserId can be hand-edited via PATCH (updateRows) to any string —
+    // re-validate it's actually a member of *this* org here, at the point
+    // stats get written, rather than trusting whatever a reviewer last typed.
+    const orgMemberIds = new Set(
+      (
+        await this.prisma.membership.findMany({
+          where: { orgId: extraction.orgId },
+          select: { userId: true },
+        })
+      ).map((m) => m.userId),
+    );
+    const confirmableRows = rows.filter(
+      (r) => r.matchedUserId && orgMemberIds.has(r.matchedUserId),
+    );
     if (confirmableRows.length === 0) {
       throw new BadRequestException(
         'Match at least one scoreboard name to a teammate (set In-Game Name on Profile) before saving.',

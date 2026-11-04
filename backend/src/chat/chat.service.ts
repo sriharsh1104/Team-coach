@@ -5,9 +5,14 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { MembershipRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationService, PushMessage } from '../common/push-notification.service';
+
+// Matches the local (non-Cloudinary) chat-file URL chat.controller.ts mints
+// at upload time — see rescopeMediaUrlForViewer below.
+const LOCAL_CHAT_FILE_URL_RE = /^\/chat\/files\/([^?]+)\?token=/;
 
 const HISTORY_LIMIT = 50;
 export const ORG_CHANNEL = 'org';
@@ -35,6 +40,7 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushNotifications: PushNotificationService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async getMembershipForUser(userId: string) {
@@ -282,11 +288,14 @@ export class ChatService {
     const senderIds = [...new Set(messages.map((m) => m.senderId))];
     const roleByUserId = await this.loadRoles(orgId, senderIds);
 
-    return messages
-      .reverse()
-      .map((m) =>
-        this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
-      );
+    return this.rescopeForViewer(
+      messages
+        .reverse()
+        .map((m) =>
+          this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+        ),
+      userId,
+    );
   }
 
   // WhatsApp-style "chat media" gallery — every image/video shared in this
@@ -305,8 +314,11 @@ export class ChatService {
 
     const senderIds = [...new Set(messages.map((m) => m.senderId))];
     const roleByUserId = await this.loadRoles(orgId, senderIds);
-    return messages.map((m) =>
-      this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+    return this.rescopeForViewer(
+      messages.map((m) =>
+        this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+      ),
+      userId,
     );
   }
 
@@ -353,8 +365,11 @@ export class ChatService {
 
     const senderIds = [...new Set(messages.map((m) => m.senderId))];
     const roleByUserId = await this.loadRoles(orgId, senderIds);
-    return messages.map((m) =>
-      this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+    return this.rescopeForViewer(
+      messages.map((m) =>
+        this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+      ),
+      userId,
     );
   }
 
@@ -379,8 +394,11 @@ export class ChatService {
 
     const senderIds = [...new Set(messages.map((m) => m.senderId))];
     const roleByUserId = await this.loadRoles(orgId, senderIds);
-    return messages.map((m) =>
-      this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+    return this.rescopeForViewer(
+      messages.map((m) =>
+        this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+      ),
+      userId,
     );
   }
 
@@ -744,6 +762,44 @@ export class ChatService {
       where: { orgId, userId: { in: userIds } },
     });
     return new Map(memberships.map((m) => [m.userId, m]));
+  }
+
+  // The token embedded in a message's mediaUrl is minted once, at upload
+  // time, scoped to whoever uploaded it (chat.controller.ts uploadChatMedia)
+  // — every viewer who ever loads this message's history would otherwise
+  // reuse that SAME token, so downloadChatFile ends up re-checking the
+  // uploader's current org membership forever, never the actual current
+  // viewer's. Re-minting it here, scoped to the viewer asking for this page
+  // of history right now, means a departed member's cached/shared link
+  // starts failing the next time downloadChatFile checks *their* membership
+  // — not the original uploader's, who might still be in the org.
+  // Cloudinary URLs (no embedded token, access is "unguessable public id")
+  // pass through unchanged, same as media.service.ts's equivalent case.
+  private async rescopeMediaUrlForViewer(
+    mediaUrl: string | null,
+    viewerId: string,
+  ): Promise<string | null> {
+    if (!mediaUrl) return null;
+    const match = mediaUrl.match(LOCAL_CHAT_FILE_URL_RE);
+    if (!match) return mediaUrl;
+    const fileKey = decodeURIComponent(match[1]);
+    const token = await this.jwtService.signAsync(
+      { sub: viewerId, fileKey, purpose: 'chat-file' },
+      { expiresIn: '7d' },
+    );
+    return `/chat/files/${encodeURIComponent(fileKey)}?token=${token}`;
+  }
+
+  private async rescopeForViewer<T extends { mediaUrl: string | null }>(
+    rows: T[],
+    viewerId: string,
+  ): Promise<T[]> {
+    return Promise.all(
+      rows.map(async (row) => ({
+        ...row,
+        mediaUrl: await this.rescopeMediaUrlForViewer(row.mediaUrl, viewerId),
+      })),
+    );
   }
 
   private toResponse(

@@ -1,5 +1,10 @@
 import { apiClient } from './client';
-import { MembershipRole, OrgCreateJoinResponse, OrgDetail } from './types';
+import {
+  GuildDetail,
+  MembershipRole,
+  OrgCreateJoinResponse,
+  OrgDetail,
+} from './types';
 
 export function createOrg(name: string) {
   return apiClient
@@ -45,4 +50,28 @@ export function updateOrgSettings(historyVisibleToNewMembers: boolean) {
       historyVisibleToNewMembers,
     })
     .then((res) => res.data);
+}
+
+// Anyone already on the roster is auto-enrolled in the guild the first time
+// this is called (see org.service.ts's getMyGuild) — there's no separate
+// "join the guild" step for existing org members, only for someone who has
+// neither a roster seat nor a guild seat yet (not reachable from this app,
+// since mobile only reaches the main stack once an org exists).
+export function getMyGuild() {
+  return apiClient.get<GuildDetail>('/orgs/guild/me').then((res) => res.data);
+}
+
+export function addGuildMemberToRoster(targetUserId: string, role: MembershipRole) {
+  return apiClient
+    .post<{ userId: string; role: MembershipRole }>('/orgs/guild/roster', {
+      targetUserId,
+      role,
+    })
+    .then((res) => res.data);
+}
+
+export function removeFromGuildRoster(targetUserId: string) {
+  return apiClient
+    .post('/orgs/guild/roster/remove', { targetUserId })
+    .then(() => undefined);
 }

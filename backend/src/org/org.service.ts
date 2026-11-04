@@ -27,7 +27,11 @@ const ROLE_CAPS: Partial<Record<MembershipRole, number>> = {
 };
 
 // Unambiguous uppercase alphabet (no 0/O/1/I) for a code players type by hand.
-const generateOrgCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
+// 8 chars (32^8 ≈ 1.1 trillion combinations) rather than 6 (≈1.07 billion) —
+// the 5/min-per-IP join throttle (org.controller.ts) only resists a single
+// attacker IP; a wider keyspace is what actually matters against a
+// distributed guesser spread across many IPs.
+const generateOrgCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 8);
 const generateReferralToken = customAlphabet(
   'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
   24,
@@ -133,6 +137,9 @@ export class OrgService {
             'Could not allocate a unique org code — please try again',
           );
         }
+        if (fields.includes('userId')) {
+          this.rethrowAsConflictOnDuplicateMembership(err);
+        }
         throw new ConflictException('That org value is already in use');
       }
       throw err;
@@ -157,6 +164,7 @@ export class OrgService {
 
     if (role) {
       await this.prisma.$transaction(async (tx) => {
+        await this.lockOrgRoster(tx, membership.orgId);
         const cap = ROLE_CAPS[role];
         if (cap !== undefined) {
           const currentCount = await tx.membership.count({
@@ -210,24 +218,29 @@ export class OrgService {
     // owner promotes to COACH / ANALYST from the roster afterwards.
     const role = MembershipRole.PLAYER;
 
-    await this.prisma.$transaction(async (tx) => {
-      const cap = ROLE_CAPS[role]!;
-      const currentCount = await tx.membership.count({
-        where: { orgId: org.id, role },
-      });
-      if (currentCount >= cap) {
-        throw new ConflictException(
-          `This org already has the maximum of ${cap} players`,
-        );
-      }
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.lockOrgRoster(tx, org.id);
+        const cap = ROLE_CAPS[role]!;
+        const currentCount = await tx.membership.count({
+          where: { orgId: org.id, role },
+        });
+        if (currentCount >= cap) {
+          throw new ConflictException(
+            `This org already has the maximum of ${cap} players`,
+          );
+        }
 
-      await tx.membership.create({
-        data: { userId, orgId: org.id, role },
+        await tx.membership.create({
+          data: { userId, orgId: org.id, role },
+        });
+        await tx.guildMembership.create({
+          data: { userId, orgId: org.id, role: GuildRole.MEMBER },
+        });
       });
-      await tx.guildMembership.create({
-        data: { userId, orgId: org.id, role: GuildRole.MEMBER },
-      });
-    });
+    } catch (err) {
+      this.rethrowAsConflictOnDuplicateMembership(err);
+    }
 
     return this.toOrgResponse(org, role, false);
   }
@@ -308,6 +321,7 @@ export class OrgService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      await this.lockOrgRoster(tx, current.orgId);
       const cap = ROLE_CAPS[dto.role];
       if (cap !== undefined) {
         const currentCount = await tx.membership.count({
@@ -436,10 +450,14 @@ export class OrgService {
       return { id: org.id, name: org.name, role: guild.role };
     }
 
-    const created = await this.prisma.guildMembership.create({
-      data: { userId, orgId: org.id, role: GuildRole.MEMBER },
-    });
-    return { id: org.id, name: org.name, role: created.role };
+    try {
+      const created = await this.prisma.guildMembership.create({
+        data: { userId, orgId: org.id, role: GuildRole.MEMBER },
+      });
+      return { id: org.id, name: org.name, role: created.role };
+    } catch (err) {
+      this.rethrowAsConflictOnDuplicateMembership(err);
+    }
   }
 
   async getMyGuild(userId: string) {
@@ -550,27 +568,38 @@ export class OrgService {
       throw new ConflictException('That person is already on another roster');
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      const cap = ROLE_CAPS[dto.role];
-      if (cap !== undefined) {
-        const currentCount = await tx.membership.count({
-          where: { orgId: actor.orgId, role: dto.role },
-        });
-        if (currentCount >= cap) {
-          throw new ConflictException(
-            `This roster already has the maximum of ${cap} ${dto.role.toLowerCase()}(s)`,
-          );
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.lockOrgRoster(tx, actor.orgId);
+        const cap = ROLE_CAPS[dto.role];
+        if (cap !== undefined) {
+          const currentCount = await tx.membership.count({
+            where: { orgId: actor.orgId, role: dto.role },
+          });
+          if (currentCount >= cap) {
+            throw new ConflictException(
+              `This roster already has the maximum of ${cap} ${dto.role.toLowerCase()}(s)`,
+            );
+          }
         }
-      }
 
-      await tx.membership.create({
-        data: {
-          userId: dto.targetUserId,
-          orgId: actor.orgId,
-          role: dto.role,
-        },
+        await tx.membership.create({
+          data: {
+            userId: dto.targetUserId,
+            orgId: actor.orgId,
+            role: dto.role,
+          },
+        });
       });
-    });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException('That person is already on a roster');
+      }
+      throw err;
+    }
 
     return { userId: dto.targetUserId, role: dto.role };
   }
@@ -595,6 +624,19 @@ export class OrgService {
     return { success: true };
   }
 
+  // Every ROLE_CAPS check below is a count-then-insert inside a single
+  // $transaction — Postgres's default READ COMMITTED isolation does NOT
+  // stop two concurrent transactions from both reading the same
+  // under-the-cap count and both committing, exceeding it (e.g. a 6th
+  // PLAYER squeezing in via two simultaneous joinOrg calls). A transaction-
+  // scoped advisory lock keyed by orgId serializes every roster-modifying
+  // transaction for the SAME org (released automatically at commit/
+  // rollback) without needing SERIALIZABLE isolation + retry logic, and
+  // without blocking unrelated orgs against each other.
+  private async lockOrgRoster(tx: Prisma.TransactionClient, orgId: string) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${orgId}), 0)`;
+  }
+
   private async assertRosterManager(userId: string) {
     const roster = await this.prisma.membership.findFirst({
       where: { userId },
@@ -617,6 +659,23 @@ export class OrgService {
         'You already belong to an org — leave it before creating or joining another',
       );
     }
+  }
+
+  // assertUserHasNoOrg (and joinGuild's equivalent check) are check-then-act,
+  // not atomic — Membership/GuildMembership's @@unique([userId]) is the real
+  // guarantee against two concurrent requests both slipping past that check
+  // into two different orgs. Convert the resulting P2002 into the same clean
+  // 409 assertUserHasNoOrg would have given, instead of a raw 500.
+  private rethrowAsConflictOnDuplicateMembership(err: unknown): never {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === 'P2002'
+    ) {
+      throw new ConflictException(
+        'You already belong to an org — leave it before creating or joining another',
+      );
+    }
+    throw err;
   }
 
   private toOrgResponse(

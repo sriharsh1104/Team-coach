@@ -68,6 +68,11 @@ export function OrgHomeScreen({ navigation }: Props) {
         label: 'Team Members',
         onPress: () => navigation.navigate('Members'),
       },
+      {
+        key: 'guild',
+        label: 'Guild',
+        onPress: () => navigation.navigate('Guild'),
+      },
       ...(org?.isOwner
         ? [
             {

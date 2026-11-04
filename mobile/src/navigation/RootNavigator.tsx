@@ -13,6 +13,7 @@ import { CreateOrgScreen } from '../screens/CreateOrgScreen';
 import { JoinOrgScreen } from '../screens/JoinOrgScreen';
 import { OrgHomeScreen } from '../screens/OrgHomeScreen';
 import { MembersScreen } from '../screens/MembersScreen';
+import { GuildScreen } from '../screens/GuildScreen';
 import { OrgSettingsScreen } from '../screens/OrgSettingsScreen';
 import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
 import { TwoFactorSetupScreen } from '../screens/TwoFactorSetupScreen';
@@ -186,6 +187,11 @@ export function RootNavigator() {
             name="Members"
             component={MembersScreen}
             options={{ title: 'Team Members' }}
+          />
+          <MainStack.Screen
+            name="Guild"
+            component={GuildScreen}
+            options={{ title: 'Guild' }}
           />
           <MainStack.Screen
             name="OrgSettings"

@@ -20,7 +20,7 @@ import { createReadStream, existsSync } from 'fs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MediaService } from '../media/media.service';
-import { MediaStorageService } from '../media/media-storage.service';
+import { MediaStorageService, localMediaType } from '../media/media-storage.service';
 import { mediaFileInterceptorOptions } from '../media/multer-options';
 import { ChatService, ORG_CHANNEL } from './chat.service';
 import { MarkReadDto } from './dto/mark-read.dto';
@@ -218,6 +218,14 @@ export class ChatController {
 
     const filePath = this.storage.localFilePath(key);
     if (!existsSync(filePath)) throw new NotFoundException('File not found');
+    // Without an explicit Content-Type, the browser MIME-sniffs the raw
+    // bytes — an uploaded file whose content looks like HTML/SVG (regardless
+    // of what MIME type it was uploaded with) could then be rendered and
+    // executed in this origin. nosniff forces it to trust the (safely
+    // allowlisted, see localMediaType) type declared here instead. Mirrors
+    // media.controller.ts's getFile, which already does this correctly.
+    res.setHeader('Content-Type', localMediaType(key));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     return createReadStream(filePath).pipe(res);
   }
 }

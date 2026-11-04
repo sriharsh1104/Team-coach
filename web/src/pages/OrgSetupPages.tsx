@@ -101,7 +101,7 @@ export function JoinOrgPage() {
       const trimmed = orgCode.trim();
       const token = extractInviteToken(trimmed);
       const org = await orgApi.joinOrg(
-        trimmed.length === 6 && !trimmed.includes('/')
+        trimmed.length === 8 && !trimmed.includes('/')
           ? { orgCode: trimmed.toUpperCase() }
           : { referralToken: token || trimmed },
       );
@@ -135,7 +135,7 @@ export function JoinOrgPage() {
             id="code"
             value={orgCode}
             onChange={(e) => setOrgCode(e.target.value)}
-            placeholder="6-char code or /join/… link"
+            placeholder="8-char code or /join/… link"
             required
           />
         </div>

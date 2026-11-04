@@ -1,10 +1,31 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Baseline security headers (CSP, HSTS, X-Frame-Options, nosniff, ...).
+  // crossOriginResourcePolicy is relaxed from helmet's 'same-origin' default
+  // to 'cross-origin' — web/mobile run on a different origin than this API
+  // and load media/chat files (<img>/<video> src) directly from it; the
+  // default would make browsers block exactly those loads.
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
+
+  // Trust exactly one hop (the reverse proxy/load balancer in front of this
+  // app in every deployment this project documents). Without this, Express's
+  // default req.ip resolves to the proxy's own address for every request,
+  // which collapses the global ThrottlerGuard's per-IP rate limiting (login,
+  // signup, org-join, 2FA, ...) into one shared bucket for all real clients —
+  // a no-op locally, where there's no proxy and no X-Forwarded-For header to
+  // trust in the first place.
+  app.set('trust proxy', 1);
 
   app.useGlobalPipes(
     new ValidationPipe({

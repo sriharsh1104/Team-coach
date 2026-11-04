@@ -5,6 +5,7 @@ import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { TwoFactorSetupDto } from './dto/two-factor-setup.dto';
 import { TwoFactorEnableDto } from './dto/two-factor-enable.dto';
 import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
 import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
@@ -70,8 +71,10 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  async logout(@CurrentUser() currentUser: { userId: string }) {
-    await this.authService.logout(currentUser.userId);
+  async logout(
+    @CurrentUser() currentUser: { userId: string; jti: string; exp?: number },
+  ) {
+    await this.authService.logout(currentUser.jti, currentUser.exp);
     return { success: true };
   }
 
@@ -86,8 +89,11 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('2fa/setup')
-  setupTwoFactor(@CurrentUser() currentUser: { userId: string }) {
-    return this.authService.setupTwoFactor(currentUser.userId);
+  setupTwoFactor(
+    @CurrentUser() currentUser: { userId: string },
+    @Body() dto: TwoFactorSetupDto,
+  ) {
+    return this.authService.setupTwoFactor(currentUser.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)

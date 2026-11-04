@@ -173,6 +173,83 @@ describe('Phase 1D — Chat (e2e)', () => {
       });
       expect(media.body[0].url).toContain('/media/files/');
     });
+
+    it('serves a downloaded chat file with a safe Content-Type and nosniff, even though multer only checked the declared MIME type', async () => {
+      const { coach } = await setUpOrgWithPlayer();
+
+      const upload = await request(server)
+        .post('/chat/media')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        // Declared as image/jpeg (what multer checks) but named .jpg so
+        // localMediaType resolves it the same way a real crafted upload
+        // would — the point of this test is the response headers, not the
+        // actual bytes, which is why this still reaches the download route.
+        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .expect(201);
+
+      // Local storage in test env (no Cloudinary creds) returns a relative
+      // `/chat/files/:fileKey?token=...` path, so this hits the real route.
+      const download = await request(server)
+        .get(upload.body.mediaUrl)
+        .expect(200);
+      expect(download.headers['content-type']).toMatch(/^image\/jpeg/);
+      expect(download.headers['x-content-type-options']).toBe('nosniff');
+    });
+
+    it("a chat file link re-scoped to a viewer who has since left the org stops working for them, even though the original uploader is still a member", async () => {
+      const { coach, org, player } = await setUpOrgWithPlayer();
+
+      const upload = await request(server)
+        .post('/chat/media')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .expect(201);
+
+      // The message as it would be persisted by ChatGateway's message:send —
+      // mediaUrl is whatever the uploader's own token-minting produced.
+      await prisma.chatMessage.create({
+        data: {
+          orgId: org.id,
+          channelKey: 'org',
+          senderId: coach.user.id,
+          mediaUrl: upload.body.mediaUrl,
+          mediaType: 'IMAGE',
+        },
+      });
+
+      // Player loads history — the mediaUrl they get back is re-scoped to
+      // THEM, not the coach who uploaded it.
+      const historyForPlayer = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .expect(200);
+      const playerScopedUrl = historyForPlayer.body[0].mediaUrl;
+      expect(playerScopedUrl).not.toBe(upload.body.mediaUrl);
+
+      // Still a member — both the player-scoped link and the original
+      // uploader-scoped one work right now.
+      await request(server).get(playerScopedUrl).expect(200);
+      await request(server).get(upload.body.mediaUrl).expect(200);
+
+      // Player leaves the org entirely — both their roster seat (removable
+      // via POST /orgs/members/remove) and their guild seat (no roster-only
+      // "leave" endpoint removes this; getChatContext treats either as
+      // still "in the org", by design — see assertChannelAccess) are gone.
+      await request(server)
+        .post('/orgs/members/remove')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ targetUserId: player.user.id })
+        .expect(201);
+      await prisma.guildMembership.deleteMany({ where: { userId: player.user.id } });
+
+      // The link scoped to the now-departed player is rejected...
+      await request(server).get(playerScopedUrl).expect(404);
+      // ...but the original uploader-scoped link still works, since the
+      // coach who uploaded it never left — this is exactly the gap that
+      // made per-viewer re-scoping necessary: without it, EVERY viewer's
+      // copy of this URL would behave like the one below forever.
+      await request(server).get(upload.body.mediaUrl).expect(200);
+    });
   });
 
   describe('GET /chat/messages', () => {
@@ -511,6 +588,29 @@ describe('Phase 1D — Chat (e2e)', () => {
       expect(history.body).toHaveLength(1);
       expect(history.body[0].text).toBe('Ready for scrim at 8pm?');
     });
+
+    it('SECURITY: rate-limits message:send per socket, silently dropping anything beyond the burst limit', async () => {
+      const { player } = await setUpOrgWithPlayer();
+      const socket = await connectSocket(baseUrl, player.accessToken);
+      openSockets.push(socket);
+
+      const received: unknown[] = [];
+      socket.on('message:new', (m) => received.push(m));
+
+      // ChatGateway's messageLimiter allows 20 per 10s per socket — send
+      // well past that in one burst.
+      for (let i = 0; i < 25; i += 1) {
+        socket.emit('message:send', { text: `msg ${i}` });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      expect(received).toHaveLength(20);
+      const history = await request(server)
+        .get('/chat/messages')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .expect(200);
+      expect(history.body).toHaveLength(20);
+    }, 10000);
 
     it('SECURITY: never delivers a message to a socket in a different org', async () => {
       const { player: playerA } = await setUpOrgWithPlayer();

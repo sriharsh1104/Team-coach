@@ -186,6 +186,24 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .expect(200);
     });
 
+    it('does not mint a fresh session on a reused challengeToken for an already-verified account, even with a bogus code', async () => {
+      const { email, challengeToken } = await rawSignup();
+      const code = sentOtps.get(email);
+      await request(server)
+        .post('/auth/verify-email')
+        .send({ challengeToken, code })
+        .expect(201);
+
+      // Same token, submitted again (e.g. a second tab, or a leaked/captured
+      // token) — must not hand out a session just because the account
+      // happens to be verified already, with no code check at all.
+      const replay = await request(server)
+        .post('/auth/verify-email')
+        .send({ challengeToken, code: '999999' })
+        .expect(409);
+      expect(replay.body.accessToken).toBeUndefined();
+    });
+
     it('rejects an incorrect code without granting a session', async () => {
       const { challengeToken } = await rawSignup();
 
@@ -214,6 +232,14 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const { email, challengeToken } = await rawSignup();
       const firstCode = sentOtps.get(email);
 
+      // Clear the per-email resend cooldown (EMAIL_OTP_RESEND_COOLDOWN_SECONDS)
+      // so this resend isn't rejected purely for happening right after signup
+      // — see the dedicated cooldown test below for that behavior itself.
+      await prisma.emailVerificationCode.updateMany({
+        where: { user: { email } },
+        data: { expiresAt: new Date(Date.now() + 60 * 1000) },
+      });
+
       await request(server)
         .post('/auth/resend-verification')
         .send({ challengeToken })
@@ -231,6 +257,63 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/auth/verify-email')
         .send({ challengeToken, code: secondCode })
+        .expect(201);
+    });
+
+    it('rejects resending an OTP to the same email within the cooldown window, even via a fresh signup call — not just per-IP throttling', async () => {
+      const email = uniqueEmail('cooldown');
+      const { challengeToken } = await rawSignup({ email });
+
+      // Immediately resending must be rejected on a per-EMAIL cooldown, not
+      // just per-IP throttling — the real-world attack this closes is a
+      // handful of requests spread across different IPs, each individually
+      // under the per-IP limit, all aimed at the same inbox.
+      await request(server)
+        .post('/auth/resend-verification')
+        .send({ challengeToken })
+        .expect(409);
+
+      // A fresh /auth/signup call for the same still-unverified address is
+      // just as capable of sending an email — it's gated by the same
+      // cooldown, not only the resend endpoint.
+      await request(server)
+        .post('/auth/signup')
+        .send({ email, password: 'Password123!', name: 'Someone Else' })
+        .expect(409);
+    });
+
+    it('a second signup for the same still-unverified email does not overwrite the original password or name', async () => {
+      const email = uniqueEmail('resignup');
+      await rawSignup({ email, password: 'OriginalPass1!', name: 'First Name' });
+
+      // Clear the per-email resend cooldown (see EMAIL_OTP_RESEND_COOLDOWN_SECONDS)
+      // so this second signup isn't rejected for an unrelated reason — this
+      // test is about credential immutability, not resend timing.
+      await prisma.emailVerificationCode.updateMany({
+        where: { user: { email } },
+        data: { expiresAt: new Date(Date.now() + 60 * 1000) },
+      });
+
+      // No proof of email ownership exists yet at this point (that's the
+      // whole point of the OTP that's about to be sent) — this must only
+      // resend a fresh code, never change the stored credentials.
+      const second = await rawSignup({ email, password: 'AttackerPass1!', name: 'Attacker Name' });
+      const code = sentOtps.get(email);
+
+      const res = await request(server)
+        .post('/auth/verify-email')
+        .send({ challengeToken: second.challengeToken, code })
+        .expect(201);
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      expect(res.body.user.name).toBe('First Name');
+
+      await request(server)
+        .post('/auth/login')
+        .send({ email, password: 'AttackerPass1!' })
+        .expect(401);
+      await request(server)
+        .post('/auth/login')
+        .send({ email, password: 'OriginalPass1!' })
         .expect(201);
     });
   });
@@ -340,13 +423,40 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .set('Authorization', `Bearer ${relogin.body.accessToken}`)
         .expect(200);
     });
+
+    it('SECURITY: logs out only the current device — a second, still-active session is untouched', async () => {
+      const user = await signup({ name: 'Alice' });
+      // A second "device" logging in gets its own independent token.
+      const secondDevice = await request(server)
+        .post('/auth/login')
+        .send({ email: user.email, password: user.password })
+        .expect(201);
+      expect(secondDevice.body.accessToken).not.toBe(user.accessToken);
+
+      await request(server)
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(201);
+
+      // The logged-out device's token is dead...
+      await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(401);
+      // ...but the second device's session is completely unaffected — this
+      // is exactly what tokenVersion-bump-based logout could not do.
+      await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${secondDevice.body.accessToken}`)
+        .expect(200);
+    });
   });
 
   describe('Org create/join', () => {
     it('creates an org and returns a code and referral link', async () => {
       const coach = await signup();
       const org = await createOrgAs(coach.accessToken, 'COACH');
-      expect(org.orgCode).toMatch(/^[A-Z0-9]{6}$/);
+      expect(org.orgCode).toMatch(/^[A-Z0-9]{8}$/);
       expect(org.referralLink).toMatch(/\/join\/[A-Za-z0-9]+$/);
       expect(org.myRole).toBe('COACH');
     });
@@ -492,6 +602,37 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .send({ orgCode: org.orgCode })
         .expect(409);
     }, 20000);
+
+    it('SECURITY: the 5-player cap holds even when 6 joins race each other concurrently, not just one at a time', async () => {
+      // Each joinOrg transaction takes an advisory lock on the org before
+      // counting PLAYER memberships — without it, 6 requests landing in the
+      // same window could all read "4 players so far" and all squeeze in.
+      const coach = await signup();
+      const org = await createOrgAs(coach.accessToken);
+
+      const players = await Promise.all(
+        Array.from({ length: 6 }, () => signup()),
+      );
+      const results = await Promise.all(
+        players.map((player) =>
+          request(server)
+            .post('/orgs/join')
+            .set('Authorization', `Bearer ${player.accessToken}`)
+            .send({ orgCode: org.orgCode }),
+        ),
+      );
+
+      const succeeded = results.filter((r) => r.status === 201);
+      const rejected = results.filter((r) => r.status === 409);
+      expect(succeeded).toHaveLength(5);
+      expect(rejected).toHaveLength(1);
+
+      const roster = await request(server)
+        .get('/orgs/me')
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(roster.body.members.filter((m: any) => m.role === 'PLAYER')).toHaveLength(5);
+    }, 30000);
 
     it('lets the owner promote members to COACH / ANALYST, capped at 2 / 1', async () => {
       const owner = await signup();
@@ -1003,7 +1144,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
     it('requires authentication', async () => {
       await request(server)
         .patch('/auth/password')
-        .send({ currentPassword: 'Password123!', newPassword: 'newpassword123' })
+        .send({ currentPassword: 'Password123!', newPassword: 'NewPassword123!' })
         .expect(401);
     });
 
@@ -1012,7 +1153,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ currentPassword: 'wrong-password', newPassword: 'newpassword123' })
+        .send({ currentPassword: 'wrong-password', newPassword: 'NewPassword123!' })
         .expect(401);
     });
 
@@ -1025,13 +1166,22 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .expect(400);
     });
 
+    it('rejects a new password that is long enough but missing a required character class (same complexity rule signup enforces)', async () => {
+      const user = await signup({ password: 'Password123!' });
+      await request(server)
+        .patch('/auth/password')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ currentPassword: 'Password123!', newPassword: 'alllowercase1' })
+        .expect(400);
+    });
+
     it('changes the password, invalidates the old session token, and returns a fresh working one', async () => {
       const user = await signup({ email: 'changeme@example.com', password: 'Password123!' });
 
       const res = await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ currentPassword: 'Password123!', newPassword: 'newpassword123' })
+        .send({ currentPassword: 'Password123!', newPassword: 'NewPassword123!' })
         .expect(200);
       const freshToken = res.body.accessToken;
       expect(freshToken).toEqual(expect.any(String));
@@ -1055,7 +1205,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .expect(401);
       await request(server)
         .post('/auth/login')
-        .send({ email: 'changeme@example.com', password: 'newpassword123' })
+        .send({ email: 'changeme@example.com', password: 'NewPassword123!' })
         .expect(201);
     });
 
@@ -1073,7 +1223,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ currentPassword: 'Password123!', newPassword: 'newpassword123' })
+        .send({ currentPassword: 'Password123!', newPassword: 'NewPassword123!' })
         .expect(400);
     });
   });
@@ -1084,12 +1234,21 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const setup = await request(server)
         .post('/auth/2fa/setup')
         .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ password: user.password })
         .expect(201);
       return { user, secret: setup.body.secret, qrCodeDataUrl: setup.body.qrCodeDataUrl };
     }
 
-    function codeFor(secret: string) {
-      return speakeasy.totp({ secret, encoding: 'base32' });
+    // `stepOffset` generates the code for a later 30s window — needed when a
+    // test calls this twice for two separate real-world auth events (e.g.
+    // enable, then a later login), since the backend now rejects reusing the
+    // exact same TOTP step twice (anti-replay — see two-factor.util.ts).
+    function codeFor(secret: string, stepOffset = 0) {
+      return speakeasy.totp({
+        secret,
+        encoding: 'base32',
+        time: Date.now() / 1000 + stepOffset * 30,
+      });
     }
 
     it('POST /auth/2fa/setup requires authentication and returns a secret + QR code', async () => {
@@ -1100,19 +1259,52 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       expect(qrCodeDataUrl).toMatch(/^data:image\/png;base64,/);
     });
 
+    it('POST /auth/2fa/setup and /auth/2fa/enable both reject a wrong (or missing) password — a valid token alone is not enough to plant 2FA', async () => {
+      const user = await signup();
+
+      await request(server)
+        .post('/auth/2fa/setup')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ password: 'wrong-password' })
+        .expect(401);
+      await request(server)
+        .post('/auth/2fa/setup')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({})
+        .expect(400);
+
+      const setup = await request(server)
+        .post('/auth/2fa/setup')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ password: user.password })
+        .expect(201);
+
+      await request(server)
+        .post('/auth/2fa/enable')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ code: codeFor(setup.body.secret), password: 'wrong-password' })
+        .expect(401);
+
+      const me = await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .expect(200);
+      expect(me.body.twoFactorEnabled).toBe(false);
+    });
+
     it('POST /auth/2fa/enable rejects a wrong code and accepts a valid one, returning backup codes once', async () => {
       const { user, secret } = await signupAndGetSecret();
 
       await request(server)
         .post('/auth/2fa/enable')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ code: '000000' })
+        .send({ code: '000000', password: user.password })
         .expect(401);
 
       const res = await request(server)
         .post('/auth/2fa/enable')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ code: codeFor(secret) })
+        .send({ code: codeFor(secret), password: user.password })
         .expect(201);
       expect(res.body.backupCodes).toHaveLength(8);
 
@@ -1128,7 +1320,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/auth/2fa/enable')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ code: codeFor(secret) })
+        .send({ code: codeFor(secret), password: user.password })
         .expect(201);
 
       const res = await request(server)
@@ -1145,7 +1337,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/auth/2fa/enable')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ code: codeFor(secret) })
+        .send({ code: codeFor(secret), password: user.password })
         .expect(201);
       const login = await request(server)
         .post('/auth/login')
@@ -1160,7 +1352,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
 
       const res = await request(server)
         .post('/auth/2fa/verify')
-        .send({ challengeToken, code: codeFor(secret) })
+        .send({ challengeToken, code: codeFor(secret, 1) })
         .expect(201);
       expect(res.body.accessToken).toEqual(expect.any(String));
       expect(res.body.user.id).toBe(user.user.id);
@@ -1171,7 +1363,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const enable = await request(server)
         .post('/auth/2fa/enable')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ code: codeFor(secret) })
+        .send({ code: codeFor(secret), password: user.password })
         .expect(201);
       const backupCode = enable.body.backupCodes[0];
 
@@ -1202,7 +1394,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .post('/auth/2fa/enable')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ code: codeFor(secret) })
+        .send({ code: codeFor(secret), password: user.password })
         .expect(201);
 
       await request(server)

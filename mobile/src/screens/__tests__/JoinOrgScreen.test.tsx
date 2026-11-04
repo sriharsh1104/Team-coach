@@ -58,10 +58,10 @@ describe('JoinOrgScreen', () => {
     });
     render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
 
-    fireEvent.changeText(screen.getByPlaceholderText('Org code or invite link'), '  75HCP3  ');
+    fireEvent.changeText(screen.getByPlaceholderText('Org code or invite link'), '  75HCP3AB  ');
     await pressAndSettle('Join');
 
-    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({ orgCode: '75HCP3' });
+    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({ orgCode: '75HCP3AB' });
     expect(setOrg).toHaveBeenCalledWith({
       id: 'org-1',
       name: 'Alpha Squad',
@@ -70,7 +70,7 @@ describe('JoinOrgScreen', () => {
     });
   });
 
-  it('joins with a pasted referral link/token (longer than a 6-char org code)', async () => {
+  it('joins with a pasted referral link/token (longer than an 8-char org code)', async () => {
     const setOrg = jest.fn();
     mockedUseAuth.mockReturnValue({ setOrg });
     mockedOrgApi.joinOrg.mockResolvedValue({

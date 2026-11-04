@@ -21,6 +21,7 @@ export type MainStackParamList = {
   OrgHome: undefined;
   Profile: undefined;
   Members: undefined;
+  Guild: undefined;
   OrgSettings: undefined;
   AccountSettings: undefined;
   TwoFactorSetup: undefined;

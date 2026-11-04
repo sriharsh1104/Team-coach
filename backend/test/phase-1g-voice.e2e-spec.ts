@@ -144,6 +144,26 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       const caps = await emitAck(socket, 'getRtpCapabilities');
       expect(caps).toBeTruthy();
     });
+
+    it('SECURITY: rate-limits signaling events per socket (shared across all of getRtpCapabilities/createTransport/etc)', async () => {
+      const { player } = await setUpOrgWithTwoPlayers();
+      const socket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      openSockets.push(socket);
+
+      // voiceGateway's signalingLimiter allows 50 per 10s per socket — fire
+      // one more than that, concurrently, in one burst. A blocked call never
+      // gets an ack (the handler throws before responding), so it times out
+      // rather than rejecting immediately — this is why the per-call timeout
+      // below is short.
+      const calls = Array.from({ length: 51 }, () =>
+        emitAck(socket, 'getRtpCapabilities', undefined, 2000)
+          .then(() => 'ok' as const)
+          .catch(() => 'blocked' as const),
+      );
+      const results = await Promise.all(calls);
+      expect(results.filter((r) => r === 'ok')).toHaveLength(50);
+      expect(results.filter((r) => r === 'blocked')).toHaveLength(1);
+    }, 15000);
   });
 
   describe('Disconnect notifications', () => {

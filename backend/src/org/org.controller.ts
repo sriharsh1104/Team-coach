@@ -12,8 +12,8 @@ import { AddRosterMemberDto } from './dto/add-roster-member.dto';
 import { UpdateOrgSettingsDto } from './dto/update-org-settings.dto';
 import { SetOwnRosterRoleDto } from './dto/set-own-roster-role.dto';
 
-// A 6-character org code is guessable by brute force without a limit here —
-// tighter than the app-wide default. Relaxed in tests, see app.module.ts.
+// An org code is guessable by brute force without a limit here — tighter
+// than the app-wide default. Relaxed in tests, see app.module.ts.
 const joinThrottleLimit = () => (process.env.NODE_ENV === 'test' ? 100000 : 5);
 
 @UseGuards(JwtAuthGuard)

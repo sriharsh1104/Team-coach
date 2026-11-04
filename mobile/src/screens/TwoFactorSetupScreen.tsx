@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Text,
   View,
@@ -6,7 +6,6 @@ import {
   ScrollView,
   TextInput,
   Pressable,
-  ActivityIndicator,
   Alert,
   StyleSheet,
 } from 'react-native';
@@ -18,6 +17,7 @@ import { Screen } from '../brand/Screen';
 import { CopyableField } from './profile/CopyableField';
 import { CopyButton } from './profile/CopyButton';
 import { ButtonLabel } from '../ui/ButtonLabel';
+import { PasswordField } from '../ui/PasswordField';
 import { colors } from '../theme';
 import { sharedStyles } from './shared';
 
@@ -25,34 +25,40 @@ type Props = NativeStackScreenProps<MainStackParamList, 'TwoFactorSetup'>;
 
 export function TwoFactorSetupScreen({ navigation }: Props) {
   const { refreshUser } = useAuth();
-  const [isLoading, setIsLoading] = useState(true);
+  const [password, setPassword] = useState('');
+  const [isStarting, setIsStarting] = useState(false);
   const [secret, setSecret] = useState('');
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [code, setCode] = useState('');
   const [isEnabling, setIsEnabling] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
 
-  useEffect(() => {
-    authApi
-      .setupTwoFactor()
-      .then(({ secret, qrCodeDataUrl }) => {
-        setSecret(secret);
-        setQrCodeDataUrl(qrCodeDataUrl);
-      })
-      .catch((err: any) => {
-        Alert.alert(
-          'Could not start setup',
-          err?.response?.data?.message ?? 'Please try again.',
-        );
-        navigation.goBack();
-      })
-      .finally(() => setIsLoading(false));
-  }, [navigation]);
+  // Setup/enable both require re-entering the current password — a stolen
+  // access token alone must never be enough to plant 2FA on someone's
+  // account (see backend/src/auth/auth.service.ts assertCurrentPassword).
+  const onStart = async () => {
+    setIsStarting(true);
+    try {
+      const { secret, qrCodeDataUrl } = await authApi.setupTwoFactor(password.trim());
+      setSecret(secret);
+      setQrCodeDataUrl(qrCodeDataUrl);
+    } catch (err: any) {
+      Alert.alert(
+        'Could not start setup',
+        err?.response?.data?.message ?? 'Check your password and try again.',
+      );
+    } finally {
+      setIsStarting(false);
+    }
+  };
 
   const onEnable = async () => {
     setIsEnabling(true);
     try {
-      const { backupCodes } = await authApi.enableTwoFactor(code.trim());
+      const { backupCodes } = await authApi.enableTwoFactor(
+        code.trim(),
+        password.trim(),
+      );
       await refreshUser();
       setBackupCodes(backupCodes);
     } catch (err: any) {
@@ -65,12 +71,33 @@ export function TwoFactorSetupScreen({ navigation }: Props) {
     }
   };
 
-  if (isLoading) {
+  if (!secret) {
     return (
       <Screen>
-        <View style={sharedStyles.container}>
-          <ActivityIndicator color={colors.chrome} />
-        </View>
+        <ScrollView
+          style={{ flex: 1, backgroundColor: 'transparent' }}
+          contentContainerStyle={{ padding: 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.title}>Confirm your password</Text>
+          <Text style={styles.hint}>
+            Enter your current password to start setting up two-factor
+            authentication.
+          </Text>
+          <PasswordField value={password} onChangeText={setPassword} />
+          <Pressable
+            style={[
+              sharedStyles.button,
+              (isStarting || !password) && sharedStyles.buttonDisabled,
+            ]}
+            disabled={isStarting || !password}
+            onPress={onStart}
+          >
+            <ButtonLabel icon="check">
+              {isStarting ? 'Checking…' : 'Continue'}
+            </ButtonLabel>
+          </Pressable>
+        </ScrollView>
       </Screen>
     );
   }

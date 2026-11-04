@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import * as authApi from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
@@ -15,7 +15,9 @@ function apiError(err: unknown, fallback: string) {
 export function TwoFactorSetupPage() {
   const { refreshUser } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const [password, setPassword] = useState('');
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const [secret, setSecret] = useState('');
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [code, setCode] = useState('');
@@ -24,25 +26,30 @@ export function TwoFactorSetupPage() {
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
-  useEffect(() => {
-    authApi
-      .setupTwoFactor()
-      .then((result) => {
-        setSecret(result.secret);
-        setQrCodeDataUrl(result.qrCodeDataUrl);
-      })
-      .catch((err) => {
-        setError(apiError(err, 'Could not start setup'));
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  // Setup/enable both require re-entering the current password — a stolen
+  // access token alone must never be enough to plant 2FA on someone's
+  // account (see backend/src/auth/auth.service.ts assertCurrentPassword).
+  async function onStart(e: FormEvent) {
+    e.preventDefault();
+    setStarting(true);
+    setStartError(null);
+    try {
+      const result = await authApi.setupTwoFactor(password);
+      setSecret(result.secret);
+      setQrCodeDataUrl(result.qrCodeDataUrl);
+    } catch (err) {
+      setStartError(apiError(err, 'Could not start setup'));
+    } finally {
+      setStarting(false);
+    }
+  }
 
   async function onEnable(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const result = await authApi.enableTwoFactor(code.trim());
+      const result = await authApi.enableTwoFactor(code.trim(), password);
       await refreshUser();
       setBackupCodes(result.backupCodes);
     } catch (err) {
@@ -60,8 +67,48 @@ export function TwoFactorSetupPage() {
     }
   }
 
-  if (loading) {
-    return <SesLoader label="Loading setup" />;
+  if (!secret) {
+    return (
+      <>
+        <div className="topbar">
+          <div>
+            <h1>Enable 2FA</h1>
+            <p>Confirm your password to continue</p>
+          </div>
+        </div>
+        <div className="content profile-page">
+          <div className="panel profile-panel">
+            <form className="profile-form-grid" onSubmit={onStart}>
+              <div className="field">
+                <label htmlFor="twofa-password">Current password</label>
+                <input
+                  id="twofa-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              {startError ? <p className="error">{startError}</p> : null}
+              <div className="profile-actions">
+                <button
+                  className="btn btn-primary"
+                  type="submit"
+                  disabled={starting || !password}
+                >
+                  Continue
+                </button>
+                <Link className="btn btn-ghost" to="/settings">
+                  Cancel
+                </Link>
+              </div>
+            </form>
+          </div>
+        </div>
+        {starting ? <SesLoader label="Checking password" /> : null}
+      </>
+    );
   }
 
   if (backupCodes) {

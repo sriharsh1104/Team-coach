@@ -14,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChatService, GUILD_CHANNEL, ORG_CHANNEL } from './chat.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { WsRateLimiter } from '../common/ws-rate-limiter';
 
 interface SocketData {
   userId: string;
@@ -27,6 +28,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
   server: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
+  // Generous enough for real chat use (bursts of quick messages, pasting a
+  // few links) while stopping a flood — per socket, not per org, so one
+  // abusive connection can't drown out the rest of the room's budget.
+  private readonly messageLimiter = new WsRateLimiter(20, 10_000);
 
   constructor(
     private readonly jwtService: JwtService,
@@ -67,8 +72,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     });
   }
 
-  handleDisconnect(_client: Socket) {
+  handleDisconnect(client: Socket) {
     // socket.io removes room membership automatically on disconnect.
+    this.messageLimiter.clear(client.id);
   }
 
   @SubscribeMessage('channel:join')
@@ -135,6 +141,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
   ) {
     const data = client.data as SocketData;
     if (!data?.orgId) return;
+    if (!this.messageLimiter.allow(client.id)) return;
 
     const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
     const text = (body?.text ?? '').trim();

@@ -58,15 +58,15 @@ export function changePassword(currentPassword: string, newPassword: string) {
     .then((res) => res.data);
 }
 
-export function setupTwoFactor() {
+export function setupTwoFactor(password: string) {
   return apiClient
-    .post<{ secret: string; qrCodeDataUrl: string }>('/auth/2fa/setup')
+    .post<{ secret: string; qrCodeDataUrl: string }>('/auth/2fa/setup', { password })
     .then((res) => res.data);
 }
 
-export function enableTwoFactor(code: string) {
+export function enableTwoFactor(code: string, password: string) {
   return apiClient
-    .post<{ backupCodes: string[] }>('/auth/2fa/enable', { code })
+    .post<{ backupCodes: string[] }>('/auth/2fa/enable', { code, password })
     .then((res) => res.data);
 }
 
