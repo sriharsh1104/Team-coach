@@ -36,6 +36,13 @@ yarn-error.*
 .env.stage
 .env.production
 
+# Firebase / FCM — service account private key must NEVER be committed.
+# google-services.json is OK to commit (public client ids); keep the
+# Admin SDK JSON out of git.
+*firebase-adminsdk*.json
+firebase-service-account.json
+fcm-service-account.json
+
 # typescript
 *.tsbuildinfo
 

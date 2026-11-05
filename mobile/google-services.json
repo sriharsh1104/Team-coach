@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "558723565836",
+    "project_id": "sacred-esports-5c6b5",
+    "storage_bucket": "sacred-esports-5c6b5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:558723565836:android:c7e6a9588a77ce7c622129",
+        "android_client_info": {
+          "package_name": "com.teamcoach.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB0Zcaza6DJUnWI24V1pd_hKKgqhqGGw4g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

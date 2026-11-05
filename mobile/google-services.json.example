@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "REPLACE_FROM_FIREBASE",
+    "project_id": "REPLACE_FROM_FIREBASE",
+    "storage_bucket": "REPLACE_FROM_FIREBASE.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:REPLACE:android:REPLACE",
+        "android_client_info": {
+          "package_name": "com.teamcoach.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "REPLACE_FROM_FIREBASE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
