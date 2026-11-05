@@ -26,7 +26,7 @@ describe('OrgChoiceScreen', () => {
     fireEvent.press(screen.getByText('Create an Org'));
     expect(navigation.navigate).toHaveBeenCalledWith('CreateOrg');
 
-    fireEvent.press(screen.getByText('Join an Org'));
+    fireEvent.press(screen.getByText('Join a Guild'));
     expect(navigation.navigate).toHaveBeenCalledWith('JoinOrg');
   });
 

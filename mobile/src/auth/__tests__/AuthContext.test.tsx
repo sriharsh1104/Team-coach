@@ -76,6 +76,7 @@ describe('AuthContext', () => {
     mockedAuthApi.me.mockResolvedValue({
       ...fakeUser,
       org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false },
+      guild: null,
     });
 
     const { result } = renderAuth();
@@ -102,6 +103,7 @@ describe('AuthContext', () => {
       accessToken: 'new-token',
       user: fakeUser,
       org: null,
+      guild: null,
     });
 
     const { result } = renderAuth();
@@ -146,6 +148,7 @@ describe('AuthContext', () => {
       accessToken: 'verified-token',
       user: fakeUser,
       org: null,
+      guild: null,
     });
 
     const { result } = renderAuth();
@@ -179,6 +182,7 @@ describe('AuthContext', () => {
       accessToken: 'login-token',
       user: fakeUser,
       org: { id: 'org-1', name: 'Alpha Squad', role: 'COACH', isOwner: false },
+      guild: null,
     });
 
     const { result } = renderAuth();
@@ -215,6 +219,7 @@ describe('AuthContext', () => {
       accessToken: 'verified-token',
       user: fakeUser,
       org: null,
+      guild: null,
     });
 
     const { result } = renderAuth();
@@ -236,6 +241,7 @@ describe('AuthContext', () => {
       accessToken: 'google-token',
       user: fakeUser,
       org: null,
+      guild: null,
     });
 
     const { result } = renderAuth();
@@ -255,6 +261,7 @@ describe('AuthContext', () => {
       accessToken: 'login-token',
       user: fakeUser,
       org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false },
+      guild: null,
     });
 
     const { result } = renderAuth();
@@ -280,6 +287,7 @@ describe('AuthContext', () => {
       accessToken: 'login-token',
       user: fakeUser,
       org: null,
+      guild: null,
     });
     mockedAuthApi.logout.mockRejectedValue(new Error('Network error'));
 
@@ -302,6 +310,7 @@ describe('AuthContext', () => {
       accessToken: 'login-token',
       user: fakeUser,
       org: null,
+      guild: null,
     });
 
     const { result } = renderAuth();
@@ -314,6 +323,7 @@ describe('AuthContext', () => {
     mockedAuthApi.me.mockResolvedValue({
       ...fakeUser,
       org: { id: 'org-2', name: 'Newly Joined Org', role: 'PLAYER', isOwner: false },
+      guild: null,
     });
     await act(async () => {
       await result.current.refreshOrg();
@@ -328,6 +338,7 @@ describe('AuthContext', () => {
       accessToken: 'login-token',
       user: { ...fakeUser, profileComplete: false },
       org: null,
+      guild: null,
     });
 
     const { result } = renderAuth();
@@ -337,7 +348,7 @@ describe('AuthContext', () => {
     });
     expect(result.current.user?.profileComplete).toBe(false);
 
-    mockedAuthApi.me.mockResolvedValue({ ...fakeUser, profileComplete: true, org: null });
+    mockedAuthApi.me.mockResolvedValue({ ...fakeUser, profileComplete: true, org: null, guild: null });
     await act(async () => {
       await result.current.refreshUser();
     });
@@ -365,6 +376,7 @@ describe('AuthContext', () => {
       mockedAuthApi.me.mockResolvedValue({
         ...fakeUser,
         org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false },
+        guild: null,
       });
     });
 
@@ -451,6 +463,7 @@ describe('AuthContext', () => {
         accessToken: 'login-token',
         user: fakeUser,
         org: null,
+        guild: null,
       });
       await act(async () => {
         await result.current.login('player1@example.com', 'password123');

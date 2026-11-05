@@ -16,6 +16,7 @@ import { colors } from '../theme';
 import { sharedStyles } from './shared';
 import { CopyButton } from './profile/CopyButton';
 import { RoleSelector } from './RoleSelector';
+import { InviteQr } from '../ui/InviteQr';
 import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { SoftPressable } from '../ui/SoftPressable';
@@ -145,6 +146,7 @@ export function GuildScreen({ navigation }: Props) {
                 Your invites: {detail.myInviteCount} guild member
                 {detail.myInviteCount === 1 ? '' : 's'}
               </Text>
+              <InviteQr value={detail.referralLink} label="Scan to join guild" />
               {detail.orgCode ? (
                 <View style={styles.inviteRow}>
                   <View style={styles.inviteTextCol}>

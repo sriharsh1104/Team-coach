@@ -8,6 +8,7 @@ export type AppIconName =
   | 'person-add'
   | 'add-circle'
   | 'enter'
+  | 'arrow-forward'
   | 'chat'
   | 'mic'
   | 'mic-off'
@@ -36,6 +37,7 @@ const GLYPHS: Record<AppIconName, string> = {
   'log-in': '→',
   'person-add': '＋',
   enter: '↪',
+  'arrow-forward': '→',
   'add-circle': '＋',
   chat: '◈',
   mic: '◉',

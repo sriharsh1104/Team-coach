@@ -18,7 +18,12 @@ jest.mock('expo-image-manipulator', () => ({
 const mockedManipulator = ImageManipulator as jest.Mocked<typeof ImageManipulator>;
 const mockedCompressorImage = CompressorImage as jest.Mocked<typeof CompressorImage>;
 const mockedCompressorVideo = CompressorVideo as jest.Mocked<typeof CompressorVideo>;
-const mockedGetFileSize = getFileSize as jest.MockedFunction<typeof getFileSize>;
+// react-native-compressor's own .d.ts claims this resolves a string, but the
+// native module (and our own nativeCompressor.ts wrapper) actually resolves
+// a byte count — mock against the real contract, not the stale type.
+const mockedGetFileSize = getFileSize as unknown as jest.MockedFunction<
+  (uri: string) => Promise<number>
+>;
 
 beforeEach(() => {
   jest.clearAllMocks();

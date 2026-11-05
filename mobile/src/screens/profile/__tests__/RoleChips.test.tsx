@@ -7,7 +7,7 @@ describe('RoleChips', () => {
     render(<RoleChips selected={[]} onToggle={jest.fn()} />);
     expect(screen.getByText('IGL')).toBeTruthy();
     expect(screen.getByText('Sniper')).toBeTruthy();
-    expect(screen.getByText('Grenadier')).toBeTruthy();
+    expect(screen.getByText('Grenadier/support')).toBeTruthy();
   });
 
   it('calls onToggle with the role key (not the display label) when tapped', () => {

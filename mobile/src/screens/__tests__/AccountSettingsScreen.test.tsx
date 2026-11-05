@@ -78,6 +78,7 @@ describe('AccountSettingsScreen', () => {
       accessToken: 'fresh-token',
       user: baseUser,
       org: null,
+      guild: null,
     });
     render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
 
@@ -91,6 +92,7 @@ describe('AccountSettingsScreen', () => {
       accessToken: 'fresh-token',
       user: baseUser,
       org: null,
+      guild: null,
     });
     expect(screen.getByPlaceholderText('Current password').props.value).toBe('');
   });

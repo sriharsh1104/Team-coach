@@ -56,6 +56,8 @@ describe('JoinOrgScreen', () => {
       name: 'Alpha Squad',
       orgCode: 'GUILDCOD',
       referralLink: 'g',
+      rosterCode: 'ROSTER01',
+      rosterReferralLink: 'r',
       myRole: 'PLAYER',
       isOwner: false,
     });
@@ -80,6 +82,8 @@ describe('JoinOrgScreen', () => {
       name: 'Alpha Squad',
       orgCode: 'GUILDCOD',
       referralLink: 'g',
+      rosterCode: 'ROSTER01',
+      rosterReferralLink: 'r',
       myRole: 'PLAYER',
       isOwner: false,
     });

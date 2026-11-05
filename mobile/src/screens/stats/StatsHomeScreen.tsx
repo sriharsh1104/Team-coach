@@ -26,6 +26,7 @@ import { Screen } from '../../brand/Screen';
 import { sharedStyles } from '../shared';
 import { colors } from '../../theme';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import {
   cacheGet,
   cacheSet,
@@ -302,30 +303,16 @@ export function StatsHomeScreen({ navigation, route }: Props) {
       </Text>
       {modeChips}
 
-      <View style={styles.viewTabs}>
-        {(
+      <SegmentedTabs
+        value={viewTab}
+        onChange={setViewTab}
+        tabs={
           [
-            ['board', 'Leaderboard'],
-            ['days', 'By Day'],
+            { value: 'board', label: 'Leaderboard' },
+            { value: 'days', label: 'By Day' },
           ] as const
-        ).map(([value, label]) => {
-          const active = viewTab === value;
-          return (
-            <SoftPressable
-              key={value}
-              onPress={() => setViewTab(value)}
-              style={[styles.viewTab, active && styles.viewTabActive]}
-              accessibilityRole="button"
-              accessibilityLabel={label}
-              pressScale={0.97}
-            >
-              <Text style={active ? styles.viewTabTextActive : styles.viewTabText}>
-                {label}
-              </Text>
-            </SoftPressable>
-          );
-        })}
-      </View>
+        }
+      />
 
       {pending.length > 0 && (
         <>
@@ -524,25 +511,6 @@ const styles = StyleSheet.create({
   modeChipActive: { backgroundColor: colors.chrome },
   modeText: { color: colors.textMuted, fontWeight: '600' },
   modeTextActive: { color: colors.chromeInk, fontWeight: '700' },
-  viewTabs: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 10,
-    padding: 4,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-  },
-  viewTab: {
-    flex: 1,
-    borderRadius: 9,
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  viewTabActive: {
-    backgroundColor: 'rgba(201,204,209,0.2)',
-  },
-  viewTabText: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
-  viewTabTextActive: { color: colors.text, fontWeight: '700', fontSize: 13 },
   sectionHeader: {
     fontWeight: '700',
     fontSize: 16,

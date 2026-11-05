@@ -8,6 +8,7 @@ import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
 import { SoftPressable } from '../ui/SoftPressable';
+import { InviteQr } from '../ui/InviteQr';
 import { CopyButton } from './profile/CopyButton';
 
 function formatInGameRoles(roles: string[]): string | null {
@@ -66,6 +67,7 @@ export function MembersScreen({ navigation }: Props) {
                     code. Already registered users can open the link and join
                     without a new signup.
                   </Text>
+                  <InviteQr value={detail.rosterReferralLink!} label="Scan to join roster" />
                   <View style={styles.inviteRow}>
                     <View style={styles.inviteTextCol}>
                       <Text style={styles.inviteLabel}>Roster Code</Text>

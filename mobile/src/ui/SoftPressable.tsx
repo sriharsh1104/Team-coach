@@ -4,6 +4,7 @@ import {
   Pressable,
   PressableProps,
   StyleProp,
+  StyleSheet,
   ViewStyle,
 } from 'react-native';
 
@@ -14,10 +15,61 @@ type Props = Omit<PressableProps, 'style' | 'children'> & {
   pressScale?: number;
 };
 
+/** Flex/margin must sit on Pressable — children can't stretch a shrink-wrapped parent. */
+function layoutFromStyle(style: StyleProp<ViewStyle>): ViewStyle | undefined {
+  const flat = StyleSheet.flatten(style);
+  if (!flat) return undefined;
+  const {
+    flex,
+    flexGrow,
+    flexShrink,
+    flexBasis,
+    alignSelf,
+    width,
+    height,
+    minWidth,
+    maxWidth,
+    minHeight,
+    maxHeight,
+    margin,
+    marginTop,
+    marginBottom,
+    marginLeft,
+    marginRight,
+    marginHorizontal,
+    marginVertical,
+    marginStart,
+    marginEnd,
+  } = flat;
+  return {
+    flex,
+    flexGrow,
+    flexShrink,
+    flexBasis,
+    alignSelf,
+    width,
+    height,
+    minWidth,
+    maxWidth,
+    minHeight,
+    maxHeight,
+    margin,
+    marginTop,
+    marginBottom,
+    marginLeft,
+    marginRight,
+    marginHorizontal,
+    marginVertical,
+    marginStart,
+    marginEnd,
+  };
+}
+
 /**
  * Pressable with a light spring scale — makes taps feel responsive without
- * pulling in reanimated. Style lands on the animated child so borders/bg
- * scale with the press.
+ * pulling in reanimated. Visual styles land on the animated child so
+ * borders/bg scale with the press; flex/margin stay on Pressable so row
+ * layouts (gap + flex:1) still work.
  */
 export function SoftPressable({
   children,
@@ -29,7 +81,8 @@ export function SoftPressable({
   ...rest
 }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
-  const skipMotion = process.env.NODE_ENV === 'test';
+  const skipMotion =
+    typeof jest !== 'undefined' || process.env.NODE_ENV === 'test';
 
   const animateTo = (value: number) => {
     if (skipMotion) {
@@ -47,6 +100,7 @@ export function SoftPressable({
   return (
     <Pressable
       disabled={disabled}
+      style={layoutFromStyle(style)}
       onPressIn={(e) => {
         if (!disabled) animateTo(pressScale);
         onPressIn?.(e);

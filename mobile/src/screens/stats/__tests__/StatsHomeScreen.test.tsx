@@ -10,12 +10,14 @@ import { useAuth } from '../../../auth/AuthContext';
 jest.mock('../../../api/stats');
 jest.mock('../../../api/media');
 jest.mock('../../../auth/AuthContext');
-jest.mock('../../scrims/MatchSchedulePanel', () => ({
-  MatchSchedulePanel: ({ eventType }: { eventType: string }) => {
-    const { Text } = require('react-native');
-    return <Text>{`Match panel ${eventType}`}</Text>;
-  },
-}));
+jest.mock('../../scrims/MatchSchedulePanel', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+  return {
+    MatchSchedulePanel: ({ eventType }: { eventType: string }) =>
+      React.createElement(Text, null, `Match panel ${eventType}`),
+  };
+});
 jest.mock('expo-image-picker', () => ({
   MediaTypeOptions: { Images: 'Images' },
   requestMediaLibraryPermissionsAsync: jest.fn(),

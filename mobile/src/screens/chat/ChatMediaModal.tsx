@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
+  Dimensions,
   Modal,
   View,
   Text,
@@ -18,6 +20,11 @@ import { MediaViewerModal } from './MediaViewerModal';
 type GalleryTab = 'media' | 'docs' | 'links';
 
 const URL_REGEX = /https?:\/\/\S+/i;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+// Tests render synchronously and don't advance RN's Animated clock — skip
+// straight to the resting position so content is visible to query right away
+// (same convention as ui/SideDrawer.tsx).
+const SKIP_MOTION = process.env.NODE_ENV === 'test';
 
 interface Props {
   visible: boolean;
@@ -38,6 +45,21 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
     type: 'IMAGE' | 'VIDEO';
     uri: string;
   } | null>(null);
+  // Slides in from the right edge instead of RN's default bottom-up sheet —
+  // matches ui/SideDrawer.tsx's left-side drawer, mirrored to the other edge.
+  const slide = useRef(new Animated.Value(SCREEN_WIDTH)).current;
+
+  useEffect(() => {
+    if (SKIP_MOTION) {
+      slide.setValue(visible ? 0 : SCREEN_WIDTH);
+      return;
+    }
+    Animated.timing(slide, {
+      toValue: visible ? 0 : SCREEN_WIDTH,
+      duration: 240,
+      useNativeDriver: true,
+    }).start();
+  }, [visible, slide]);
 
   useEffect(() => {
     if (!visible) return;
@@ -52,8 +74,10 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
   }, [visible, channelKey]);
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.root}>
+    <Modal visible={visible} animationType="fade" onRequestClose={onClose}>
+      <Animated.View
+        style={[styles.root, { transform: [{ translateX: slide }] }]}
+      >
         <View style={styles.header}>
           <Pressable onPress={onClose} hitSlop={8}>
             <Text style={styles.closeText}>Close</Text>
@@ -142,7 +166,7 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
             }}
           />
         )}
-      </View>
+      </Animated.View>
 
       <MediaViewerModal
         visible={!!viewerMedia}

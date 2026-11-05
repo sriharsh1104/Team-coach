@@ -20,7 +20,7 @@ import { TwoFactorSetupScreen } from '../screens/TwoFactorSetupScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
 import { MediaFeedScreen } from '../screens/media/MediaFeedScreen';
-import { ChatScreen } from '../screens/chat/ChatScreen';
+import { ChatScreenWithMedia } from '../screens/chat/ChatScreenWithMedia';
 import { ScrimsListScreen } from '../screens/scrims/ScrimsListScreen';
 import { AddEditScrimScreen } from '../screens/scrims/AddEditScrimScreen';
 import { StatsHomeScreen } from '../screens/stats/StatsHomeScreen';
@@ -194,7 +194,7 @@ export function RootNavigator() {
             name="Chat"
             options={{ title: 'Guild Chat' }}
           >
-            {() => <ChatScreen channelKey="guild" />}
+            {() => <ChatScreenWithMedia channelKey="guild" title="Guild Chat" />}
           </MainStack.Screen>
           <MainStack.Screen
             name="SocialHandles"
@@ -262,7 +262,10 @@ export function RootNavigator() {
             })}
           >
             {({ route }) => (
-              <ChatScreen channelKey={route.params?.channelKey ?? 'org'} />
+              <ChatScreenWithMedia
+                channelKey={route.params?.channelKey ?? 'org'}
+                title={route.params?.channelKey === 'guild' ? 'Guild Chat' : 'Team Chat'}
+              />
             )}
           </MainStack.Screen>
           <MainStack.Screen

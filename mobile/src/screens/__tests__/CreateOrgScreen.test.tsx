@@ -48,6 +48,8 @@ describe('CreateOrgScreen', () => {
       name: 'Alpha Squad',
       orgCode: 'ABC123',
       referralLink: 'token123',
+      rosterCode: 'XYZ789',
+      rosterReferralLink: 'roster-token123',
       myRole: null,
       isOwner: true,
     });
