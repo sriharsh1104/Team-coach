@@ -1142,6 +1142,11 @@ a:hover {
   color: #041018;
 }
 
+.drop-tier-vending {
+  background: rgba(61, 220, 132, 0.88);
+  color: #04180c;
+}
+
 .map-rail-item .drop-tier-badge {
   position: static;
   padding: 2px 6px;
@@ -1233,6 +1238,78 @@ a:hover {
 
 .map-fullscreen-body .map-fullscreen-stage {
   min-height: 0;
+}
+
+.map-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0 6px;
+}
+
+.map-filter-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.map-filter-chip.active {
+  background: rgba(168, 176, 255, 0.85);
+  border-color: rgba(168, 176, 255, 0.85);
+  color: #0a0a12;
+}
+
+.map-overview-pins {
+  position: relative;
+  width: min(100%, 96vh);
+  max-width: 1600px;
+  aspect-ratio: 1;
+}
+
+.map-overview-pins .map-frame-fullscreen {
+  width: 100%;
+  height: 100%;
+}
+
+.map-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  border: 2px solid #050507;
+  background: rgba(248, 113, 113, 0.92);
+  color: #1a0606;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.map-pin:hover {
+  filter: brightness(1.1);
+}
+
+.map-pin-primary {
+  background: rgba(248, 113, 113, 0.92);
+  color: #1a0606;
+}
+
+.map-pin-secondary {
+  background: rgba(56, 189, 248, 0.92);
+  color: #041018;
+}
+
+.map-pin-vending {
+  background: rgba(61, 220, 132, 0.92);
+  color: #04180c;
 }
 
 @media (max-width: 860px) {
@@ -2770,21 +2847,72 @@ a:hover {
   text-align: center;
 }
 
-.invite-qr-open {
-  display: block;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: zoom-in;
-  border-radius: 12px;
+.invite-qr-stage {
+  display: grid;
+  place-items: center;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(12, 12, 16, 0.95);
   line-height: 0;
 }
 
-.invite-qr-open img {
-  display: block;
-  border-radius: 12px;
+button.invite-qr-open {
+  font: inherit;
+  color: inherit;
+  cursor: zoom-in;
+}
+
+button.invite-qr-open:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.invite-qr-plate {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
   background: #fff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.invite-qr-shadow {
+  position: absolute;
+  inset: 2%;
+  width: 96%;
+  height: 96%;
+  margin: auto;
+  object-fit: contain;
+  opacity: 0.55;
+  filter: brightness(0);
+  pointer-events: none;
+  user-select: none;
+}
+
+.invite-qr-code {
+  position: relative;
+  z-index: 1;
+  display: block;
+  background: transparent;
+}
+
+.invite-qr-center-logo {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border-radius: 10px;
+  background: #fff;
+  pointer-events: none;
+}
+
+.invite-qr-center-logo img {
+  display: block;
+  object-fit: contain;
 }
 
 .invite-qr-meta {
@@ -2792,12 +2920,13 @@ a:hover {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .invite-qr-meta .muted {
   margin: 0;
   font-size: 12px;
+  letter-spacing: 0.3px;
 }
 
 .invite-qr-download {
@@ -2856,12 +2985,14 @@ a:hover {
   gap: 6px;
 }
 
-.invite-qr-lightbox-img {
-  display: block;
+.invite-qr-lightbox-card .invite-qr-stage {
   width: 100%;
+  padding: 18px;
+}
+
+.invite-qr-lightbox-card .invite-qr-code {
+  width: min(100%, 320px);
   height: auto;
-  border-radius: 12px;
-  background: #fff;
 }
 
 .invite-link-block {

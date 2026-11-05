@@ -27,6 +27,7 @@ import { StatsHomeScreen } from '../screens/stats/StatsHomeScreen';
 import { ExtractionReviewScreen } from '../screens/stats/ExtractionReviewScreen';
 import { PlayerStatsScreen } from '../screens/stats/PlayerStatsScreen';
 import { VoiceChannelScreen } from '../screens/voice/VoiceChannelScreen';
+import { MapsScreen } from '../screens/MapsScreen';
 import { RuleBookScreen } from '../screens/RuleBookScreen';
 import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
 import {
@@ -61,6 +62,7 @@ const mainScreenOptions = {
   headerTintColor: colors.text,
   headerTitleStyle: { fontWeight: '700' as const, color: colors.text },
   headerShadowVisible: false,
+  headerBackButtonDisplayMode: 'minimal' as const,
   contentStyle: { backgroundColor: colors.bg },
 };
 
@@ -299,10 +301,16 @@ export function RootNavigator() {
             options={{ title: 'Team Voice' }}
           />
           <MainStack.Screen
+            name="Maps"
+            component={MapsScreen}
+            options={{ title: 'Maps' }}
+          />
+          <MainStack.Screen
             name="RuleBook"
             component={RuleBookScreen}
             options={{ title: 'Rule Book' }}
           />
+
           <MainStack.Screen
             name="SocialHandles"
             component={SocialHandlesScreen}

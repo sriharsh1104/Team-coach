@@ -1,10 +1,30 @@
-import { useEffect, useState } from 'react';
-import { FreeFireMap, listMaps, MapDrop } from '../api/maps';
+import { useEffect, useMemo, useState } from 'react';
+import { FreeFireMap, MapPin, listMaps, mapPins } from '../api/maps';
 import { SesLoader } from '../ui/SesLoader';
 
 type ViewerTarget =
   | { kind: 'overview'; map: FreeFireMap }
-  | { kind: 'drop'; map: FreeFireMap; drop: MapDrop };
+  | { kind: 'poi'; map: FreeFireMap; pin: MapPin };
+
+type PinFilter = 'all' | 'drop' | 'vending_machine';
+
+const PIN_FILTERS: { key: PinFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'drop', label: 'Drops' },
+  { key: 'vending_machine', label: 'Vending' },
+];
+
+function pinLabel(pin: MapPin): string {
+  if (pin.category === 'drop') {
+    return pin.tier === 'primary' ? 'Primary drop' : 'Secondary drop';
+  }
+  return 'Vending machine';
+}
+
+function pinGlyph(pin: MapPin): string {
+  if (pin.category === 'drop') return pin.tier === 'primary' ? 'P' : 'S';
+  return 'V';
+}
 
 function MapImage({
   src,
@@ -39,28 +59,32 @@ function MapImage({
   );
 }
 
-function DropThumb({
-  drop,
-  onOpen,
-}: {
-  drop: MapDrop;
-  onOpen: () => void;
-}) {
+function PinThumb({ pin, onOpen }: { pin: MapPin; onOpen: () => void }) {
   return (
     <button
       type="button"
       className="drop-thumb"
       onClick={onOpen}
-      aria-label={`Open ${drop.name} drone view`}
+      aria-label={`Open ${pin.name}`}
     >
-      <span className={`drop-tier-badge drop-tier-${drop.tier}`}>
-        {drop.tier === 'primary' ? 'Primary' : 'Secondary'}
+      <span
+        className={`drop-tier-badge ${
+          pin.category === 'drop'
+            ? `drop-tier-${pin.tier}`
+            : 'drop-tier-vending'
+        }`}
+      >
+        {pin.category === 'drop'
+          ? pin.tier === 'primary'
+            ? 'Primary'
+            : 'Secondary'
+          : 'Vending'}
       </span>
       <div className="drop-thumb-frame">
-        <img src={drop.imageUrl} alt={`${drop.name} drone view`} loading="lazy" />
+        <img src={pin.imageUrl} alt={pinLabel(pin)} loading="lazy" />
       </div>
-      <strong>{drop.name}</strong>
-      <span>{drop.note}</span>
+      <strong>{pin.name}</strong>
+      <span>{pin.note}</span>
     </button>
   );
 }
@@ -71,6 +95,7 @@ export function MapsPage() {
   const [error, setError] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerTarget | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [pinFilter, setPinFilter] = useState<PinFilter>('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -111,32 +136,37 @@ export function MapsPage() {
 
   const openOverview = (map: FreeFireMap) => {
     setZoom(1);
+    setPinFilter('all');
     setViewer({ kind: 'overview', map });
   };
 
-  const openDrop = (map: FreeFireMap, drop: MapDrop) => {
+  const openPoi = (map: FreeFireMap, pin: MapPin) => {
     setZoom(1);
-    setViewer({ kind: 'drop', map, drop });
+    setViewer({ kind: 'poi', map, pin });
   };
 
+  const pins = useMemo(() => (viewer ? mapPins(viewer.map) : []), [viewer]);
+
+  const visiblePins = useMemo(
+    () =>
+      pinFilter === 'all' ? pins : pins.filter((pin) => pin.category === pinFilter),
+    [pins, pinFilter],
+  );
+
   const viewerTitle =
-    viewer?.kind === 'drop'
-      ? `${viewer.drop.name} · ${viewer.map.name}`
+    viewer?.kind === 'poi'
+      ? `${viewer.pin.name} · ${viewer.map.name}`
       : viewer
         ? `${viewer.map.name} overview`
         : '';
 
   const viewerSrc =
-    viewer?.kind === 'drop' ? viewer.drop.imageUrl : viewer?.map.imageUrl ?? '';
+    viewer?.kind === 'poi' ? viewer.pin.imageUrl : viewer?.map.imageUrl ?? '';
 
   const viewerNote =
-    viewer?.kind === 'drop'
-      ? `${viewer.drop.tier === 'primary' ? 'Primary' : 'Secondary'} team drop · drone view · zoom for clash landing`
-      : 'Full overview · scroll to pan · zoom for drop / rotation plans';
-
-  const viewerDrops = viewer
-    ? [viewer.map.primary, viewer.map.secondary]
-    : [];
+    viewer?.kind === 'poi'
+      ? `${pinLabel(viewer.pin)} · drone view · zoom for clash landing`
+      : 'Full overview · tap a pin to open that location · zoom for drop / rotation plans';
 
   if (loading) return <SesLoader label="Loading maps" />;
 
@@ -146,8 +176,8 @@ export function MapsPage() {
         <div>
           <h1>Free Fire Maps</h1>
           <p>
-            Team drop points — primary &amp; secondary per map, drone views for
-            clash landing
+            Team drop points &amp; vending machines — tap a pin on the map for
+            that location&rsquo;s drone view
           </p>
         </div>
       </div>
@@ -196,16 +226,39 @@ export function MapsPage() {
                 <span className="drop-count">2</span>
               </div>
               <div className="drop-grid drop-grid-pair">
-                <DropThumb
-                  drop={map.primary}
-                  onOpen={() => openDrop(map, map.primary)}
+                <PinThumb
+                  pin={{ ...map.primary, category: 'drop' }}
+                  onOpen={() => openPoi(map, { ...map.primary, category: 'drop' })}
                 />
-                <DropThumb
-                  drop={map.secondary}
-                  onOpen={() => openDrop(map, map.secondary)}
+                <PinThumb
+                  pin={{ ...map.secondary, category: 'drop' }}
+                  onOpen={() => openPoi(map, { ...map.secondary, category: 'drop' })}
                 />
               </div>
             </section>
+
+            {map.vendingMachines.length > 0 ? (
+              <section className="drop-section">
+                <div className="drop-section-head">
+                  <div>
+                    <p className="drop-eyebrow">Vending machines</p>
+                    <h3>On this map</h3>
+                  </div>
+                  <span className="drop-count">{map.vendingMachines.length}</span>
+                </div>
+                <div className="drop-grid">
+                  {map.vendingMachines.map((machine) => (
+                    <PinThumb
+                      key={machine.id}
+                      pin={{ ...machine, category: 'vending_machine' }}
+                      onOpen={() =>
+                        openPoi(map, { ...machine, category: 'vending_machine' })
+                      }
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </article>
         ))}
       </div>
@@ -271,25 +324,42 @@ export function MapsPage() {
                 <span className="map-rail-note">Full map</span>
               </button>
 
+              {viewer.kind === 'overview' ? (
+                <div className="map-filter-row">
+                  {PIN_FILTERS.map((filter) => (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      className={`map-filter-chip${pinFilter === filter.key ? ' active' : ''}`}
+                      onClick={() => setPinFilter(filter.key)}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
               <div className="map-rail-list">
-                {viewerDrops.map((drop) => {
-                  const active =
-                    viewer.kind === 'drop' && viewer.drop.id === drop.id;
+                {pins.map((pin) => {
+                  const active = viewer.kind === 'poi' && viewer.pin.id === pin.id;
                   return (
                     <button
-                      key={drop.id}
+                      key={pin.id}
                       type="button"
                       className={`map-rail-item${active ? ' active' : ''}`}
-                      onClick={() => {
-                        setZoom(1);
-                        setViewer({ kind: 'drop', map: viewer.map, drop });
-                      }}
+                      onClick={() => openPoi(viewer.map, pin)}
                     >
-                      <span className={`drop-tier-badge drop-tier-${drop.tier}`}>
-                        {drop.tier === 'primary' ? 'P' : 'S'}
+                      <span
+                        className={`drop-tier-badge ${
+                          pin.category === 'drop'
+                            ? `drop-tier-${pin.tier}`
+                            : 'drop-tier-vending'
+                        }`}
+                      >
+                        {pinGlyph(pin)}
                       </span>
-                      <span className="map-rail-label">{drop.name}</span>
-                      <span className="map-rail-note">{drop.note}</span>
+                      <span className="map-rail-label">{pin.name}</span>
+                      <span className="map-rail-note">{pinLabel(pin)}</span>
                     </button>
                   );
                 })}
@@ -306,19 +376,44 @@ export function MapsPage() {
                   minHeight: '100%',
                 }}
               >
-                <MapImage
-                  src={viewerSrc}
-                  alt={viewerTitle}
-                  className={
-                    viewer.kind === 'drop'
-                      ? 'map-frame-fullscreen map-frame-drone'
-                      : 'map-frame-fullscreen'
-                  }
-                  fallbackId={viewer.map.id}
-                  fallbackName={
-                    viewer.kind === 'drop' ? viewer.drop.name : viewer.map.name
-                  }
-                />
+                {viewer.kind === 'overview' ? (
+                  <div className="map-overview-pins">
+                    <MapImage
+                      src={viewerSrc}
+                      alt={viewerTitle}
+                      className="map-frame-fullscreen"
+                      fallbackId={viewer.map.id}
+                      fallbackName={viewer.map.name}
+                    />
+                    {visiblePins.map((pin) => (
+                      <button
+                        key={pin.id}
+                        type="button"
+                        className={`map-pin ${
+                          pin.category === 'vending_machine'
+                            ? 'map-pin-vending'
+                            : pin.tier === 'secondary'
+                              ? 'map-pin-secondary'
+                              : 'map-pin-primary'
+                        }`}
+                        style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }}
+                        onClick={() => openPoi(viewer.map, pin)}
+                        aria-label={`Open ${pin.name}`}
+                        title={pin.name}
+                      >
+                        {pinGlyph(pin)}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <MapImage
+                    src={viewerSrc}
+                    alt={viewerTitle}
+                    className="map-frame-fullscreen map-frame-drone"
+                    fallbackId={viewer.map.id}
+                    fallbackName={viewer.kind === 'poi' ? viewer.pin.name : viewer.map.name}
+                  />
+                )}
               </div>
             </div>
           </div>

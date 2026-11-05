@@ -72,6 +72,11 @@ export function OrgHomeScreen({ navigation }: Props) {
         onPress: () => navigation.navigate('Voice'),
       },
       {
+        key: 'maps',
+        label: 'Maps',
+        onPress: () => navigation.navigate('Maps'),
+      },
+      {
         key: 'ruleBook',
         label: 'Rule Book',
         onPress: () => navigation.navigate('RuleBook'),

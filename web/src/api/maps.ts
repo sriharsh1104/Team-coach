@@ -8,7 +8,23 @@ export type MapDrop = {
   tier: DropTier;
   note: string;
   imageUrl: string;
+  /** Pin position on the square map overview image, 0–1 fraction. */
+  x: number;
+  y: number;
 };
+
+export type VendingMachine = {
+  id: string;
+  name: string;
+  note: string;
+  imageUrl: string;
+  x: number;
+  y: number;
+};
+
+export type MapPin =
+  | ({ category: 'drop' } & MapDrop)
+  | ({ category: 'vending_machine' } & VendingMachine);
 
 export type FreeFireMap = {
   id: string;
@@ -18,13 +34,21 @@ export type FreeFireMap = {
   imageUrl: string;
   primary: MapDrop;
   secondary: MapDrop;
+  vendingMachines: VendingMachine[];
 };
 
 type CatalogDrop = Omit<MapDrop, 'imageUrl'> & { imageUrl: string };
-type CatalogMap = Omit<FreeFireMap, 'imageUrl' | 'primary' | 'secondary'> & {
+type CatalogVendingMachine = Omit<VendingMachine, 'imageUrl'> & {
+  imageUrl: string;
+};
+type CatalogMap = Omit<
+  FreeFireMap,
+  'imageUrl' | 'primary' | 'secondary' | 'vendingMachines'
+> & {
   imageUrl: string;
   primary: CatalogDrop;
   secondary: CatalogDrop;
+  vendingMachines: CatalogVendingMachine[];
 };
 
 function withAbsoluteUrls(map: CatalogMap): FreeFireMap {
@@ -40,7 +64,21 @@ function withAbsoluteUrls(map: CatalogMap): FreeFireMap {
       imageUrl:
         resolveMediaUrl(map.secondary.imageUrl) || map.secondary.imageUrl,
     },
+    vendingMachines: map.vendingMachines.map((machine) => ({
+      ...machine,
+      imageUrl: resolveMediaUrl(machine.imageUrl) || machine.imageUrl,
+    })),
   };
+}
+
+export function mapPins(map: FreeFireMap): MapPin[] {
+  return [
+    { ...map.primary, category: 'drop' },
+    { ...map.secondary, category: 'drop' },
+    ...map.vendingMachines.map(
+      (machine): MapPin => ({ ...machine, category: 'vending_machine' }),
+    ),
+  ];
 }
 
 export function listMaps() {

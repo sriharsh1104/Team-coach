@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import QRCode from 'qrcode';
 
 const DOWNLOAD_SIZE = 1024;
+const LOGO_SRC = '/sacred-logo-transparent.png';
 
 function downloadDataUrl(dataUrl: string, filename: string) {
   const a = document.createElement('a');
@@ -22,6 +23,73 @@ function DownloadIcon() {
       />
     </svg>
   );
+}
+
+async function makeQrDataUrl(text: string, width: number) {
+  return QRCode.toDataURL(text, {
+    width,
+    margin: 1,
+    errorCorrectionLevel: 'H',
+    color: {
+      dark: '#0a0a0ce0',
+      light: '#00000000',
+    },
+  });
+}
+
+function QrStage({
+  previewUrl,
+  label,
+  size,
+  openable,
+  onOpen,
+}: {
+  previewUrl: string;
+  label: string;
+  size: number;
+  openable?: boolean;
+  onOpen?: () => void;
+}) {
+  const logoSize = Math.round(size * 0.34);
+
+  const body = (
+    <span className="invite-qr-plate" style={{ width: size + 20, height: size + 20 }}>
+      <img
+        className="invite-qr-shadow"
+        src={LOGO_SRC}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+      />
+      <img
+        className="invite-qr-code"
+        src={previewUrl}
+        alt={label}
+        width={size}
+        height={size}
+        draggable={false}
+      />
+      <span className="invite-qr-center-logo" aria-hidden="true">
+        <img src={LOGO_SRC} alt="" width={logoSize} height={logoSize} draggable={false} />
+      </span>
+    </span>
+  );
+
+  if (openable && onOpen) {
+    return (
+      <button
+        type="button"
+        className="invite-qr-stage invite-qr-open"
+        onClick={onOpen}
+        aria-label="Open QR full screen"
+        title="Open full screen"
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return <div className="invite-qr-stage">{body}</div>;
 }
 
 export function InviteQr({
@@ -45,11 +113,7 @@ export function InviteQr({
     setPreviewUrl(null);
     setHiResUrl(null);
 
-    QRCode.toDataURL(url, {
-      width: size,
-      margin: 2,
-      color: { dark: '#0a0a0c', light: '#ffffff' },
-    })
+    makeQrDataUrl(url, size)
       .then((next) => {
         if (alive) setPreviewUrl(next);
       })
@@ -57,11 +121,7 @@ export function InviteQr({
         if (alive) setPreviewUrl(null);
       });
 
-    QRCode.toDataURL(url, {
-      width: DOWNLOAD_SIZE,
-      margin: 2,
-      color: { dark: '#0a0a0c', light: '#ffffff' },
-    })
+    makeQrDataUrl(url, DOWNLOAD_SIZE)
       .then((next) => {
         if (alive) setHiResUrl(next);
       })
@@ -95,15 +155,13 @@ export function InviteQr({
   return (
     <>
       <div className="invite-qr">
-        <button
-          type="button"
-          className="invite-qr-open"
-          onClick={() => setFullscreen(true)}
-          aria-label="Open QR full screen"
-          title="Open full screen"
-        >
-          <img src={previewUrl} alt={label} width={size} height={size} />
-        </button>
+        <QrStage
+          previewUrl={previewUrl}
+          label={label}
+          size={size}
+          openable
+          onOpen={() => setFullscreen(true)}
+        />
         <div className="invite-qr-meta">
           <p className="muted">{label}</p>
           <button
@@ -147,15 +205,16 @@ export function InviteQr({
                   type="button"
                   className="btn btn-ghost"
                   onClick={() => setFullscreen(false)}
+                  aria-label="Close"
                 >
-                  Close
+                  ✕
                 </button>
               </div>
             </div>
-            <img
-              className="invite-qr-lightbox-img"
-              src={exportUrl}
-              alt={label}
+            <QrStage
+              previewUrl={exportUrl}
+              label={label}
+              size={Math.min(320, DOWNLOAD_SIZE)}
             />
           </div>
         </div>

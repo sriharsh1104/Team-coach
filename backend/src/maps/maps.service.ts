@@ -46,6 +46,10 @@ export class MapsService {
         ...map.secondary,
         imageUrl: this.imageUrlFor(map.secondary.imagePath),
       },
+      vendingMachines: map.vendingMachines.map((machine) => ({
+        ...machine,
+        imageUrl: this.imageUrlFor(machine.imagePath),
+      })),
     }));
   }
 

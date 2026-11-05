@@ -34,6 +34,7 @@ export type MainStackParamList = {
   ExtractionReview: { extraction: StatExtraction };
   PlayerStats: { userId: string; name: string; mode: StatMode };
   Voice: undefined;
+  Maps: undefined;
   RuleBook: undefined;
   SocialHandles: undefined;
 };
