@@ -411,7 +411,7 @@ export function MapsPage() {
                     alt={viewerTitle}
                     className="map-frame-fullscreen map-frame-drone"
                     fallbackId={viewer.map.id}
-                    fallbackName={viewer.kind === 'poi' ? viewer.pin.name : viewer.map.name}
+                    fallbackName={viewer.pin.name}
                   />
                 )}
               </div>
