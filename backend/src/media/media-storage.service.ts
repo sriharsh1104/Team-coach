@@ -42,11 +42,27 @@ export type StoredMedia = {
  * Local disk (tests / offline) or Cloudinary (when CLOUDINARY_* is set).
  * fileKey stays the single source of truth in MediaPost / chat tokens.
  */
+export type CloudinaryDirectUploadSign = {
+  cloudName: string;
+  apiKey: string;
+  timestamp: number;
+  signature: string;
+  folder: string;
+  publicId: string;
+  resourceType: 'image' | 'video';
+  type: 'authenticated';
+  /** Full Cloudinary upload endpoint for the mobile client. */
+  uploadUrl: string;
+};
+
 @Injectable()
 export class MediaStorageService {
   private readonly logger = new Logger(MediaStorageService.name);
   private readonly uploadDir: string;
   private readonly folder: string;
+  private readonly cloudName: string | null;
+  private readonly apiKey: string | null;
+  private readonly apiSecret: string | null;
   readonly cloudinaryEnabled: boolean;
 
   constructor(private readonly config: ConfigService) {
@@ -58,24 +74,71 @@ export class MediaStorageService {
       mkdirSync(this.uploadDir, { recursive: true });
     }
 
-    const cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME')?.trim();
-    const apiKey = this.config.get<string>('CLOUDINARY_API_KEY')?.trim();
-    const apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET')?.trim();
+    this.cloudName =
+      this.config.get<string>('CLOUDINARY_CLOUD_NAME')?.trim() || null;
+    this.apiKey = this.config.get<string>('CLOUDINARY_API_KEY')?.trim() || null;
+    this.apiSecret =
+      this.config.get<string>('CLOUDINARY_API_SECRET')?.trim() || null;
     this.folder =
       this.config.get<string>('CLOUDINARY_FOLDER')?.trim() || 'team-coach';
 
-    this.cloudinaryEnabled = Boolean(cloudName && apiKey && apiSecret);
+    this.cloudinaryEnabled = Boolean(
+      this.cloudName && this.apiKey && this.apiSecret,
+    );
     if (this.cloudinaryEnabled) {
       cloudinary.config({
-        cloud_name: cloudName,
-        api_key: apiKey,
-        api_secret: apiSecret,
+        cloud_name: this.cloudName!,
+        api_key: this.apiKey!,
+        api_secret: this.apiSecret!,
         secure: true,
       });
       this.logger.log(`Cloudinary storage enabled (folder=${this.folder})`);
     } else {
       this.logger.log('Cloudinary not configured — using local MEDIA_UPLOAD_DIR');
     }
+  }
+
+  /**
+   * Signed params so the phone can POST the file straight to Cloudinary
+   * (WhatsApp-style: CDN holds bytes, our API never buffers the upload).
+   */
+  createDirectUploadSign(
+    resourceType: 'image' | 'video' = 'image',
+  ): CloudinaryDirectUploadSign | null {
+    if (!this.cloudinaryEnabled || !this.cloudName || !this.apiKey) {
+      return null;
+    }
+    const timestamp = Math.floor(Date.now() / 1000);
+    const publicId = generateLocalKey();
+    const paramsToSign = {
+      timestamp,
+      folder: this.folder,
+      public_id: publicId,
+      type: 'authenticated' as const,
+    };
+    const signature = cloudinary.utils.api_sign_request(
+      paramsToSign,
+      this.apiSecret!,
+    );
+    return {
+      cloudName: this.cloudName,
+      apiKey: this.apiKey,
+      timestamp,
+      signature,
+      folder: this.folder,
+      publicId,
+      resourceType,
+      type: 'authenticated',
+      uploadUrl: `https://api.cloudinary.com/v1_1/${this.cloudName}/${resourceType}/upload`,
+    };
+  }
+
+  /** After a direct client upload — `public_id` from Cloudinary's response. */
+  fileKeyFromCloudinaryPublicId(
+    publicId: string,
+    resourceType: 'image' | 'video',
+  ): string {
+    return `${resourceType}:${publicId}`;
   }
 
   isCloudinaryKey(fileKey: string): boolean {

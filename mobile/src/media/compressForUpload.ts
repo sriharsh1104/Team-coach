@@ -116,11 +116,24 @@ export async function compressForUpload(
 
   if (!isImageMime(mimeType)) return asset;
 
+  // Android gallery often returns content:// (or ph:// on iOS). FormData
+  // multipart upload is unreliable with those schemes — always copy through
+  // the manipulator so we upload a real file:// JPEG.
+  const needsMaterialize =
+    /^(content|ph|assets-library):/i.test(asset.uri) ||
+    mimeType === 'image/heic' ||
+    mimeType === 'image/heif' ||
+    mimeType === 'image/png' ||
+    mimeType === 'application/octet-stream';
+
   const size = await tryGetSizeBytes(asset.uri);
-  if (size != null && size < IMAGE_SKIP_UNDER_BYTES) {
-    // Still normalize to JPEG if it's a huge PNG/HEIC that reported wrong size,
-    // but for already-small JPEGs skip work.
-    if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') return asset;
+  if (
+    !needsMaterialize &&
+    size != null &&
+    size < IMAGE_SKIP_UNDER_BYTES &&
+    (mimeType === 'image/jpeg' || mimeType === 'image/jpg')
+  ) {
+    return asset;
   }
 
   const native = await compressImageNative(asset);

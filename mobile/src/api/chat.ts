@@ -64,22 +64,22 @@ export function getUnreadSummary() {
     .then((res) => res.data);
 }
 
-export interface ReadReceipt {
+export type ReadReceipt = {
   userId: string;
   name: string;
   lastReadAt: string;
-}
+};
+
+export type DeliveryReceipt = {
+  userId: string;
+  name: string;
+  lastDeliveredAt: string;
+};
 
 export function getReadReceipts(channelKey = 'org') {
   return apiClient
     .get<ReadReceipt[]>('/chat/read-receipts', { params: { channelKey } })
     .then((res) => res.data);
-}
-
-export interface DeliveryReceipt {
-  userId: string;
-  name: string;
-  lastDeliveredAt: string;
 }
 
 export function getDeliveryReceipts(channelKey = 'org') {
@@ -88,27 +88,110 @@ export function getDeliveryReceipts(channelKey = 'org') {
     .then((res) => res.data);
 }
 
+type CloudinarySign =
+  | { enabled: false }
+  | {
+      enabled: true;
+      cloudName: string;
+      apiKey: string;
+      timestamp: number;
+      signature: string;
+      folder: string;
+      publicId: string;
+      resourceType: 'image' | 'video';
+      type: 'authenticated';
+      uploadUrl: string;
+    };
+
+type ChatMediaUploadResult = {
+  mediaUrl: string;
+  mediaType: 'IMAGE' | 'VIDEO';
+  fileKey: string;
+  mediaPostId: string | null;
+};
+
+function stripMultipartContentType(data: unknown, headers?: unknown) {
+  if (headers && typeof headers === 'object') {
+    delete (headers as Record<string, unknown>)['Content-Type'];
+    delete (headers as Record<string, unknown>)['content-type'];
+  }
+  return data;
+}
+
+/**
+ * WhatsApp-style pipeline:
+ * 1) Compress on device
+ * 2) Prefer direct Cloudinary upload (CDN holds bytes — API never buffers)
+ * 3) Fall back to POST /chat/media through our backend when Cloudinary is off
+ */
 export async function uploadChatMedia(file: {
   uri: string;
   fileName: string;
   mimeType: string;
   width?: number | null;
   height?: number | null;
-}) {
+}): Promise<ChatMediaUploadResult> {
   const prepared = await compressForUpload(file);
+  const resourceType = prepared.mimeType.startsWith('video/')
+    ? ('video' as const)
+    : ('image' as const);
+
+  try {
+    const sign = await apiClient
+      .get<CloudinarySign>('/chat/media/upload-sign', {
+        params: { resourceType },
+        skipErrorToast: true,
+      } as Record<string, unknown>)
+      .then((res) => res.data);
+
+    if (sign.enabled) {
+      const cloudForm = new FormData();
+      await appendFileToFormData(cloudForm, {
+        uri: prepared.uri,
+        name: prepared.fileName,
+        type: prepared.mimeType,
+      });
+      cloudForm.append('api_key', sign.apiKey);
+      cloudForm.append('timestamp', String(sign.timestamp));
+      cloudForm.append('signature', sign.signature);
+      cloudForm.append('folder', sign.folder);
+      cloudForm.append('public_id', sign.publicId);
+      cloudForm.append('type', sign.type);
+
+      const cloudRes = await fetch(sign.uploadUrl, {
+        method: 'POST',
+        body: cloudForm,
+      });
+      if (!cloudRes.ok) {
+        const text = await cloudRes.text().catch(() => '');
+        throw new Error(`Cloudinary upload failed (${cloudRes.status}): ${text}`);
+      }
+      const cloudJson = (await cloudRes.json()) as { public_id?: string };
+      if (!cloudJson.public_id) {
+        throw new Error('Cloudinary response missing public_id');
+      }
+
+      const registered = await apiClient
+        .post<ChatMediaUploadResult>('/chat/media/register', {
+          publicId: cloudJson.public_id,
+          resourceType,
+        })
+        .then((res) => res.data);
+      return registered;
+    }
+  } catch {
+    // Fall through to backend proxy upload (local disk / Cloudinary via API).
+  }
+
   const form = new FormData();
   await appendFileToFormData(form, {
     uri: prepared.uri,
     name: prepared.fileName,
     type: prepared.mimeType,
   });
-  const res = await apiClient.post<{
-    mediaUrl: string;
-    mediaType: 'IMAGE' | 'VIDEO';
-    fileKey: string;
-    mediaPostId: string | null;
-  }>('/chat/media', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+  const res = await apiClient.post<ChatMediaUploadResult>('/chat/media', form, {
+    timeout: 120_000,
+    transformRequest: stripMultipartContentType,
   });
   return res.data;
 }

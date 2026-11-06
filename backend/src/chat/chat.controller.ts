@@ -142,6 +142,48 @@ export class ChatController {
     );
   }
 
+  /**
+   * Mobile asks for a Cloudinary signature, uploads the file straight to the
+   * CDN, then calls POST /chat/media/register — our API never sees the bytes.
+   * Returns null fields when Cloudinary is off (client falls back to POST /media).
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('media/upload-sign')
+  async chatMediaUploadSign(
+    @CurrentUser() user: { userId: string },
+    @Query('resourceType') resourceTypeRaw?: string,
+  ) {
+    await this.chatService.getChatContext(user.userId);
+    const resourceType =
+      resourceTypeRaw === 'video' ? ('video' as const) : ('image' as const);
+    const sign = this.storage.createDirectUploadSign(resourceType);
+    if (!sign) {
+      return { enabled: false as const };
+    }
+    return { enabled: true as const, ...sign };
+  }
+
+  /** After a successful direct Cloudinary upload — mint delivery URL + feed row. */
+  @UseGuards(JwtAuthGuard)
+  @Post('media/register')
+  async registerChatMedia(
+    @CurrentUser() user: { userId: string },
+    @Body()
+    body: { publicId?: string; resourceType?: 'image' | 'video' },
+  ) {
+    await this.chatService.getChatContext(user.userId);
+    const publicId = body.publicId?.trim();
+    if (!publicId) {
+      throw new BadRequestException('publicId is required');
+    }
+    const resourceType = body.resourceType === 'video' ? 'video' : 'image';
+    const fileKey = this.storage.fileKeyFromCloudinaryPublicId(
+      publicId,
+      resourceType,
+    );
+    return this.finalizeChatMedia(user.userId, fileKey, resourceType);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('media')
   @UseInterceptors(
@@ -156,29 +198,36 @@ export class ChatController {
       `[chat-media] POST /chat/media (guild/org/DM attachment) user=${user.userId} mime=${file.mimetype} bytes=${file.buffer?.length ?? file.size ?? 0}`,
     );
     await this.chatService.getChatContext(user.userId);
-    const mediaType = file.mimetype.startsWith('video/') ? 'VIDEO' : 'IMAGE';
+    const resourceType = file.mimetype.startsWith('video/') ? 'video' : 'image';
     const stored = await this.storage.storeUploadedFile(file);
+    return this.finalizeChatMedia(user.userId, stored.fileKey, resourceType);
+  }
 
-    const cloudUrl = this.storage.buildDeliveryUrl(stored.fileKey);
+  private async finalizeChatMedia(
+    userId: string,
+    fileKey: string,
+    resourceType: 'image' | 'video',
+  ) {
+    const mediaType = resourceType === 'video' ? 'VIDEO' : 'IMAGE';
+    const cloudUrl = this.storage.buildDeliveryUrl(fileKey);
     const token = await this.jwtService.signAsync(
-      { sub: user.userId, fileKey: stored.fileKey, purpose: 'chat-file' },
+      { sub: userId, fileKey, purpose: 'chat-file' },
       { expiresIn: '7d' },
     );
     const mediaUrl =
       cloudUrl ??
-      `/chat/files/${encodeURIComponent(stored.fileKey)}?token=${token}`;
+      `/chat/files/${encodeURIComponent(fileKey)}?token=${token}`;
 
-    // Mirror into Media feed so Gemini OCR / leaderboard can use the same file.
     let mediaPostId: string | null = null;
     try {
       const post = await this.mediaService.createPost(
-        user.userId,
-        stored.fileKey,
+        userId,
+        fileKey,
         mediaType,
       );
       mediaPostId = post.id;
       this.logger.log(
-        `[chat-media] mirrored to Media feed postId=${mediaPostId} fileKey=${stored.fileKey}`,
+        `[chat-media] mirrored to Media feed postId=${mediaPostId} fileKey=${fileKey}`,
       );
     } catch (err) {
       this.logger.warn(
@@ -187,12 +236,12 @@ export class ChatController {
     }
 
     this.logger.log(
-      `[chat-media] ok user=${user.userId} mediaType=${mediaType} fileKey=${stored.fileKey} mediaPostId=${mediaPostId ?? 'none'}`,
+      `[chat-media] ok user=${userId} mediaType=${mediaType} fileKey=${fileKey} mediaPostId=${mediaPostId ?? 'none'}`,
     );
     return {
       mediaUrl,
       mediaType,
-      fileKey: stored.fileKey,
+      fileKey,
       mediaPostId,
     };
   }

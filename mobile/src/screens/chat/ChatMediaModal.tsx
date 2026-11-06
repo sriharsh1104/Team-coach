@@ -7,11 +7,11 @@ import {
   Text,
   Pressable,
   FlatList,
-  Image,
   Linking,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { Image } from 'expo-image';
 import * as chatApi from '../../api/chat';
 import { ChatMessage } from '../../api/types';
 import { colors } from '../../theme';
@@ -132,7 +132,13 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
                       <Text style={styles.playIcon}>▶</Text>
                     </View>
                   ) : (
-                    <Image source={{ uri }} style={styles.thumb} />
+                    <Image
+                      source={{ uri }}
+                      style={styles.thumb}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                      recyclingKey={item.id}
+                    />
                   )}
                 </Pressable>
               );

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, View, Image, Pressable, Text, StyleSheet } from 'react-native';
+import { Modal, View, Pressable, Text, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { Video, ResizeMode } from 'expo-av';
 
 interface Props {
@@ -24,7 +25,12 @@ export function MediaViewerModal({ visible, type, uri, onClose }: Props) {
           <Text style={styles.closeIcon}>✕</Text>
         </Pressable>
         {uri && type === 'IMAGE' && (
-          <Image source={{ uri }} style={styles.media} resizeMode="contain" />
+          <Image
+            source={{ uri }}
+            style={styles.media}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+          />
         )}
         {uri && type === 'VIDEO' && (
           <Video

@@ -8,10 +8,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  Image,
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Socket } from 'socket.io-client';
 import { getToken } from '../../storage/tokenStorage';
@@ -31,6 +31,8 @@ import {
   splitMentionParts,
 } from './chatMentions';
 import { colors } from '../../theme';
+import { emitToast } from '../../ui/toastBus';
+import { apiErrorMessage } from '../../api/apiErrorMessage';
 
 function MessageText({
   text,
@@ -422,22 +424,51 @@ export function ChatScreen({
     }
   }, [channelKey, hasOlderMessages, isLoadingOlder, messages]);
 
+  const waitForSocket = useCallback(async () => {
+    const socket = socketRef.current;
+    if (!socket) return null;
+    if (socket.connected) return socket;
+    return new Promise<typeof socket | null>((resolve) => {
+      const timer = setTimeout(() => {
+        socket.off('connect', onConnect);
+        resolve(socket.connected ? socket : null);
+      }, 8000);
+      const onConnect = () => {
+        clearTimeout(timer);
+        resolve(socket);
+      };
+      socket.once('connect', onConnect);
+      // Gallery/camera backgrounds the app and often drops the socket —
+      // nudge a reconnect before we try to post the media message.
+      try {
+        socket.connect();
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
+
   const emitMessage = useCallback(
-    (payload: {
+    async (payload: {
       text?: string;
       mediaUrl?: string;
       mediaType?: 'IMAGE' | 'VIDEO';
     }) => {
-      if (!socketRef.current) return;
-      socketRef.current.emit('message:send', { channelKey, ...payload });
+      const socket = await waitForSocket();
+      if (!socket?.connected) {
+        emitToast('Chat disconnected — try again in a moment');
+        return false;
+      }
+      socket.emit('message:send', { channelKey, ...payload });
+      return true;
     },
-    [channelKey],
+    [channelKey, waitForSocket],
   );
 
   const onSend = useCallback(() => {
     const text = draft.trim();
-    if (!text || !socketRef.current) return;
-    emitMessage({ text });
+    if (!text) return;
+    void emitMessage({ text });
     setDraft('');
     setCaret(0);
   }, [draft, emitMessage]);
@@ -488,6 +519,7 @@ export function ChatScreen({
         });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
+    emitToast('Uploading…', 2500);
     try {
       const uploaded = await chatApi.uploadChatMedia({
         uri: asset.uri,
@@ -496,14 +528,25 @@ export function ChatScreen({
         width: asset.width,
         height: asset.height,
       });
-      emitMessage({
+      const sent = await emitMessage({
         mediaUrl: uploaded.mediaUrl,
         mediaType: uploaded.mediaType,
         text: draft.trim() || undefined,
       });
-      setDraft('');
-    } catch (err: any) {
-      /* API error toasted by axios interceptor */
+      if (sent) {
+        setDraft('');
+        // Gallery often drops the socket; if message:new is late, pull history.
+        setTimeout(() => {
+          void chatApi.getChatHistory(channelKey).then((history) => {
+            setMessages(history);
+            setHasOlderMessages(
+              history.length === chatApi.CHAT_HISTORY_PAGE_SIZE,
+            );
+          });
+        }, 600);
+      }
+    } catch (err: unknown) {
+      emitToast(apiErrorMessage(err, 'Could not upload image'));
     }
   };
 
@@ -649,7 +692,13 @@ export function ChatScreen({
                       onPress={() => setViewerMedia({ type: 'IMAGE', uri: mediaUri })}
                       accessibilityLabel="View image"
                     >
-                      <Image source={{ uri: mediaUri }} style={styles.media} />
+                      <Image
+                        source={{ uri: mediaUri }}
+                        style={styles.media}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                        recyclingKey={item.id}
+                      />
                     </Pressable>
                   ) : null}
                   {item.mediaType === 'VIDEO' && mediaUri ? (

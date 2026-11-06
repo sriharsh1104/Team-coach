@@ -10,6 +10,9 @@ import { TOKEN_STORAGE_KEY } from '../../../api/client';
 
 jest.mock('../../../api/chat');
 jest.mock('../../../auth/AuthContext');
+jest.mock('../../../ui/toastBus', () => ({
+  emitToast: jest.fn(),
+}));
 jest.mock('expo-image-picker', () => ({
   MediaTypeOptions: { All: 'All', Videos: 'Videos', Images: 'Images' },
   requestCameraPermissionsAsync: jest.fn(),
@@ -24,10 +27,23 @@ const mockedImagePicker = ImagePicker as jest.Mocked<typeof ImagePicker>;
 
 function createFakeSocket() {
   const handlers: Record<string, Array<(...args: any[]) => void>> = {};
-  return {
+  const socket = {
+    connected: true,
     on: jest.fn((event: string, cb: (...args: any[]) => void) => {
       (handlers[event] ??= []).push(cb);
     }),
+    once: jest.fn((event: string, cb: (...args: any[]) => void) => {
+      (handlers[event] ??= []).push(cb);
+    }),
+    off: jest.fn((event: string, cb?: (...args: any[]) => void) => {
+      if (!handlers[event]) return;
+      if (!cb) {
+        handlers[event] = [];
+        return;
+      }
+      handlers[event] = handlers[event].filter((h) => h !== cb);
+    }),
+    connect: jest.fn(),
     emit: jest.fn(),
     disconnect: jest.fn(),
     trigger: (event: string, ...args: any[]) => {
@@ -36,6 +52,7 @@ function createFakeSocket() {
       });
     },
   };
+  return socket;
 }
 
 async function pressAndSettle(label: string) {
@@ -224,15 +241,18 @@ describe('ChatScreen', () => {
 
   it('sends a trimmed message and clears the draft', async () => {
     const fakeSocket = await connectAndSettle();
+    fakeSocket.trigger('connect');
 
     const input = screen.getByPlaceholderText('Message… @IGN to mention');
     fireEvent.changeText(input, '  gl hf  ');
     await pressAndSettle('Send');
 
-    expect(fakeSocket.emit).toHaveBeenCalledWith('message:send', {
-      channelKey: 'org',
-      text: 'gl hf',
-    });
+    await waitFor(() =>
+      expect(fakeSocket.emit).toHaveBeenCalledWith('message:send', {
+        channelKey: 'org',
+        text: 'gl hf',
+      }),
+    );
     expect(input.props.value).toBe('');
   });
 
@@ -277,6 +297,7 @@ describe('ChatScreen', () => {
 
     it('picks a photo restricted to images and sends it as a message', async () => {
       const fakeSocket = await connectAndSettle();
+      fakeSocket.trigger('connect');
       mockedImagePicker.requestMediaLibraryPermissionsAsync.mockResolvedValue({
         granted: true,
       } as any);
@@ -299,12 +320,14 @@ describe('ChatScreen', () => {
       expect(mockedImagePicker.launchImageLibraryAsync).toHaveBeenCalledWith(
         expect.objectContaining({ mediaTypes: 'Images' }),
       );
-      expect(fakeSocket.emit).toHaveBeenCalledWith('message:send', {
-        channelKey: 'org',
-        mediaUrl: '/chat/files/a.jpg',
-        mediaType: 'IMAGE',
-        text: undefined,
-      });
+      await waitFor(() =>
+        expect(fakeSocket.emit).toHaveBeenCalledWith('message:send', {
+          channelKey: 'org',
+          mediaUrl: '/chat/files/a.jpg',
+          mediaType: 'IMAGE',
+          text: undefined,
+        }),
+      );
       // Panel closes once a pick completes. OCR lives under Stats modes, not chat.
       expect(screen.queryByLabelText('Photo')).toBeNull();
     });

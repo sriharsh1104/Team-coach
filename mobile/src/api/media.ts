@@ -27,7 +27,15 @@ export async function uploadMedia(file: {
     type: prepared.mimeType,
   });
   const res = await apiClient.post<MediaPost>('/media', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // Let axios/RN set multipart boundary — see uploadChatMedia.
+    timeout: 120_000,
+    transformRequest: (data, headers) => {
+      if (headers && typeof headers === 'object') {
+        delete (headers as Record<string, unknown>)['Content-Type'];
+        delete (headers as Record<string, unknown>)['content-type'];
+      }
+      return data;
+    },
   });
   return res.data;
 }
