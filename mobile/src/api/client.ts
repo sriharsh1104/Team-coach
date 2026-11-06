@@ -30,6 +30,10 @@ function shouldSkipLoader(cfg?: RequestConfigWithFlags): boolean {
   if (cfg?.skipLoader) return true;
   // Quiet background polls / session restore.
   if (requestUrl(cfg).includes('/auth/me')) return true;
+  // GETs while navigating screens used to flash the full-screen SES loader
+  // on every tap — skip them; mutations still show the delayed overlay.
+  const method = (cfg?.method ?? 'get').toLowerCase();
+  if (method === 'get' || method === 'head') return true;
   return false;
 }
 
@@ -60,6 +64,9 @@ export { TOKEN_STORAGE_KEY };
 
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
+  // Physical devices hanging on a bad host (e.g. localhost baked into an APK
+  // when .env.production was gitignored) used to leave cold start stuck forever.
+  timeout: 15000,
 });
 
 apiClient.interceptors.request.use(async (requestConfig) => {

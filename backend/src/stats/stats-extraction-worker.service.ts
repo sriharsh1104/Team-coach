@@ -52,8 +52,10 @@ export class StatsExtractionWorkerService implements OnModuleInit, OnModuleDestr
       });
       if (claimed.count === 0) continue; // another tick/instance already took it
 
+      this.logger.log(`[stats-upload] worker claimed extraction=${id}`);
       try {
         await this.statsService.processQueuedExtraction(id);
+        this.logger.log(`[stats-upload] worker finished extraction=${id}`);
       } catch (err) {
         this.logger.warn(
           `Failed to process extraction ${id}: ${(err as Error).message}`,

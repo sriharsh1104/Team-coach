@@ -431,6 +431,12 @@ export class ChatService {
       },
     });
 
+    if (input.mediaUrl) {
+      this.logger.log(
+        `[chat-media] message posted org=${orgId} channel=${channelKey} sender=${userId} mediaType=${input.mediaType ?? 'n/a'} messageId=${message.id}`,
+      );
+    }
+
     // Sender has obviously read up through this message.
     await this.markRead(userId, channelKey);
 
@@ -695,6 +701,12 @@ export class ChatService {
     skipUserIds: string[] = [],
   ) {
     const skip = new Set(skipUserIds);
+    const sender = await this.prisma.user.findUnique({
+      where: { id: senderId },
+      select: { name: true },
+    });
+    const senderLabel = sender?.name?.trim() || 'Someone';
+
     const rosterMembers = await this.prisma.membership.findMany({
       where: { orgId, userId: { not: senderId } },
       include: { user: { select: { id: true, expoPushToken: true } } },
@@ -719,13 +731,19 @@ export class ChatService {
       }
       for (const member of rosterRecipients) byId.set(member.userId, member);
       recipients = [...byId.values()];
-    } else if (channelKey !== ORG_CHANNEL) {
-      recipients = rosterMembers
-        .filter((member) => this.parseDmPeer(channelKey, senderId) === member.userId)
-        .map((member) => ({
-          userId: member.userId,
-          expoPushToken: member.user.expoPushToken,
-        }));
+    } else if (channelKey.startsWith('dm:')) {
+      const peerId = this.parseDmPeer(channelKey, senderId);
+      if (peerId) {
+        const peer = await this.prisma.user.findUnique({
+          where: { id: peerId },
+          select: { id: true, expoPushToken: true },
+        });
+        recipients = peer
+          ? [{ userId: peer.id, expoPushToken: peer.expoPushToken }]
+          : [];
+      } else {
+        recipients = [];
+      }
     }
 
     const messages: PushMessage[] = [];
@@ -744,11 +762,11 @@ export class ChatService {
             : isDm
               ? 'Direct Message'
               : 'Team Chat',
-        // Count only — never include message text.
+        // Sender name + unread count — never include message text.
         body:
           unread === 1
-            ? '1 unread message'
-            : `${unread} unread messages`,
+            ? `${senderLabel}: 1 unread message`
+            : `${senderLabel}: ${unread} unread messages`,
         data: { channelKey, unreadCount: unread, type: 'chat_unread' },
       });
     }

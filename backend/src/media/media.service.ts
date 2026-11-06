@@ -60,6 +60,10 @@ export class MediaService {
       },
     });
 
+    this.logger.log(
+      `[media] MediaPost created id=${post.id} org=${membership.orgId} uploader=${userId} type=${type} fileKey=${fileKey}`,
+    );
+
     this.notifyCoaches(membership.orgId, userId, membership.user.name, type).catch(
       (err) => this.logger.warn(`Push notification failed: ${err.message}`),
     );

@@ -17,7 +17,6 @@ import { sharedStyles } from './shared';
 import { CopyButton } from './profile/CopyButton';
 import { RoleSelector } from './RoleSelector';
 import { InviteQr } from '../ui/InviteQr';
-import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { SoftPressable } from '../ui/SoftPressable';
 import { Toast, useToast } from '../ui/Toast';
@@ -49,24 +48,19 @@ function errorMessage(err: unknown, fallback: string) {
 }
 
 type GuildTab = 'members' | 'roster';
-const GUILD_TAB_IDS: GuildTab[] = ['members', 'roster'];
 const GUILD_TABS = [
   { value: 'members' as const, label: 'Members' },
   { value: 'roster' as const, label: 'Roster' },
 ];
 
 /**
- * Everyone who joined the org's invite code or link lands in the guild —
- * joining the guild does not put a player on the 5-seat esports roster.
- * An owner/coach promotes guild members onto the roster from here, or
- * removes a roster seat without kicking the person out of the guild
- * entirely. Mirrors web's GuildSpacePage (web/src/pages/guild).
+ * Guild home — single FlatList so invite + roster/members all scroll together
+ * (BookStage page-turn was remounting lists and killing scroll height).
  */
 export function GuildScreen({ navigation }: Props) {
   const { user } = useAuth();
   const [detail, setDetail] = useState<GuildDetail | null>(null);
-  const { tab, openTab, turn } = useBookTabs(GUILD_TAB_IDS, 'members');
-  const guildTab = tab as GuildTab;
+  const [guildTab, setGuildTab] = useState<GuildTab>('members');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { message: toastMessage, showToast } = useToast();
@@ -122,115 +116,116 @@ export function GuildScreen({ navigation }: Props) {
   const members = detail?.members ?? [];
   const roster = detail?.roster ?? [];
   const canManage = !!detail?.canManageRoster;
+  const listData = guildTab === 'members' ? members : roster;
 
   return (
     <Screen>
-      <View style={styles.root}>
-        <View style={styles.header}>
-          <Text style={sharedStyles.title}>{detail?.name ?? 'Guild'}</Text>
-          {detail ? (
-            <Text style={styles.summary}>
-              {GUILD_ROLE_LABEL[detail.myGuildRole]} · {members.length} member
-              {members.length === 1 ? '' : 's'} · {roster.length} on roster
-            </Text>
-          ) : null}
-          {detail?.referralLink ? (
-            <View style={styles.inviteCard}>
-              <Text style={styles.inviteTitle}>Invite & Referral</Text>
-              <Text style={styles.inviteHint}>
-                Share your link (or guild code). People join the guild only.
-                Owner/coach can add them to the esports roster below, or share
-                a roster invite from Roster.
+      <FlatList<GuildMemberRow | GuildRosterMember>
+        style={styles.list}
+        data={listData}
+        keyExtractor={(item) => item.userId}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.chrome}
+          />
+        }
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <View>
+            <Text style={sharedStyles.title}>{detail?.name ?? 'Guild'}</Text>
+            {detail ? (
+              <Text style={styles.summary}>
+                {GUILD_ROLE_LABEL[detail.myGuildRole]} · {members.length} member
+                {members.length === 1 ? '' : 's'} · {roster.length} on roster
               </Text>
-              <Text style={styles.inviteCount}>
-                Your invites: {detail.myInviteCount} guild member
-                {detail.myInviteCount === 1 ? '' : 's'}
-              </Text>
-              <InviteQr value={detail.referralLink} label="Scan to join guild" />
-              {detail.orgCode ? (
+            ) : null}
+            {detail?.referralLink ? (
+              <View style={styles.inviteCard}>
+                <Text style={styles.inviteTitle}>Invite & Referral</Text>
+                <Text style={styles.inviteHint}>
+                  Share your link (or guild code). People join the guild only.
+                  Owner/coach can add them to the esports roster below, or share
+                  a roster invite from Roster.
+                </Text>
+                <Text style={styles.inviteCount}>
+                  Your invites: {detail.myInviteCount} guild member
+                  {detail.myInviteCount === 1 ? '' : 's'}
+                </Text>
+                <InviteQr value={detail.referralLink} label="Scan to join guild" />
+                {detail.orgCode ? (
+                  <View style={styles.inviteRow}>
+                    <View style={styles.inviteTextCol}>
+                      <Text style={styles.inviteLabel}>Guild Code</Text>
+                      <Text style={styles.inviteValue}>{detail.orgCode}</Text>
+                    </View>
+                    <CopyButton value={detail.orgCode} />
+                  </View>
+                ) : null}
                 <View style={styles.inviteRow}>
                   <View style={styles.inviteTextCol}>
-                    <Text style={styles.inviteLabel}>Guild Code</Text>
-                    <Text style={styles.inviteValue}>{detail.orgCode}</Text>
+                    <Text style={styles.inviteLabel}>Invite Link</Text>
+                    <Text style={styles.inviteValue} numberOfLines={1}>
+                      {detail.referralLink}
+                    </Text>
                   </View>
-                  <CopyButton value={detail.orgCode} />
+                  <CopyButton value={detail.referralLink} />
                 </View>
-              ) : null}
-              <View style={styles.inviteRow}>
-                <View style={styles.inviteTextCol}>
-                  <Text style={styles.inviteLabel}>Invite Link</Text>
-                  <Text style={styles.inviteValue} numberOfLines={1}>
-                    {detail.referralLink}
-                  </Text>
-                </View>
-                <CopyButton value={detail.referralLink} />
               </View>
-            </View>
-          ) : null}
-          <SegmentedTabs
-            tabs={GUILD_TABS}
-            value={guildTab}
-            onChange={(next) => openTab(next)}
-          />
-        </View>
-
-        <BookStage tab={tab} turn={turn} style={styles.stage}>
-          {(active) => (
-            <FlatList<GuildMemberRow | GuildRosterMember>
-              style={styles.list}
-              data={active === 'members' ? members : roster}
-              keyExtractor={(item) => item.userId}
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefreshing}
-                  onRefresh={onRefresh}
-                  tintColor={colors.chrome}
-                />
-              }
-              contentContainerStyle={styles.listContent}
-              renderItem={({ item }) =>
-                'guildRole' in item ? (
-                  <MemberRow
-                    member={item}
-                    canManage={canManage}
-                    busy={busyId === item.userId}
-                    onAdd={(role) => onAdd(item, role)}
-                    onPress={() =>
-                      navigation.push('MemberProfile', {
-                        userId: item.userId,
-                        name: item.name,
-                      })
-                    }
-                  />
-                ) : (
-                  <RosterRow
-                    member={item}
-                    canManage={canManage}
-                    selfId={user?.id}
-                    busy={busyId === item.userId}
-                    onRemove={() => onRemove(item)}
-                    onPress={() =>
-                      navigation.push('MemberProfile', {
-                        userId: item.userId,
-                        name: item.name,
-                      })
-                    }
-                  />
-                )
-              }
-              ListEmptyComponent={
-                detail ? (
-                  <Text style={styles.empty}>
-                    {active === 'members'
-                      ? 'No guild members yet.'
-                      : 'No one is on the roster yet.'}
-                  </Text>
-                ) : null
+            ) : null}
+            <SegmentedTabs
+              tabs={GUILD_TABS}
+              value={guildTab}
+              onChange={(next) => setGuildTab(next)}
+            />
+          </View>
+        }
+        renderItem={({ item }) => {
+          if (guildTab === 'members') {
+            const member = item as GuildMemberRow;
+            return (
+              <MemberRow
+                member={member}
+                canManage={canManage}
+                busy={busyId === member.userId}
+                onAdd={(role) => onAdd(member, role)}
+                onPress={() =>
+                  navigation.push('MemberProfile', {
+                    userId: member.userId,
+                    name: member.name,
+                  })
+                }
+              />
+            );
+          }
+          const member = item as GuildRosterMember;
+          return (
+            <RosterRow
+              member={member}
+              canManage={canManage}
+              selfId={user?.id}
+              busy={busyId === member.userId}
+              onRemove={() => onRemove(member)}
+              onPress={() =>
+                navigation.push('MemberProfile', {
+                  userId: member.userId,
+                  name: member.name,
+                })
               }
             />
-          )}
-        </BookStage>
-      </View>
+          );
+        }}
+        ListEmptyComponent={
+          detail ? (
+            <Text style={styles.empty}>
+              {guildTab === 'members'
+                ? 'No guild members yet.'
+                : 'No one is on the roster yet.'}
+            </Text>
+          ) : null
+        }
+      />
       <Toast message={toastMessage} />
     </Screen>
   );
@@ -251,7 +246,7 @@ function MemberRow({
 }) {
   const [role, setRole] = useState<MembershipRole>('PLAYER');
   return (
-    <SoftPressable style={styles.row} onPress={onPress} pressScale={0.985}>
+    <SoftPressable style={styles.row} onPress={onPress} pressScale={0.99}>
       <Text style={styles.rowName}>
         {personLabel(member.name, member.inGameName)}
         {member.isOwner ? ' (Owner)' : ''}
@@ -269,7 +264,7 @@ function MemberRow({
             style={[styles.addBtn, busy && styles.addBtnDisabled]}
             disabled={busy}
             onPress={() => onAdd(role)}
-            pressScale={0.96}
+            pressScale={0.97}
           >
             <Text style={styles.addBtnText}>Add to roster</Text>
           </SoftPressable>
@@ -296,7 +291,7 @@ function RosterRow({
 }) {
   const canRemove = canManage && !member.isOwner && member.userId !== selfId;
   return (
-    <SoftPressable style={styles.row} onPress={onPress} pressScale={0.985}>
+    <SoftPressable style={styles.row} onPress={onPress} pressScale={0.99}>
       <View style={styles.rosterMain}>
         <View style={styles.rosterTextCol}>
           <Text style={styles.rowName}>
@@ -311,7 +306,7 @@ function RosterRow({
           <SoftPressable
             onPress={onRemove}
             disabled={busy}
-            pressScale={0.96}
+            pressScale={0.97}
             accessibilityRole="button"
             accessibilityLabel={`Remove ${member.name} from roster`}
           >
@@ -324,11 +319,8 @@ function RosterRow({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  header: { paddingHorizontal: 24, paddingTop: 24 },
-  stage: { flex: 1 },
   list: { flex: 1, backgroundColor: 'transparent' },
-  listContent: { paddingHorizontal: 24, paddingBottom: 24 },
+  listContent: { paddingHorizontal: 24, paddingBottom: 40 },
   summary: {
     color: colors.textMuted,
     fontSize: 13,
@@ -393,5 +385,5 @@ const styles = StyleSheet.create({
   },
   rosterTextCol: { flex: 1 },
   removeLink: { color: colors.danger, fontWeight: '600' },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: 8 },
+  empty: { color: colors.textMuted, textAlign: 'center', marginTop: 16 },
 });

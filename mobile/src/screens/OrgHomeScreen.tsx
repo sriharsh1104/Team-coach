@@ -81,6 +81,11 @@ export function OrgHomeScreen({ navigation }: Props) {
         label: 'Rule Book',
         onPress: () => navigation.navigate('RuleBook'),
       },
+      {
+        key: 'pointsTable',
+        label: 'Points Table',
+        onPress: () => navigation.navigate('PointsTable'),
+      },
       ...(isOwner
         ? [
             {
@@ -143,8 +148,8 @@ export function OrgHomeScreen({ navigation }: Props) {
   }, [navigation, isOwner]);
 
   return (
-    <Screen>
-      <View style={styles.topBar}>
+    <Screen padBottom={false}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
         <MenuButton onPress={() => setMenuOpen(true)} />
         <View style={styles.topBarTitleBlock}>
           <Text style={styles.orgTitle} numberOfLines={1}>
@@ -184,15 +189,13 @@ export function OrgHomeScreen({ navigation }: Props) {
         <ChatHubScreen onLoadError={() => showToast('Could not load chats')} />
       </View>
 
-      {menuOpen ? (
-        <SideDrawer
-          open={menuOpen}
-          onClose={() => setMenuOpen(false)}
-          title="Sacred Esports"
-          subtitle={org?.name ?? detail?.name ?? user?.name}
-          sections={drawerSections}
-        />
-      ) : null}
+      <SideDrawer
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title="Sacred Esports"
+        subtitle={org?.name ?? detail?.name ?? user?.name}
+        sections={drawerSections}
+      />
 
       <Modal
         visible={settingsMenuOpen}
@@ -245,7 +248,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 16,
-    paddingTop: 12,
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255,255,255,0.06)',

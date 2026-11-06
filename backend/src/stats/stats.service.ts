@@ -108,6 +108,10 @@ export class StatsService {
       }
     }
 
+    this.logger.log(
+      `[stats-upload] requestExtractions user=${userId} org=${membership.orgId} mode=${input.mode} scrimEventId=${input.scrimEventId ?? 'none'} created=${created.length} skipped=${skipped.length} mediaPostIds=${input.mediaPostIds.join(',')}`,
+    );
+
     if (created.length > 0) {
       this.notifyStatsChanged(membership.orgId);
     }
@@ -163,6 +167,10 @@ export class StatsService {
     });
     if (!extraction) return;
 
+    this.logger.log(
+      `[stats-upload] OCR start extraction=${extractionId} mode=${extraction.mode} mediaPostId=${extraction.mediaPostId} scrimEventId=${extraction.scrimEventId ?? 'none'}`,
+    );
+
     try {
       const mediaPost = await this.prisma.mediaPost.findUniqueOrThrow({
         where: { id: extraction.mediaPostId },
@@ -193,6 +201,9 @@ export class StatsService {
           status: StatExtractionStatus.PENDING,
         },
       });
+      this.logger.log(
+        `[stats-upload] OCR ok extraction=${extractionId} rows=${rows.length} status=PENDING`,
+      );
       this.notifyStatsChanged(extraction.orgId);
     } catch (err) {
       // The raw error (fs path, Gemini SDK text, etc.) is only logged

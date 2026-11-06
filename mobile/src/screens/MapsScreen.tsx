@@ -5,11 +5,13 @@ import {
   Image,
   LayoutChangeEvent,
   Modal,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as mapsApi from '../api/maps';
 import { FreeFireMap, MapPin, mapPins } from '../api/maps';
@@ -47,6 +49,7 @@ function pinIcon(pin: MapPin): keyof typeof Ionicons.glyphMap {
 }
 
 export function MapsScreen(_props: Props) {
+  const insets = useSafeAreaInsets();
   const [maps, setMaps] = useState<FreeFireMap[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -207,7 +210,15 @@ export function MapsScreen(_props: Props) {
         onRequestClose={() => setViewer(null)}
       >
         <View style={styles.modalRoot}>
-          <View style={styles.modalBar}>
+          <View style={[styles.modalBar, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+            <Pressable
+              style={styles.navBtn}
+              onPress={() => setViewer(null)}
+              accessibilityLabel="Back"
+              hitSlop={10}
+            >
+              <Ionicons name="chevron-back" size={26} color={colors.text} />
+            </Pressable>
             <View style={styles.modalTitleCol}>
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {viewerTitle}
@@ -218,14 +229,14 @@ export function MapsScreen(_props: Props) {
                   : 'Tap a pin to open that location'}
               </Text>
             </View>
-            <SoftPressable
+            <Pressable
               style={styles.closeBtn}
               onPress={() => setViewer(null)}
               accessibilityLabel="Close"
-              pressScale={0.96}
+              hitSlop={10}
             >
-              <Ionicons name="close" size={22} color={colors.text} />
-            </SoftPressable>
+              <Ionicons name="close" size={26} color={colors.chromeInk} />
+            </Pressable>
           </View>
 
           {viewer ? (
@@ -470,21 +481,29 @@ const styles = StyleSheet.create({
   modalBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingTop: 54,
+    gap: 8,
+    paddingHorizontal: 12,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+    zIndex: 5,
   },
-  modalTitleCol: { flex: 1 },
+  modalTitleCol: { flex: 1, minWidth: 0 },
   modalTitle: { color: colors.text, fontWeight: '800', fontSize: 17 },
   modalNote: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  closeBtn: {
-    width: 36,
-    height: 36,
+  navBtn: {
+    width: 42,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  closeBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.chrome,
   },
   modalBody: { flex: 1 },
   rail: {

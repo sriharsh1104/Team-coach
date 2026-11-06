@@ -1,15 +1,36 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as usersApi from '../api/users';
 
-// Best-effort: push notifications need a real device and (for a standalone
-// build later) an EAS project id. Any failure here should never block the app —
-// it just means the coach won't get a push for this session until it's set up.
+// Best-effort: push notifications need a real device and an EAS project id.
+// Any failure here should never block the app.
 export async function registerPushTokenWithBackend() {
   if (Platform.OS === 'web') return;
 
   try {
+    // require (not dynamic import) — Metro/tsc module settings vary across CI.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Notifications = require('expo-notifications') as typeof import('expo-notifications');
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('chat', {
+        name: 'Chat',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#c9ccd1',
+        sound: 'default',
+      });
+    }
+
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {

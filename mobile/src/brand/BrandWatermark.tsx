@@ -23,6 +23,7 @@ export function BrandWatermark({
         source={sacredLogo}
         style={[styles.image, isAuth ? styles.imageAuth : styles.imageSubtle]}
         resizeMode="contain"
+        fadeDuration={0}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
       />

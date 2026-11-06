@@ -29,12 +29,21 @@ export type MainStackParamList = {
   MediaFeed: undefined;
   Chat: { channelKey?: string } | undefined;
   Scrims: undefined;
-  AddEditScrim: { scrim?: ScrimEvent; defaultType?: 'SCRIM' | 'TOURNAMENT' } | undefined;
+  AddEditScrim: {
+    scrim?: ScrimEvent;
+    defaultType?: 'SCRIM' | 'TOURNAMENT';
+    /** After result upload: open editor ready to schedule the next round. */
+    promptNextRound?: boolean;
+  } | undefined;
   Stats: { mode?: StatMode } | undefined;
-  ExtractionReview: { extraction: StatExtraction };
+  ExtractionReview: {
+    extraction: StatExtraction;
+    scrimEvent?: ScrimEvent;
+  };
   PlayerStats: { userId: string; name: string; mode: StatMode };
   Voice: undefined;
   Maps: undefined;
   RuleBook: undefined;
+  PointsTable: undefined;
   SocialHandles: undefined;
 };

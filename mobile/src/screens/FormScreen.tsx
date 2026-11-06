@@ -6,13 +6,23 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandWatermark } from '../brand/BrandWatermark';
 
 // Wraps auth / org-setup forms so the keyboard never covers fields, and
 // paints the Sacred eSports watermark on a dark chrome-friendly backdrop.
 export function FormScreen({ children }: { children: React.ReactNode }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.root}>
+    <View
+      style={[
+        styles.root,
+        {
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+        },
+      ]}
+    >
       <BrandWatermark variant="auth" />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -21,6 +31,7 @@ export function FormScreen({ children }: { children: React.ReactNode }) {
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           {children}
         </ScrollView>

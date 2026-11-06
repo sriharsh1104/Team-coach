@@ -9,7 +9,7 @@ export type SegmentTab<T extends string> = {
   accessibilityLabel?: string;
 };
 
-/** Pill-track tab strip matching Security / Stats chrome. */
+/** Equal-width pill row — never wraps (was expanding Upcoming/Past/Results oddly). */
 export function SegmentedTabs<T extends string>({
   tabs,
   value,
@@ -31,11 +31,13 @@ export function SegmentedTabs<T extends string>({
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             accessibilityLabel={tab.accessibilityLabel ?? tab.label}
-            pressScale={0.96}
+            pressScale={0.97}
           >
             <Text
               style={active ? styles.tabTextActive : styles.tabText}
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
             >
               {tab.label}
             </Text>
@@ -49,8 +51,8 @@ export function SegmentedTabs<T extends string>({
 const styles = StyleSheet.create({
   track: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    flexWrap: 'nowrap',
+    gap: 4,
     padding: 4,
     marginBottom: 16,
     borderRadius: 14,
@@ -59,12 +61,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
   },
   tab: {
-    flexGrow: 1,
-    flexBasis: '28%',
-    minWidth: 88,
+    flex: 1,
+    minWidth: 0,
     borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },

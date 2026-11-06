@@ -26,10 +26,14 @@ import { AddEditScrimScreen } from '../screens/scrims/AddEditScrimScreen';
 import { StatsHomeScreen } from '../screens/stats/StatsHomeScreen';
 import { ExtractionReviewScreen } from '../screens/stats/ExtractionReviewScreen';
 import { PlayerStatsScreen } from '../screens/stats/PlayerStatsScreen';
-import { VoiceChannelScreen } from '../screens/voice/VoiceChannelScreen';
 import { MapsScreen } from '../screens/MapsScreen';
+// Voice pulls LiveKit/WebRTC native modules — load only when opened so a
+// broken voice native link cannot crash cold start of the whole APK.
+
 import { RuleBookScreen } from '../screens/RuleBookScreen';
+import { PointsTableScreen } from '../screens/PointsTableScreen';
 import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
+import { HeaderBackButton } from '../ui/HeaderBackButton';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -224,7 +228,12 @@ export function RootNavigator() {
           <MainStack.Screen
             name="Members"
             component={MembersScreen}
-            options={{ title: 'Roster' }}
+            options={({ navigation }) => ({
+              title: 'Roster',
+              headerLeft: () => (
+                <HeaderBackButton onPress={() => navigation.goBack()} />
+              ),
+            })}
           />
           <MainStack.Screen
             name="Guild"
@@ -297,7 +306,9 @@ export function RootNavigator() {
           />
           <MainStack.Screen
             name="Voice"
-            component={VoiceChannelScreen}
+            getComponent={() =>
+              require('../screens/voice/VoiceChannelScreen').VoiceChannelScreen
+            }
             options={{ title: 'Team Voice' }}
           />
           <MainStack.Screen
@@ -309,6 +320,11 @@ export function RootNavigator() {
             name="RuleBook"
             component={RuleBookScreen}
             options={{ title: 'Rule Book' }}
+          />
+          <MainStack.Screen
+            name="PointsTable"
+            component={PointsTableScreen}
+            options={{ title: 'Points Table' }}
           />
 
           <MainStack.Screen

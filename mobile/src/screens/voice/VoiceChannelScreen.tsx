@@ -1,23 +1,113 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
+import React, { Component, ErrorInfo, ReactNode, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  Pressable,
+  FlatList,
+  ActivityIndicator,
+  StyleSheet,
+} from 'react-native';
 import { getToken } from '../../storage/tokenStorage';
 import * as voiceApi from '../../api/voice';
 import { VoiceConfig } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
-import { useHostedVoiceChannel } from '../../voice/useHostedVoiceChannel';
-import { useSelfHostedVoiceChannel } from '../../voice/useSelfHostedVoiceChannel';
 import { VoiceChannelController } from '../../voice/types';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { sharedStyles } from '../shared';
 
-function HostedVoiceChannel({ config }: { config: Extract<VoiceConfig, { mode: 'hosted' }> }) {
-  const voice = useHostedVoiceChannel(config.url, config.token);
+type VoiceHooks = {
+  useHostedVoiceChannel: typeof import('../../voice/useHostedVoiceChannel').useHostedVoiceChannel;
+  useSelfHostedVoiceChannel: typeof import('../../voice/useSelfHostedVoiceChannel').useSelfHostedVoiceChannel;
+};
+
+function ensureLiveKitGlobals() {
+  const g = globalThis as typeof globalThis & { DOMException?: unknown };
+  if (typeof g.DOMException === 'undefined') {
+    g.DOMException = class DOMException extends Error {
+      constructor(message?: string, name?: string) {
+        super(message);
+        this.name = name || 'DOMException';
+      }
+    } as unknown as typeof globalThis.DOMException;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { registerGlobals } = require('@livekit/react-native') as {
+    registerGlobals: () => void;
+  };
+  registerGlobals();
+}
+
+function loadVoiceHooks(): VoiceHooks {
+  ensureLiveKitGlobals();
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    useHostedVoiceChannel: require('../../voice/useHostedVoiceChannel')
+      .useHostedVoiceChannel,
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    useSelfHostedVoiceChannel: require('../../voice/useSelfHostedVoiceChannel')
+      .useSelfHostedVoiceChannel,
+  };
+}
+
+class VoiceErrorBoundary extends Component<
+  { children: ReactNode; onRetry: () => void },
+  { error: string | null }
+> {
+  state: { error: string | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error: error.message || 'Voice failed to start' };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.warn('VoiceChannel crash:', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <Screen>
+          <View style={sharedStyles.container}>
+            <Text style={sharedStyles.error}>{this.state.error}</Text>
+            <Pressable
+              style={styles.joinButton}
+              onPress={() => {
+                this.setState({ error: null });
+                this.props.onRetry();
+              }}
+            >
+              <ButtonLabel icon="refresh" color="#fff">
+                Try Again
+              </ButtonLabel>
+            </Pressable>
+          </View>
+        </Screen>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function HostedVoiceChannel({
+  config,
+  hooks,
+}: {
+  config: Extract<VoiceConfig, { mode: 'hosted' }>;
+  hooks: VoiceHooks;
+}) {
+  const voice = hooks.useHostedVoiceChannel(config.url, config.token);
   return <VoiceChannelBody voice={voice} />;
 }
 
-function SelfHostedVoiceChannel({ authToken }: { authToken: string }) {
-  const voice = useSelfHostedVoiceChannel(authToken);
+function SelfHostedVoiceChannel({
+  authToken,
+  hooks,
+}: {
+  authToken: string;
+  hooks: VoiceHooks;
+}) {
+  const voice = hooks.useSelfHostedVoiceChannel(authToken);
   return <VoiceChannelBody voice={voice} />;
 }
 
@@ -27,156 +117,174 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
 
   return (
     <Screen>
-    <View style={styles.screen}>
-      <View style={styles.channelCard}>
-        <Text style={styles.channelLabel}>VOICE CHANNEL</Text>
-        <Text style={styles.channelName}>Team Voice</Text>
-        <Text style={styles.channelMeta}>
-          {voice.status === 'connecting'
-            ? 'Connecting…'
-            : inChannel
-              ? `${voice.participants.length + 1} connected`
-              : 'Empty — join to talk with your team'}
-        </Text>
+      <View style={styles.screen}>
+        <View style={styles.channelCard}>
+          <Text style={styles.channelLabel}>VOICE CHANNEL</Text>
+          <Text style={styles.channelName}>Team Voice</Text>
+          <Text style={styles.channelMeta}>
+            {voice.status === 'connecting'
+              ? 'Connecting…'
+              : inChannel
+                ? `${voice.participants.length + 1} connected`
+                : 'Empty — join to talk with your team'}
+          </Text>
 
-        {voice.status === 'idle' && (
-          <Pressable style={styles.joinButton} onPress={voice.join}>
-            <ButtonLabel icon="mic" color="#fff">
-              Join Voice Channel
-            </ButtonLabel>
-          </Pressable>
-        )}
-
-        {voice.status === 'connecting' && (
-          <View style={styles.connectingBlock}>
-            <ActivityIndicator color="#fff" />
-          </View>
-        )}
-
-        {voice.status === 'error' && (
-          <>
-            <Text style={styles.errorText}>{voice.errorMessage}</Text>
+          {voice.status === 'idle' && (
             <Pressable style={styles.joinButton} onPress={voice.join}>
-              <ButtonLabel icon="refresh" color="#fff">
-                Try Again
+              <ButtonLabel icon="mic" color="#fff">
+                Join Voice Channel
               </ButtonLabel>
             </Pressable>
+          )}
+
+          {voice.status === 'connecting' && (
+            <View style={styles.connectingBlock}>
+              <ActivityIndicator color="#fff" />
+            </View>
+          )}
+
+          {voice.status === 'error' && (
+            <>
+              <Text style={styles.errorText}>{voice.errorMessage}</Text>
+              <Pressable style={styles.joinButton} onPress={voice.join}>
+                <ButtonLabel icon="refresh" color="#fff">
+                  Try Again
+                </ButtonLabel>
+              </Pressable>
+            </>
+          )}
+        </View>
+
+        {inChannel && (
+          <>
+            <Text style={styles.sectionTitle}>In Channel</Text>
+            <FlatList
+              data={[
+                {
+                  id: user?.id ?? 'me',
+                  name: `${user?.name ?? 'You'} (You)`,
+                  isLocallyMuted: false,
+                  isSelf: true,
+                },
+                ...voice.participants.map((p) => ({ ...p, isSelf: false })),
+              ]}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.listContent}
+              renderItem={({ item }) => (
+                <View style={styles.participantRow}>
+                  <View style={styles.participantInfo}>
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>
+                        {(item.name[0] ?? '?').toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.participantName}>{item.name}</Text>
+                      {item.isLocallyMuted && (
+                        <Text style={styles.mutedHint}>Muted for you</Text>
+                      )}
+                    </View>
+                  </View>
+                  {!item.isSelf && (
+                    <Pressable
+                      style={[
+                        styles.smallButton,
+                        item.isLocallyMuted && styles.smallButtonActive,
+                      ]}
+                      onPress={() => voice.toggleParticipantMute(item.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.smallButtonText,
+                          item.isLocallyMuted && styles.smallButtonTextActive,
+                        ]}
+                      >
+                        {item.isLocallyMuted ? 'Unmute' : 'Mute'}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+            />
+
+            <View style={styles.bottomBar}>
+              <Pressable
+                style={[styles.barButton, voice.isMuted && styles.barButtonDanger]}
+                onPress={voice.toggleMute}
+              >
+                <ButtonLabel
+                  icon={voice.isMuted ? 'mic-off' : 'mic'}
+                  color={voice.isMuted ? '#fff' : '#0a0a0c'}
+                >
+                  {voice.isMuted ? 'Unmute Mic' : 'Mute Mic'}
+                </ButtonLabel>
+              </Pressable>
+              <Pressable
+                style={[styles.barButton, styles.barButtonDanger]}
+                onPress={voice.leave}
+              >
+                <ButtonLabel icon="call" color="#fff">
+                  Disconnect
+                </ButtonLabel>
+              </Pressable>
+            </View>
           </>
         )}
       </View>
-
-      {inChannel && (
-        <>
-          <Text style={styles.sectionTitle}>In Channel</Text>
-          <FlatList
-            data={[
-              {
-                id: user?.id ?? 'me',
-                name: `${user?.name ?? 'You'} (You)`,
-                isLocallyMuted: false,
-                isSelf: true,
-              },
-              ...voice.participants.map((p) => ({ ...p, isSelf: false })),
-            ]}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={null}
-            renderItem={({ item }) => (
-              <View style={styles.participantRow}>
-                <View style={styles.participantInfo}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {(item.name[0] ?? '?').toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.participantName}>{item.name}</Text>
-                    {item.isLocallyMuted && (
-                      <Text style={styles.mutedHint}>Muted for you</Text>
-                    )}
-                  </View>
-                </View>
-                {!item.isSelf && (
-                  <Pressable
-                    style={[
-                      styles.smallButton,
-                      item.isLocallyMuted && styles.smallButtonActive,
-                    ]}
-                    onPress={() => voice.toggleParticipantMute(item.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.smallButtonText,
-                        item.isLocallyMuted && styles.smallButtonTextActive,
-                      ]}
-                    >
-                      {item.isLocallyMuted ? 'Unmute' : 'Mute'}
-                    </Text>
-                  </Pressable>
-                )}
-              </View>
-            )}
-          />
-
-          <View style={styles.bottomBar}>
-            <Pressable
-              style={[styles.barButton, voice.isMuted && styles.barButtonDanger]}
-              onPress={voice.toggleMute}
-            >
-              <ButtonLabel
-                icon={voice.isMuted ? 'mic-off' : 'mic'}
-                color={voice.isMuted ? '#fff' : '#0a0a0c'}
-              >
-                {voice.isMuted ? 'Unmute Mic' : 'Mute Mic'}
-              </ButtonLabel>
-            </Pressable>
-            <Pressable
-              style={[styles.barButton, styles.barButtonDanger]}
-              onPress={voice.leave}
-            >
-              <ButtonLabel icon="call" color="#fff">
-                Disconnect
-              </ButtonLabel>
-            </Pressable>
-          </View>
-        </>
-      )}
-    </View>
     </Screen>
   );
 }
 
-export function VoiceChannelScreen() {
+function VoiceChannelScreenInner() {
   const [config, setConfig] = useState<VoiceConfig | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hooks, setHooks] = useState<VoiceHooks | null>(null);
+  const [nativeError, setNativeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      setHooks(loadVoiceHooks());
+    } catch (err) {
+      setNativeError(
+        err instanceof Error
+          ? err.message
+          : 'Voice native modules failed to load. Reinstall the APK.',
+      );
+    }
+  }, []);
 
   useEffect(() => {
     Promise.all([voiceApi.getVoiceConfig(), getToken()])
       .then(([cfg, token]) => {
         if (!token) {
-          setError('You are signed out. Please log in again to use voice channels.');
+          setError(
+            'You are signed out. Please log in again to use voice channels.',
+          );
           return;
         }
         setConfig(cfg);
         setAuthToken(token);
       })
       .catch((err) =>
-        setError(err?.response?.data?.message?.toString() ?? 'Could not load voice config'),
+        setError(
+          err?.response?.data?.message?.toString() ??
+            'Could not load voice config',
+        ),
       );
   }, []);
 
-  if (error) {
+  if (nativeError || error) {
     return (
       <Screen>
         <View style={sharedStyles.container}>
-          <Text style={sharedStyles.error}>{error}</Text>
+          <Text style={sharedStyles.error}>{nativeError || error}</Text>
         </View>
       </Screen>
     );
   }
 
-  if (!config || !authToken) {
+  if (!config || !authToken || !hooks) {
     return (
       <Screen>
         <View style={sharedStyles.container}>
@@ -187,9 +295,18 @@ export function VoiceChannelScreen() {
   }
 
   return config.mode === 'hosted' ? (
-    <HostedVoiceChannel config={config} />
+    <HostedVoiceChannel config={config} hooks={hooks} />
   ) : (
-    <SelfHostedVoiceChannel authToken={authToken} />
+    <SelfHostedVoiceChannel authToken={authToken} hooks={hooks} />
+  );
+}
+
+export function VoiceChannelScreen() {
+  const [key, setKey] = useState(0);
+  return (
+    <VoiceErrorBoundary onRetry={() => setKey((k) => k + 1)}>
+      <VoiceChannelScreenInner key={key} />
+    </VoiceErrorBoundary>
   );
 }
 
@@ -215,6 +332,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
+    marginTop: 12,
   },
   connectingBlock: { alignItems: 'center', paddingVertical: 8 },
   errorText: { color: '#f23f43', marginBottom: 12 },
@@ -234,7 +352,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#3a3d44',
   },
-  participantInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+  participantInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
   avatar: {
     width: 36,
     height: 36,

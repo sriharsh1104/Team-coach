@@ -26,6 +26,11 @@ const expoConfig: ExpoConfig = {
   icon: './assets/icon.png',
   userInterfaceStyle: 'automatic',
   scheme: 'teamcoach',
+  // Avoid a stuck white native splash while JS boots / auth restores.
+  splash: {
+    backgroundColor: '#0a0a0c',
+  },
+  backgroundColor: '#0a0a0c',
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.teamcoach.app',
@@ -67,9 +72,11 @@ const expoConfig: ExpoConfig = {
   plugins: [
     '@react-native-community/datetimepicker',
     '@livekit/react-native-expo-plugin',
+    '@config-plugins/react-native-webrtc',
     'expo-secure-store',
     'react-native-compressor',
     'expo-font',
+    '@react-native-google-signin/google-signin',
     [
       'expo-notifications',
       {
@@ -78,6 +85,7 @@ const expoConfig: ExpoConfig = {
         color: '#c9ccd1',
       },
     ],
+    ['./plugins/withApkFileName', { name: 'SacredTeamCoach' }],
   ],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
@@ -88,10 +96,11 @@ const expoConfig: ExpoConfig = {
     // Set after `eas init` / first EAS build — required for Expo push tokens
     // on standalone APKs (Expo Go can work without it).
     eas: {
-      projectId: process.env.EAS_PROJECT_ID,
+      projectId:
+        process.env.EAS_PROJECT_ID ?? '63a5440b-4571-420c-bf7b-93a651f57e27',
     },
   },
-  owner: process.env.EAS_OWNER,
+  owner: process.env.EAS_OWNER ?? 'sacredesportss-team',
 };
 
 export default expoConfig;

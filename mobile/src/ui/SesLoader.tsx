@@ -3,17 +3,18 @@ import {
   Animated,
   Easing,
   Image,
-  Modal,
   StyleSheet,
   View,
 } from 'react-native';
 import { colors } from '../theme';
 import { setLoaderListener } from './loaderBus';
 
-// Same cutout web uses — black plate already removed (alpha=0).
 const sacredLogo = require('../../assets/sacred-logo-transparent.png');
 
-/** Full-screen SES logo pulse — mirrors web `.ses-loader`. */
+/**
+ * Non-Modal overlay — a Modal was remounting the tree under it and felt like
+ * a full UI blink on every navigation/API call.
+ */
 export function SesLoader({ visible }: { visible: boolean }) {
   const scale = useRef(new Animated.Value(0.92)).current;
   const opacity = useRef(new Animated.Value(0.72)).current;
@@ -63,17 +64,19 @@ export function SesLoader({ visible }: { visible: boolean }) {
   if (!visible) return null;
 
   return (
-    <Modal transparent animationType="fade" visible statusBarTranslucent>
-      <View style={styles.overlay} accessibilityLabel="Loading" accessibilityRole="progressbar">
-        <Animated.View style={{ transform: [{ scale }], opacity }}>
-          <Image source={sacredLogo} style={styles.logo} resizeMode="contain" />
-        </Animated.View>
-      </View>
-    </Modal>
+    <View
+      pointerEvents="auto"
+      style={styles.overlay}
+      accessibilityLabel="Loading"
+      accessibilityRole="progressbar"
+    >
+      <Animated.View style={{ transform: [{ scale }], opacity }}>
+        <Image source={sacredLogo} style={styles.logo} resizeMode="contain" />
+      </Animated.View>
+    </View>
   );
 }
 
-/** App-root host: shows while axios (or manual begin/end) is in flight. */
 export function LoaderProvider({ children }: { children: React.ReactNode }) {
   const [visible, setVisible] = useState(false);
 
@@ -83,22 +86,24 @@ export function LoaderProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <>
+    <View style={styles.host}>
       {children}
       <SesLoader visible={visible} />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  host: { flex: 1 },
   overlay: {
-    flex: 1,
-    backgroundColor: colors.bg,
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10,10,12,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 100,
   },
   logo: {
-    width: 220,
-    height: 220,
+    width: 160,
+    height: 160,
   },
 });

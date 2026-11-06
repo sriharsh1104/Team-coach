@@ -9,10 +9,14 @@ import {
   Alert,
   StyleSheet,
   ActivityIndicator,
+  Modal,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as mediaApi from '../../api/media';
 import * as scrimsApi from '../../api/scrims';
@@ -23,13 +27,14 @@ import {
   ModeHistoryEntry,
   ScrimEvent,
   ScrimEventType,
+  StatExtraction,
   StatMode,
 } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { SoftPressable } from '../../ui/SoftPressable';
-import { BookStage, useBookTabs } from '../../ui/BookTabs';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { colors } from '../../theme';
+import { resolveMediaUrl } from '../../api/client';
 import {
   cacheGet,
   cacheSet,
@@ -40,7 +45,6 @@ import { useOrgRealtimeOptional } from '../../realtime/OrgRealtimeProvider';
 import { groupEntriesByDay } from '../stats/dayGroups';
 
 type Tab = 'upcoming' | 'past' | 'results';
-const SCHEDULE_TAB_IDS: Tab[] = ['upcoming', 'past', 'results'];
 
 function lastRelevantDate(event: ScrimEvent): number {
   const last = event.rounds[event.rounds.length - 1];
@@ -61,17 +65,32 @@ export function MatchSchedulePanel({
 }) {
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const insets = useSafeAreaInsets();
   const { user, org } = useAuth();
   const realtime = useOrgRealtimeOptional();
   const [events, setEvents] = useState<ScrimEvent[]>([]);
   const [resultHistory, setResultHistory] = useState<ModeHistoryEntry[]>([]);
+  const [extractions, setExtractions] = useState<StatExtraction[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [uploadingEventId, setUploadingEventId] = useState<string | null>(null);
-  const { tab, openTab, turn } = useBookTabs(SCHEDULE_TAB_IDS, 'upcoming');
-  const scheduleTab = tab as Tab;
+  const [scheduleTab, setScheduleTab] = useState<Tab>('upcoming');
+  const [viewingUrl, setViewingUrl] = useState<string | null>(null);
 
   const mode: StatMode = eventType === 'TOURNAMENT' ? 'TOURNAMENT' : 'SCRIM';
   const typeLabel = eventType === 'TOURNAMENT' ? 'Tournament' : 'Scrim';
+
+  const resultByEventId = useMemo(() => {
+    const map = new Map<string, StatExtraction>();
+    for (const ex of extractions) {
+      if (!ex.scrimEventId || !ex.mediaUrl) continue;
+      if (ex.status !== 'CONFIRMED' && ex.status !== 'PENDING') continue;
+      const prev = map.get(ex.scrimEventId);
+      if (!prev || new Date(ex.createdAt) > new Date(prev.createdAt)) {
+        map.set(ex.scrimEventId, ex);
+      }
+    }
+    return map;
+  }, [extractions]);
 
   const load = useCallback(
     async (opts?: { force?: boolean }) => {
@@ -80,23 +99,31 @@ export function MatchSchedulePanel({
         const cached = cacheGet<{
           events: ScrimEvent[];
           history: ModeHistoryEntry[];
+          extractions: StatExtraction[];
         }>(key);
         if (cached) {
           setEvents(cached.events);
           setResultHistory(cached.history);
+          setExtractions(cached.extractions ?? []);
           return;
         }
       }
-      const [data, history] = await Promise.all([
+      const [data, history, extractionList] = await Promise.all([
         scrimsApi.listScrims(),
         statsApi
           .getModeHistory(mode)
           .catch(() => ({ entries: [] as ModeHistoryEntry[] })),
+        statsApi.listExtractions(mode).catch(() => [] as StatExtraction[]),
       ]);
       const filtered = data.filter((e) => e.type === eventType);
-      cacheSet(key, { events: filtered, history: history.entries });
+      cacheSet(key, {
+        events: filtered,
+        history: history.entries,
+        extractions: extractionList,
+      });
       setEvents(filtered);
       setResultHistory(history.entries);
+      setExtractions(extractionList);
     },
     [eventType, mode],
   );
@@ -137,8 +164,8 @@ export function MatchSchedulePanel({
     try {
       await scrimsApi.deleteScrim(event.id);
       await load({ force: true });
-    } catch (err: any) {
-      /* API error toasted by axios interceptor */
+    } catch {
+      /* toasted by interceptor */
     }
   };
 
@@ -175,11 +202,13 @@ export function MatchSchedulePanel({
         mediaPostIds: [post.id],
         scrimEventId: event.id,
       });
-      // Still QUEUED at this point — OCR hasn't run yet. ExtractionReviewScreen
-      // shows a "still processing" state and polls until it's ready.
-      navigation.navigate('ExtractionReview', { extraction: created[0] });
-    } catch (err: any) {
-      /* API error toasted by axios interceptor */
+      await load({ force: true });
+      navigation.navigate('ExtractionReview', {
+        extraction: created[0],
+        scrimEvent: event,
+      });
+    } catch {
+      /* toasted by interceptor */
     } finally {
       setUploadingEventId(null);
     }
@@ -196,6 +225,82 @@ export function MatchSchedulePanel({
     [resultHistory],
   );
 
+  const renderMatchCard = (item: ScrimEvent) => {
+    const linked = resultByEventId.get(item.id);
+    const viewUrl = linked?.mediaUrl
+      ? resolveMediaUrl(linked.mediaUrl)
+      : null;
+    return (
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{item.title}</Text>
+        <Text style={styles.meta}>
+          {new Date(item.scheduledAt).toLocaleString()} · by{' '}
+          {item.createdByName}
+          {item.rounds?.length ? ` · ${item.rounds.length} Round(s)` : ''}
+        </Text>
+        {item.platform ? (
+          <Pressable onPress={() => Linking.openURL(item.platform!)}>
+            <Text style={styles.link}>{item.platform}</Text>
+          </Pressable>
+        ) : null}
+        {item.notes ? <Text style={styles.notes}>{item.notes}</Text> : null}
+
+        <View style={styles.actionsRow}>
+          <SoftPressable
+            style={styles.primaryAction}
+            onPress={() => uploadResultForEvent(item)}
+            disabled={uploadingEventId === item.id}
+            accessibilityRole="button"
+            accessibilityLabel="Upload Result"
+            pressScale={0.97}
+          >
+            {uploadingEventId === item.id ? (
+              <ActivityIndicator color="#0a0a0c" />
+            ) : (
+              <Text style={styles.primaryActionText}>Upload Result</Text>
+            )}
+          </SoftPressable>
+          {viewUrl ? (
+            <SoftPressable
+              style={styles.viewAction}
+              onPress={() => setViewingUrl(viewUrl)}
+              accessibilityLabel="View uploaded result"
+              pressScale={0.96}
+            >
+              <Ionicons name="eye-outline" size={18} color={colors.chromeInk} />
+              <Text style={styles.viewActionText}>View</Text>
+            </SoftPressable>
+          ) : null}
+          {canEdit(item) && (
+            <>
+              <SoftPressable
+                onPress={() =>
+                  navigation.navigate('AddEditScrim', { scrim: item })
+                }
+                pressScale={0.96}
+              >
+                <Text style={styles.action}>Edit</Text>
+              </SoftPressable>
+              <SoftPressable onPress={() => onDelete(item)} pressScale={0.96}>
+                <Text style={[styles.action, { color: colors.danger }]}>
+                  Delete
+                </Text>
+              </SoftPressable>
+            </>
+          )}
+        </View>
+        {uploadingEventId === item.id ? (
+          <Text style={styles.uploadHint}>Uploading scoreboard…</Text>
+        ) : linked ? (
+          <Text style={styles.uploadHint}>
+            Result image saved
+            {linked.status === 'PENDING' ? ' · review pending' : ''}
+          </Text>
+        ) : null}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.root}>
       <Text style={styles.hint}>
@@ -206,7 +311,7 @@ export function MatchSchedulePanel({
       <View style={styles.tabPad}>
         <SegmentedTabs
           value={scheduleTab}
-          onChange={(next) => openTab(next)}
+          onChange={setScheduleTab}
           tabs={
             [
               { value: 'upcoming', label: 'Upcoming' },
@@ -217,98 +322,40 @@ export function MatchSchedulePanel({
         />
       </View>
 
-      <BookStage tab={tab} turn={turn} style={styles.stage}>
-        {(active) =>
-          active !== 'results' ? (
-            <FlatList
-              style={styles.list}
-              data={active === 'upcoming' ? upcoming : past}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.listContent}
-              refreshControl={
-                <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-              }
-              ListEmptyComponent={
-                <Text style={styles.empty}>
-                  {active === 'upcoming'
-                    ? `No upcoming ${typeLabel.toLowerCase()}s. Add one below.`
-                    : `No past ${typeLabel.toLowerCase()}s yet.`}
-                </Text>
-              }
-              renderItem={({ item }) => (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>{item.title}</Text>
-                  <Text style={styles.meta}>
-                    {new Date(item.scheduledAt).toLocaleString()} · by{' '}
-                    {item.createdByName}
-                    {item.rounds?.length
-                      ? ` · ${item.rounds.length} Round(s)`
-                      : ''}
-                  </Text>
-                  {item.platform ? (
-                    <Pressable onPress={() => Linking.openURL(item.platform!)}>
-                      <Text style={styles.link}>{item.platform}</Text>
-                    </Pressable>
-                  ) : null}
-                  {item.notes ? (
-                    <Text style={styles.notes}>{item.notes}</Text>
-                  ) : null}
-
-                  <View style={styles.actionsRow}>
-                    <SoftPressable
-                      style={styles.primaryAction}
-                      onPress={() => uploadResultForEvent(item)}
-                      disabled={uploadingEventId === item.id}
-                      accessibilityRole="button"
-                      accessibilityLabel="Upload Result"
-                      pressScale={0.97}
-                    >
-                      {uploadingEventId === item.id ? (
-                        <ActivityIndicator color="#0a0a0c" />
-                      ) : (
-                        <Text style={styles.primaryActionText}>Upload Result</Text>
-                      )}
-                    </SoftPressable>
-                    {canEdit(item) && (
-                      <>
-                        <SoftPressable
-                          onPress={() =>
-                            navigation.navigate('AddEditScrim', { scrim: item })
-                          }
-                          pressScale={0.96}
-                        >
-                          <Text style={styles.action}>Edit</Text>
-                        </SoftPressable>
-                        <SoftPressable
-                          onPress={() => onDelete(item)}
-                          pressScale={0.96}
-                        >
-                          <Text style={[styles.action, { color: colors.danger }]}>
-                            Delete
-                          </Text>
-                        </SoftPressable>
-                      </>
-                    )}
-                  </View>
-                </View>
-              )}
-            />
-          ) : (
-            <FlatList
-              style={styles.list}
-              data={resultDays}
-              keyExtractor={(item: { dayKey: string }) => item.dayKey}
-              contentContainerStyle={styles.listContent}
-              refreshControl={
-                <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-              }
-              ListEmptyComponent={
-                <Text style={styles.empty}>
-                  No {typeLabel.toLowerCase()} results yet. Upload from a match
-                  above.
-                </Text>
-              }
-              renderItem={({ item: group }: { item: any }) => (
+      {scheduleTab !== 'results' ? (
+        <FlatList
+          style={styles.list}
+          data={scheduleTab === 'upcoming' ? upcoming : past}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {scheduleTab === 'upcoming'
+                ? `No upcoming ${typeLabel.toLowerCase()}s. Add one below.`
+                : `No past ${typeLabel.toLowerCase()}s yet.`}
+            </Text>
+          }
+          renderItem={({ item }) => renderMatchCard(item)}
+        />
+      ) : (
+        <FlatList
+          style={styles.list}
+          data={resultDays}
+          keyExtractor={(item: { dayKey: string }) => item.dayKey}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              No {typeLabel.toLowerCase()} results yet. Upload from a match
+              above.
+            </Text>
+          }
+          renderItem={({ item: group }: { item: any }) => (
             <View style={styles.dayCard}>
               <View style={styles.dayHeader}>
                 <Text style={styles.dayTitle}>{group.label}</Text>
@@ -337,10 +384,8 @@ export function MatchSchedulePanel({
               ))}
             </View>
           )}
-            />
-          )
-        }
-      </BookStage>
+        />
+      )}
 
       <View style={styles.bottomBar}>
         <SoftPressable
@@ -355,6 +400,33 @@ export function MatchSchedulePanel({
           <Text style={styles.addBtnText}>+ Add {typeLabel}</Text>
         </SoftPressable>
       </View>
+
+      <Modal
+        visible={!!viewingUrl}
+        animationType="fade"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setViewingUrl(null)}
+      >
+        <View style={styles.viewerRoot}>
+          <View style={[styles.viewerBar, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+            <Text style={styles.viewerTitle}>Uploaded Result</Text>
+            <Pressable
+              style={styles.viewerClose}
+              onPress={() => setViewingUrl(null)}
+              accessibilityLabel="Close"
+            >
+              <Ionicons name="close" size={26} color={colors.chromeInk} />
+            </Pressable>
+          </View>
+          {viewingUrl ? (
+            <Image
+              source={{ uri: viewingUrl }}
+              style={styles.viewerImage}
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -369,7 +441,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   tabPad: { paddingHorizontal: 16 },
-  stage: { flex: 1 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 28 },
@@ -389,7 +460,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 14,
+    gap: 10,
     marginTop: 12,
   },
   primaryAction: {
@@ -403,6 +474,25 @@ const styles = StyleSheet.create({
   primaryActionText: {
     color: colors.chromeInk,
     fontWeight: '700',
+    fontSize: 12,
+  },
+  viewAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.chrome,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  viewActionText: {
+    color: colors.chromeInk,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  uploadHint: {
+    marginTop: 8,
+    color: colors.textMuted,
     fontSize: 12,
   },
   action: { color: colors.link, fontWeight: '600' },
@@ -448,4 +538,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   addBtnText: { color: colors.chromeInk, fontWeight: '700', fontSize: 14 },
+  viewerRoot: { flex: 1, backgroundColor: '#050507' },
+  viewerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  viewerTitle: {
+    flex: 1,
+    color: colors.text,
+    fontWeight: '800',
+    fontSize: 17,
+  },
+  viewerClose: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.chrome,
+  },
+  viewerImage: { flex: 1, width: '100%' },
 });

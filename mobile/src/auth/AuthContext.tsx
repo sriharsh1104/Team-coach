@@ -98,37 +98,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // retryBiometricUnlock can re-run the exact same sequence after a failed
   // or cancelled prompt, without duplicating the token/me() logic.
   const bootstrap = useCallback(async () => {
-    const token = await getToken();
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-
-    if (Platform.OS !== 'web' && (await getBiometricEnabled())) {
-      const available = await isBiometricAvailable();
-      if (available) {
-        const unlocked = await promptBiometricAuth('Unlock Team Coach');
-        if (!unlocked) {
-          // Don't touch the stored token — just block resuming the session
-          // until the user either retries or falls back to password login.
-          setNeedsBiometricUnlock(true);
-          setIsLoading(false);
-          return;
-        }
-      }
-      // If the hardware/enrollment went away since enabling (e.g. Face ID
-      // turned off in OS settings), fall through and resume normally rather
-      // than locking the user out permanently.
-    }
-
     try {
-      const me = await authApi.me();
-      setUser(toAuthUser(me));
-      setOrgState(me.org);
-      setGuildState(me.guild);
-      registerPushTokenWithBackend();
-    } catch {
-      await deleteToken();
+      const token = await getToken();
+      if (!token) return;
+
+      if (Platform.OS !== 'web' && (await getBiometricEnabled())) {
+        const available = await isBiometricAvailable();
+        if (available) {
+          const unlocked = await promptBiometricAuth('Unlock Team Coach');
+          if (!unlocked) {
+            // Don't touch the stored token — just block resuming the session
+            // until the user either retries or falls back to password login.
+            setNeedsBiometricUnlock(true);
+            return;
+          }
+        }
+        // If the hardware/enrollment went away since enabling (e.g. Face ID
+        // turned off in OS settings), fall through and resume normally rather
+        // than locking the user out permanently.
+      }
+
+      try {
+        const me = await authApi.me();
+        setUser(toAuthUser(me));
+        setOrgState(me.org);
+        setGuildState(me.guild);
+        registerPushTokenWithBackend();
+      } catch {
+        await deleteToken();
+      }
+    } catch (err) {
+      console.warn('Auth bootstrap failed:', err);
+      try {
+        await deleteToken();
+      } catch {
+        // ignore storage failures during recovery
+      }
     } finally {
       setIsLoading(false);
     }

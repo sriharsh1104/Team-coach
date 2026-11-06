@@ -96,11 +96,19 @@ export class MediaStorageService {
     const resourceType: 'image' | 'video' = file.mimetype.startsWith('video/')
       ? 'video'
       : 'image';
+    const bytes = file.buffer?.length ?? file.size ?? 0;
+    this.logger.log(
+      `[media] store start type=${resourceType} mime=${file.mimetype} bytes=${bytes} name=${file.originalname || 'n/a'} via=${this.cloudinaryEnabled ? 'cloudinary' : 'local'}`,
+    );
 
-    if (this.cloudinaryEnabled) {
-      return this.uploadToCloudinary(file, resourceType);
-    }
-    return this.saveLocal(file, resourceType);
+    const stored = this.cloudinaryEnabled
+      ? await this.uploadToCloudinary(file, resourceType)
+      : await this.saveLocal(file, resourceType);
+
+    this.logger.log(
+      `[media] store ok fileKey=${stored.fileKey} type=${stored.resourceType}`,
+    );
+    return stored;
   }
 
   /** Absolute path for local keys only. */

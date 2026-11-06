@@ -1,5 +1,4 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { CreateOrgScreen } from '../CreateOrgScreen';
 import { useAuth } from '../../auth/AuthContext';
@@ -20,7 +19,6 @@ async function pressAndSettle(text: string) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
 
 describe('CreateOrgScreen', () => {
@@ -40,7 +38,7 @@ describe('CreateOrgScreen', () => {
     expect(mockedOrgApi.createOrg).not.toHaveBeenCalled();
   });
 
-  it('trims the org name and creates the founder as owner with no roster role', async () => {
+  it('trims the org name, shows the shareable code, and hands off to setOrg on Continue', async () => {
     const setOrg = jest.fn();
     mockedUseAuth.mockReturnValue({ setOrg });
     mockedOrgApi.createOrg.mockResolvedValue({
@@ -59,6 +57,11 @@ describe('CreateOrgScreen', () => {
     await pressAndSettle('Create Org');
 
     expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad');
+    expect(screen.getByText('ABC123')).toBeTruthy();
+    expect(setOrg).not.toHaveBeenCalled();
+
+    await pressAndSettle('Continue');
+
     expect(setOrg).toHaveBeenCalledWith({
       id: 'org-1',
       name: 'Alpha Squad',

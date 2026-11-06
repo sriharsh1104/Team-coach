@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Param,
   Post,
   Query,
@@ -23,6 +24,8 @@ import { mediaFileInterceptorOptions } from './multer-options';
 
 @Controller('media')
 export class MediaController {
+  private readonly logger = new Logger(MediaController.name);
+
   constructor(
     private readonly mediaService: MediaService,
     private readonly storage: MediaStorageService,
@@ -41,8 +44,19 @@ export class MediaController {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
+    this.logger.log(
+      `[media] POST /media (arena feed / tournament result) user=${user.userId} type=${dto.type} caption=${dto.caption?.slice(0, 80) || '-'}`,
+    );
     const stored = await this.storage.storeUploadedFile(file);
-    return this.mediaService.saveUpload(user.userId, stored.fileKey, dto);
+    const post = await this.mediaService.saveUpload(
+      user.userId,
+      stored.fileKey,
+      dto,
+    );
+    this.logger.log(
+      `[media] POST /media ok user=${user.userId} postId=${post.id} fileKey=${stored.fileKey}`,
+    );
+    return post;
   }
 
   @UseGuards(JwtAuthGuard)

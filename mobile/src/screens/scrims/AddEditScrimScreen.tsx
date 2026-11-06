@@ -40,12 +40,29 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
   const [remind30, setRemind30] = useState(existing?.remind30 ?? true);
   const [remind10, setRemind10] = useState(existing?.remind10 ?? true);
   const [rounds, setRounds] = useState<RoundDraft[]>(() => {
+    const promptNext = route.params?.promptNextRound === true;
     if (existing?.rounds?.length) {
-      return existing.rounds.map((r) => ({
+      const mapped = existing.rounds.map((r) => ({
         roundNumber: r.roundNumber,
         scheduledAt: new Date(r.scheduledAt),
         result: r.result,
       }));
+      if (promptNext && existing.type === 'TOURNAMENT') {
+        const last = mapped[mapped.length - 1];
+        if (last && last.result !== 'ELIMINATED') {
+          last.result = 'QUALIFIED';
+        }
+        if (mapped[mapped.length - 1]?.result === 'QUALIFIED') {
+          const nextDate = new Date(mapped[mapped.length - 1].scheduledAt);
+          nextDate.setDate(nextDate.getDate() + 1);
+          mapped.push({
+            roundNumber: mapped.length + 1,
+            scheduledAt: nextDate,
+            result: 'PENDING',
+          });
+        }
+      }
+      return mapped;
     }
     return [
       {
@@ -216,8 +233,9 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
           <>
             <Text style={styles.sectionLabel}>Rounds</Text>
             <Text style={styles.sectionHint}>
-              Add as many rounds as needed. After you Qualify, set the next
-              round date & time.
+              {route.params?.promptNextRound
+                ? 'Last round marked Qualified. Set the next round date & time, then Save — reminders will use that time.'
+                : 'Add as many rounds as needed. After you Qualify, set the next round date & time.'}
             </Text>
 
             {rounds.map((round, index) => (

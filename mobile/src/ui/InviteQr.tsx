@@ -3,12 +3,14 @@ import {
   Alert,
   Image,
   Modal,
+  Pressable,
   Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { SoftPressable } from './SoftPressable';
@@ -67,6 +69,7 @@ export function InviteQr({
   label?: string;
   size?: number;
 }) {
+  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const qrRef = useRef<QrSvgRef | null>(null);
@@ -135,27 +138,34 @@ export function InviteQr({
         onRequestClose={() => setOpen(false)}
       >
         <View style={styles.modalRoot}>
-          <View style={styles.modalBar}>
+          <View style={[styles.modalBar, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+            <Pressable
+              onPress={() => setOpen(false)}
+              hitSlop={12}
+              accessibilityLabel="Back"
+              style={styles.modalIconBtn}
+            >
+              <Ionicons name="chevron-back" size={26} color={colors.text} />
+            </Pressable>
             <Text style={styles.modalTitle} numberOfLines={1}>
               {label}
             </Text>
             <View style={styles.modalActions}>
-              <SoftPressable
+              <Pressable
                 style={styles.modalIconBtn}
                 onPress={() => void onDownload()}
                 accessibilityLabel="Download QR"
-                pressScale={0.94}
               >
                 <Ionicons name="download-outline" size={22} color={colors.text} />
-              </SoftPressable>
-              <SoftPressable
-                style={styles.modalIconBtn}
+              </Pressable>
+              <Pressable
+                style={styles.modalCloseBtn}
                 onPress={() => setOpen(false)}
                 accessibilityLabel="Close"
-                pressScale={0.94}
+                hitSlop={10}
               >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </SoftPressable>
+                <Ionicons name="close" size={26} color={colors.chromeInk} />
+              </Pressable>
             </View>
           </View>
 
@@ -224,12 +234,12 @@ const styles = StyleSheet.create({
   modalBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingTop: 54,
+    gap: 8,
+    paddingHorizontal: 12,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+    zIndex: 5,
   },
   modalTitle: {
     flex: 1,
@@ -243,10 +253,18 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   modalIconBtn: {
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modalCloseBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.chrome,
   },
   modalBody: {
     flex: 1,

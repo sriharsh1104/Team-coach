@@ -140,7 +140,7 @@ model Org {
   // Owner-controlled: whether a member can see Team Chat messages from
   // before they joined. Chat history itself is always kept in full either
   // way — this only controls what's displayed to a given member.
-  historyVisibleToNewMembers Boolean @default(true)
+  historyVisibleToNewMembers Boolean @default(false)
 
   memberships        Membership[]
   guildMemberships   GuildMembership[]

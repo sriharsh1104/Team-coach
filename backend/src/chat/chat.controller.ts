@@ -152,6 +152,9 @@ export class ChatController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
+    this.logger.log(
+      `[chat-media] POST /chat/media (guild/org/DM attachment) user=${user.userId} mime=${file.mimetype} bytes=${file.buffer?.length ?? file.size ?? 0}`,
+    );
     await this.chatService.getChatContext(user.userId);
     const mediaType = file.mimetype.startsWith('video/') ? 'VIDEO' : 'IMAGE';
     const stored = await this.storage.storeUploadedFile(file);
@@ -174,12 +177,18 @@ export class ChatController {
         mediaType,
       );
       mediaPostId = post.id;
+      this.logger.log(
+        `[chat-media] mirrored to Media feed postId=${mediaPostId} fileKey=${stored.fileKey}`,
+      );
     } catch (err) {
       this.logger.warn(
         `Failed to mirror chat upload into Media feed: ${(err as Error).message}`,
       );
     }
 
+    this.logger.log(
+      `[chat-media] ok user=${user.userId} mediaType=${mediaType} fileKey=${stored.fileKey} mediaPostId=${mediaPostId ?? 'none'}`,
+    );
     return {
       mediaUrl,
       mediaType,

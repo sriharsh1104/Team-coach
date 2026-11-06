@@ -208,6 +208,7 @@ const styles = StyleSheet.create({
   },
   page: {
     width: '100%',
+    flex: 1,
   },
   leaving: {
     ...StyleSheet.absoluteFillObject,

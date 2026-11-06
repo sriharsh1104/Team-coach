@@ -10,10 +10,12 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 import { SoftPressable } from './SoftPressable';
 
-const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.82);
+const WINDOW = Dimensions.get('window');
+const DRAWER_WIDTH = Math.min(300, WINDOW.width * 0.82);
 const SKIP_MOTION = process.env.NODE_ENV === 'test';
 
 export type SideDrawerItem = {
@@ -25,9 +27,7 @@ export type SideDrawerItem = {
 
 export type SideDrawerSection = {
   key: string;
-  /** Uppercase section heading (web `.sidebar-label` / `.sidebar-split`). */
   label?: string;
-  /** Draw a top rule before the label — web Guild / Account splits. */
   split?: boolean;
   items: SideDrawerItem[];
 };
@@ -46,14 +46,14 @@ export function SideDrawer({
   onClose: () => void;
   title?: string;
   subtitle?: string;
-  /** Flat list (legacy). Prefer `sections` for web-parity groupings. */
   items?: SideDrawerItem[];
   sections?: SideDrawerSection[];
-  /** Pinned to the bottom of the drawer (e.g. Log Out). */
   footerItems?: SideDrawerItem[];
 }) {
   const insets = useSafeAreaInsets();
   const slide = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const topPad = Math.max(insets.top, 12) + 8;
+  const bottomPad = Math.max(insets.bottom, 12) + 16;
 
   useEffect(() => {
     if (SKIP_MOTION) {
@@ -62,7 +62,7 @@ export function SideDrawer({
     }
     Animated.timing(slide, {
       toValue: open ? 0 : -DRAWER_WIDTH,
-      duration: 240,
+      duration: 220,
       useNativeDriver: true,
     }).start();
   }, [open, slide]);
@@ -74,28 +74,34 @@ export function SideDrawer({
         ? [{ key: 'main', items }]
         : [];
 
+  // Plain Pressable — SoftPressable's nested Animated.View steals the
+  // vertical pan on Android, so Account items at the bottom never scrolled.
   const renderItem = (item: SideDrawerItem) => (
-    <SoftPressable
+    <Pressable
       key={item.key}
-      style={[styles.item, item.danger && styles.itemDanger]}
+      style={({ pressed }) => [
+        styles.item,
+        item.danger && styles.itemDanger,
+        pressed && styles.itemPressed,
+      ]}
       onPress={() => {
         onClose();
-        item.onPress();
+        requestAnimationFrame(() => item.onPress());
       }}
-      pressScale={0.97}
     >
       <Text style={[styles.itemText, item.danger && { color: colors.danger }]}>
         {item.label}
       </Text>
-    </SoftPressable>
+    </Pressable>
   );
 
   return (
     <Modal
       visible={open}
       transparent
-      animationType="fade"
+      animationType="none"
       onRequestClose={onClose}
+      statusBarTranslucent
     >
       <View style={styles.root}>
         <Pressable
@@ -108,32 +114,40 @@ export function SideDrawer({
             styles.panel,
             {
               width: DRAWER_WIDTH,
-              paddingTop: insets.top + 16,
-              paddingBottom: insets.bottom + 16,
+              paddingTop: topPad,
+              paddingBottom: bottomPad,
               transform: [{ translateX: slide }],
             },
           ]}
         >
           <View style={styles.header}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               {title ? <Text style={styles.title}>{title}</Text> : null}
-              {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+              {subtitle ? (
+                <Text style={styles.subtitle} numberOfLines={1}>
+                  {subtitle}
+                </Text>
+              ) : null}
             </View>
-            <SoftPressable
+            <Pressable
               onPress={onClose}
-              hitSlop={12}
+              hitSlop={14}
               accessibilityLabel="Close Menu"
               style={styles.closeBtn}
-              pressScale={0.9}
             >
-              <Text style={styles.closeGlyph}>✕</Text>
-            </SoftPressable>
+              <Ionicons name="close" size={26} color={colors.text} />
+            </Pressable>
           </View>
 
           <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.items}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator
+            keyboardShouldPersistTaps="handled"
+            bounces
+            nestedScrollEnabled
+            // Extra room so last Account rows clear the home indicator.
+            scrollIndicatorInsets={{ bottom: 8 }}
           >
             {resolvedSections.map((section, index) => (
               <View key={section.key} style={styles.section}>
@@ -152,18 +166,17 @@ export function SideDrawer({
                 </View>
               </View>
             ))}
+            {footerItems.length > 0 ? (
+              <View style={styles.footer}>{footerItems.map(renderItem)}</View>
+            ) : null}
+            <View style={{ height: 24 }} />
           </ScrollView>
-
-          {footerItems.length > 0 ? (
-            <View style={styles.footer}>{footerItems.map(renderItem)}</View>
-          ) : null}
         </Animated.View>
       </View>
     </Modal>
   );
 }
 
-/** Top-bar hamburger that opens the drawer. */
 export function MenuButton({ onPress }: { onPress: () => void }) {
   return (
     <SoftPressable
@@ -171,7 +184,7 @@ export function MenuButton({ onPress }: { onPress: () => void }) {
       style={styles.menuBtn}
       accessibilityLabel="Open Menu"
       hitSlop={8}
-      pressScale={0.92}
+      pressScale={0.94}
     >
       <View style={styles.menuBar} />
       <View style={styles.menuBar} />
@@ -181,25 +194,33 @@ export function MenuButton({ onPress }: { onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, flexDirection: 'row' },
+  root: {
+    flex: 1,
+  },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   panel: {
-    backgroundColor: '#101014',
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: '#0e0e12',
     borderRightWidth: 1,
     borderRightColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 14,
     zIndex: 2,
+    // Explicit column + stretch so ScrollView gets a bounded height.
     flexDirection: 'column',
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 18,
+    alignItems: 'center',
+    marginBottom: 14,
     gap: 8,
     paddingHorizontal: 4,
+    flexShrink: 0,
   },
   title: {
     color: colors.text,
@@ -214,17 +235,18 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   closeBtn: {
-    padding: 8,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  closeGlyph: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '700',
+  scroll: {
+    flex: 1,
   },
-  scroll: { flex: 1 },
-  items: { gap: 4, paddingBottom: 12 },
+  items: {
+    gap: 4,
+    paddingBottom: 8,
+  },
   section: { gap: 6 },
   sectionLabel: {
     marginHorizontal: 4,
@@ -257,6 +279,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.04)',
+  },
+  itemPressed: {
+    opacity: 0.75,
   },
   itemText: {
     color: colors.text,

@@ -13,8 +13,9 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as statsApi from '../../api/stats';
 import * as orgApi from '../../api/org';
+import * as scrimsApi from '../../api/scrims';
 import { resolveMediaUrl } from '../../api/client';
-import { ExtractionRow, OrgMember, StatExtraction } from '../../api/types';
+import { ExtractionRow, OrgMember, ScrimEvent, StatExtraction } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
@@ -50,6 +51,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const linkedScrim = route.params.scrimEvent;
 
   const stillProcessing = extraction.status === 'QUEUED' || extraction.status === 'PROCESSING';
 
@@ -123,6 +125,69 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
     [rows],
   );
 
+  const endTournament = async (event: ScrimEvent) => {
+    const rounds = (event.rounds?.length
+      ? event.rounds
+      : [
+          {
+            roundNumber: 1,
+            scheduledAt: event.scheduledAt,
+            result: 'PENDING' as const,
+          },
+        ]
+    ).map((r, i, all) => ({
+      roundNumber: r.roundNumber,
+      scheduledAt: r.scheduledAt,
+      result: i === all.length - 1 ? ('ELIMINATED' as const) : r.result,
+    }));
+    await scrimsApi.updateScrim(event.id, {
+      type: event.type,
+      title: event.title,
+      scheduledAt: event.scheduledAt,
+      platform: event.platform ?? undefined,
+      notes: event.notes ?? undefined,
+      remind30: event.remind30,
+      remind10: event.remind10,
+      rounds,
+    });
+  };
+
+  const afterStatsSaved = (event: ScrimEvent | undefined) => {
+    if (!event || event.type !== 'TOURNAMENT') {
+      navigation.goBack();
+      return;
+    }
+    Alert.alert(
+      'Qualified for next round?',
+      'Upload done. If you qualified, add the next round date so reminders keep working. If not, the tournament will be marked ended.',
+      [
+        {
+          text: 'No — End Tournament',
+          style: 'destructive',
+          onPress: () => {
+            void endTournament(event)
+              .then(() => navigation.goBack())
+              .catch(() => navigation.goBack());
+          },
+        },
+        {
+          text: 'Yes — Add Next Round',
+          onPress: () => {
+            navigation.replace('AddEditScrim', {
+              scrim: event,
+              promptNextRound: true,
+            });
+          },
+        },
+        {
+          text: 'Later',
+          style: 'cancel',
+          onPress: () => navigation.goBack(),
+        },
+      ],
+    );
+  };
+
   const onConfirm = async () => {
     if (teammateRows.length === 0) {
       Alert.alert(
@@ -144,8 +209,13 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
             ? `. ${outsiderRows.length} non-team name(s) ignored.`
             : '.'
         }`,
+        [
+          {
+            text: 'OK',
+            onPress: () => afterStatsSaved(linkedScrim),
+          },
+        ],
       );
-      navigation.goBack();
     } catch (err: any) {
       /* API error toasted by axios interceptor */
     } finally {
