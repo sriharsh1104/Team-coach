@@ -104,8 +104,10 @@ export class MailerService implements OnModuleInit {
   }
 
   private async send(to: string, subject: string, html: string): Promise<void> {
-    const apiKey = this.configService.get<string>('RESEND_API_KEY');
-    const fromAddress = this.configService.get<string>('RESEND_FROM_EMAIL');
+    const apiKey = this.configService.get<string>('RESEND_API_KEY')?.trim();
+    const fromAddress = this.configService
+      .get<string>('RESEND_FROM_EMAIL')
+      ?.trim();
     if (!apiKey || !fromAddress) {
       throw new ServiceUnavailableException(
         'Email sending is not configured — set RESEND_API_KEY and RESEND_FROM_EMAIL on the backend.',

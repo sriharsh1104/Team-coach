@@ -29,9 +29,9 @@ export function Toast({ message }: Props) {
       style={[
         styles.anchor,
         {
-          top: insets.top + 10,
-          left: Math.max(insets.left, 12),
-          right: Math.max(insets.right, 12),
+          paddingTop: insets.top + 12,
+          paddingLeft: Math.max(insets.left, 16),
+          paddingRight: Math.max(insets.right, 16),
         },
       ]}
       pointerEvents="none"
@@ -96,8 +96,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastContext.Provider value={{ showToast }}>
-      {children}
-      <Toast message={message} />
+      <View style={styles.host}>
+        {children}
+        {/* Full-screen overlay so the banner is always pinned to the top of
+            the window — not the bottom of a nested Screen / scroll sibling. */}
+        <View style={styles.overlay} pointerEvents="box-none">
+          <Toast message={message} />
+        </View>
+      </View>
     </ToastContext.Provider>
   );
 }
@@ -111,15 +117,20 @@ export function useAppToast() {
 }
 
 const styles = StyleSheet.create({
-  // Full-width safe strip so the banner cannot spill past left/right edges.
+  host: { flex: 1 },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  // Top-of-screen strip (safe area via paddingTop). Centered, not bottom-right.
   anchor: {
-    position: 'absolute',
-    zIndex: 2000,
-    elevation: 20,
-    alignItems: 'flex-end',
+    width: '100%',
+    alignItems: 'center',
   },
   banner: {
     maxWidth: '100%',
+    width: '100%',
     backgroundColor: '#1c1c20',
     borderWidth: 1,
     borderColor: colors.border,
@@ -127,14 +138,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
   text: {
     color: colors.text,
     fontSize: 13,
     fontWeight: '600',
     flexShrink: 1,
+    textAlign: 'center',
   },
 });

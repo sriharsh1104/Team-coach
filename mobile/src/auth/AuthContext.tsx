@@ -23,6 +23,7 @@ import {
   EmailVerificationChallengeResponse,
 } from '../api/types';
 import { registerPushTokenWithBackend } from '../notifications/registerPushToken';
+import { emitToast } from '../ui/toastBus';
 
 function toAuthUser(me: AuthUser): AuthUser {
   return {
@@ -33,6 +34,7 @@ function toAuthUser(me: AuthUser): AuthUser {
     phone: me.phone,
     profileComplete: me.profileComplete,
     hasPassword: me.hasPassword,
+    hasGoogle: me.hasGoogle,
     twoFactorEnabled: me.twoFactorEnabled,
   };
 }
@@ -202,6 +204,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return result;
       }
       await applyAuthResponse(result);
+      if (result.passwordEmailSent) {
+        emitToast(
+          `Password sent to ${result.user.email}. Check inbox (and spam).`,
+        );
+      }
     },
     [applyAuthResponse],
   );

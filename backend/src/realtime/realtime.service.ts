@@ -6,6 +6,7 @@ export type OrgRealtimeType =
   | 'stats.changed'
   | 'media.changed'
   | 'scrims.changed'
+  | 'members.changed'
   | 'heartbeat';
 
 export type OrgRealtimeEvent = {

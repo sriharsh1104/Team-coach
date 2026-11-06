@@ -25,6 +25,7 @@ function toAuthUser(me: AuthUser): AuthUser {
     phone: me.phone,
     profileComplete: me.profileComplete,
     hasPassword: me.hasPassword,
+    hasGoogle: me.hasGoogle,
     twoFactorEnabled: me.twoFactorEnabled,
   };
 }

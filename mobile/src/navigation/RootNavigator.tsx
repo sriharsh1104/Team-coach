@@ -208,6 +208,11 @@ export function RootNavigator() {
             options={{ title: 'Account Settings' }}
           />
           <MainStack.Screen
+            name="TwoFactorSetup"
+            component={TwoFactorSetupScreen}
+            options={{ title: 'Two-Factor Authentication' }}
+          />
+          <MainStack.Screen
             name="Chat"
             options={{ title: 'Guild Chat' }}
           >

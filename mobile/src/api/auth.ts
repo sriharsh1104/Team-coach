@@ -67,6 +67,12 @@ export function changePassword(currentPassword: string, newPassword: string) {
     .then((res) => res.data);
 }
 
+export function emailGeneratedPassword() {
+  return apiClient
+    .post<{ success: boolean; email: string }>('/auth/email-password')
+    .then((res) => res.data);
+}
+
 export function setupTwoFactor(password: string) {
   return apiClient
     .post<{ secret: string; qrCodeDataUrl: string }>('/auth/2fa/setup', { password })

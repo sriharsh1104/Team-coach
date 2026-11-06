@@ -12,6 +12,7 @@ import {
   MembershipRole,
 } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
+import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
 import { sharedStyles } from './shared';
@@ -20,7 +21,7 @@ import { InviteQr } from '../ui/InviteQr';
 import { MarqueeText } from '../ui/MarqueeText';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { SoftPressable } from '../ui/SoftPressable';
-import { Toast, useToast } from '../ui/Toast';
+import { emitToast } from '../ui/toastBus';
 import { confirmAsync } from '../ui/confirmAsync';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Guild'>;
@@ -64,7 +65,7 @@ export function GuildScreen({ navigation }: Props) {
   const [guildTab, setGuildTab] = useState<GuildTab>('members');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const { message: toastMessage, showToast } = useToast();
+  const realtime = useOrgRealtimeOptional();
 
   const load = useCallback(async () => {
     const data = await orgApi.getMyGuild();
@@ -74,6 +75,20 @@ export function GuildScreen({ navigation }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => {
+      void load();
+    });
+    return unsub;
+  }, [navigation, load]);
+
+  useEffect(() => {
+    if (!realtime) return;
+    return realtime.subscribe((event) => {
+      if (event.type === 'members.changed') void load();
+    });
+  }, [realtime, load]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);
@@ -85,10 +100,12 @@ export function GuildScreen({ navigation }: Props) {
     setBusyId(member.userId);
     try {
       await orgApi.addGuildMemberToRoster(member.userId, role);
-      showToast(`${personLabel(member.name, member.inGameName)} added to roster`);
+      emitToast(
+        `${personLabel(member.name, member.inGameName)} added to roster`,
+      );
       await load();
     } catch (err: unknown) {
-      showToast(errorMessage(err, 'Could not add them to the roster'));
+      emitToast(errorMessage(err, 'Could not add them to the roster'));
     } finally {
       setBusyId(null);
     }
@@ -105,10 +122,10 @@ export function GuildScreen({ navigation }: Props) {
     setBusyId(member.userId);
     try {
       await orgApi.removeFromGuildRoster(member.userId);
-      showToast(`${label} removed from roster`);
+      emitToast(`${label} removed from roster`);
       await load();
     } catch (err: unknown) {
-      showToast(errorMessage(err, 'Could not remove them from the roster'));
+      emitToast(errorMessage(err, 'Could not remove them from the roster'));
     } finally {
       setBusyId(null);
     }
@@ -258,7 +275,6 @@ export function GuildScreen({ navigation }: Props) {
           ) : null
         }
       />
-      <Toast message={toastMessage} />
     </Screen>
   );
 }

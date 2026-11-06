@@ -102,20 +102,17 @@ export function MarqueeText({
     };
   }, [active, autoPlay, overflow, boxW, textW, offset, children]);
 
+  // Never capture the touch responder on native — that blocked parent
+  // SoftPressable/onPress (social handle rows opened email via the short
+  // label tap, but long Instagram/Discord URLs ate the press for marquee).
+  // Overflow scroll uses autoPlay, or web hover only.
   const hoverProps =
-    autoPlay || Platform.OS === 'web'
-      ? autoPlay
-        ? {}
-        : ({
-            onMouseEnter: () => setActive(true),
-            onMouseLeave: () => setActive(false),
-          } as object)
-      : {
-          onStartShouldSetResponder: () => true,
-          onResponderGrant: () => setActive(true),
-          onResponderRelease: () => setActive(false),
-          onResponderTerminate: () => setActive(false),
-        };
+    !autoPlay && Platform.OS === 'web'
+      ? ({
+          onMouseEnter: () => setActive(true),
+          onMouseLeave: () => setActive(false),
+        } as object)
+      : {};
 
   return (
     <View
@@ -123,6 +120,7 @@ export function MarqueeText({
       onLayout={(e) => setBoxW(e.nativeEvent.layout.width)}
       accessibilityRole="text"
       accessibilityLabel={children}
+      pointerEvents="none"
       {...hoverProps}
     >
       {/* Absolute track — cannot expand the flex row / card. */}

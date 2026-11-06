@@ -7,10 +7,19 @@ import { useAuth } from '../../auth/AuthContext';
 
 jest.mock('../../api/org');
 jest.mock('../../auth/AuthContext');
+jest.mock('../../ui/toastBus', () => ({
+  emitToast: jest.fn(),
+}));
 
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
 const mockedUseAuth = useAuth as jest.Mock;
-const navigation = { navigate: jest.fn(), push: jest.fn(), goBack: jest.fn() } as any;
+const { emitToast } = require('../../ui/toastBus');
+const navigation = {
+  navigate: jest.fn(),
+  push: jest.fn(),
+  goBack: jest.fn(),
+  addListener: jest.fn(() => jest.fn()),
+} as any;
 
 const detail = {
   id: 'org-1',
@@ -102,7 +111,9 @@ describe('GuildScreen', () => {
       'user-3',
       'PLAYER',
     );
-    await screen.findByText('Waiting Member added to roster');
+    await waitFor(() =>
+      expect(emitToast).toHaveBeenCalledWith('Waiting Member added to roster'),
+    );
   });
 
   it('does not show roster-management icons to a member who cannot manage the roster', async () => {
@@ -139,7 +150,9 @@ describe('GuildScreen', () => {
     });
 
     expect(mockedOrgApi.removeFromGuildRoster).toHaveBeenCalledWith('user-2');
-    await screen.findByText('TM · Teammate removed from roster');
+    await waitFor(() =>
+      expect(emitToast).toHaveBeenCalledWith('TM · Teammate removed from roster'),
+    );
     await waitFor(() => expect(screen.queryByText('TM · Teammate')).toBeNull());
   });
 

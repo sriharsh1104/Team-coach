@@ -243,9 +243,10 @@ describe('AccountSettingsScreen', () => {
       expect(screen.UNSAFE_getByType(Switch).props.value).toBe(false);
     });
 
-    it('disabling persists immediately without a biometric prompt', async () => {
+    it('disabling also requires a successful biometric prompt', async () => {
       mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
       mockedTokenStorage.getBiometricEnabled.mockResolvedValue(true);
+      mockedBiometrics.promptBiometricAuth.mockResolvedValue(true);
       render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openBiometricTab();
       await waitFor(() => expect(screen.UNSAFE_getByType(Switch).props.value).toBe(true));
@@ -254,9 +255,27 @@ describe('AccountSettingsScreen', () => {
         fireEvent(screen.UNSAFE_getByType(Switch), 'valueChange', false);
       });
 
-      expect(mockedBiometrics.promptBiometricAuth).not.toHaveBeenCalled();
+      expect(mockedBiometrics.promptBiometricAuth).toHaveBeenCalledWith(
+        'Confirm to disable biometric login',
+      );
       expect(mockedTokenStorage.setBiometricEnabled).toHaveBeenCalledWith(false);
       expect(screen.UNSAFE_getByType(Switch).props.value).toBe(false);
+    });
+
+    it('does not disable when the biometric prompt is cancelled', async () => {
+      mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
+      mockedTokenStorage.getBiometricEnabled.mockResolvedValue(true);
+      mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
+      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+      openBiometricTab();
+      await waitFor(() => expect(screen.UNSAFE_getByType(Switch).props.value).toBe(true));
+
+      await act(async () => {
+        fireEvent(screen.UNSAFE_getByType(Switch), 'valueChange', false);
+      });
+
+      expect(mockedTokenStorage.setBiometricEnabled).not.toHaveBeenCalled();
+      expect(screen.UNSAFE_getByType(Switch).props.value).toBe(true);
     });
   });
 });

@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -71,6 +72,42 @@ export class AuthService {
     this.googleClient = new OAuth2Client(
       this.configService.get<string>('GOOGLE_CLIENT_ID'),
     );
+  }
+
+  /** Web + optional Android/iOS OAuth client IDs accepted as idToken audience. */
+  private googleTokenAudiences(): string[] {
+    const ids = [
+      this.configService.get<string>('GOOGLE_CLIENT_ID'),
+      this.configService.get<string>('GOOGLE_ANDROID_CLIENT_ID'),
+      this.configService.get<string>('GOOGLE_IOS_CLIENT_ID'),
+    ]
+      .map((v) => v?.trim())
+      .filter((v): v is string => Boolean(v));
+    return [...new Set(ids)];
+  }
+
+  private async emailGeneratedPasswordWithRetry(
+    email: string,
+    password: string,
+  ): Promise<void> {
+    const attempts = 3;
+    let lastError: unknown;
+    for (let i = 1; i <= attempts; i += 1) {
+      try {
+        await this.mailerService.sendGeneratedPassword(email, password);
+        return;
+      } catch (err) {
+        lastError = err;
+        this.logger.warn(
+          `Google password email attempt ${i}/${attempts} failed for ${email}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(String(lastError ?? 'password email failed'));
   }
 
   async signup(dto: SignupDto) {
@@ -268,9 +305,10 @@ export class AuthService {
       picture?: string;
     };
     try {
+      const audiences = this.googleTokenAudiences();
       const ticket = await this.googleClient.verifyIdToken({
         idToken: dto.idToken,
-        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+        audience: audiences.length === 1 ? audiences[0] : audiences,
       });
       payload = ticket.getPayload() ?? {};
     } catch {
@@ -340,20 +378,38 @@ export class AuthService {
           `Google login: created new user ${email} — sending password email`,
         );
 
+        // Must succeed: if we keep the row after a failed send, every later
+        // Google login hits "existing googleId" and never emails again — which
+        // looks exactly like "login works, Resend shows nothing".
         try {
-          await this.mailerService.sendGeneratedPassword(
+          await this.emailGeneratedPasswordWithRetry(
             user.email,
             generatedPassword,
           );
           this.logger.log(`Google login: password email accepted for ${email}`);
         } catch (err) {
-          // Best-effort — a flaky mail provider must never block Google sign-in,
-          // but we log so missing Resend config / rejected recipients are visible.
           this.logger.error(
-            `Failed to email generated password to ${user.email}`,
+            `Failed to email generated password to ${user.email} — rolling back user`,
             err instanceof Error ? err.stack : String(err),
           );
+          await this.prisma.user
+            .delete({ where: { id: user.id } })
+            .catch((deleteErr) => {
+              this.logger.error(
+                `Failed to roll back Google user ${user.id} after mail failure`,
+                deleteErr instanceof Error ? deleteErr.stack : String(deleteErr),
+              );
+            });
+          throw new ServiceUnavailableException(
+            'Could not email your account password. Please try Google sign-in again.',
+          );
         }
+
+        const auth = await this.completeLoginOrChallenge(user);
+        if ('accessToken' in auth) {
+          return { ...auth, passwordEmailSent: true as const };
+        }
+        return auth;
       }
     }
 
@@ -441,6 +497,40 @@ export class AuthService {
       throw new UnauthorizedException('Incorrect password');
     }
     return user;
+  }
+
+  /**
+   * For Google-linked accounts whose signup password mail was missed (or lost).
+   * Rotates the hash and emails the new plaintext — requires an active session
+   * so only the signed-in owner can trigger it.
+   */
+  async emailGeneratedPassword(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    if (!user.googleId) {
+      throw new BadRequestException(
+        'Only Google-linked accounts can request a generated password email',
+      );
+    }
+    const generatedPassword = generateRandomPassword();
+    if (!PASSWORD_REGEX.test(generatedPassword)) {
+      throw new ServiceUnavailableException('Could not generate a password');
+    }
+    // Email first so a failed send doesn't leave an unknown hash on the account.
+    await this.emailGeneratedPasswordWithRetry(user.email, generatedPassword);
+    const passwordHash = await bcrypt.hash(
+      generatedPassword,
+      BCRYPT_SALT_ROUNDS,
+    );
+    // Keep tokenVersion — recovery while already signed in via Google; bumping
+    // would kick out the session that requested the email.
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+    this.logger.log(`Emailed rotated password to ${user.email}`);
+    return { success: true as const, email: user.email };
   }
 
   async setupTwoFactor(userId: string, dto: TwoFactorSetupDto) {
@@ -601,6 +691,7 @@ export class AuthService {
         phone: user.phone,
         profileComplete: isProfileComplete(user),
         hasPassword: !!user.passwordHash,
+        hasGoogle: !!user.googleId,
         twoFactorEnabled: user.twoFactorEnabled,
       },
       org: session.org,

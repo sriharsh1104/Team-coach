@@ -5,6 +5,7 @@ import * as orgApi from '../api/org';
 import { OrgDetail } from '../api/types';
 import { roleLabel } from '../api/roles';
 import { MainStackParamList } from '../navigation/types';
+import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
 import { SoftPressable } from '../ui/SoftPressable';
@@ -22,6 +23,7 @@ type Props = NativeStackScreenProps<MainStackParamList, 'Members'>;
 export function MembersScreen({ navigation }: Props) {
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const realtime = useOrgRealtimeOptional();
 
   const load = useCallback(async () => {
     const data = await orgApi.getMyOrg();
@@ -31,6 +33,20 @@ export function MembersScreen({ navigation }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => {
+      void load();
+    });
+    return unsub;
+  }, [navigation, load]);
+
+  useEffect(() => {
+    if (!realtime) return;
+    return realtime.subscribe((event) => {
+      if (event.type === 'members.changed') void load();
+    });
+  }, [realtime, load]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);

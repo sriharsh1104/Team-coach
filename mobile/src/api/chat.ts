@@ -6,7 +6,11 @@ import { compressForUpload } from '../media/compressForUpload';
 
 export function getChatChannels() {
   return apiClient
-    .get<ChatChannelsResponse>('/chat/channels')
+    .get<ChatChannelsResponse>('/chat/channels', {
+      // Guild-only seats used to 404 here; ChatScreen already falls back to
+      // empty mentionables — don't spam the global toaster on that path.
+      skipErrorToast: true,
+    } as Record<string, unknown>)
     .then((res) => res.data);
 }
 

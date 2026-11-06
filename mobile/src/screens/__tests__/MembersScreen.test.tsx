@@ -7,7 +7,11 @@ import * as orgApi from '../../api/org';
 jest.mock('../../api/org');
 
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
-const navigation = { navigate: jest.fn(), push: jest.fn() } as any;
+const navigation = {
+  navigate: jest.fn(),
+  push: jest.fn(),
+  addListener: jest.fn(() => jest.fn()),
+} as any;
 
 const detail = {
   id: 'org-1',

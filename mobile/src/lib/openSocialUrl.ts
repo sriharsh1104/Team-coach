@@ -119,7 +119,8 @@ export function socialAppDeepLink(
 }
 
 /**
- * Prefer the native app when installed; otherwise open in the user's default browser.
+ * Prefer the native app when installed; otherwise open https in Chrome /
+ * the default browser so the user can always view the profile/invite.
  */
 export async function openSocialUrl(
   url: string,
@@ -134,30 +135,31 @@ export async function openSocialUrl(
       ? `mailto:${trimmed}`
       : ensureHttpUrl(trimmed);
 
+  if (resolvedPlatform === 'email') {
+    try {
+      await Linking.openURL(webUrl);
+    } catch {
+      Alert.alert('Could not open', trimmed);
+    }
+    return;
+  }
+
   const appUrl = socialAppDeepLink(resolvedPlatform, webUrl);
   if (appUrl) {
     try {
-      // canOpenURL is accurate once iOS query schemes / Android package
-      // visibility are declared (see app.config + withSocialPackageQueries).
-      const can = await Linking.canOpenURL(appUrl);
+      const can = await Linking.canOpenURL(appUrl).catch(() => false);
       if (can) {
         await Linking.openURL(appUrl);
         return;
       }
     } catch {
-      // Unknown — try the app scheme once, then browser.
-      try {
-        await Linking.openURL(appUrl);
-        return;
-      } catch {
-        // fall through to default browser
-      }
+      // App scheme failed — open https in Chrome / default browser below.
     }
   }
 
   try {
     await Linking.openURL(webUrl);
   } catch {
-    Alert.alert('Could not open', trimmed);
+    Alert.alert('Could not open link', webUrl);
   }
 }

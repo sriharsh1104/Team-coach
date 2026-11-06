@@ -12,6 +12,9 @@ jest.mock('../biometrics');
 jest.mock('../../notifications/registerPushToken', () => ({
   registerPushTokenWithBackend: jest.fn(),
 }));
+jest.mock('../../ui/toastBus', () => ({
+  emitToast: jest.fn(),
+}));
 
 const { registerPushTokenWithBackend } = jest.requireMock(
   '../../notifications/registerPushToken',

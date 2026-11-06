@@ -10,6 +10,7 @@ export interface AuthUser {
   phone: string | null;
   profileComplete: boolean;
   hasPassword: boolean;
+  hasGoogle?: boolean;
   twoFactorEnabled: boolean;
 }
 
@@ -31,6 +32,8 @@ export interface AuthResponse {
   user: AuthUser;
   org: OrgSummary | null;
   guild: GuildSummary | null;
+  /** Set when Google just created the account and emailed the generated password. */
+  passwordEmailSent?: boolean;
 }
 
 export interface TwoFactorChallengeResponse {
@@ -98,8 +101,12 @@ export interface ChatTeammate {
 export interface ChatChannelsResponse {
   channels: ChatChannel[];
   teammates: ChatTeammate[];
-  /** Roster + guild seats for @IGN autocomplete (may overlap teammates). */
+  /** @deprecated Prefer rosterMentionables / guildMentionables by channel. */
   mentionables: ChatTeammate[];
+  /** Esports / team chat (@) — roster only. */
+  rosterMentionables?: ChatTeammate[];
+  /** Guild chat (@) — guild seats only. */
+  guildMentionables?: ChatTeammate[];
   totalUnread: number;
 }
 

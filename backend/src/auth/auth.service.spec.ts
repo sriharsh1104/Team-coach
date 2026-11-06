@@ -1,4 +1,8 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
@@ -39,6 +43,7 @@ describe('AuthService (unit)', () => {
               ...data,
             }),
           ),
+        delete: jest.fn().mockResolvedValue({}),
       },
       emailVerificationCode: {
         upsert: jest.fn().mockResolvedValue({}),
@@ -130,6 +135,9 @@ describe('AuthService (unit)', () => {
         }),
       );
       expect('accessToken' in result && result.accessToken).toBe('signed-jwt');
+      expect(
+        'passwordEmailSent' in result && result.passwordEmailSent,
+      ).toBe(true);
       expect(mailerService.sendGeneratedPassword).toHaveBeenCalledWith(
         'player@example.com',
         expect.any(String),
@@ -141,6 +149,23 @@ describe('AuthService (unit)', () => {
       await expect(
         bcrypt.compare(emailedPassword, createdData.passwordHash),
       ).resolves.toBe(true);
+    });
+
+    it('rolls back the new user and fails the login when the password email cannot be sent', async () => {
+      const { service, prisma, mailerService } = buildService();
+      mockGooglePayload(verifiedPayload);
+      (mailerService.sendGeneratedPassword as jest.Mock).mockRejectedValue(
+        new Error('Resend down'),
+      );
+
+      await expect(service.googleLogin({ idToken: 'fake' })).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      expect(prisma.user.create).toHaveBeenCalled();
+      expect(prisma.user.delete).toHaveBeenCalledWith({
+        where: { id: 'new-user-id' },
+      });
+      expect(mailerService.sendGeneratedPassword).toHaveBeenCalledTimes(3);
     });
 
     it('links googleId onto an existing password account with the same verified email, without creating a duplicate or generating a password', async () => {

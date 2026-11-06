@@ -102,6 +102,7 @@ export function SocialHandlesScreen(_props: Props) {
                         filled ? styles.contactValue : styles.contactEmpty
                       }
                       lineHeight={20}
+                      autoPlay={filled && contact.value.length > 28}
                     >
                       {filled ? contact.value : 'Add your link here'}
                     </MarqueeText>

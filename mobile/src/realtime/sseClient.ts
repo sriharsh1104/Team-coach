@@ -1,7 +1,12 @@
 import { apiBaseUrl } from '../api/client';
 
 export type OrgRealtimeEvent = {
-  type: 'stats.changed' | 'media.changed' | 'scrims.changed' | 'heartbeat';
+  type:
+    | 'stats.changed'
+    | 'media.changed'
+    | 'scrims.changed'
+    | 'members.changed'
+    | 'heartbeat';
   orgId?: string;
   at: string;
 };

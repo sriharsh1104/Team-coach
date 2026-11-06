@@ -6,6 +6,9 @@ import { useAuth } from '../../auth/AuthContext';
 
 jest.mock('../../api/org');
 jest.mock('../../auth/AuthContext');
+jest.mock('../../ui/toastBus', () => ({
+  emitToast: jest.fn(),
+}));
 jest.mock('../chat/ChatHubScreen', () => {
   const ReactLib = require('react');
   const { Text, Pressable } = require('react-native');
@@ -29,7 +32,10 @@ jest.mock('../chat/ChatHubScreen', () => {
 
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
 const mockedUseAuth = useAuth as jest.Mock;
-const navigation = { navigate: jest.fn() } as any;
+const navigation = {
+  navigate: jest.fn(),
+  addListener: jest.fn(() => jest.fn()),
+} as any;
 
 const detail = {
   id: 'org-1',
@@ -175,6 +181,7 @@ describe('OrgHomeScreen', () => {
   });
 
   it('shows a toast when the embedded chat hub fails to load', async () => {
+    const { emitToast } = require('../../ui/toastBus');
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Embedded Team Chat');
 
@@ -182,6 +189,6 @@ describe('OrgHomeScreen', () => {
       fireEvent.press(screen.getByText('Simulate Chat Load Error'));
     });
 
-    expect(screen.getByText('Could not load chats')).toBeTruthy();
+    expect(emitToast).toHaveBeenCalledWith('Could not load chats');
   });
 });

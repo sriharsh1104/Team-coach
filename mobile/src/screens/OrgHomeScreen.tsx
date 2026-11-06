@@ -7,11 +7,12 @@ import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
 import { OrgDetail } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
+import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
 import { MenuButton, SideDrawer, SideDrawerSection } from '../ui/SideDrawer';
 import { SoftPressable } from '../ui/SoftPressable';
-import { Toast, useToast } from '../ui/Toast';
+import { emitToast } from '../ui/toastBus';
 import { ChatHubScreen } from './chat/ChatHubScreen';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgHome'>;
@@ -21,7 +22,7 @@ export function OrgHomeScreen({ navigation }: Props) {
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
-  const { message: toastMessage, showToast } = useToast();
+  const realtime = useOrgRealtimeOptional();
   const insets = useSafeAreaInsets();
   const isOwner = !!org?.isOwner;
   // Owner or coach can manage guild ↔ roster; Guild drawer used to be
@@ -31,7 +32,7 @@ export function OrgHomeScreen({ navigation }: Props) {
   const copyOrgCode = async () => {
     if (!detail?.orgCode) return;
     await Clipboard.setStringAsync(detail.orgCode);
-    showToast('Org code copied');
+    emitToast('Org code copied');
   };
 
   const load = useCallback(async () => {
@@ -42,6 +43,20 @@ export function OrgHomeScreen({ navigation }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => {
+      void load();
+    });
+    return unsub;
+  }, [navigation, load]);
+
+  useEffect(() => {
+    if (!realtime) return;
+    return realtime.subscribe((event) => {
+      if (event.type === 'members.changed') void load();
+    });
+  }, [realtime, load]);
 
   // Mirrors web AppShell: Esports Arena for roster, Guild for owners/coaches,
   // Account for everyone. Plain players do not see Guild.
@@ -189,7 +204,7 @@ export function OrgHomeScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.chat}>
-        <ChatHubScreen onLoadError={() => showToast('Could not load chats')} />
+        <ChatHubScreen onLoadError={() => emitToast('Could not load chats')} />
       </View>
 
       <SideDrawer
@@ -240,7 +255,6 @@ export function OrgHomeScreen({ navigation }: Props) {
         </View>
       </Modal>
 
-      <Toast message={toastMessage} />
     </Screen>
   );
 }

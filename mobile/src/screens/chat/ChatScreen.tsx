@@ -85,7 +85,12 @@ export function ChatScreen({
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [draft, setDraft] = useState('');
   const [caret, setCaret] = useState(0);
-  const [mentionables, setMentionables] = useState<ChatTeammate[]>([]);
+  const [rosterMentionables, setRosterMentionables] = useState<ChatTeammate[]>(
+    [],
+  );
+  const [guildMentionables, setGuildMentionables] = useState<ChatTeammate[]>(
+    [],
+  );
   const [isConnected, setIsConnected] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
   const [receipts, setReceipts] = useState<ReadReceipt[]>([]);
@@ -111,6 +116,13 @@ export function ChatScreen({
   messagesRef.current = messages;
   hasOlderRef.current = hasOlderMessages;
 
+  const mentionables = useMemo(() => {
+    if (channelKey === 'guild') return guildMentionables;
+    if (channelKey === 'org') return rosterMentionables;
+    // DM: only the peer (their channelKey matches this DM room).
+    return rosterMentionables.filter((m) => m.channelKey === channelKey);
+  }, [channelKey, guildMentionables, rosterMentionables]);
+
   const knownIgns = useMemo(
     () =>
       mentionables
@@ -135,10 +147,17 @@ export function ChatScreen({
       .getChatChannels()
       .then((data) => {
         if (cancelled) return;
-        setMentionables(data.mentionables ?? data.teammates ?? []);
+        const roster =
+          data.rosterMentionables ?? data.mentionables ?? data.teammates ?? [];
+        const guild = data.guildMentionables ?? [];
+        setRosterMentionables(roster);
+        setGuildMentionables(guild);
       })
       .catch(() => {
-        if (!cancelled) setMentionables([]);
+        if (!cancelled) {
+          setRosterMentionables([]);
+          setGuildMentionables([]);
+        }
       });
     return () => {
       cancelled = true;

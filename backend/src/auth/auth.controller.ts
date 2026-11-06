@@ -88,6 +88,13 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: resendVerificationThrottleLimit, ttl: 60000 } })
+  @Post('email-password')
+  emailGeneratedPassword(@CurrentUser() currentUser: { userId: string }) {
+    return this.authService.emailGeneratedPassword(currentUser.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('2fa/setup')
   setupTwoFactor(
     @CurrentUser() currentUser: { userId: string },
@@ -130,6 +137,7 @@ export class AuthController {
       phone: user.phone,
       profileComplete: isProfileComplete(user),
       hasPassword: !!user.passwordHash,
+      hasGoogle: !!user.googleId,
       twoFactorEnabled: user.twoFactorEnabled,
       org: session.org,
       guild: session.guild,

@@ -8,6 +8,7 @@ import {
 import { customAlphabet } from 'nanoid';
 import { GuildRole, MembershipRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { JoinOrgDto } from './dto/join-org.dto';
 import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
@@ -122,7 +123,14 @@ export function extractInviteSeat(raw?: string): 'guild' | 'roster' {
 
 @Injectable()
 export class OrgService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
+
+  private notifyMembersChanged(orgId: string) {
+    this.realtime.publish(orgId, 'members.changed');
+  }
 
   async createOrg(userId: string, dto: CreateOrgDto) {
     await this.assertUserHasNoOrg(userId);
@@ -317,6 +325,7 @@ export class OrgService {
       this.rethrowAsConflictOnDuplicateMembership(err);
     }
 
+    this.notifyMembersChanged(org.id);
     return this.toOrgResponse(org, role, false);
   }
 
@@ -433,6 +442,7 @@ export class OrgService {
       });
     });
 
+    this.notifyMembersChanged(current.orgId);
     return {
       userId: target.userId,
       role: dto.role,
@@ -470,6 +480,7 @@ export class OrgService {
         data: { isOwner: true },
       }),
     ]);
+    this.notifyMembersChanged(current.orgId);
   }
 
   async removeMember(currentUserId: string, dto: RemoveMemberDto) {
@@ -499,6 +510,7 @@ export class OrgService {
     // stays consistent with that. Chat/scrim/stat history referencing this
     // user stays intact (those rows key off User.id, not Membership).
     await this.prisma.membership.delete({ where: { id: target.id } });
+    this.notifyMembersChanged(current.orgId);
   }
 
   /**
@@ -553,6 +565,7 @@ export class OrgService {
           invitedByUserId,
         },
       });
+      this.notifyMembersChanged(org.id);
       return { id: org.id, name: org.name, role: created.role };
     } catch (err) {
       this.rethrowAsConflictOnDuplicateMembership(err);
@@ -726,6 +739,7 @@ export class OrgService {
       throw err;
     }
 
+    this.notifyMembersChanged(actor.orgId);
     return { userId: dto.targetUserId, role: dto.role };
   }
 
@@ -746,6 +760,7 @@ export class OrgService {
     }
 
     await this.prisma.membership.delete({ where: { id: target.id } });
+    this.notifyMembersChanged(actor.orgId);
     return { success: true };
   }
 

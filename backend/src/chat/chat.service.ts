@@ -142,20 +142,33 @@ export class ChatService {
   }
 
   async listChannels(userId: string) {
-    const orgId = await this.getOrgIdForUser(userId);
-    const members = await this.prisma.membership.findMany({
-      where: { orgId, userId: { not: userId } },
-      include: {
-        user: {
-          select: { id: true, name: true, avatarUrl: true, inGameName: true },
-        },
-      },
-      orderBy: { user: { name: 'asc' } },
-    });
-    const memberCount = members.length + 1; // teammates + self
+    // Guild-only members (joined via guild code, no roster seat) still need
+    // mentionables + unread for GuildHome — do not require Membership here.
+    const { orgId, roster } = await this.getChatContext(userId);
+    const members = roster
+      ? await this.prisma.membership.findMany({
+          where: { orgId, userId: { not: userId } },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                avatarUrl: true,
+                inGameName: true,
+              },
+            },
+          },
+          orderBy: { user: { name: 'asc' } },
+        })
+      : [];
+    const memberCount = members.length + (roster ? 1 : 0);
 
-    const groupUnread = await this.countUnread(userId, orgId, ORG_CHANNEL);
-    const groupLast = await this.lastMessage(orgId, ORG_CHANNEL);
+    const groupUnread = roster
+      ? await this.countUnread(userId, orgId, ORG_CHANNEL)
+      : 0;
+    const groupLast = roster
+      ? await this.lastMessage(orgId, ORG_CHANNEL)
+      : null;
 
     const dms = await Promise.all(
       members.map(async (m) => {
@@ -179,7 +192,7 @@ export class ChatService {
     // Only surface DMs that already have messages, plus always show group.
     const activeDms = dms.filter((d) => d.lastMessageAt || d.unreadCount > 0);
 
-    // Guild seats (for @IGN autocomplete in guild chat) — may overlap roster.
+    // Guild seats for guild-chat @IGN only — never mixed into roster chat.
     const guildSeats = await this.prisma.guildMembership.findMany({
       where: { orgId, userId: { not: userId } },
       include: {
@@ -188,64 +201,75 @@ export class ChatService {
         },
       },
     });
-    const mentionById = new Map<
-      string,
+
+    const toMentionable = (u: {
+      id: string;
+      name: string;
+      avatarUrl: string | null;
+      inGameName: string | null;
+    }) => ({
+      userId: u.id,
+      name: u.name,
+      avatarUrl: u.avatarUrl,
+      inGameName: u.inGameName,
+      channelKey: this.dmChannelKey(userId, u.id),
+    });
+
+    const rosterMentionables = members.map((m) => toMentionable(m.user));
+    const guildMentionables = guildSeats.map((g) => toMentionable(g.user));
+
+    const guildUnread = await this.countUnread(userId, orgId, GUILD_CHANNEL);
+    const guildLast = await this.lastMessage(orgId, GUILD_CHANNEL);
+    const guildSeatCount = await this.prisma.guildMembership.count({
+      where: { orgId },
+    });
+
+    const channels = [
+      ...(roster
+        ? [
+            {
+              channelKey: ORG_CHANNEL,
+              type: 'ORG' as const,
+              title: 'Team Chat',
+              peerUserId: null as string | null,
+              peerAvatarUrl: null as string | null,
+              memberCount,
+              unreadCount: groupUnread,
+              lastMessageAt: groupLast?.createdAt ?? null,
+              lastPreview: groupLast ? this.preview(groupLast) : null,
+            },
+          ]
+        : []),
       {
-        userId: string;
-        name: string;
-        avatarUrl: string | null;
-        inGameName: string | null;
-        channelKey: string;
-      }
-    >();
-    for (const m of members) {
-      mentionById.set(m.user.id, {
-        userId: m.user.id,
-        name: m.user.name,
-        avatarUrl: m.user.avatarUrl,
-        inGameName: m.user.inGameName,
-        channelKey: this.dmChannelKey(userId, m.user.id),
-      });
-    }
-    for (const g of guildSeats) {
-      if (mentionById.has(g.user.id)) continue;
-      mentionById.set(g.user.id, {
-        userId: g.user.id,
-        name: g.user.name,
-        avatarUrl: g.user.avatarUrl,
-        inGameName: g.user.inGameName,
-        channelKey: this.dmChannelKey(userId, g.user.id),
-      });
-    }
+        channelKey: GUILD_CHANNEL,
+        type: 'ORG' as const,
+        title: 'Guild Chat',
+        peerUserId: null as string | null,
+        peerAvatarUrl: null as string | null,
+        memberCount: guildSeatCount,
+        unreadCount: guildUnread,
+        lastMessageAt: guildLast?.createdAt ?? null,
+        lastPreview: guildLast ? this.preview(guildLast) : null,
+      },
+      ...activeDms.sort((a, b) => {
+        const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return bt - at;
+      }),
+    ];
 
     return {
-      channels: [
-        {
-          channelKey: ORG_CHANNEL,
-          type: 'ORG' as const,
-          title: 'Team Chat',
-          peerUserId: null,
-          peerAvatarUrl: null,
-          memberCount,
-          unreadCount: groupUnread,
-          lastMessageAt: groupLast?.createdAt ?? null,
-          lastPreview: groupLast ? this.preview(groupLast) : null,
-        },
-        ...activeDms.sort((a, b) => {
-          const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
-          const bt = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
-          return bt - at;
-        }),
-      ],
-      teammates: members.map((m) => ({
-        userId: m.user.id,
-        name: m.user.name,
-        avatarUrl: m.user.avatarUrl,
-        inGameName: m.user.inGameName,
-        channelKey: this.dmChannelKey(userId, m.user.id),
-      })),
-      mentionables: [...mentionById.values()],
-      totalUnread: groupUnread + activeDms.reduce((sum, d) => sum + d.unreadCount, 0),
+      channels,
+      teammates: rosterMentionables,
+      // Legacy alias = roster only (org / esports chat). Prefer the scoped
+      // lists on clients that know the active channelKey.
+      mentionables: rosterMentionables,
+      rosterMentionables,
+      guildMentionables,
+      totalUnread:
+        groupUnread +
+        guildUnread +
+        activeDms.reduce((sum, d) => sum + d.unreadCount, 0),
     };
   }
 
@@ -606,27 +630,19 @@ export class ChatService {
     senderId: string,
   ): Promise<Array<{ userId: string; inGameName: string | null }>> {
     if (channelKey === GUILD_CHANNEL) {
-      const [guild, roster] = await Promise.all([
-        this.prisma.guildMembership.findMany({
-          where: { orgId, userId: { not: senderId } },
-          include: { user: { select: { id: true, inGameName: true } } },
-        }),
-        this.prisma.membership.findMany({
-          where: { orgId, userId: { not: senderId } },
-          include: { user: { select: { id: true, inGameName: true } } },
-        }),
-      ]);
-      const byId = new Map<string, { userId: string; inGameName: string | null }>();
-      for (const m of [...guild, ...roster]) {
-        byId.set(m.userId, {
-          userId: m.userId,
-          inGameName: m.user.inGameName,
-        });
-      }
-      return [...byId.values()];
+      // Guild chat @tags only people with a guild seat in this org.
+      const guild = await this.prisma.guildMembership.findMany({
+        where: { orgId, userId: { not: senderId } },
+        include: { user: { select: { id: true, inGameName: true } } },
+      });
+      return guild.map((m) => ({
+        userId: m.userId,
+        inGameName: m.user.inGameName,
+      }));
     }
 
     if (channelKey === ORG_CHANNEL) {
+      // Esports / team chat @tags only roster (owner/coach/analyst/player).
       const roster = await this.prisma.membership.findMany({
         where: { orgId, userId: { not: senderId } },
         include: { user: { select: { id: true, inGameName: true } } },

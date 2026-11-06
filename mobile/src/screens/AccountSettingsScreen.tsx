@@ -21,7 +21,7 @@ import { Screen } from '../brand/Screen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
 import { BookStage, useBookTabs } from '../ui/BookTabs';
-import { Toast, useToast } from '../ui/Toast';
+import { emitToast } from '../ui/toastBus';
 import { colors } from '../theme';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'AccountSettings'>;
@@ -31,7 +31,6 @@ const ACCOUNT_TAB_IDS: Tab[] = ['password', 'twoFactor', 'biometric'];
 
 export function AccountSettingsScreen({ navigation }: Props) {
   const { user, applyAuthResponse, refreshUser } = useAuth();
-  const { message: toastMessage, showToast } = useToast();
   const { tab, openTab, turn } = useBookTabs(ACCOUNT_TAB_IDS, 'password');
   const accountTab = tab as Tab;
 
@@ -48,6 +47,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [isEmailingPassword, setIsEmailingPassword] = useState(false);
 
   const [showDisableForm, setShowDisableForm] = useState(false);
   const [disablePassword, setDisablePassword] = useState('');
@@ -69,11 +69,23 @@ export function AccountSettingsScreen({ navigation }: Props) {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      showToast('Password changed');
+      emitToast('Password changed');
     } catch (err: any) {
       /* API error toasted by axios interceptor */
     } finally {
       setIsSavingPassword(false);
+    }
+  };
+
+  const onEmailPassword = async () => {
+    setIsEmailingPassword(true);
+    try {
+      const result = await authApi.emailGeneratedPassword();
+      emitToast(`New password sent to ${result.email}`);
+    } catch {
+      /* API error toasted by axios interceptor */
+    } finally {
+      setIsEmailingPassword(false);
     }
   };
 
@@ -84,7 +96,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
       await refreshUser();
       setShowDisableForm(false);
       setDisablePassword('');
-      showToast('Two-factor authentication disabled');
+      emitToast('Two-factor authentication disabled');
     } catch (err: any) {
       /* API error toasted by axios interceptor */
     } finally {
@@ -95,15 +107,17 @@ export function AccountSettingsScreen({ navigation }: Props) {
   const onToggleBiometric = async (value: boolean) => {
     setIsTogglingBiometric(true);
     try {
-      if (value) {
-        const confirmed = await promptBiometricAuth(
-          'Confirm to enable biometric login',
-        );
-        if (!confirmed) return;
-      }
+      // Both enable and disable require a successful scan — otherwise anyone
+      // holding an unlocked phone could turn biometric unlock off.
+      const confirmed = await promptBiometricAuth(
+        value
+          ? 'Confirm to enable biometric login'
+          : 'Confirm to disable biometric login',
+      );
+      if (!confirmed) return;
       await setBiometricEnabled(value);
       setBiometricEnabledState(value);
-      showToast(value ? 'Biometric login enabled' : 'Biometric login disabled');
+      emitToast(value ? 'Biometric login enabled' : 'Biometric login disabled');
     } finally {
       setIsTogglingBiometric(false);
     }
@@ -166,6 +180,29 @@ export function AccountSettingsScreen({ navigation }: Props) {
             active === 'password' ? (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Change Password</Text>
+                {user.hasGoogle ? (
+                  <>
+                    <Text style={styles.hint}>
+                      Didn&apos;t get the Google signup password email? We can
+                      generate a new one and send it to {user.email}.
+                    </Text>
+                    <SoftPressable
+                      style={[
+                        styles.primaryBtn,
+                        isEmailingPassword && styles.btnDisabled,
+                      ]}
+                      disabled={isEmailingPassword}
+                      onPress={onEmailPassword}
+                      pressScale={0.98}
+                    >
+                      <ButtonLabel color="#0a0a0c">
+                        {isEmailingPassword
+                          ? 'Sending…'
+                          : 'Email me a new password'}
+                      </ButtonLabel>
+                    </SoftPressable>
+                  </>
+                ) : null}
                 {!user.hasPassword ? (
                   <Text style={styles.hint}>
                     This account signs in with Google and has no password to
@@ -335,7 +372,6 @@ export function AccountSettingsScreen({ navigation }: Props) {
           }
         </BookStage>
       </ScrollView>
-      <Toast message={toastMessage} />
     </Screen>
   );
 }

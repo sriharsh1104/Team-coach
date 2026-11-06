@@ -50,7 +50,12 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
   const { user, org, guild } = useAuth();
   const [channels, setChannels] = useState<ChatChannel[]>([]);
   const [teammates, setTeammates] = useState<ChatTeammate[]>([]);
-  const [mentionables, setMentionables] = useState<ChatTeammate[]>([]);
+  const [rosterMentionables, setRosterMentionables] = useState<ChatTeammate[]>(
+    [],
+  );
+  const [guildMentionables, setGuildMentionables] = useState<ChatTeammate[]>(
+    [],
+  );
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -75,6 +80,13 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
     [channels, activeKey],
   );
 
+  const mentionables = useMemo(() => {
+    const key = activeKey ?? (variant === 'guild' ? 'guild' : 'org');
+    if (key === 'guild') return guildMentionables;
+    if (key === 'org') return rosterMentionables;
+    return rosterMentionables.filter((m) => m.channelKey === key);
+  }, [activeKey, variant, guildMentionables, rosterMentionables]);
+
   const knownIgns = useMemo(
     () =>
       mentionables
@@ -98,6 +110,18 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
   }, [mentionState?.query, mentionState?.start]);
 
   useEffect(() => {
+    const applyMentions = (data: {
+      mentionables?: ChatTeammate[];
+      teammates?: ChatTeammate[];
+      rosterMentionables?: ChatTeammate[];
+      guildMentionables?: ChatTeammate[];
+    }) => {
+      setRosterMentionables(
+        data.rosterMentionables ?? data.mentionables ?? data.teammates ?? [],
+      );
+      setGuildMentionables(data.guildMentionables ?? []);
+    };
+
     if (variant === 'guild') {
       setChannels([
         {
@@ -114,15 +138,19 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
       ]);
       setTeammates([]);
       setActiveKey('guild');
-      chatApi.getChatChannels().then((data) => {
-        setMentionables(data.mentionables ?? data.teammates ?? []);
-      }).catch(() => setMentionables([]));
+      chatApi
+        .getChatChannels()
+        .then(applyMentions)
+        .catch(() => {
+          setRosterMentionables([]);
+          setGuildMentionables([]);
+        });
       return;
     }
     chatApi.getChatChannels().then((data) => {
       setChannels(data.channels);
       setTeammates(data.teammates);
-      setMentionables(data.mentionables ?? data.teammates ?? []);
+      applyMentions(data);
     });
   }, [variant]);
 

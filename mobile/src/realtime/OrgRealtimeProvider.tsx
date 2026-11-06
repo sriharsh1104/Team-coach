@@ -42,6 +42,7 @@ export function OrgRealtimeProvider({
     if (event.type === 'heartbeat') return;
     if (event.type === 'stats.changed') cacheInvalidate('stats:');
     if (event.type === 'media.changed') cacheInvalidate('media:');
+    if (event.type === 'members.changed') cacheInvalidate('org:');
     if (event.type === 'scrims.changed') {
       cacheInvalidate(CacheKeys.scrimsList());
       cacheInvalidate('stats:');
