@@ -59,6 +59,24 @@ describe('SocialHandlesScreen', () => {
     );
 
     await act(async () => {
+      fireEvent.press(
+        screen.getByLabelText(
+          'Instagram: https://www.instagram.com/sacredesportss',
+        ),
+      );
+    });
+    expect(Linking.openURL).toHaveBeenCalledWith(
+      'instagram://user?username=sacredesportss',
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Open Sacred Esports Discord'));
+    });
+    expect(Linking.openURL).toHaveBeenCalledWith(
+      'discord://invite/mUES4kcAE',
+    );
+
+    await act(async () => {
       fireEvent.press(screen.getAllByLabelText('Copy')[0]);
     });
     expect(Clipboard.setStringAsync).toHaveBeenCalledWith(

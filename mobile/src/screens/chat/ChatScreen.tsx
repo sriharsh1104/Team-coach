@@ -488,10 +488,13 @@ export function ChatScreen({
     }
   };
 
+  // Android already resizes the window (app.config softwareKeyboardLayoutMode).
+  // Using behavior="height" there double-shrinks the chat and often collapses
+  // the layout after the first keyboard open / screen revisit.
   const body = (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: 'transparent' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {searchActive ? (
         <View style={styles.searchBar}>
@@ -556,11 +559,15 @@ export function ChatScreen({
 
       <FlatList
         ref={listRef}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16 }}
+        style={{ flex: 1, minWidth: 0 }}
+        contentContainerStyle={{ padding: 16, flexGrow: 1 }}
         data={messages}
         keyExtractor={(item) => item.id}
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        // Android + maintainVisibleContentPosition regularly corrupts list
+        // layout after the first mount; iOS still benefits for prepend loads.
+        maintainVisibleContentPosition={
+          Platform.OS === 'ios' ? { minIndexForVisible: 0 } : undefined
+        }
         onStartReached={onLoadOlder}
         onStartReachedThreshold={0.3}
         onScrollToIndexFailed={({ index }) => {
@@ -781,16 +788,17 @@ const styles = StyleSheet.create({
   searchNavDisabled: { opacity: 0.3 },
   searchNavText: { color: colors.chrome, fontSize: 16, fontWeight: '700' },
   searchClose: { color: colors.link, fontSize: 16, fontWeight: '700', paddingHorizontal: 4 },
-  bubbleRow: { flexDirection: 'row', marginBottom: 10 },
+  bubbleRow: { flexDirection: 'row', marginBottom: 10, maxWidth: '100%' },
   bubbleRowMine: { justifyContent: 'flex-end' },
   bubbleRowTheirs: { justifyContent: 'flex-start' },
-  bubbleCol: { maxWidth: '80%', alignItems: 'flex-end' },
+  bubbleCol: { maxWidth: '80%', minWidth: 0, alignItems: 'flex-end' },
   bubble: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
     alignSelf: 'stretch',
+    maxWidth: '100%',
   },
   bubbleMine: { backgroundColor: '#c9ccd1' },
   bubbleHit: {
@@ -799,8 +807,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(139, 156, 255, 0.22)',
   },
   sender: { fontSize: 11, color: '#9aa0a6', marginBottom: 2 },
-  text: { color: '#f2f3f5' },
-  textMine: { color: '#0a0a0c' },
+  text: { color: '#f2f3f5', flexShrink: 1 },
+  textMine: { color: '#0a0a0c', flexShrink: 1 },
   mention: { color: colors.link, fontWeight: '700' },
   mentionMine: { color: '#1a2a8a', fontWeight: '700' },
   mentionMenu: {
@@ -849,6 +857,7 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 16,
     paddingTop: 0,
+    maxWidth: '100%',
   },
   sendIconBtn: {
     width: 40,

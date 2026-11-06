@@ -1,4 +1,9 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
@@ -71,8 +76,24 @@ function sacredEmailLayout(opts: {
 // in the constructor) so a backend without Resend configured yet still boots
 // — same deferred-config pattern as StatsAiService/GEMINI_API_KEY.
 @Injectable()
-export class MailerService {
+export class MailerService implements OnModuleInit {
+  private readonly logger = new Logger(MailerService.name);
+
   constructor(private readonly configService: ConfigService) {}
+
+  onModuleInit() {
+    const apiKey = this.configService.get<string>('RESEND_API_KEY')?.trim();
+    const fromAddress = this.configService
+      .get<string>('RESEND_FROM_EMAIL')
+      ?.trim();
+    if (!apiKey || !fromAddress) {
+      this.logger.warn(
+        'RESEND_API_KEY / RESEND_FROM_EMAIL missing — signup OTP and Google password emails will fail until set on this host.',
+      );
+    } else {
+      this.logger.log(`Mailer ready (from: ${fromAddress})`);
+    }
+  }
 
   private logoUrl(): string | null {
     const base = (this.configService.get<string>('WEB_PUBLIC_URL') || '')

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Text, View, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
@@ -15,8 +16,8 @@ import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
 import { sharedStyles } from './shared';
 import { CopyButton } from './profile/CopyButton';
-import { RoleSelector } from './RoleSelector';
 import { InviteQr } from '../ui/InviteQr';
+import { MarqueeText } from '../ui/MarqueeText';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { SoftPressable } from '../ui/SoftPressable';
 import { Toast, useToast } from '../ui/Toast';
@@ -116,7 +117,12 @@ export function GuildScreen({ navigation }: Props) {
   const members = detail?.members ?? [];
   const roster = detail?.roster ?? [];
   const canManage = !!detail?.canManageRoster;
-  const listData = guildTab === 'members' ? members : roster;
+  // Waiting guild members first so Add-to-roster is obvious for owners/coaches.
+  const sortedMembers = canManage
+    ? [...members].sort((a, b) => Number(a.onRoster) - Number(b.onRoster))
+    : members;
+  const listData = guildTab === 'members' ? sortedMembers : roster;
+  const waitingCount = members.filter((m) => !m.onRoster).length;
 
   return (
     <Screen>
@@ -147,7 +153,7 @@ export function GuildScreen({ navigation }: Props) {
                 <Text style={styles.inviteHint}>
                   Share your link (or guild code). People join the guild only.
                   Owner/coach can add them to the esports roster below, or share
-                  a roster invite from Roster.
+                  a roster invite from Esports Arena → Roster.
                 </Text>
                 <Text style={styles.inviteCount}>
                   Your invites: {detail.myInviteCount} guild member
@@ -166,9 +172,13 @@ export function GuildScreen({ navigation }: Props) {
                 <View style={styles.inviteRow}>
                   <View style={styles.inviteTextCol}>
                     <Text style={styles.inviteLabel}>Invite Link</Text>
-                    <Text style={styles.inviteValue} numberOfLines={1}>
+                    <MarqueeText
+                      autoPlay
+                      lineHeight={20}
+                      style={styles.inviteValue}
+                    >
                       {detail.referralLink}
-                    </Text>
+                    </MarqueeText>
                   </View>
                   <CopyButton value={detail.referralLink} />
                 </View>
@@ -179,6 +189,18 @@ export function GuildScreen({ navigation }: Props) {
               value={guildTab}
               onChange={(next) => setGuildTab(next)}
             />
+            {canManage && guildTab === 'members' ? (
+              <Text style={styles.manageHint}>
+                {waitingCount > 0
+                  ? `${waitingCount} waiting — tap + to add to roster, − to remove.`
+                  : 'Everyone below is on the esports roster. Tap − to remove someone.'}
+              </Text>
+            ) : null}
+            {detail && !canManage ? (
+              <Text style={styles.manageHint}>
+                Only the org owner or a coach can add or remove roster seats.
+              </Text>
+            ) : null}
           </View>
         }
         renderItem={({ item }) => {
@@ -188,8 +210,18 @@ export function GuildScreen({ navigation }: Props) {
               <MemberRow
                 member={member}
                 canManage={canManage}
+                selfId={user?.id}
                 busy={busyId === member.userId}
                 onAdd={(role) => onAdd(member, role)}
+                onRemove={() =>
+                  onRemove({
+                    userId: member.userId,
+                    name: member.name,
+                    inGameName: member.inGameName,
+                    role: member.rosterRole,
+                    isOwner: member.isOwner,
+                  })
+                }
                 onPress={() =>
                   navigation.push('MemberProfile', {
                     userId: member.userId,
@@ -231,46 +263,109 @@ export function GuildScreen({ navigation }: Props) {
   );
 }
 
+function RosterActionIcons({
+  canAdd,
+  canRemove,
+  busy,
+  onAdd,
+  onRemove,
+  name,
+}: {
+  canAdd: boolean;
+  canRemove: boolean;
+  busy: boolean;
+  onAdd: () => void;
+  onRemove: () => void;
+  name: string;
+}) {
+  return (
+    <View style={styles.iconActions}>
+      <SoftPressable
+        style={[styles.iconBtn, (!canAdd || busy) && styles.iconBtnDisabled]}
+        disabled={!canAdd || busy}
+        onPress={onAdd}
+        pressScale={0.92}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !canAdd || busy }}
+        accessibilityLabel={`Add ${name} to roster`}
+      >
+        <Ionicons
+          name="person-add"
+          size={22}
+          color={canAdd && !busy ? colors.chrome : colors.textDim}
+        />
+      </SoftPressable>
+      <SoftPressable
+        style={[styles.iconBtn, (!canRemove || busy) && styles.iconBtnDisabled]}
+        disabled={!canRemove || busy}
+        onPress={onRemove}
+        pressScale={0.92}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !canRemove || busy }}
+        accessibilityLabel={`Remove ${name} from roster`}
+      >
+        <Ionicons
+          name="person-remove"
+          size={22}
+          color={canRemove && !busy ? colors.danger : colors.textDim}
+        />
+      </SoftPressable>
+    </View>
+  );
+}
+
 function MemberRow({
   member,
   canManage,
+  selfId,
   busy,
   onAdd,
+  onRemove,
   onPress,
 }: {
   member: GuildMemberRow;
   canManage: boolean;
+  selfId?: string;
   busy: boolean;
   onAdd: (role: MembershipRole) => void;
+  onRemove: () => void;
   onPress: () => void;
 }) {
-  const [role, setRole] = useState<MembershipRole>('PLAYER');
+  const canAdd = canManage && !member.onRoster;
+  const canRemove =
+    canManage && member.onRoster && !member.isOwner && member.userId !== selfId;
   return (
-    <SoftPressable style={styles.row} onPress={onPress} pressScale={0.99}>
-      <Text style={styles.rowName}>
-        {personLabel(member.name, member.inGameName)}
-        {member.isOwner ? ' (Owner)' : ''}
-      </Text>
-      <Text style={styles.rowMeta}>
-        {GUILD_ROLE_LABEL[member.guildRole]}
-        {member.onRoster
-          ? ` · Roster ${member.rosterRole ? ROSTER_ROLE_LABEL[member.rosterRole] : ''}`
-          : ' · Not on roster'}
-      </Text>
-      {canManage && !member.onRoster ? (
-        <View style={styles.addRow}>
-          <RoleSelector value={role} onChange={setRole} />
-          <SoftPressable
-            style={[styles.addBtn, busy && styles.addBtnDisabled]}
-            disabled={busy}
-            onPress={() => onAdd(role)}
-            pressScale={0.97}
-          >
-            <Text style={styles.addBtnText}>Add to roster</Text>
-          </SoftPressable>
-        </View>
-      ) : null}
-    </SoftPressable>
+    <View style={styles.row}>
+      <View style={styles.rosterMain}>
+        <SoftPressable
+          style={styles.rosterTextCol}
+          onPress={onPress}
+          pressScale={0.99}
+          accessibilityRole="button"
+        >
+          <Text style={styles.rowName} numberOfLines={2}>
+            {personLabel(member.name, member.inGameName)}
+            {member.isOwner ? ' (Owner)' : ''}
+          </Text>
+          <Text style={styles.rowMeta} numberOfLines={2}>
+            {GUILD_ROLE_LABEL[member.guildRole]}
+            {member.onRoster
+              ? ` · Roster ${member.rosterRole ? ROSTER_ROLE_LABEL[member.rosterRole] : ''}`
+              : ' · Not on roster'}
+          </Text>
+        </SoftPressable>
+        {canManage ? (
+          <RosterActionIcons
+            canAdd={canAdd}
+            canRemove={canRemove}
+            busy={busy}
+            name={member.name}
+            onAdd={() => onAdd('PLAYER')}
+            onRemove={onRemove}
+          />
+        ) : null}
+      </View>
+    </View>
   );
 }
 
@@ -291,42 +386,53 @@ function RosterRow({
 }) {
   const canRemove = canManage && !member.isOwner && member.userId !== selfId;
   return (
-    <SoftPressable style={styles.row} onPress={onPress} pressScale={0.99}>
+    <View style={styles.row}>
       <View style={styles.rosterMain}>
-        <View style={styles.rosterTextCol}>
-          <Text style={styles.rowName}>
+        <SoftPressable
+          style={styles.rosterTextCol}
+          onPress={onPress}
+          pressScale={0.99}
+          accessibilityRole="button"
+        >
+          <Text style={styles.rowName} numberOfLines={2}>
             {personLabel(member.name, member.inGameName)}
             {member.isOwner ? ' (Owner)' : ''}
           </Text>
           <Text style={styles.rowMeta}>
             {member.role ? ROSTER_ROLE_LABEL[member.role] : 'Owner'}
           </Text>
-        </View>
-        {canRemove ? (
-          <SoftPressable
-            onPress={onRemove}
-            disabled={busy}
-            pressScale={0.97}
-            accessibilityRole="button"
-            accessibilityLabel={`Remove ${member.name} from roster`}
-          >
-            <Text style={styles.removeLink}>Remove</Text>
-          </SoftPressable>
+        </SoftPressable>
+        {canManage ? (
+          <RosterActionIcons
+            canAdd={false}
+            canRemove={canRemove}
+            busy={busy}
+            name={member.name}
+            onAdd={() => {}}
+            onRemove={onRemove}
+          />
         ) : null}
       </View>
-    </SoftPressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: 'transparent' },
-  listContent: { paddingHorizontal: 24, paddingBottom: 40 },
+  list: { flex: 1, minWidth: 0, backgroundColor: 'transparent' },
+  listContent: { paddingHorizontal: 16, paddingBottom: 40 },
   summary: {
     color: colors.textMuted,
     fontSize: 13,
     textAlign: 'center',
     marginTop: -12,
     marginBottom: 20,
+  },
+  manageHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 12,
+    marginTop: -4,
   },
   inviteCard: {
     borderWidth: 1,
@@ -364,26 +470,27 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.035)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
+    maxWidth: '100%',
   },
   rowName: { fontSize: 16, color: colors.text, fontWeight: '700' },
   rowMeta: { fontSize: 12, color: colors.textMuted },
-  addRow: { marginTop: 6 },
-  addBtn: {
-    alignSelf: 'flex-start',
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    backgroundColor: colors.chrome,
-  },
-  addBtnDisabled: { opacity: 0.5 },
-  addBtnText: { color: colors.chromeInk, fontWeight: '700', fontSize: 13 },
   rosterMain: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
+    maxWidth: '100%',
   },
-  rosterTextCol: { flex: 1 },
-  removeLink: { color: colors.danger, fontWeight: '600' },
+  rosterTextCol: { flex: 1, minWidth: 0 },
+  iconActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  iconBtnDisabled: { opacity: 0.35 },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 16 },
 });

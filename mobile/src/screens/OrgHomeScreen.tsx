@@ -24,6 +24,9 @@ export function OrgHomeScreen({ navigation }: Props) {
   const { message: toastMessage, showToast } = useToast();
   const insets = useSafeAreaInsets();
   const isOwner = !!org?.isOwner;
+  // Owner or coach can manage guild ↔ roster; Guild drawer used to be
+  // owner-only so coaches never saw Add/Remove even though the API allows it.
+  const canManageGuild = isOwner || !!detail?.canInviteRoster;
 
   const copyOrgCode = async () => {
     if (!detail?.orgCode) return;
@@ -40,8 +43,8 @@ export function OrgHomeScreen({ navigation }: Props) {
     load();
   }, [load]);
 
-  // Mirrors web AppShell: Esports Arena for roster, Guild for owners,
-  // Account for everyone. Non-owner roster members do not see Guild.
+  // Mirrors web AppShell: Esports Arena for roster, Guild for owners/coaches,
+  // Account for everyone. Plain players do not see Guild.
   const drawerSections = useMemo((): SideDrawerSection[] => {
     const arenaItems = [
       {
@@ -105,7 +108,7 @@ export function OrgHomeScreen({ navigation }: Props) {
       },
     ];
 
-    if (isOwner) {
+    if (canManageGuild) {
       sections.push({
         key: 'guild',
         label: 'Guild',
@@ -145,7 +148,7 @@ export function OrgHomeScreen({ navigation }: Props) {
     });
 
     return sections;
-  }, [navigation, isOwner]);
+  }, [navigation, isOwner, canManageGuild]);
 
   return (
     <Screen padBottom={false}>

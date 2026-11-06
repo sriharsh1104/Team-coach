@@ -23,10 +23,10 @@ describe('OrgChoiceScreen', () => {
     mockedUseAuth.mockReturnValue({ user: { name: 'Player One' }, logout: jest.fn() });
     render(<OrgChoiceScreen navigation={navigation} route={{} as any} />);
 
-    fireEvent.press(screen.getByText('Create an Org'));
+    fireEvent.press(screen.getByText('Create a Org'));
     expect(navigation.navigate).toHaveBeenCalledWith('CreateOrg');
 
-    fireEvent.press(screen.getByText('Join a Guild'));
+    fireEvent.press(screen.getByText('Join a Org'));
     expect(navigation.navigate).toHaveBeenCalledWith('JoinOrg');
   });
 

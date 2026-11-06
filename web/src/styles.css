@@ -4304,10 +4304,6 @@ button.invite-qr-open:hover {
   max-width: 1100px;
 }
 
-.points-table-tie {
-  min-width: 0;
-}
-
 .points-panel {
   display: flex;
   flex-direction: column;
@@ -4316,6 +4312,8 @@ button.invite-qr-open:hover {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .points-panel-head {
@@ -4341,8 +4339,11 @@ button.invite-qr-open:hover {
   background: rgba(251, 191, 36, 0.9);
 }
 
-.points-table {
-  min-width: 420px;
+/* Stay inside the panel — forced min-width was clipping both edges. */
+.points-table,
+.points-table-tie {
+  min-width: 0;
+  width: 100%;
 }
 
 .points-table .points-col {

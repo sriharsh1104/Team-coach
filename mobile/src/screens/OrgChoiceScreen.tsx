@@ -15,7 +15,9 @@ export function OrgChoiceScreen({ navigation }: Props) {
   const { user, logout } = useAuth();
 
   return (
-    <FormScreen>
+    // Key by user so a logout → other login never paints overlapping buttons
+    // from the previous account's OrgChoice instance.
+    <FormScreen key={user?.id ?? 'choice'}>
       <BrandMark />
       <Text style={authStyles.title}>Welcome, {user?.name}</Text>
       <SoftPressable
@@ -23,14 +25,14 @@ export function OrgChoiceScreen({ navigation }: Props) {
         onPress={() => navigation.navigate('CreateOrg')}
         pressScale={0.98}
       >
-        <ButtonLabel icon="add-circle">Create an Org</ButtonLabel>
+        <ButtonLabel icon="add-circle">Create a Org</ButtonLabel>
       </SoftPressable>
       <SoftPressable
         style={authStyles.button}
         onPress={() => navigation.navigate('JoinOrg')}
         pressScale={0.98}
       >
-        <ButtonLabel icon="enter">Join a Guild</ButtonLabel>
+        <ButtonLabel icon="enter">Join a Org</ButtonLabel>
       </SoftPressable>
       <Text style={authStyles.link} onPress={logout}>
         Log Out

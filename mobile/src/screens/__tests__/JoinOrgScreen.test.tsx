@@ -28,7 +28,11 @@ beforeEach(() => {
 describe('JoinOrgScreen', () => {
   it('joins guild with a guild code', async () => {
     const setGuild = jest.fn();
-    mockedUseAuth.mockReturnValue({ setGuild, setOrg: jest.fn() });
+    mockedUseAuth.mockReturnValue({
+      setGuild,
+      setOrg: jest.fn(),
+      refreshOrg: jest.fn().mockResolvedValue(undefined),
+    });
     mockedOrgApi.joinGuild.mockResolvedValue({
       id: 'org-1',
       name: 'Alpha Squad',
@@ -49,7 +53,11 @@ describe('JoinOrgScreen', () => {
   it('falls back to rosterCode when guild code is not found', async () => {
     const setGuild = jest.fn();
     const setOrg = jest.fn();
-    mockedUseAuth.mockReturnValue({ setGuild, setOrg });
+    mockedUseAuth.mockReturnValue({
+      setGuild,
+      setOrg,
+      refreshOrg: jest.fn().mockResolvedValue(undefined),
+    });
     mockedOrgApi.joinGuild.mockRejectedValue({ response: { status: 404 } });
     mockedOrgApi.joinOrg.mockResolvedValue({
       id: 'org-1',
@@ -76,7 +84,11 @@ describe('JoinOrgScreen', () => {
   it('joins roster when the invite URL has seat=roster', async () => {
     const setGuild = jest.fn();
     const setOrg = jest.fn();
-    mockedUseAuth.mockReturnValue({ setGuild, setOrg });
+    mockedUseAuth.mockReturnValue({
+      setGuild,
+      setOrg,
+      refreshOrg: jest.fn().mockResolvedValue(undefined),
+    });
     mockedOrgApi.joinOrg.mockResolvedValue({
       id: 'org-1',
       name: 'Alpha Squad',

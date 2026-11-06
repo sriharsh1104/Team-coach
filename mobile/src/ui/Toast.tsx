@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 import { setToastListener } from './toastBus';
 
@@ -15,18 +16,32 @@ interface Props {
 }
 
 /**
- * Fixed top-right banner. Prefer the app-root `ToastProvider` for API errors
- * (wired through axios). Screens can still use local `useToast()` for
- * success confirmations scoped to that screen.
+ * Fixed top banner inside the safe area (status bar / notch / home indicator).
+ * Prefer the app-root `ToastProvider` for API errors (wired through axios).
+ * Screens can still use local `useToast()` for success confirmations.
  */
 export function Toast({ message }: Props) {
+  const insets = useSafeAreaInsets();
   if (!message) return null;
 
   return (
-    <View style={styles.container} pointerEvents="none" accessibilityLiveRegion="polite">
-      <Text style={styles.text} numberOfLines={3}>
-        {message}
-      </Text>
+    <View
+      style={[
+        styles.anchor,
+        {
+          top: insets.top + 10,
+          left: Math.max(insets.left, 12),
+          right: Math.max(insets.right, 12),
+        },
+      ]}
+      pointerEvents="none"
+      accessibilityLiveRegion="polite"
+    >
+      <View style={styles.banner}>
+        <Text style={styles.text} numberOfLines={4}>
+          {message}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -96,23 +111,30 @@ export function useAppToast() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  // Full-width safe strip so the banner cannot spill past left/right edges.
+  anchor: {
     position: 'absolute',
-    top: 16,
-    right: 16,
-    maxWidth: '78%',
+    zIndex: 2000,
+    elevation: 20,
+    alignItems: 'flex-end',
+  },
+  banner: {
+    maxWidth: '100%',
     backgroundColor: '#1c1c20',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    zIndex: 1000,
-    elevation: 10,
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
-  text: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  text: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
 });

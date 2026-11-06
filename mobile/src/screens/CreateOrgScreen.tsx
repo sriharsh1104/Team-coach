@@ -60,7 +60,7 @@ export function CreateOrgScreen({ navigation }: Props) {
   return (
     <FormScreen>
       <AuthBackButton onPress={() => navigation.navigate('OrgChoice')} />
-      <Text style={authStyles.title}>Create an Org</Text>
+      <Text style={authStyles.title}>Create a Org</Text>
       <Text style={{ color: '#9aa0a6', textAlign: 'center', marginBottom: 16 }}>
         You become the owner. A coach can be you or someone else.
       </Text>

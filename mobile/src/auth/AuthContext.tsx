@@ -218,6 +218,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    // Brief loading gate so OrgChoice / Main don't paint over each other
+    // while the session tears down (was causing stacked Join/Create buttons).
+    setIsLoading(true);
     try {
       await authApi.logout();
     } catch {
@@ -229,6 +232,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setOrgState(null);
     setGuildState(null);
+    setNeedsBiometricUnlock(false);
+    setIsLoading(false);
   }, []);
 
   const refreshOrg = useCallback(async () => {

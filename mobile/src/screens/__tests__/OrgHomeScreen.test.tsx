@@ -38,6 +38,7 @@ const detail = {
   referralLink: 'token',
   myRole: 'COACH',
   isOwner: true,
+  canInviteRoster: true,
   members: [
     {
       userId: 'user-1',
@@ -103,11 +104,17 @@ describe('OrgHomeScreen', () => {
       user: { id: 'user-2', name: 'Teammate', email: 'a@b.com' },
       org: { id: 'org-1', name: 'Alpha Squad', role: 'PLAYER', isOwner: false },
     });
+    mockedOrgApi.getMyOrg.mockResolvedValue({
+      ...detail,
+      isOwner: false,
+      canInviteRoster: false,
+      myRole: 'PLAYER',
+    } as any);
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');
 
     fireEvent.press(screen.getByLabelText('Open Menu'));
-    expect(screen.getByText('Roster')).toBeTruthy();
+    expect(screen.getByText(/^Roster$/)).toBeTruthy();
     expect(screen.queryByText('Org Settings')).toBeNull();
     expect(screen.queryByText('Guild')).toBeNull();
   });
@@ -117,8 +124,36 @@ describe('OrgHomeScreen', () => {
     await screen.findByText('Alpha Squad');
 
     fireEvent.press(screen.getByLabelText('Open Menu'));
-    fireEvent.press(screen.getByText('Roster'));
+    // SideDrawer closes then fires onPress on the next animation frame.
+    await act(async () => {
+      fireEvent.press(screen.getByText('Roster'));
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
     expect(navigation.navigate).toHaveBeenCalledWith('Members');
+  });
+
+  it('shows Guild to coaches who can invite roster even when not owner', async () => {
+    mockedUseAuth.mockReturnValue({
+      logout,
+      refreshOrg,
+      user: { id: 'user-3', name: 'Coach', email: 'c@b.com' },
+      org: { id: 'org-1', name: 'Alpha Squad', role: 'COACH', isOwner: false },
+    });
+    mockedOrgApi.getMyOrg.mockResolvedValue({
+      ...detail,
+      isOwner: false,
+      canInviteRoster: true,
+      myRole: 'COACH',
+    } as any);
+    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Alpha Squad');
+
+    fireEvent.press(screen.getByLabelText('Open Menu'));
+    expect(screen.getByText('Guild')).toBeTruthy();
+    expect(screen.getByText('Guild Roster')).toBeTruthy();
+    expect(screen.queryByText('Org Settings')).toBeNull();
   });
 
   it('opens Security and Logout from the gear menu', async () => {

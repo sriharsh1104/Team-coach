@@ -24,7 +24,7 @@ function isRosterInvite(raw: string): boolean {
 }
 
 export function JoinOrgScreen({ navigation }: Props) {
-  const { setGuild, setOrg } = useAuth();
+  const { setGuild, setOrg, refreshOrg } = useAuth();
   const [orgCode, setOrgCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -50,6 +50,7 @@ export function JoinOrgScreen({ navigation }: Props) {
           isOwner: joined.isOwner,
         });
         setGuild({ id: joined.id, name: joined.name, role: 'MEMBER' });
+        await refreshOrg();
         return;
       }
 
@@ -60,6 +61,7 @@ export function JoinOrgScreen({ navigation }: Props) {
             orgCode: trimmed.toUpperCase(),
           });
           setGuild({ id: joined.id, name: joined.name, role: joined.role });
+          await refreshOrg();
           return;
         } catch (err: unknown) {
           const status = (err as { response?: { status?: number } })?.response
@@ -75,6 +77,7 @@ export function JoinOrgScreen({ navigation }: Props) {
             isOwner: joined.isOwner,
           });
           setGuild({ id: joined.id, name: joined.name, role: 'MEMBER' });
+          await refreshOrg();
           return;
         }
       }
@@ -84,6 +87,8 @@ export function JoinOrgScreen({ navigation }: Props) {
         invitedByUserId,
       });
       setGuild({ id: joined.id, name: joined.name, role: joined.role });
+      // Confirm /me so RootNavigator leaves OrgChoice for GuildHome.
+      await refreshOrg();
     } catch {
       // API message is shown by the global axios → toaster interceptor.
     } finally {

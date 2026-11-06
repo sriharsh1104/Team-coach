@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -58,6 +59,7 @@ interface EmailVerificationChallengePayload {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly googleClient: OAuth2Client;
 
   constructor(
@@ -291,7 +293,13 @@ export class AuthService {
       where: { googleId: payload.sub },
     });
 
-    if (!user) {
+    if (user) {
+      // Returning Google user — password mail was already sent (or skipped) at
+      // first signup. Re-login must never re-email a new password.
+      this.logger.log(
+        `Google login: existing googleId for ${email} — no password email`,
+      );
+    } else {
       const existingByEmail = await this.prisma.user.findUnique({
         where: { email },
       });
@@ -301,6 +309,9 @@ export class AuthService {
           where: { id: existingByEmail.id },
           data: { googleId: payload.sub, emailVerified: true },
         });
+        this.logger.log(
+          `Google login: linked googleId onto existing email ${email} — no password email`,
+        );
       } else {
         // Google already required a verified email above, so this account
         // doesn't need the signup OTP gate — emailVerified is true from
@@ -325,15 +336,23 @@ export class AuthService {
             emailVerified: true,
           },
         });
+        this.logger.log(
+          `Google login: created new user ${email} — sending password email`,
+        );
 
         try {
           await this.mailerService.sendGeneratedPassword(
             user.email,
             generatedPassword,
           );
-        } catch {
-          // Best-effort — same precedent as logout()'s server-side revocation
-          // call: a flaky mail provider should never block a Google sign-in.
+          this.logger.log(`Google login: password email accepted for ${email}`);
+        } catch (err) {
+          // Best-effort — a flaky mail provider must never block Google sign-in,
+          // but we log so missing Resend config / rejected recipients are visible.
+          this.logger.error(
+            `Failed to email generated password to ${user.email}`,
+            err instanceof Error ? err.stack : String(err),
+          );
         }
       }
     }

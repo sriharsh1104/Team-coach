@@ -4,7 +4,6 @@ import {
   Easing,
   Platform,
   StyleSheet,
-  Text,
   TextStyle,
   View,
   ViewStyle,
@@ -16,23 +15,33 @@ type Props = {
   containerStyle?: ViewStyle;
   /** Line box height — keeps absolute text from collapsing the row. */
   lineHeight?: number;
+  /**
+   * Continuously scrolls when the text overflows (invite links, etc.).
+   * Without this, scroll starts only on hover (web) / press (native).
+   */
+  autoPlay?: boolean;
 };
 
 /**
  * Single-line text clipped to its box. When the value is longer than the box,
- * hovering (web) or focusing the row scrolls it into view — never grows the layout.
+ * it scrolls into view — never grows the layout.
  */
 export function MarqueeText({
   children,
   style,
   containerStyle,
   lineHeight = 20,
+  autoPlay = false,
 }: Props) {
   const [boxW, setBoxW] = useState(0);
   const [textW, setTextW] = useState(0);
-  const [active, setActive] = useState(false);
+  const [active, setActive] = useState(autoPlay);
   const offset = useRef(new Animated.Value(0)).current;
   const overflow = boxW > 0 && textW > boxW + 2;
+
+  useEffect(() => {
+    if (autoPlay) setActive(true);
+  }, [autoPlay, children]);
 
   useEffect(() => {
     offset.stopAnimation();
@@ -53,6 +62,33 @@ export function MarqueeText({
 
     const travel = textW - boxW + 12;
     const duration = Math.max(2200, travel * 26);
+
+    if (autoPlay) {
+      offset.setValue(0);
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.delay(900),
+          Animated.timing(offset, {
+            toValue: -travel,
+            duration,
+            easing: Easing.linear,
+            useNativeDriver: true,
+          }),
+          Animated.delay(1100),
+          Animated.timing(offset, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      loop.start();
+      return () => {
+        loop.stop();
+        offset.stopAnimation();
+      };
+    }
+
     const anim = Animated.timing(offset, {
       toValue: -travel,
       duration,
@@ -64,14 +100,16 @@ export function MarqueeText({
       anim.stop();
       offset.stopAnimation();
     };
-  }, [active, overflow, boxW, textW, offset, children]);
+  }, [active, autoPlay, overflow, boxW, textW, offset, children]);
 
   const hoverProps =
-    Platform.OS === 'web'
-      ? ({
-          onMouseEnter: () => setActive(true),
-          onMouseLeave: () => setActive(false),
-        } as object)
+    autoPlay || Platform.OS === 'web'
+      ? autoPlay
+        ? {}
+        : ({
+            onMouseEnter: () => setActive(true),
+            onMouseLeave: () => setActive(false),
+          } as object)
       : {
           onStartShouldSetResponder: () => true,
           onResponderGrant: () => setActive(true),

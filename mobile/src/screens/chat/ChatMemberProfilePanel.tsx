@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,12 +15,20 @@ import { RoleChips } from '../profile/RoleChips';
 import { CopyableField } from '../profile/CopyableField';
 import { CopyButton } from '../profile/CopyButton';
 import { formatRoleBadge } from '../shared';
+import {
+  openSocialUrl,
+  SocialOpenPlatform,
+} from '../../lib/openSocialUrl';
 
-const SOCIAL_LINKS: Array<{ key: keyof Profile; label: string }> = [
-  { key: 'whatsappUrl', label: 'WhatsApp' },
-  { key: 'instagramUrl', label: 'Instagram' },
-  { key: 'discordUrl', label: 'Discord' },
-  { key: 'youtubeUrl', label: 'YouTube' },
+const SOCIAL_LINKS: Array<{
+  key: keyof Profile;
+  label: string;
+  platform: SocialOpenPlatform;
+}> = [
+  { key: 'whatsappUrl', label: 'WhatsApp', platform: 'whatsapp' },
+  { key: 'instagramUrl', label: 'Instagram', platform: 'instagram' },
+  { key: 'discordUrl', label: 'Discord', platform: 'discord' },
+  { key: 'youtubeUrl', label: 'YouTube', platform: 'youtube' },
 ];
 
 /** Profile sheet used inside ChatHub’s local back stack (not MainStack). */
@@ -102,12 +109,15 @@ export function ChatMemberProfilePanel({
           ) : null}
 
           <Text style={styles.section}>Social Links</Text>
-          {SOCIAL_LINKS.map(({ key, label }) => {
+          {SOCIAL_LINKS.map(({ key, label, platform }) => {
             const url = profile[key] as string | null;
             if (!url) return null;
             return (
               <View key={key} style={styles.linkRow}>
-                <Pressable style={{ flex: 1 }} onPress={() => Linking.openURL(url)}>
+                <Pressable
+                  style={{ flex: 1 }}
+                  onPress={() => openSocialUrl(url, platform)}
+                >
                   <Text style={styles.link}>
                     {label}: {url}
                   </Text>

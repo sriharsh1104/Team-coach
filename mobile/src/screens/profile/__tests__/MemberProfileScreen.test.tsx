@@ -114,7 +114,7 @@ describe('MemberProfileScreen', () => {
       fireEvent.press(link);
     });
 
-    expect(openURLSpy).toHaveBeenCalledWith('https://wa.me/123');
+    expect(openURLSpy).toHaveBeenCalledWith('whatsapp://send?phone=123');
   });
 
   it("SECURITY/LOGIC: shows a clean error (not a crash) when the backend refuses cross-org access", async () => {

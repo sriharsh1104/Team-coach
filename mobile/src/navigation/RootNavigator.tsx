@@ -13,6 +13,7 @@ import { CreateOrgScreen } from '../screens/CreateOrgScreen';
 import { JoinOrgScreen } from '../screens/JoinOrgScreen';
 import { OrgHomeScreen } from '../screens/OrgHomeScreen';
 import { MembersScreen } from '../screens/MembersScreen';
+import { GuildHomeScreen } from '../screens/GuildHomeScreen';
 import { GuildScreen } from '../screens/GuildScreen';
 import { OrgSettingsScreen } from '../screens/OrgSettingsScreen';
 import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
@@ -148,8 +149,13 @@ export function RootNavigator() {
     return <BiometricLockScreen />;
   }
 
+  // Key by phase + user so logout → other account never leaves stale
+  // OrgChoice / Join screens stacked visually on top of each other.
+  const navKey = `${phase}:${user?.id ?? 'guest'}`;
+
   return (
     <NavigationContainer
+      key={navKey}
       theme={sacredNavTheme}
       initialState={initialNavState}
       onStateChange={(state) => persistNavState(phase, state)}
@@ -181,6 +187,11 @@ export function RootNavigator() {
         </OrgSetupStack.Navigator>
       ) : !org && guild ? (
         <MainStack.Navigator screenOptions={mainScreenOptions}>
+          <MainStack.Screen
+            name="GuildHome"
+            component={GuildHomeScreen}
+            options={{ headerShown: false }}
+          />
           <MainStack.Screen
             name="Guild"
             component={GuildScreen}

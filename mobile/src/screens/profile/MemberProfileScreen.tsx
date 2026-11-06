@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Linking, Pressable } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
@@ -9,14 +9,22 @@ import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
 import { sharedStyles, formatRoleBadge } from '../shared';
 import { MainStackParamList } from '../../navigation/types';
+import {
+  openSocialUrl,
+  SocialOpenPlatform,
+} from '../../lib/openSocialUrl';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'MemberProfile'>;
 
-const SOCIAL_LINKS: Array<{ key: keyof Profile; label: string }> = [
-  { key: 'whatsappUrl', label: 'WhatsApp' },
-  { key: 'instagramUrl', label: 'Instagram' },
-  { key: 'discordUrl', label: 'Discord' },
-  { key: 'youtubeUrl', label: 'YouTube' },
+const SOCIAL_LINKS: Array<{
+  key: keyof Profile;
+  label: string;
+  platform: SocialOpenPlatform;
+}> = [
+  { key: 'whatsappUrl', label: 'WhatsApp', platform: 'whatsapp' },
+  { key: 'instagramUrl', label: 'Instagram', platform: 'instagram' },
+  { key: 'discordUrl', label: 'Discord', platform: 'discord' },
+  { key: 'youtubeUrl', label: 'YouTube', platform: 'youtube' },
 ];
 
 export function MemberProfileScreen({ route }: Props) {
@@ -97,7 +105,7 @@ export function MemberProfileScreen({ route }: Props) {
       <Text style={{ marginTop: 20, marginBottom: 8, fontWeight: '600', color: '#e8eaed' }}>
         Social Links
       </Text>
-      {SOCIAL_LINKS.map(({ key, label }) => {
+      {SOCIAL_LINKS.map(({ key, label, platform }) => {
         const url = profile[key] as string | null;
         if (!url) return null;
         return (
@@ -110,7 +118,10 @@ export function MemberProfileScreen({ route }: Props) {
               marginBottom: 8,
             }}
           >
-            <Pressable style={{ flex: 1 }} onPress={() => Linking.openURL(url)}>
+            <Pressable
+              style={{ flex: 1 }}
+              onPress={() => openSocialUrl(url, platform)}
+            >
               <Text style={{ color: '#a8b0ff' }}>
                 {label}: {url}
               </Text>

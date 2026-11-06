@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useState } from 'react';
-import { Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatScreen } from './ChatScreen';
@@ -42,23 +42,25 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
   }, [navigation]);
 
   return (
-    <>
-      <ChatScreen channelKey={channelKey} />
+    <View style={styles.root}>
+      {/* Remount when the channel changes so socket + list layout stay clean. */}
+      <ChatScreen key={channelKey} channelKey={channelKey} />
       <ChatMediaModal
         visible={mediaOpen}
         channelKey={channelKey}
         title={title}
         onClose={() => setMediaOpen(false)}
       />
-    </>
+    </View>
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
+  root: { flex: 1, minWidth: 0 },
   mediaBtnText: {
     color: colors.chrome,
-    fontWeight: '700' as const,
+    fontWeight: '700',
     fontSize: 14,
     paddingHorizontal: 12,
   },
-};
+});

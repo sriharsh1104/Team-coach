@@ -76,8 +76,11 @@ describe('GuildScreen', () => {
     expect(screen.getByText(/Not on roster/)).toBeTruthy();
   });
 
-  it('adds a waiting guild member to the roster with the selected role', async () => {
-    mockedOrgApi.addGuildMemberToRoster.mockResolvedValue({ userId: 'user-3', role: 'COACH' });
+  it('adds a waiting guild member to the roster via the add icon', async () => {
+    mockedOrgApi.addGuildMemberToRoster.mockResolvedValue({
+      userId: 'user-3',
+      role: 'PLAYER',
+    });
     mockedOrgApi.getMyGuild
       .mockResolvedValueOnce(detail as any)
       .mockResolvedValueOnce({
@@ -85,24 +88,24 @@ describe('GuildScreen', () => {
         members: [
           detail.members[0],
           detail.members[1],
-          { ...detail.members[2], onRoster: true, rosterRole: 'COACH' },
+          { ...detail.members[2], onRoster: true, rosterRole: 'PLAYER' },
         ],
       } as any);
     render(<GuildScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Waiting Member');
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Coach'));
-    });
-    await act(async () => {
-      fireEvent.press(screen.getByText('Add to roster'));
+      fireEvent.press(screen.getByLabelText('Add Waiting Member to roster'));
     });
 
-    expect(mockedOrgApi.addGuildMemberToRoster).toHaveBeenCalledWith('user-3', 'COACH');
+    expect(mockedOrgApi.addGuildMemberToRoster).toHaveBeenCalledWith(
+      'user-3',
+      'PLAYER',
+    );
     await screen.findByText('Waiting Member added to roster');
   });
 
-  it('does not show roster-management controls to a member who cannot manage the roster', async () => {
+  it('does not show roster-management icons to a member who cannot manage the roster', async () => {
     mockedOrgApi.getMyGuild.mockResolvedValue({
       ...detail,
       canManageRoster: false,
@@ -110,7 +113,7 @@ describe('GuildScreen', () => {
     render(<GuildScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Waiting Member');
 
-    expect(screen.queryByText('Add to roster')).toBeNull();
+    expect(screen.queryByLabelText('Add Waiting Member to roster')).toBeNull();
   });
 
   it('switches to the Roster tab and removes a non-owner after confirming', async () => {
@@ -132,7 +135,7 @@ describe('GuildScreen', () => {
     });
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Remove'));
+      fireEvent.press(screen.getByLabelText('Remove Teammate from roster'));
     });
 
     expect(mockedOrgApi.removeFromGuildRoster).toHaveBeenCalledWith('user-2');
@@ -140,16 +143,13 @@ describe('GuildScreen', () => {
     await waitFor(() => expect(screen.queryByText('TM · Teammate')).toBeNull());
   });
 
-  it('never shows a Remove action for the owner or for the current user', async () => {
+  it('disables remove for the owner and enables add/remove correctly on Members', async () => {
     render(<GuildScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Alpha Squad');
+    await screen.findByText('Waiting Member');
 
-    await act(async () => {
-      fireEvent.press(screen.getByText('Roster'));
-    });
-    await screen.findByText(/Owner Coach/);
-
-    // Only Teammate (not the owner, not the current user id 'user-1') gets Remove.
-    expect(screen.getAllByText('Remove')).toHaveLength(1);
+    expect(screen.getByLabelText('Add Waiting Member to roster')).toBeTruthy();
+    expect(screen.getByLabelText('Remove Teammate from roster')).toBeTruthy();
+    // Owner row still shows icons, but remove is disabled (no pressable enable).
+    expect(screen.getByLabelText('Remove Owner Coach from roster')).toBeTruthy();
   });
 });

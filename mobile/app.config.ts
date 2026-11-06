@@ -37,6 +37,18 @@ const expoConfig: ExpoConfig = {
     infoPlist: {
       NSMicrophoneUsageDescription:
         'Sacred Team Coach needs microphone access for team voice channels.',
+      // Needed so Linking can prefer Instagram / Discord / YouTube / etc. apps
+      // over the browser when a social handle is tapped.
+      LSApplicationQueriesSchemes: [
+        'instagram',
+        'whatsapp',
+        'discord',
+        'youtube',
+        'vnd.youtube',
+        'tg',
+        'telegram',
+        'mailto',
+      ],
     },
   },
   android: {
@@ -86,6 +98,7 @@ const expoConfig: ExpoConfig = {
       },
     ],
     ['./plugins/withApkFileName', { name: 'SacredTeamCoach' }],
+    './plugins/withSocialPackageQueries',
   ],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',

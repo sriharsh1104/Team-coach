@@ -1,18 +1,26 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import {
+  claimCopyFeedback,
+  subscribeCopyFeedback,
+} from '../../ui/copyFeedbackBus';
 
 /** Compact copy-to-clipboard control — icon only; flashes a check after copy. */
 export function CopyButton({ value }: { value: string }) {
+  const id = useId();
   const [justCopied, setJustCopied] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return subscribeCopyFeedback((activeId) => {
+      setJustCopied(activeId === id);
+    });
+  }, [id]);
 
   const onCopy = async () => {
     if (!value.trim()) return;
     await Clipboard.setStringAsync(value);
-    setJustCopied(true);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setJustCopied(false), 1200);
+    claimCopyFeedback(id);
   };
 
   return (

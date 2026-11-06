@@ -1,5 +1,6 @@
 import React from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
 import {
@@ -10,13 +11,19 @@ import {
 
 /** FFWS placement scoring — mirrors web Points Table. */
 export function PointsTableScreen() {
+  const insets = useSafeAreaInsets();
+  const sidePad = Math.max(insets.left, insets.right, 16);
+
   return (
     <Screen>
       <FlatList
         style={styles.list}
         data={PLACEMENT_POINTS}
         keyExtractor={(item) => String(item.rank)}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          { paddingHorizontal: sidePad },
+        ]}
         ListHeaderComponent={
           <View>
             <Text style={styles.eyebrow}>Official scoring</Text>
@@ -44,7 +51,12 @@ export function PointsTableScreen() {
             ]}
           >
             <Text style={[styles.cell, styles.colRank]}>{item.rank}</Text>
-            <Text style={[styles.cellStrong, styles.colPlace]}>{item.label}</Text>
+            <Text
+              style={[styles.cellStrong, styles.colPlace]}
+              numberOfLines={2}
+            >
+              {item.label}
+            </Text>
             <Text style={[styles.pts, styles.colPts]}>{item.points}</Text>
           </View>
         )}
@@ -59,7 +71,9 @@ export function PointsTableScreen() {
             {TIEBREAKERS.map((row) => (
               <View key={row.order} style={styles.tieRow}>
                 <Text style={styles.tieNum}>{row.order}</Text>
-                <Text style={styles.tieRule}>{row.rule}</Text>
+                <Text style={styles.tieRule} numberOfLines={3}>
+                  {row.rule}
+                </Text>
               </View>
             ))}
           </View>
@@ -70,8 +84,8 @@ export function PointsTableScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40 },
+  list: { flex: 1, minWidth: 0 },
+  content: { paddingTop: 20, paddingBottom: 40 },
   eyebrow: {
     color: colors.textDim,
     fontSize: 11,
@@ -100,14 +114,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     marginBottom: 18,
+    maxWidth: '100%',
   },
   chipText: { color: colors.chrome, fontWeight: '700', fontSize: 12 },
   tableHead: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     marginBottom: 4,
+    maxWidth: '100%',
   },
   headCell: {
     color: colors.textDim,
@@ -122,16 +139,22 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255,255,255,0.06)',
+    maxWidth: '100%',
   },
   top1: { backgroundColor: 'rgba(250,204,21,0.08)' },
   top2: { backgroundColor: 'rgba(203,213,225,0.08)' },
   top3: { backgroundColor: 'rgba(251,146,60,0.08)' },
   cell: { color: colors.textMuted, fontSize: 14 },
   cellStrong: { color: colors.text, fontWeight: '700', fontSize: 14 },
-  pts: { color: colors.chrome, fontWeight: '800', fontSize: 15, textAlign: 'right' },
-  colRank: { width: 48 },
-  colPlace: { flex: 1 },
-  colPts: { width: 64, textAlign: 'right' },
+  pts: {
+    color: colors.chrome,
+    fontWeight: '800',
+    fontSize: 15,
+    textAlign: 'right',
+  },
+  colRank: { width: 44, flexShrink: 0 },
+  colPlace: { flex: 1, minWidth: 0, paddingHorizontal: 8 },
+  colPts: { width: 56, flexShrink: 0, textAlign: 'right' },
   footer: { marginTop: 28 },
   formula: {
     color: colors.textMuted,
@@ -151,7 +174,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255,255,255,0.06)',
+    maxWidth: '100%',
   },
-  tieNum: { color: colors.textDim, fontWeight: '800', width: 24 },
-  tieRule: { color: colors.text, fontWeight: '600', flex: 1, fontSize: 14 },
+  tieNum: { color: colors.textDim, fontWeight: '800', width: 24, flexShrink: 0 },
+  tieRule: {
+    color: colors.text,
+    fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    fontSize: 14,
+  },
 });

@@ -1,13 +1,5 @@
 import React from 'react';
-import {
-  Alert,
-  Image,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
@@ -15,6 +7,10 @@ import { SoftPressable } from '../ui/SoftPressable';
 import { MarqueeText } from '../ui/MarqueeText';
 import { CopyButton } from './profile/CopyButton';
 import { colors } from '../theme';
+import {
+  openSocialUrl,
+  SocialOpenPlatform,
+} from '../lib/openSocialUrl';
 
 const DISCORD_QR = require('../../assets/sacred-discord-qr.jpg');
 const INSTAGRAM_QR = require('../../assets/sacred-instagram-qr.jpg');
@@ -22,7 +18,7 @@ const INSTAGRAM_QR = require('../../assets/sacred-instagram-qr.jpg');
 type Props = NativeStackScreenProps<MainStackParamList, 'SocialHandles'>;
 
 type SocialContact = {
-  key: string;
+  key: SocialOpenPlatform;
   label: string;
   value: string;
   href?: string;
@@ -75,13 +71,7 @@ async function openContact(contact: SocialContact) {
             ? `https://instagram.com/${contact.value.slice(1)}`
             : null);
   if (!url) return;
-  try {
-    const can = await Linking.canOpenURL(url);
-    if (can) await Linking.openURL(url);
-    else Alert.alert('Could not open', contact.value);
-  } catch {
-    Alert.alert('Could not open', contact.value);
-  }
+  await openSocialUrl(url, contact.key);
 }
 
 export function SocialHandlesScreen(_props: Props) {
@@ -140,9 +130,21 @@ export function SocialHandlesScreen(_props: Props) {
                   accessibilityLabel="Sacred Esports Instagram QR code"
                 />
               </View>
-              <Text style={styles.qrLink} numberOfLines={1}>
-                instagram.com/sacredesportss
-              </Text>
+              <SoftPressable
+                onPress={() =>
+                  openSocialUrl(
+                    'https://www.instagram.com/sacredesportss',
+                    'instagram',
+                  )
+                }
+                accessibilityRole="link"
+                accessibilityLabel="Open Sacred Esports Instagram"
+                pressScale={0.99}
+              >
+                <Text style={styles.qrLink} numberOfLines={1}>
+                  instagram.com/sacredesportss
+                </Text>
+              </SoftPressable>
             </View>
 
             <View style={styles.qrDivider} />
@@ -158,9 +160,18 @@ export function SocialHandlesScreen(_props: Props) {
                   accessibilityLabel="Sacred Esports Discord invite QR code"
                 />
               </View>
-              <Text style={styles.qrLink} numberOfLines={1}>
-                discord.gg/mUES4kcAE
-              </Text>
+              <SoftPressable
+                onPress={() =>
+                  openSocialUrl('https://discord.gg/mUES4kcAE', 'discord')
+                }
+                accessibilityRole="link"
+                accessibilityLabel="Open Sacred Esports Discord"
+                pressScale={0.99}
+              >
+                <Text style={styles.qrLink} numberOfLines={1}>
+                  discord.gg/mUES4kcAE
+                </Text>
+              </SoftPressable>
             </View>
           </View>
         </View>

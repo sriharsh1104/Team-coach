@@ -18,9 +18,9 @@ function pick(charset: string): string {
 }
 
 /**
- * Google-signup password emailed in plaintext.
- * Exactly 8 chars: 1 uppercase, 1 digit, 1 special, rest lowercase letters.
- * Always satisfies PASSWORD_REGEX.
+ * Google-signup password emailed in plaintext to brand-new accounts.
+ * Exactly 8 chars (max), with ≥1 uppercase, ≥1 digit, ≥1 special, plus
+ * lowercase so it always satisfies PASSWORD_REGEX for later email login.
  */
 export function generateRandomPassword(_length = 8): string {
   const size = 8;

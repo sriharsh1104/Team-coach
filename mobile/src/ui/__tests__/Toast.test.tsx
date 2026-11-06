@@ -13,6 +13,13 @@ describe('Toast', () => {
     render(<Toast message="Org code copied" />);
     expect(screen.getByText('Org code copied')).toBeTruthy();
   });
+
+  it('keeps long messages inside the banner (no overflow past edges)', () => {
+    const long =
+      'Could not reach the API server. Check your network and try again in a moment.';
+    render(<Toast message={long} />);
+    expect(screen.getByText(long)).toBeTruthy();
+  });
 });
 
 function Harness() {
