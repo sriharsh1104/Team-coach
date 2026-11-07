@@ -278,7 +278,18 @@ export class AuthService {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (user && user.passwordHash) {
-      await this.issuePasswordResetCode(user.id, user.email);
+      try {
+        await this.issuePasswordResetCode(user.id, user.email);
+      } catch (err) {
+        // Don't let a mail/DB failure turn into a 500 for existing accounts
+        // only — that would reveal which emails are registered. Log it so
+        // the real cause is visible server-side.
+        this.logger.error(
+          `Password reset code could not be issued for user ${user.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
     return { success: true as const };
   }
