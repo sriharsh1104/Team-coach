@@ -273,4 +273,31 @@ export class MediaStorageService {
     await writeFile(this.localFilePath(fileKey), file.buffer);
     return { fileKey, deliveryUrl: null, resourceType };
   }
+
+  /**
+   * Delete a previously stored file so avatar/group-photo replaces don't
+   * leave orphaned objects in Cloudinary / on disk.
+   */
+  async deleteFile(fileKey: string | null | undefined): Promise<void> {
+    if (!fileKey) return;
+    try {
+      if (this.isCloudinaryKey(fileKey)) {
+        const { resourceType, publicId } = this.parseCloudinaryKey(fileKey);
+        await cloudinary.uploader.destroy(publicId, {
+          resource_type: resourceType,
+          type: 'authenticated',
+          invalidate: true,
+        });
+        this.logger.log(`[media] deleted cloudinary ${fileKey}`);
+        return;
+      }
+      const { unlink } = await import('fs/promises');
+      await unlink(this.localFilePath(fileKey));
+      this.logger.log(`[media] deleted local ${fileKey}`);
+    } catch (err) {
+      this.logger.warn(
+        `[media] delete failed for ${fileKey}: ${(err as Error).message}`,
+      );
+    }
+  }
 }

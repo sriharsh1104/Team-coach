@@ -5,6 +5,12 @@ export interface PushMessage {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  /** Collapse same-channel pushes into one tray entry that updates the count. */
+  collapseId?: string;
+  /** Android notification channel (must match client setNotificationChannelAsync). */
+  channelId?: string;
+  /** iOS app icon badge. */
+  badge?: number;
 }
 
 // Talks to Expo's push API directly over HTTP instead of using the
@@ -28,9 +34,16 @@ export class PushNotificationService {
     if (messages.length === 0) return;
 
     for (let i = 0; i < messages.length; i += MAX_MESSAGES_PER_REQUEST) {
-      const chunk = messages
-        .slice(i, i + MAX_MESSAGES_PER_REQUEST)
-        .map((m) => ({ ...m, sound: 'default' as const }));
+      const chunk = messages.slice(i, i + MAX_MESSAGES_PER_REQUEST).map((m) => ({
+        to: m.to,
+        title: m.title,
+        body: m.body,
+        data: m.data,
+        sound: 'default' as const,
+        ...(m.collapseId ? { collapseId: m.collapseId } : {}),
+        ...(m.channelId ? { channelId: m.channelId } : {}),
+        ...(typeof m.badge === 'number' ? { badge: m.badge } : {}),
+      }));
 
       const res = await fetch(EXPO_PUSH_API_URL, {
         method: 'POST',

@@ -248,12 +248,18 @@ describe('ChatScreen', () => {
     await pressAndSettle('Send');
 
     await waitFor(() =>
-      expect(fakeSocket.emit).toHaveBeenCalledWith('message:send', {
-        channelKey: 'org',
-        text: 'gl hf',
-      }),
+      expect(fakeSocket.emit).toHaveBeenCalledWith(
+        'message:send',
+        expect.objectContaining({
+          channelKey: 'org',
+          text: 'gl hf',
+          clientId: expect.stringMatching(/^pending:/),
+        }),
+      ),
     );
     expect(input.props.value).toBe('');
+    // Optimistic bubble stays visible until message:new reconciles it.
+    expect(screen.getByText('gl hf')).toBeTruthy();
   });
 
   it('disconnects the socket on unmount', async () => {
@@ -363,7 +369,7 @@ describe('ChatScreen', () => {
       });
 
       expect(mockedImagePicker.launchCameraAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ mediaTypes: 'All' }),
+        expect.objectContaining({ mediaTypes: 'Images' }),
       );
     });
   });

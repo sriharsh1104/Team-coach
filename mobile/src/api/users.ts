@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { Device, Profile, UpdateProfileInput } from './types';
+import { appendFileToFormData } from './uploadFile';
 
 export function getMyProfile() {
   return apiClient.get<Profile>('/users/me').then((res) => res.data);
@@ -7,6 +8,33 @@ export function getMyProfile() {
 
 export function updateMyProfile(input: UpdateProfileInput) {
   return apiClient.patch<Profile>('/users/me', input).then((res) => res.data);
+}
+
+function stripMultipartContentType(data: unknown, headers?: unknown) {
+  if (headers && typeof headers === 'object') {
+    delete (headers as Record<string, unknown>)['Content-Type'];
+    delete (headers as Record<string, unknown>)['content-type'];
+  }
+  return data;
+}
+
+export async function uploadMyAvatar(file: {
+  uri: string;
+  fileName: string;
+  mimeType: string;
+}) {
+  const form = new FormData();
+  await appendFileToFormData(form, {
+    uri: file.uri,
+    name: file.fileName,
+    type: file.mimeType,
+  });
+  return apiClient
+    .post<Profile>('/users/me/avatar', form, {
+      timeout: 60_000,
+      transformRequest: stripMultipartContentType,
+    })
+    .then((res) => res.data);
 }
 
 export function addDevice(name: string, model: string) {

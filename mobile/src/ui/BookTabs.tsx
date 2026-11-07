@@ -204,7 +204,7 @@ export function BookStage({
 const styles = StyleSheet.create({
   stage: {
     position: 'relative',
-    overflow: 'visible',
+    overflow: 'hidden',
   },
   page: {
     width: '100%',

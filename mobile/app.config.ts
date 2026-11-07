@@ -70,6 +70,9 @@ const expoConfig: ExpoConfig = {
       'RECORD_AUDIO',
       'MODIFY_AUDIO_SETTINGS',
       'POST_NOTIFICATIONS',
+      'CAMERA',
+      'READ_MEDIA_IMAGES',
+      'READ_MEDIA_VIDEO',
     ],
     // Lets the OS shrink the window when the keyboard opens (this is
     // actually Expo's own default when unset — set explicitly so it's not
@@ -92,9 +95,22 @@ const expoConfig: ExpoConfig = {
     [
       'expo-notifications',
       {
-        // Needed so Android shows our notifications with a branded icon.
-        // Color is used as the notification accent on Android.
+        // Android status-bar / tray icon must be a white silhouette on
+        // transparent — monochrome adaptive asset fits that requirement.
+        // Takes effect after a native rebuild (EAS / prebuild), not Expo Go.
+        icon: './assets/android-icon-monochrome.png',
         color: '#c9ccd1',
+      },
+    ],
+    [
+      'expo-image-picker',
+      {
+        cameraPermission:
+          'Sacred Team Coach needs camera access to take chat photos.',
+        photosPermission:
+          'Sacred Team Coach needs photo library access to share media in chat.',
+        microphonePermission:
+          'Sacred Team Coach needs microphone access when recording video.',
       },
     ],
     ['./plugins/withApkFileName', { name: 'SacredTeamCoach' }],

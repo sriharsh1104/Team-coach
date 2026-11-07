@@ -62,6 +62,13 @@ export interface OrgMember {
   inGameRoles: string[];
 }
 
+export interface ChatReplyPreview {
+  id: string;
+  text: string | null;
+  senderName: string;
+  mediaType: 'IMAGE' | 'VIDEO' | null;
+}
+
 export interface ChatMessage {
   id: string;
   channelKey: string;
@@ -74,6 +81,20 @@ export interface ChatMessage {
   mediaUrl: string | null;
   mediaType: 'IMAGE' | 'VIDEO' | null;
   createdAt: string;
+  editedAt?: string | null;
+  replyToId?: string | null;
+  replyTo?: ChatReplyPreview | null;
+  starred?: boolean;
+  pinned?: boolean;
+  /** Echoed from message:send so the sender can swap out an optimistic row. */
+  clientId?: string;
+}
+
+export interface ChatChannelMeta {
+  channelKey: string;
+  description: string | null;
+  avatarUrl: string | null;
+  disappearAfterSec: number | null;
 }
 
 export interface ChatChannel {
@@ -87,6 +108,7 @@ export interface ChatChannel {
   unreadCount: number;
   lastMessageAt: string | null;
   lastPreview: string | null;
+  muted?: boolean;
 }
 
 export interface ChatTeammate {

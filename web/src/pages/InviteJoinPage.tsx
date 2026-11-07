@@ -46,10 +46,12 @@ export function InviteJoinPage() {
     if (isLoading) return;
 
     if (!user) {
+      // Signup lives on the home page's Guild tab now (route: /signin), not
+      // a standalone /signup page — ?invite=... there flips it to signup mode.
       const qs = new URLSearchParams({ invite: token });
       if (invitedByUserId) qs.set('ref', invitedByUserId);
       if (seat === 'roster') qs.set('seat', 'roster');
-      navigate(`/signup?${qs.toString()}`, { replace: true });
+      navigate(`/signin?${qs.toString()}`, { replace: true });
       return;
     }
 
@@ -125,7 +127,7 @@ export function InviteJoinPage() {
           <p className="auth-footer">
             <Link to="/">Back home</Link>
             {' · '}
-            <Link to={token ? inviteJoinPath(token, invitedByUserId, seat) : '/signup'}>
+            <Link to={token ? inviteJoinPath(token, invitedByUserId, seat) : '/signin'}>
               Try again
             </Link>
           </p>

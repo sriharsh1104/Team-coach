@@ -11,6 +11,7 @@ import { OrgMember } from '../../api/types';
 import { roleLabel } from '../../api/roles';
 import { colors } from '../../theme';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { ChatFlowHeader } from './ChatFlowHeader';
 
 function formatInGameRoles(roles: string[]): string | null {
   if (roles.length === 0) return null;
@@ -42,26 +43,15 @@ export function ChatMembersPanel({
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <SoftPressable
-          onPress={onBack}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          pressScale={0.94}
-        >
-          <Text style={styles.backLabel}>← Back</Text>
-        </SoftPressable>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {title}
-          </Text>
-          <Text style={styles.headerSub}>
-            {isLoading ? '…' : `${members.length} member${members.length === 1 ? '' : 's'}`}
-          </Text>
-        </View>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ChatFlowHeader
+        title={title}
+        subtitle={
+          isLoading
+            ? '…'
+            : `${members.length} member${members.length === 1 ? '' : 's'}`
+        }
+        onBack={onBack}
+      />
 
       {isLoading ? (
         <View style={styles.center}>
@@ -109,29 +99,6 @@ export function ChatMembersPanel({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingTop: 4,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  backBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  backLabel: { color: colors.link, fontWeight: '700', fontSize: 13 },
-  headerCenter: { flex: 1, minWidth: 0, alignItems: 'center' },
-  headerTitle: { color: colors.text, fontWeight: '700', fontSize: 16 },
-  headerSub: { color: colors.textDim, fontSize: 11, marginTop: 2 },
-  headerSpacer: { width: 72 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   error: { color: colors.danger, textAlign: 'center' },
   list: { padding: 16, paddingBottom: 32 },

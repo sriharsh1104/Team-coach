@@ -12,7 +12,10 @@ import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatService, GUILD_CHANNEL, ORG_CHANNEL } from './chat.service';
+import { ChatPresenceTracker } from './chat-presence.tracker';
 import { SendMessageDto } from './dto/send-message.dto';
+import { DeleteMessagesDto } from './dto/delete-messages.dto';
+import { EditMessageDto } from './dto/edit-message.dto';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { WsRateLimiter } from '../common/ws-rate-limiter';
 
@@ -37,7 +40,20 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
     private readonly chatService: ChatService,
+    private readonly presence: ChatPresenceTracker,
   ) {}
+
+  /** Used by background jobs (scrim reminders) that post outside a socket. */
+  broadcastNewMessage(
+    orgId: string,
+    channelKey: string,
+    message: Record<string, unknown>,
+  ) {
+    this.server.to(this.roomFor(orgId, channelKey)).emit('message:new', message);
+    this.server.to(this.roomFor(orgId, channelKey)).emit('chat:unread', {
+      channelKey,
+    });
+  }
 
   afterInit(server: Server) {
     server.use(async (socket: Socket, next) => {
@@ -75,6 +91,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
   handleDisconnect(client: Socket) {
     // socket.io removes room membership automatically on disconnect.
     this.messageLimiter.clear(client.id);
+    const data = client.data as SocketData | undefined;
+    if (data?.userId) this.presence.clearViewing(data.userId);
   }
 
   @SubscribeMessage('channel:join')
@@ -87,7 +105,23 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
     await this.chatService.assertChannelAccess(data.userId, data.orgId, channelKey);
     await client.join(this.roomFor(data.orgId, channelKey));
+    // Only the actively-viewed channel suppresses pushes — leave any other
+    // channel this socket previously marked as open.
+    this.presence.clearViewing(data.userId);
+    this.presence.setViewing(data.userId, channelKey);
     return { ok: true, channelKey };
+  }
+
+  @SubscribeMessage('channel:leave')
+  async onChannelLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { channelKey?: string },
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.userId) return;
+    const channelKey = body?.channelKey?.trim();
+    this.presence.clearViewing(data.userId, channelKey || undefined);
+    return { ok: true, channelKey: channelKey ?? null };
   }
 
   // Mirrors onChannelJoin's shape — persists via the same markRead the REST
@@ -156,12 +190,17 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
         text: text || undefined,
         mediaUrl: body.mediaUrl,
         mediaType: body.mediaType,
+        replyToId: body.replyToId,
       },
     );
 
     // Ensure sender is in the room, then broadcast.
     await client.join(this.roomFor(orgId, channelKey));
-    this.server.to(this.roomFor(orgId, channelKey)).emit('message:new', message);
+    const clientId = body?.clientId?.trim();
+    this.server.to(this.roomFor(orgId, channelKey)).emit('message:new', {
+      ...message,
+      ...(clientId ? { clientId } : {}),
+    });
 
     // Also nudge org room so inbox unread badges refresh for group.
     if (channelKey === ORG_CHANNEL) {
@@ -172,6 +211,63 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
       this.server.to(this.roomFor(orgId, channelKey)).emit('chat:unread', {
         channelKey,
       });
+    }
+  }
+
+  @SubscribeMessage('message:edit')
+  async onMessageEdit(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: EditMessageDto,
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.orgId || !body?.id || !body?.text) return;
+    if (!this.messageLimiter.allow(client.id)) return;
+
+    try {
+      const { channelKey, message } = await this.chatService.editOwnMessage(
+        data.userId,
+        body.id,
+        body.text,
+      );
+      this.server
+        .to(this.roomFor(data.orgId, channelKey))
+        .emit('message:edited', { channelKey, message });
+    } catch (err) {
+      this.logger.warn(
+        `message:edit failed for ${data.userId}: ${(err as Error).message}`,
+      );
+      return { ok: false, error: (err as Error).message };
+    }
+  }
+
+  @SubscribeMessage('message:delete')
+  async onMessageDelete(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: DeleteMessagesDto,
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.orgId || !Array.isArray(body?.ids) || body.ids.length === 0) {
+      return;
+    }
+    if (!this.messageLimiter.allow(client.id)) return;
+
+    const { deleted } = await this.chatService.deleteOwnMessages(
+      data.userId,
+      body.ids,
+    );
+    if (deleted.length === 0) return;
+
+    // Group by channel so each room only hears about its own removals.
+    const byChannel = new Map<string, string[]>();
+    for (const row of deleted) {
+      const list = byChannel.get(row.channelKey) ?? [];
+      list.push(row.id);
+      byChannel.set(row.channelKey, list);
+    }
+    for (const [channelKey, ids] of byChannel) {
+      this.server
+        .to(this.roomFor(data.orgId, channelKey))
+        .emit('message:deleted', { channelKey, ids });
     }
   }
 

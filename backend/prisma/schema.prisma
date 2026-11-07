@@ -27,6 +27,8 @@ model User {
   googleId     String?  @unique
   name         String
   avatarUrl    String?
+  // Storage key for uploaded avatars — used to delete the previous file on replace.
+  avatarFileKey String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -82,6 +84,11 @@ model User {
   chatMessages       ChatMessage[]
   chatReadStates     ChatReadState[]
   chatDeliveryStates ChatDeliveryState[]
+  chatMutes          ChatMute[]
+  chatStars          ChatStar[]
+  chatClears         ChatClear[]
+  chatPins           ChatPin[]
+  chatReminders      ChatReminder[]
   scrimEvents        ScrimEvent[]
   statExtractions  StatExtraction[]
   playerStats     PlayerStat[]
@@ -165,6 +172,12 @@ model Org {
   chatMessages       ChatMessage[]
   chatReadStates     ChatReadState[]
   chatDeliveryStates ChatDeliveryState[]
+  chatMutes          ChatMute[]
+  chatChannelMetas   ChatChannelMeta[]
+  chatPins           ChatPin[]
+  chatStars          ChatStar[]
+  chatClears         ChatClear[]
+  chatReminders      ChatReminder[]
   scrimEvents        ScrimEvent[]
   statExtractions StatExtraction[]
   playerStats     PlayerStat[]
@@ -229,11 +242,118 @@ model ChatMessage {
   mediaUrl  String?
   mediaType MediaType?
   createdAt DateTime   @default(now())
+  editedAt  DateTime?
+  // WhatsApp-style reply — null for top-level messages.
+  replyToId String?
+  replyTo   ChatMessage?  @relation("ChatReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   ChatMessage[] @relation("ChatReplies")
 
   org    Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  pins   ChatPin[]
+  stars  ChatStar[]
 
   @@index([orgId, channelKey, createdAt])
+  @@index([replyToId])
+}
+
+// Per-user mute for a channel — muted channels skip push notifications.
+model ChatMute {
+  id         String   @id @default(cuid())
+  userId     String
+  orgId      String
+  channelKey String
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId, channelKey])
+  @@index([userId, orgId])
+}
+
+// Shared pin for a channel (WhatsApp-style, max few per room).
+model ChatPin {
+  id         String   @id @default(cuid())
+  orgId      String
+  channelKey String
+  messageId  String
+  pinnedById String
+  pinnedAt   DateTime @default(now())
+
+  org     Org         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pinnedBy User       @relation(fields: [pinnedById], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, channelKey, messageId])
+  @@index([orgId, channelKey])
+}
+
+// Per-user starred / favourite messages.
+model ChatStar {
+  id         String   @id @default(cuid())
+  userId     String
+  orgId      String
+  channelKey String
+  messageId  String
+  createdAt  DateTime @default(now())
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org     Org         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([userId, orgId, channelKey])
+}
+
+// Per-user personal reminder for a chat — push only to the creator at fireAt.
+model ChatReminder {
+  id         String    @id @default(cuid())
+  userId     String
+  orgId      String
+  channelKey String
+  message    String    @db.VarChar(40)
+  fireAt     DateTime
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([sentAt, fireAt])
+  @@index([userId, orgId, channelKey])
+}
+
+// Soft "clear chat for me" — hide messages at/before clearedAt for this user.
+model ChatClear {
+  id         String   @id @default(cuid())
+  userId     String
+  orgId      String
+  channelKey String
+  clearedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId, channelKey])
+}
+
+// Channel-level settings: description, group avatar, disappearing timer.
+model ChatChannelMeta {
+  id                String   @id @default(cuid())
+  orgId             String
+  channelKey        String
+  description       String?  @db.VarChar(500)
+  avatarUrl         String?
+  avatarFileKey     String?
+  // null = off; otherwise auto-delete messages older than this many seconds.
+  disappearAfterSec Int?
+  updatedAt         DateTime @updatedAt
+  updatedById       String?
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, channelKey])
 }
 
 model ChatReadState {

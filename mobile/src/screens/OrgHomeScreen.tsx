@@ -10,22 +10,30 @@ import { MainStackParamList } from '../navigation/types';
 import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
-import { MenuButton, SideDrawer, SideDrawerSection } from '../ui/SideDrawer';
+import { SideDrawer, SideDrawerSection } from '../ui/SideDrawer';
 import { SoftPressable } from '../ui/SoftPressable';
+import { AppShellHeader } from '../ui/AppShellHeader';
 import { emitToast } from '../ui/toastBus';
 import { goToSection } from '../navigation/goToSection';
+import { withActiveDrawerItem } from '../navigation/drawerActive';
+import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ChatHubScreen } from './chat/ChatHubScreen';
+import { useTheme } from '../theme/ThemeContext';
+import { THEME_OPTIONS, ThemeId } from '../theme';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgHome'>;
 
 export function OrgHomeScreen({ navigation }: Props) {
   const { logout, org, user } = useAuth();
+  const { themeId, setTheme } = useTheme();
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
   const realtime = useOrgRealtimeOptional();
   const insets = useSafeAreaInsets();
   const isOwner = !!org?.isOwner;
+  useBlockExitOnRoot(navigation);
   // Owner or coach can manage guild ↔ roster; Guild drawer used to be
   // owner-only so coaches never saw Add/Remove even though the API allows it.
   const canManageGuild = isOwner || !!detail?.canInviteRoster;
@@ -123,10 +131,8 @@ export function OrgHomeScreen({ navigation }: Props) {
           {
             key: 'teamChat',
             label: 'Team Chat',
-            // Resets the stack to just OrgHome (which embeds ChatHubScreen)
-            // instead of pushing a duplicate — lets Chat be switched back to
-            // from anywhere via the drawer, with no back button needed, and
-            // without leaving whatever section was open underneath.
+            // Pop/navigate back to OrgHome (embeds ChatHubScreen) so history
+            // stays intact for the system back button.
             onPress: () => goToSection(navigation, 'OrgHome'),
           },
         ],
@@ -173,18 +179,17 @@ export function OrgHomeScreen({ navigation }: Props) {
       ],
     });
 
-    return sections;
+    return withActiveDrawerItem(sections, 'teamChat');
   }, [navigation, isOwner, canManageGuild]);
 
   return (
     <Screen padBottom={false}>
-      <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
-        <MenuButton onPress={() => setMenuOpen(true)} />
-        <View style={styles.topBarTitleBlock}>
-          <Text style={styles.orgTitle} numberOfLines={1}>
-            {org?.name ?? detail?.name ?? 'Team Chat'}
-          </Text>
-          {detail && (
+      <AppShellHeader
+        title={org?.name ?? detail?.name ?? 'Team Chat'}
+        onMenu={() => setMenuOpen(true)}
+        onSettings={() => setSettingsMenuOpen(true)}
+        subtitle={
+          detail ? (
             <View style={styles.subtitleRow}>
               <SoftPressable
                 onPress={copyOrgCode}
@@ -200,19 +205,9 @@ export function OrgHomeScreen({ navigation }: Props) {
                 · {detail.members.length} Member(s)
               </Text>
             </View>
-          )}
-        </View>
-        <SoftPressable
-          onPress={() => setSettingsMenuOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Account Settings"
-          hitSlop={8}
-          style={styles.settingsBtn}
-          pressScale={0.9}
-        >
-          <Text style={styles.settingsIcon}>⚙</Text>
-        </SoftPressable>
-      </View>
+          ) : undefined
+        }
+      />
 
       <View style={styles.chat}>
         <ChatHubScreen onLoadError={() => emitToast('Could not load chats')} />
@@ -249,6 +244,16 @@ export function OrgHomeScreen({ navigation }: Props) {
             >
               <Text style={styles.dropdownItemText}>Security</Text>
             </SoftPressable>
+            <SoftPressable
+              style={styles.dropdownItem}
+              onPress={() => {
+                setSettingsMenuOpen(false);
+                setThemePickerOpen(true);
+              }}
+              pressScale={0.97}
+            >
+              <Text style={styles.dropdownItemText}>Theme</Text>
+            </SoftPressable>
             <View style={styles.dropdownDivider} />
             <SoftPressable
               style={styles.dropdownItem}
@@ -266,28 +271,49 @@ export function OrgHomeScreen({ navigation }: Props) {
         </View>
       </Modal>
 
+      <Modal
+        visible={themePickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setThemePickerOpen(false)}
+      >
+        <View style={styles.dropdownRoot}>
+          <Pressable
+            style={styles.dropdownBackdrop}
+            onPress={() => setThemePickerOpen(false)}
+            accessibilityLabel="Close Theme Picker"
+          />
+          <View style={[styles.dropdownPanel, { top: insets.top + 56 }]}>
+            <Text style={styles.themeHeading}>Theme</Text>
+            {THEME_OPTIONS.map((opt) => {
+              const active = themeId === opt.id;
+              return (
+                <SoftPressable
+                  key={opt.id}
+                  style={styles.themeRow}
+                  onPress={() => {
+                    setTheme(opt.id as ThemeId);
+                    setThemePickerOpen(false);
+                  }}
+                  pressScale={0.97}
+                >
+                  <View
+                    style={[styles.themeSwatch, { backgroundColor: opt.swatch }]}
+                  />
+                  <Text style={styles.dropdownItemText}>{opt.label}</Text>
+                  {active ? <Text style={styles.themeCheck}>✓</Text> : null}
+                </SoftPressable>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
+
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  topBarTitleBlock: { flex: 1, minWidth: 0 },
-  orgTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    textTransform: 'capitalize',
-    letterSpacing: -0.2,
-  },
   subtitleRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -300,15 +326,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   subtitle: { color: colors.textMuted, fontSize: 12 },
-  settingsBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  settingsIcon: { fontSize: 18, color: colors.text },
   dropdownRoot: { flex: 1 },
   dropdownBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -339,5 +356,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginVertical: 2,
   },
+  themeHeading: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  themeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  themeSwatch: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  themeCheck: { marginLeft: 'auto', color: colors.link, fontWeight: '800' },
   chat: { flex: 1 },
 });

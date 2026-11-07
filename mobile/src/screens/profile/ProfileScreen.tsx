@@ -5,7 +5,10 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
 import { ROLE_OPTIONS, RoleOption } from '../../api/roles';
@@ -16,7 +19,7 @@ import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { SoftPressable } from '../../ui/SoftPressable';
-import { BookStage, useBookTabs } from '../../ui/BookTabs';
+import { useBookTabs } from '../../ui/BookTabs';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { PhoneField } from '../../ui/PhoneField';
 import { Toast, useToast } from '../../ui/Toast';
@@ -28,6 +31,8 @@ import {
   validateAllSocialUrls,
 } from '../../lib/socialUrls';
 import { colors } from '../../theme';
+import { resolveMediaUrl } from '../../api/client';
+import { apiErrorMessage } from '../../api/apiErrorMessage';
 
 type ProfileTab = 'user' | 'game' | 'devices' | 'social';
 
@@ -48,7 +53,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
   const { message: toastMessage, showToast } = useToast();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { tab, openTab, turn } = useBookTabs(PROFILE_TAB_IDS, 'user');
+  const { tab, openTab } = useBookTabs(PROFILE_TAB_IDS, 'user');
   const profileTab = tab as ProfileTab;
 
   const load = useCallback(async () => {
@@ -122,6 +127,36 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
   }
 
   const roleBadge = formatRoleBadge(profile.role, profile.isOwner);
+  const avatarUri = resolveMediaUrl(profile.avatarUrl);
+
+  const onPickAvatar = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow gallery access to set your photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    try {
+      showToast('Uploading photo…');
+      const updated = await usersApi.uploadMyAvatar({
+        uri: asset.uri,
+        fileName: asset.fileName ?? `avatar-${Date.now()}.jpg`,
+        mimeType: asset.mimeType ?? 'image/jpeg',
+      });
+      await onProfileUpdated(updated);
+      await refreshUser();
+      showToast('Photo updated');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not upload photo'));
+    }
+  };
 
   return (
     <Screen>
@@ -130,8 +165,34 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
         contentContainerStyle={{ padding: 24 }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={sharedStyles.title}>{profile.name}</Text>
-        {roleBadge && <Text style={styles.roleBadge}>{roleBadge}</Text>}
+        <View style={styles.headerRow}>
+          <SoftPressable
+            onPress={() => void onPickAvatar()}
+            accessibilityRole="button"
+            accessibilityLabel="Change profile photo"
+            pressScale={0.96}
+            style={styles.avatarBtn}
+          >
+            <View style={styles.avatar}>
+              {avatarUri ? (
+                <Image
+                  source={{ uri: avatarUri }}
+                  style={styles.avatarImg}
+                  contentFit="cover"
+                />
+              ) : (
+                <Text style={styles.avatarInitial}>
+                  {(profile.name || '?').slice(0, 1).toUpperCase()}
+                </Text>
+              )}
+            </View>
+            <Text style={styles.avatarHint}>Change photo</Text>
+          </SoftPressable>
+          <View style={styles.headerText}>
+            <Text style={sharedStyles.title}>{profile.name}</Text>
+            {roleBadge ? <Text style={styles.roleBadge}>{roleBadge}</Text> : null}
+          </View>
+        </View>
 
         {mustComplete && (
           <Text style={styles.introText}>
@@ -152,45 +213,43 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
           }
         />
 
-        <BookStage tab={tab} turn={turn} style={styles.panelCard}>
-          {(active) =>
-            active === 'user' ? (
-              <UserProfileSection
-                profile={profile}
-                mustComplete={mustComplete}
-                onUpdated={onProfileUpdated}
-                onAdvance={() => openTab('game')}
-                showToast={showToast}
-              />
-            ) : active === 'game' ? (
-              <GameProfileSection
-                profile={profile}
-                mustComplete={mustComplete}
-                onUpdated={onProfileUpdated}
-                onAdvance={() => openTab('devices')}
-                showToast={showToast}
-              />
-            ) : active === 'devices' ? (
-              <DevicesProfileSection
-                profile={profile}
-                onDevicesChanged={load}
-                mustComplete={mustComplete}
-                onAdvance={() => openTab('social')}
-                showToast={showToast}
-              />
-            ) : (
-              <SocialProfileSection
-                profile={profile}
-                mustComplete={mustComplete}
-                onUpdated={onProfileUpdated}
-                onAdvance={async () => {
-                  await refreshUser();
-                }}
-                showToast={showToast}
-              />
-            )
-          }
-        </BookStage>
+        <View style={styles.panelCard}>
+          {profileTab === 'user' ? (
+            <UserProfileSection
+              profile={profile}
+              mustComplete={mustComplete}
+              onUpdated={onProfileUpdated}
+              onAdvance={() => openTab('game')}
+              showToast={showToast}
+            />
+          ) : profileTab === 'game' ? (
+            <GameProfileSection
+              profile={profile}
+              mustComplete={mustComplete}
+              onUpdated={onProfileUpdated}
+              onAdvance={() => openTab('devices')}
+              showToast={showToast}
+            />
+          ) : profileTab === 'devices' ? (
+            <DevicesProfileSection
+              profile={profile}
+              onDevicesChanged={load}
+              mustComplete={mustComplete}
+              onAdvance={() => openTab('social')}
+              showToast={showToast}
+            />
+          ) : (
+            <SocialProfileSection
+              profile={profile}
+              mustComplete={mustComplete}
+              onUpdated={onProfileUpdated}
+              onAdvance={async () => {
+                await refreshUser();
+              }}
+              showToast={showToast}
+            />
+          )}
+        </View>
       </ScrollView>
       <Toast message={toastMessage} />
     </Screen>
@@ -702,12 +761,40 @@ function SocialProfileSection({
 }
 
 const styles = StyleSheet.create({
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 16,
+  },
+  headerText: { flex: 1, minWidth: 0 },
+  avatarBtn: { alignItems: 'center', gap: 6 },
+  avatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  avatarImg: { width: '100%', height: '100%' },
+  avatarInitial: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  avatarHint: {
+    color: colors.link,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   roleBadge: {
     color: colors.link,
     fontWeight: '600',
-    textAlign: 'center',
-    marginTop: -16,
-    marginBottom: 16,
+    marginTop: 4,
   },
   panelCard: {
     borderRadius: 16,

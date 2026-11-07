@@ -1,8 +1,9 @@
-import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { FormEvent, useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { GoogleSignInButton } from '../../auth/GoogleSignInButton';
 import { PasswordField } from '../../auth/PasswordField';
 import { useAuth } from '../../auth/AuthContext';
+import { extractInviteToken, savePendingInvite } from '../../auth/invitePending';
 import { postAuthPath } from '../../auth/postAuthPath';
 import { SesLoader } from '../../ui/SesLoader';
 
@@ -18,12 +19,30 @@ function errorMessage(err: unknown, fallback: string) {
 export function GuildLoginTab() {
   const { login, signup, loginWithGoogle, user, org } = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  // An invite link (/join/:token with no session) redirects here with
+  // ?invite=... — land straight on the signup form instead of login.
+  const [mode, setMode] = useState<'login' | 'signup'>(
+    searchParams.get('invite') ? 'signup' : 'login',
+  );
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const resetSuccess = Boolean(
+    (location.state as { passwordResetSuccess?: boolean } | null)
+      ?.passwordResetSuccess,
+  );
+
+  useEffect(() => {
+    const invite = extractInviteToken(searchParams.get('invite') || '');
+    const ref = searchParams.get('ref')?.trim() || undefined;
+    const seat =
+      searchParams.get('seat') === 'roster' ? ('roster' as const) : undefined;
+    if (invite) savePendingInvite(invite, ref, seat);
+  }, [searchParams]);
 
   if (user) {
     return (
@@ -218,6 +237,14 @@ export function GuildLoginTab() {
             </p>
           </div>
         </div>
+        {!signingUp ? (
+          <p className="auth-footer team-login-forgot">
+            <Link to="/forgot-password">Forgot password?</Link>
+          </p>
+        ) : null}
+        {!signingUp && resetSuccess ? (
+          <p className="muted">Password reset — sign in with your new password.</p>
+        ) : null}
         {error ? <p className="error">{error}</p> : null}
         <button className="landing-cta" type="submit" disabled={busy}>
           {signingUp ? 'Create account' : 'Sign in'}

@@ -1,30 +1,43 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { EmojiBar } from './EmojiBar';
+import { StickerPicker } from './StickerPicker';
+import { CustomSticker } from './stickerStorage';
 import { colors } from '../../theme';
 
-export type AttachOption = 'photo' | 'video' | 'camera';
+export type AttachOption = 'photo' | 'video' | 'camera' | 'reminder';
 
 interface Props {
   onPickMedia: (option: AttachOption) => void;
   onPickEmoji: (emoji: string) => void;
+  onPickStickerEmoji: (emoji: string) => void;
+  onPickCustomSticker: (sticker: CustomSticker) => void;
 }
 
-/**
- * WhatsApp-style "+" attachment panel, anchored directly above the input
- * row (not a floating overlay elsewhere on screen) — one icon on the input
- * bar opens this instead of the previous separate emoji strip / 3-icon
- * toolbar row.
- */
-export function AttachMenu({ onPickMedia, onPickEmoji }: Props) {
-  const [showEmoji, setShowEmoji] = useState(false);
+type IonName = React.ComponentProps<typeof Ionicons>['name'];
 
-  if (showEmoji) {
+/**
+ * WhatsApp-style "+" attachment panel with modern glyph icons.
+ */
+export function AttachMenu({
+  onPickMedia,
+  onPickEmoji,
+  onPickStickerEmoji,
+  onPickCustomSticker,
+}: Props) {
+  const [panel, setPanel] = useState<'root' | 'emoji' | 'stickers'>('root');
+
+  if (panel === 'emoji') {
     return (
       <View style={styles.panel}>
         <View style={styles.emojiHeader}>
-          <Pressable onPress={() => setShowEmoji(false)} hitSlop={8} accessibilityLabel="Back to attach options">
-            <Text style={styles.backArrow}>←</Text>
+          <Pressable
+            onPress={() => setPanel('root')}
+            hitSlop={8}
+            accessibilityLabel="Back to attach options"
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.link} />
           </Pressable>
           <Text style={styles.emojiHeaderLabel}>Emoji</Text>
         </View>
@@ -33,17 +46,76 @@ export function AttachMenu({ onPickMedia, onPickEmoji }: Props) {
     );
   }
 
+  if (panel === 'stickers') {
+    return (
+      <View style={styles.panel}>
+        <View style={styles.emojiHeader}>
+          <Pressable
+            onPress={() => setPanel('root')}
+            hitSlop={8}
+            accessibilityLabel="Back to attach options"
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.link} />
+          </Pressable>
+          <Text style={styles.emojiHeaderLabel}>Stickers</Text>
+        </View>
+        <StickerPicker
+          onPickBuiltin={onPickStickerEmoji}
+          onPickCustom={onPickCustomSticker}
+        />
+      </View>
+    );
+  }
+
   const options: Array<{
-    key: AttachOption | 'emoji';
+    key: string;
     label: string;
-    glyph: string;
-    color: string;
+    icon: IonName;
+    tint: string;
     onPress: () => void;
   }> = [
-    { key: 'emoji', label: 'Emoji', glyph: '😊', color: '#d9942b', onPress: () => setShowEmoji(true) },
-    { key: 'photo', label: 'Photo', glyph: '🖼', color: '#8e44ad', onPress: () => onPickMedia('photo') },
-    { key: 'video', label: 'Video', glyph: '🎥', color: '#c0392b', onPress: () => onPickMedia('video') },
-    { key: 'camera', label: 'Camera', glyph: '📷', color: '#2980b9', onPress: () => onPickMedia('camera') },
+    {
+      key: 'emoji',
+      label: 'Emoji',
+      icon: 'happy-outline',
+      tint: '#f5a623',
+      onPress: () => setPanel('emoji'),
+    },
+    {
+      key: 'stickers',
+      label: 'Stickers',
+      icon: 'sparkles-outline',
+      tint: '#2ec4b6',
+      onPress: () => setPanel('stickers'),
+    },
+    {
+      key: 'photo',
+      label: 'Photo',
+      icon: 'images-outline',
+      tint: '#9b59b6',
+      onPress: () => onPickMedia('photo'),
+    },
+    {
+      key: 'video',
+      label: 'Video',
+      icon: 'videocam-outline',
+      tint: '#e74c3c',
+      onPress: () => onPickMedia('video'),
+    },
+    {
+      key: 'camera',
+      label: 'Camera',
+      icon: 'camera-outline',
+      tint: '#3498db',
+      onPress: () => onPickMedia('camera'),
+    },
+    {
+      key: 'reminder',
+      label: 'Reminder',
+      icon: 'alarm-outline',
+      tint: '#e8c547',
+      onPress: () => onPickMedia('reminder'),
+    },
   ];
 
   return (
@@ -56,8 +128,10 @@ export function AttachMenu({ onPickMedia, onPickEmoji }: Props) {
             onPress={opt.onPress}
             accessibilityLabel={opt.label}
           >
-            <View style={[styles.gridIcon, { backgroundColor: opt.color }]}>
-              <Text style={styles.gridGlyph}>{opt.glyph}</Text>
+            <View style={[styles.gridIcon, { backgroundColor: `${opt.tint}22` }]}>
+              <View style={[styles.gridIconInner, { backgroundColor: opt.tint }]}>
+                <Ionicons name={opt.icon} size={22} color="#fff" />
+              </View>
             </View>
             <Text style={styles.gridLabel}>{opt.label}</Text>
           </Pressable>
@@ -74,17 +148,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.03)',
     paddingVertical: 14,
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 20 },
-  gridItem: { alignItems: 'center', width: 64 },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    gap: 14,
+    justifyContent: 'flex-start',
+  },
+  gridItem: { alignItems: 'center', width: 68 },
   gridIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
   },
-  gridGlyph: { fontSize: 24 },
+  gridIconInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   gridLabel: { color: colors.text, fontSize: 12, fontWeight: '600' },
   emojiHeader: {
     flexDirection: 'row',
@@ -93,7 +179,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 6,
   },
-  backArrow: { color: colors.link, fontSize: 18, fontWeight: '700' },
   emojiHeaderLabel: {
     color: colors.textMuted,
     fontSize: 12,

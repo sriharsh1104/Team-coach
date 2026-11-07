@@ -10,7 +10,6 @@ import {
 import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
 import { colors } from '../../theme';
-import { SoftPressable } from '../../ui/SoftPressable';
 import { RoleChips } from '../profile/RoleChips';
 import { CopyableField } from '../profile/CopyableField';
 import { CopyButton } from '../profile/CopyButton';
@@ -19,6 +18,7 @@ import {
   openSocialUrl,
   SocialOpenPlatform,
 } from '../../lib/openSocialUrl';
+import { ChatFlowHeader } from './ChatFlowHeader';
 
 const SOCIAL_LINKS: Array<{
   key: keyof Profile;
@@ -63,21 +63,7 @@ export function ChatMemberProfilePanel({
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <SoftPressable
-          onPress={onBack}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          pressScale={0.94}
-        >
-          <Text style={styles.backLabel}>← Back</Text>
-        </SoftPressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {name}
-        </Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ChatFlowHeader title={name} onBack={onBack} />
 
       {isLoading ? (
         <View style={styles.center}>
@@ -148,33 +134,6 @@ export function ChatMemberProfilePanel({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingTop: 4,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  backBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  backLabel: { color: colors.link, fontWeight: '700', fontSize: 13 },
-  headerTitle: {
-    flex: 1,
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  headerSpacer: { width: 72 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   error: { color: colors.danger, textAlign: 'center' },
   scroll: { flex: 1 },

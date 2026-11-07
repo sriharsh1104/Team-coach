@@ -25,6 +25,9 @@ export function ResetPasswordPage() {
   if (!state.email) {
     return (
       <div className="auth-shell">
+        <div className="brand-watermark auth" aria-hidden="true">
+          <img src="/sacred-logo-transparent.png" alt="" />
+        </div>
         <div className="auth-card">
           <p className="auth-sub">No reset session. Start from forgot password.</p>
           <Link to="/forgot-password">Back to forgot password</Link>
@@ -44,7 +47,7 @@ export function ResetPasswordPage() {
     setError(null);
     try {
       await authApi.resetPassword(state.email!, otp, newPassword);
-      navigate('/login', { state: { passwordResetSuccess: true } });
+      navigate('/signin', { state: { passwordResetSuccess: true } });
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string | string[] } } })
@@ -79,6 +82,9 @@ export function ResetPasswordPage() {
 
   return (
     <div className="auth-shell">
+      <div className="brand-watermark auth" aria-hidden="true">
+        <img src="/sacred-logo-transparent.png" alt="" />
+      </div>
       <form className="auth-card" onSubmit={onSubmit}>
         <button type="button" className="auth-back" onClick={() => navigate(-1)}>
           <span className="auth-back-chevron" aria-hidden="true" />

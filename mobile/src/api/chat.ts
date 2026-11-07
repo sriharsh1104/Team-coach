@@ -19,9 +19,19 @@ export function getChatChannels() {
 // means there's nothing older left.
 export const CHAT_HISTORY_PAGE_SIZE = 50;
 
-export function getChatHistory(channelKey = 'org', before?: string) {
+export function getChatHistory(
+  channelKey = 'org',
+  before?: string,
+  opts?: { starredOnly?: boolean },
+) {
   return apiClient
-    .get<ChatMessage[]>('/chat/messages', { params: { channelKey, before } })
+    .get<ChatMessage[]>('/chat/messages', {
+      params: {
+        channelKey,
+        before,
+        ...(opts?.starredOnly ? { starred: '1' } : {}),
+      },
+    })
     .then((res) => res.data);
 }
 
@@ -54,6 +64,133 @@ export function markChatRead(channelKey = 'org') {
   return apiClient
     .post<{ channelKey: string; unreadCount: number }>('/chat/read', {
       channelKey,
+    })
+    .then((res) => res.data);
+}
+
+/** Delete the caller's own messages (WhatsApp "delete for everyone"). */
+export function deleteMessages(ids: string[]) {
+  return apiClient
+    .post<{ deleted: Array<{ id: string; channelKey: string; orgId: string }> }>(
+      '/chat/messages/delete',
+      { ids },
+    )
+    .then((res) => res.data);
+}
+
+export function editMessage(id: string, text: string) {
+  return apiClient
+    .post<{ channelKey: string; message: ChatMessage }>('/chat/messages/edit', {
+      id,
+      text,
+    })
+    .then((res) => res.data);
+}
+
+export function setChannelMuted(channelKey: string, muted: boolean) {
+  return apiClient
+    .post<{ channelKey: string; muted: boolean }>('/chat/mute', {
+      channelKey,
+      muted,
+    })
+    .then((res) => res.data);
+}
+
+export function createChatReminder(input: {
+  channelKey: string;
+  message: string;
+  fireAt: string;
+}) {
+  return apiClient
+    .post<{
+      id: string;
+      channelKey: string;
+      message: string;
+      fireAt: string;
+    }>('/chat/reminders', input)
+    .then((res) => res.data);
+}
+
+export function clearChat(channelKey: string) {
+  return apiClient
+    .post<{ channelKey: string; clearedAt: string }>('/chat/clear', {
+      channelKey,
+    })
+    .then((res) => res.data);
+}
+
+export function setMessagePinned(
+  channelKey: string,
+  messageId: string,
+  pinned: boolean,
+) {
+  return apiClient
+    .post<{ channelKey: string; messageId: string; pinned: boolean }>(
+      '/chat/pin',
+      { channelKey, messageId, pinned },
+    )
+    .then((res) => res.data);
+}
+
+export function listPinnedMessages(channelKey: string) {
+  return apiClient
+    .get<ChatMessage[]>('/chat/pins', { params: { channelKey } })
+    .then((res) => res.data);
+}
+
+export function setMessageStarred(
+  channelKey: string,
+  messageId: string,
+  starred: boolean,
+) {
+  return apiClient
+    .post<{ messageId: string; starred: boolean }>('/chat/star', {
+      channelKey,
+      messageId,
+      starred,
+    })
+    .then((res) => res.data);
+}
+
+export function getChannelMeta(channelKey: string) {
+  return apiClient
+    .get<import('./types').ChatChannelMeta>('/chat/meta', {
+      params: { channelKey },
+    })
+    .then((res) => res.data);
+}
+
+export function updateChannelMeta(
+  channelKey: string,
+  patch: {
+    description?: string | null;
+    disappearAfterSec?: number | null;
+  },
+) {
+  return apiClient
+    .post<import('./types').ChatChannelMeta>('/chat/meta', {
+      channelKey,
+      ...patch,
+    })
+    .then((res) => res.data);
+}
+
+export async function uploadChannelAvatar(channelKey: string, file: {
+  uri: string;
+  fileName: string;
+  mimeType: string;
+}) {
+  const form = new FormData();
+  await appendFileToFormData(form, {
+    uri: file.uri,
+    name: file.fileName,
+    type: file.mimeType,
+  });
+  form.append('channelKey', channelKey);
+  return apiClient
+    .post<import('./types').ChatChannelMeta>('/chat/meta/avatar', form, {
+      timeout: 60_000,
+      transformRequest: stripMultipartContentType,
     })
     .then((res) => res.data);
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Image, StyleSheet, View, ViewStyle } from 'react-native';
+import { useTheme } from '../theme/ThemeContext';
 
 const sacredLogo = require('../../assets/sacred-logo-transparent.png');
 
@@ -17,11 +18,15 @@ export function BrandWatermark({
   style?: ViewStyle;
 }) {
   const isAuth = variant === 'auth';
+  const { colors } = useTheme();
+  const opacity = isAuth
+    ? Math.min(0.28, colors.watermarkOpacity + 0.1)
+    : colors.watermarkOpacity;
   return (
     <View pointerEvents="none" style={[styles.layer, style]}>
       <Image
         source={sacredLogo}
-        style={[styles.image, isAuth ? styles.imageAuth : styles.imageSubtle]}
+        style={[styles.image, { opacity }]}
         resizeMode="contain"
         fadeDuration={0}
         accessibilityElementsHidden
@@ -42,11 +47,5 @@ const styles = StyleSheet.create({
     width: '88%',
     maxWidth: 420,
     aspectRatio: 1,
-  },
-  imageSubtle: {
-    opacity: 0.12,
-  },
-  imageAuth: {
-    opacity: 0.22,
   },
 });

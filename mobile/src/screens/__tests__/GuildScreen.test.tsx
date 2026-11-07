@@ -156,13 +156,14 @@ describe('GuildScreen', () => {
     await waitFor(() => expect(screen.queryByText('TM · Teammate')).toBeNull());
   });
 
-  it('disables remove for the owner and enables add/remove correctly on Members', async () => {
+  it('hides remove for the owner and shows add/remove only when actionable', async () => {
     render(<GuildScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Waiting Member');
 
     expect(screen.getByLabelText('Add Waiting Member to roster')).toBeTruthy();
     expect(screen.getByLabelText('Remove Teammate from roster')).toBeTruthy();
-    // Owner row still shows icons, but remove is disabled (no pressable enable).
-    expect(screen.getByLabelText('Remove Owner Coach from roster')).toBeTruthy();
+    // Owner cannot leave the roster — no ghost icon.
+    expect(screen.queryByLabelText('Remove Owner Coach from roster')).toBeNull();
+    expect(screen.queryByLabelText('Add Owner Coach to roster')).toBeNull();
   });
 });

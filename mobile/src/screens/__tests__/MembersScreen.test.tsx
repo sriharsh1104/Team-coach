@@ -3,10 +3,16 @@ import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import * as Clipboard from 'expo-clipboard';
 import { MembersScreen } from '../MembersScreen';
 import * as orgApi from '../../api/org';
+import { useAuth } from '../../auth/AuthContext';
 
 jest.mock('../../api/org');
+jest.mock('../../auth/AuthContext');
+jest.mock('../../ui/confirmAsync', () => ({
+  confirmAsync: jest.fn(async () => true),
+}));
 
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
+const mockedUseAuth = useAuth as jest.Mock;
 const navigation = {
   navigate: jest.fn(),
   push: jest.fn(),
@@ -48,6 +54,10 @@ const detail = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockedOrgApi.getMyOrg.mockResolvedValue(detail as any);
+  mockedUseAuth.mockReturnValue({
+    user: { id: 'user-1', name: 'Owner Coach' },
+    refreshOrg: jest.fn(),
+  });
 });
 
 describe('MembersScreen', () => {
@@ -113,5 +123,17 @@ describe('MembersScreen', () => {
       userId: 'user-2',
       name: 'Teammate',
     });
+  });
+
+  it('lets owner/coach remove a non-owner member', async () => {
+    mockedOrgApi.removeMember.mockResolvedValue(undefined as any);
+    render(<MembersScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('2. Teammate');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Remove Teammate'));
+    });
+
+    expect(mockedOrgApi.removeMember).toHaveBeenCalledWith('user-2');
   });
 });

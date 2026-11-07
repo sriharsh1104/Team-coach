@@ -1,14 +1,22 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  forwardRef,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationService, PushMessage } from '../common/push-notification.service';
+import { ChatService, ORG_CHANNEL } from '../chat/chat.service';
+import { ChatGateway } from '../chat/chat.gateway';
 
 const TICK_MS = 60_000;
 const WINDOW_MS = 60_000; // fire once inside the matching minute window
 
 /**
- * Every minute, find rounds whose start is ~30m or ~10m away and push the
- * whole org (count/title only — no sensitive body). Deduped via in-memory set
- * for the process lifetime (fine for single-instance Phase 1).
+ * Every minute, find rounds whose start is ~30m or ~10m away, push the org,
+ * and auto-post the same line into Team Chat.
  */
 @Injectable()
 export class ScrimsReminderService implements OnModuleInit, OnModuleDestroy {
@@ -19,6 +27,10 @@ export class ScrimsReminderService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly push: PushNotificationService,
+    @Inject(forwardRef(() => ChatService))
+    private readonly chatService: ChatService,
+    @Inject(forwardRef(() => ChatGateway))
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   onModuleInit() {
@@ -91,6 +103,30 @@ export class ScrimsReminderService implements OnModuleInit, OnModuleDestroy {
         await this.push.send(messages);
         this.logger.log(
           `Sent ${minutesBefore}m reminder for ${title} R${round.roundNumber} to ${messages.length} member(s)`,
+        );
+      }
+
+      // Auto Team Chat post — skip push (already sent above).
+      try {
+        const senderId = round.event.createdById;
+        const sender = round.event.org.memberships.find(
+          (m) => m.userId === senderId,
+        )?.user;
+        const senderName = sender?.name?.trim() || 'Team Coach';
+        const chatText = `⏰ ${body}`;
+        const { orgId, message } = await this.chatService.createMessage(
+          senderId,
+          senderName,
+          {
+            channelKey: ORG_CHANNEL,
+            text: chatText,
+            skipPush: true,
+          },
+        );
+        this.chatGateway.broadcastNewMessage(orgId, ORG_CHANNEL, message);
+      } catch (err) {
+        this.logger.warn(
+          `Team Chat scrim reminder post failed: ${(err as Error).message}`,
         );
       }
     }

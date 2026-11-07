@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import {
   Animated,
   Dimensions,
+  Easing,
   Modal,
   Pressable,
   ScrollView,
@@ -16,13 +17,18 @@ import { SoftPressable } from './SoftPressable';
 
 const WINDOW = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(300, WINDOW.width * 0.82);
-const SKIP_MOTION = process.env.NODE_ENV === 'test';
+const DRAWER_MS = 260;
+/** Babel often inlines NODE_ENV away from 'test' under Jest — detect jest itself. */
+const SKIP_MOTION =
+  typeof jest !== 'undefined' || process.env.NODE_ENV === 'test';
 
 export type SideDrawerItem = {
   key: string;
   label: string;
   onPress: () => void;
   danger?: boolean;
+  /** Currently open section — soft gold glow. */
+  active?: boolean;
 };
 
 export type SideDrawerSection = {
@@ -52,20 +58,67 @@ export function SideDrawer({
 }) {
   const insets = useSafeAreaInsets();
   const slide = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const backdrop = useRef(new Animated.Value(0)).current;
+  // Closing locally first (before parent flips `open`) keeps the Modal
+  // mounted for the slide-out — otherwise visible=false kills the animation
+  // and the next screen pops in with a hard cut.
+  const closingRef = useRef(false);
   const topPad = Math.max(insets.top, 12) + 8;
   const bottomPad = Math.max(insets.bottom, 12) + 16;
 
   useEffect(() => {
+    if (closingRef.current) return;
     if (SKIP_MOTION) {
       slide.setValue(open ? 0 : -DRAWER_WIDTH);
+      backdrop.setValue(open ? 1 : 0);
       return;
     }
-    Animated.timing(slide, {
-      toValue: open ? 0 : -DRAWER_WIDTH,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-  }, [open, slide]);
+    Animated.parallel([
+      Animated.timing(slide, {
+        toValue: open ? 0 : -DRAWER_WIDTH,
+        duration: DRAWER_MS,
+        easing: open ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdrop, {
+        toValue: open ? 1 : 0,
+        duration: DRAWER_MS,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [open, slide, backdrop]);
+
+  function animateClosed(after?: () => void) {
+    if (SKIP_MOTION) {
+      onClose();
+      after?.();
+      return;
+    }
+    if (closingRef.current) return;
+    closingRef.current = true;
+    Animated.parallel([
+      Animated.timing(slide, {
+        toValue: -DRAWER_WIDTH,
+        duration: DRAWER_MS,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdrop, {
+        toValue: 0,
+        duration: DRAWER_MS,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      closingRef.current = false;
+      if (!finished) return;
+      onClose();
+      // Let the Modal unmount one frame before the stack reset so the two
+      // transitions don't fight and cause a visible jolt.
+      requestAnimationFrame(() => after?.());
+    });
+  }
 
   const resolvedSections: SideDrawerSection[] =
     sections && sections.length > 0
@@ -82,14 +135,26 @@ export function SideDrawer({
       style={({ pressed }) => [
         styles.item,
         item.danger && styles.itemDanger,
+        item.active && styles.itemActive,
         pressed && styles.itemPressed,
       ]}
-      onPress={() => {
-        onClose();
-        requestAnimationFrame(() => item.onPress());
-      }}
+      onPress={() => animateClosed(() => item.onPress())}
     >
-      <Text style={[styles.itemText, item.danger && { color: colors.danger }]}>
+      {item.active ? (
+        <View pointerEvents="none" style={styles.itemShineWrap}>
+          {/* Left → right: soft → strong, so shine comes in from the right edge */}
+          <View style={[styles.itemShineBand, styles.itemShineInner]} />
+          <View style={[styles.itemShineBand, styles.itemShineMid]} />
+          <View style={[styles.itemShineBand, styles.itemShineOuter]} />
+        </View>
+      ) : null}
+      <Text
+        style={[
+          styles.itemText,
+          item.danger && { color: colors.danger },
+          item.active && styles.itemTextActive,
+        ]}
+      >
         {item.label}
       </Text>
     </Pressable>
@@ -100,13 +165,17 @@ export function SideDrawer({
       visible={open}
       transparent
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={() => animateClosed()}
       statusBarTranslucent
     >
       <View style={styles.root}>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.backdrop, { opacity: backdrop }]}
+        />
         <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
+          style={StyleSheet.absoluteFill}
+          onPress={() => animateClosed()}
           accessibilityLabel="Close Menu"
         />
         <Animated.View
@@ -130,7 +199,7 @@ export function SideDrawer({
               ) : null}
             </View>
             <Pressable
-              onPress={onClose}
+              onPress={() => animateClosed()}
               hitSlop={14}
               accessibilityLabel="Close Menu"
               style={styles.closeBtn}
@@ -279,6 +348,33 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.04)',
+    overflow: 'hidden',
+  },
+  itemActive: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: '#e8c547',
+    borderWidth: 1.5,
+  },
+  // Soft gold wash from the right edge inward (no full-card glow).
+  itemShineWrap: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  itemShineBand: {
+    height: '100%',
+  },
+  itemShineOuter: {
+    width: 8,
+    backgroundColor: 'rgba(232,197,71,0.28)',
+  },
+  itemShineMid: {
+    width: 14,
+    backgroundColor: 'rgba(232,197,71,0.14)',
+  },
+  itemShineInner: {
+    width: 18,
+    backgroundColor: 'rgba(232,197,71,0.06)',
   },
   itemPressed: {
     opacity: 0.75,
@@ -287,6 +383,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '700',
     fontSize: 15,
+    zIndex: 1,
+  },
+  itemTextActive: {
+    color: colors.text,
   },
   itemDanger: {
     backgroundColor: 'rgba(248,113,113,0.12)',

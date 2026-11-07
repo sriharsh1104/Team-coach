@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { JwtService } from '@nestjs/jwt';
+import { MediaStorageService } from '../media/media-storage.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { SetPushTokenDto } from './dto/set-push-token.dto';
@@ -69,7 +71,71 @@ export function normalizePhone(phone: string) {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: MediaStorageService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  private async resolveAvatarUrl(
+    avatarUrl: string | null | undefined,
+    avatarFileKey: string | null | undefined,
+    viewerId: string,
+  ) {
+    if (avatarFileKey) {
+      const cloud = this.storage.buildDeliveryUrl(avatarFileKey);
+      if (cloud) return cloud;
+      const token = await this.jwtService.signAsync(
+        { sub: viewerId, fileKey: avatarFileKey, purpose: 'media-file' },
+        { expiresIn: '7d' },
+      );
+      return `/media/files/${encodeURIComponent(avatarFileKey)}?token=${token}`;
+    }
+    return avatarUrl ?? null;
+  }
+
+  /**
+   * Upload a new profile photo and delete the previous stored file so the
+   * DB / CDN never keep both the old and new avatar.
+   */
+  async setMyAvatar(userId: string, file: Express.Multer.File) {
+    const existing = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarFileKey: true },
+    });
+    const stored = await this.storage.storeUploadedFile(file);
+    // Persist fileKey as source of truth; URL is reminted on read.
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        avatarFileKey: stored.fileKey,
+        avatarUrl: stored.deliveryUrl,
+      },
+      select: { ...PROFILE_SELECT, avatarFileKey: true },
+    });
+
+    if (
+      existing?.avatarFileKey &&
+      existing.avatarFileKey !== stored.fileKey
+    ) {
+      await this.storage.deleteFile(existing.avatarFileKey);
+    }
+
+    const membership = await this.prisma.membership.findFirst({
+      where: { userId },
+    });
+    const { avatarFileKey, ...rest } = updated;
+    return {
+      ...rest,
+      avatarUrl: await this.resolveAvatarUrl(
+        rest.avatarUrl,
+        avatarFileKey,
+        userId,
+      ),
+      role: membership?.role ?? null,
+      isOwner: membership?.isOwner ?? false,
+    };
+  }
 
   async updateMyProfile(userId: string, dto: UpdateProfileDto) {
     const data: UpdateProfileDto = { ...dto };
@@ -167,12 +233,18 @@ export class UsersService {
     const [profile, membership] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
-        select: PROFILE_SELECT,
+        select: { ...PROFILE_SELECT, avatarFileKey: true },
       }),
       this.prisma.membership.findFirst({ where: { userId } }),
     ]);
+    const { avatarFileKey, ...rest } = profile;
     return {
-      ...profile,
+      ...rest,
+      avatarUrl: await this.resolveAvatarUrl(
+        rest.avatarUrl,
+        avatarFileKey,
+        userId,
+      ),
       role: membership?.role ?? null,
       isOwner: membership?.isOwner ?? false,
     };

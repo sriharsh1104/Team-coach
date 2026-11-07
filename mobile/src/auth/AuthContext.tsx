@@ -25,6 +25,15 @@ import {
 import { registerPushTokenWithBackend } from '../notifications/registerPushToken';
 import { emitToast } from '../ui/toastBus';
 
+// Narrow check for "the server rejected this token" vs. any other failure
+// (network error, timeout, 5xx, 429) — only the former means the saved
+// session is actually dead and should be cleared.
+function isUnauthorized(err: unknown): boolean {
+  const status = (err as { response?: { status?: number } } | undefined)
+    ?.response?.status;
+  return status === 401;
+}
+
 function toAuthUser(me: AuthUser): AuthUser {
   return {
     id: me.id,
@@ -126,16 +135,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setOrgState(me.org);
         setGuildState(me.guild);
         registerPushTokenWithBackend();
-      } catch {
-        await deleteToken();
+      } catch (err) {
+        // Only a real "this token is no longer valid" response (401 — expired,
+        // logged out elsewhere, password changed, etc.) should wipe the saved
+        // session. A network blip, timeout, 5xx, or rate limit on cold start
+        // must NOT log the user out — the token is still perfectly good, the
+        // request just failed transiently. Previously any failure here
+        // deleted the token, which looked like "I get randomly logged out
+        // when reopening the app" on flaky mobile connections.
+        if (isUnauthorized(err)) {
+          await deleteToken();
+        } else {
+          console.warn('Auth bootstrap: /auth/me failed, keeping session:', err);
+        }
       }
     } catch (err) {
       console.warn('Auth bootstrap failed:', err);
-      try {
-        await deleteToken();
-      } catch {
-        // ignore storage failures during recovery
-      }
     } finally {
       setIsLoading(false);
     }

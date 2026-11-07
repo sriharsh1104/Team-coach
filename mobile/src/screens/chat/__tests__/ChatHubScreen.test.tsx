@@ -8,23 +8,22 @@ import * as usersApi from '../../../api/users';
 jest.mock('../../../api/chat');
 jest.mock('../../../api/org');
 jest.mock('../../../api/users');
-jest.mock('../ChatScreen', () => ({
-  ChatScreen: ({
-    channelKey,
-    searchActive,
-  }: {
-    channelKey: string;
-    searchActive?: boolean;
-  }) => {
-    const { Text } = require('react-native');
-    return (
-      <>
-        <Text>Conversation: {channelKey}</Text>
-        {searchActive ? <Text>In-chat search open</Text> : null}
-      </>
-    );
-  },
-}));
+jest.mock('../ChatScreen', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+  return {
+    ChatScreen: function MockChatScreen(props) {
+      return React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(Text, null, 'Conversation: ' + props.channelKey),
+        props.searchActive
+          ? React.createElement(Text, null, 'In-chat search open')
+          : null,
+      );
+    },
+  };
+});
 
 const mockedChatApi = chatApi as jest.Mocked<typeof chatApi>;
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;

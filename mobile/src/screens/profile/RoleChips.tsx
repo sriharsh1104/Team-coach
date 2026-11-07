@@ -13,9 +13,13 @@ export function RoleChips({
   onToggle?: (role: RoleOption) => void;
   editable?: boolean;
 }) {
+  const roles = editable
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.filter((role) => selected.includes(role));
+
   return (
     <View style={styles.wrap}>
-      {ROLE_OPTIONS.map((role) => {
+      {roles.map((role) => {
         const isActive = selected.includes(role);
         return (
           <SoftPressable

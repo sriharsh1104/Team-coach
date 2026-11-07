@@ -1,10 +1,10 @@
 import React from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme';
 import { BrandWatermark } from './BrandWatermark';
+import { useTheme } from '../theme/ThemeContext';
 
-/** Dark Sacred shell with watermark — wrap any in-app screen content. */
+/** Sacred shell with watermark — wrap any in-app screen content. */
 export function Screen({
   children,
   style,
@@ -19,10 +19,12 @@ export function Screen({
   padBottom?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   return (
     <View
       style={[
         styles.root,
+        { backgroundColor: colors.bg },
         padTop ? { paddingTop: insets.top } : null,
         padBottom ? { paddingBottom: insets.bottom } : null,
         style,
@@ -35,6 +37,6 @@ export function Screen({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+  root: { flex: 1 },
   content: { flex: 1 },
 });

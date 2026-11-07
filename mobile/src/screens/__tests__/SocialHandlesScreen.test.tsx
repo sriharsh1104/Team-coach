@@ -41,12 +41,10 @@ describe('SocialHandlesScreen', () => {
     expect(screen.getByText('SACRED ESPORTS')).toBeTruthy();
     expect(screen.getByText('instagram.com/sacredesportss')).toBeTruthy();
     expect(screen.getByText('discord.gg/mUES4kcAE')).toBeTruthy();
-    expect(
-      screen.getByLabelText('Sacred Esports Instagram QR code'),
-    ).toBeTruthy();
-    expect(
-      screen.getByLabelText('Sacred Esports Discord invite QR code'),
-    ).toBeTruthy();
+    expect(screen.getByLabelText('Instagram QR preview')).toBeTruthy();
+    expect(screen.getByLabelText('Discord QR preview')).toBeTruthy();
+    expect(screen.getByLabelText('View Instagram QR full screen')).toBeTruthy();
+    expect(screen.getByLabelText('View Discord QR full screen')).toBeTruthy();
     expect(screen.getByText('Scan to connect')).toBeTruthy();
 
     await act(async () => {
@@ -70,11 +68,20 @@ describe('SocialHandlesScreen', () => {
     );
 
     await act(async () => {
-      fireEvent.press(screen.getByLabelText('Open Sacred Esports Discord'));
+      fireEvent.press(screen.getByLabelText('Open Discord'));
     });
     expect(Linking.openURL).toHaveBeenCalledWith(
       'discord://invite/mUES4kcAE',
     );
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('View Instagram QR full screen'));
+    });
+    expect(screen.getByLabelText('Instagram QR full screen')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Close'));
+    });
+    expect(screen.queryByLabelText('Instagram QR full screen')).toBeNull();
 
     await act(async () => {
       fireEvent.press(screen.getAllByLabelText('Copy')[0]);

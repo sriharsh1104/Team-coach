@@ -294,38 +294,43 @@ function RosterActionIcons({
   onRemove: () => void;
   name: string;
 }) {
+  // Only render actions that apply — a permanently-disabled twin (e.g. "+"
+  // on the Roster tab) used to sit next to the real control at 0.35 opacity
+  // and looked like both icons were "missing" to the naked eye.
+  if (!canAdd && !canRemove) return null;
+
   return (
     <View style={styles.iconActions}>
-      <SoftPressable
-        style={[styles.iconBtn, (!canAdd || busy) && styles.iconBtnDisabled]}
-        disabled={!canAdd || busy}
-        onPress={onAdd}
-        pressScale={0.92}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !canAdd || busy }}
-        accessibilityLabel={`Add ${name} to roster`}
-      >
-        <Ionicons
-          name="person-add"
-          size={22}
-          color={canAdd && !busy ? colors.chrome : colors.textDim}
-        />
-      </SoftPressable>
-      <SoftPressable
-        style={[styles.iconBtn, (!canRemove || busy) && styles.iconBtnDisabled]}
-        disabled={!canRemove || busy}
-        onPress={onRemove}
-        pressScale={0.92}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !canRemove || busy }}
-        accessibilityLabel={`Remove ${name} from roster`}
-      >
-        <Ionicons
-          name="person-remove"
-          size={22}
-          color={canRemove && !busy ? colors.danger : colors.textDim}
-        />
-      </SoftPressable>
+      {canAdd ? (
+        <SoftPressable
+          style={[styles.iconBtn, styles.iconBtnAdd, busy && styles.iconBtnDisabled]}
+          disabled={busy}
+          onPress={onAdd}
+          pressScale={0.92}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
+          accessibilityLabel={`Add ${name} to roster`}
+        >
+          <Ionicons name="person-add" size={22} color={colors.chromeInk} />
+        </SoftPressable>
+      ) : null}
+      {canRemove ? (
+        <SoftPressable
+          style={[
+            styles.iconBtn,
+            styles.iconBtnRemove,
+            busy && styles.iconBtnDisabled,
+          ]}
+          disabled={busy}
+          onPress={onRemove}
+          pressScale={0.92}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
+          accessibilityLabel={`Remove ${name} from roster`}
+        >
+          <Ionicons name="person-remove" size={22} color={colors.text} />
+        </SoftPressable>
+      ) : null}
     </View>
   );
 }
@@ -505,8 +510,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  iconBtnDisabled: { opacity: 0.35 },
+  // Chrome / danger fills so the glyph reads clearly on the dark card —
+  // the old translucent chip + dim glyph was nearly invisible.
+  iconBtnAdd: {
+    backgroundColor: colors.chrome,
+  },
+  iconBtnRemove: {
+    backgroundColor: colors.danger,
+  },
+  iconBtnDisabled: { opacity: 0.55 },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 16 },
 });

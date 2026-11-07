@@ -20,9 +20,12 @@ export function TwoFactorPage() {
   if (!challengeToken) {
     return (
       <div className="auth-shell">
+        <div className="brand-watermark auth" aria-hidden="true">
+          <img src="/sacred-logo-transparent.png" alt="" />
+        </div>
         <div className="auth-card">
           <p className="auth-sub">No 2FA challenge. Sign in again.</p>
-          <Link to="/login">Back to login</Link>
+          <Link to="/signin">Back to login</Link>
         </div>
       </div>
     );
@@ -56,6 +59,9 @@ export function TwoFactorPage() {
 
   return (
     <div className="auth-shell">
+      <div className="brand-watermark auth" aria-hidden="true">
+        <img src="/sacred-logo-transparent.png" alt="" />
+      </div>
       <form className="auth-card" onSubmit={onSubmit}>
         <h1 className="brand">Two-factor</h1>
         <p className="auth-sub">Enter the code from your authenticator app.</p>

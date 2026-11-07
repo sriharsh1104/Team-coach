@@ -35,6 +35,7 @@ const mockedUseAuth = useAuth as jest.Mock;
 const navigation = {
   navigate: jest.fn(),
   dispatch: jest.fn(),
+  isFocused: jest.fn(() => true),
   addListener: jest.fn(() => jest.fn()),
 } as any;
 
@@ -137,15 +138,8 @@ describe('OrgHomeScreen', () => {
         requestAnimationFrame(() => resolve());
       });
     });
-    // Drawer items reset the stack to [OrgHome, target] instead of calling
-    // navigate() directly — see goToSection.
-    expect(navigation.dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        payload: expect.objectContaining({
-          routes: [{ name: 'OrgHome' }, { name: 'Members', params: undefined }],
-        }),
-      }),
-    );
+    // Drawer items push/navigate so Android back can reverse history.
+    expect(navigation.navigate).toHaveBeenCalledWith('Members', undefined);
   });
 
   it('shows Guild to coaches who can invite roster even when not owner', async () => {

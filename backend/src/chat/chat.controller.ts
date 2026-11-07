@@ -24,6 +24,15 @@ import { MediaStorageService, localMediaType } from '../media/media-storage.serv
 import { mediaFileInterceptorOptions } from '../media/multer-options';
 import { ChatService, ORG_CHANNEL } from './chat.service';
 import { MarkReadDto } from './dto/mark-read.dto';
+import { DeleteMessagesDto } from './dto/delete-messages.dto';
+import { EditMessageDto } from './dto/edit-message.dto';
+import { MuteChannelDto } from './dto/mute-channel.dto';
+import { PinMessageDto } from './dto/pin-message.dto';
+import { StarMessageDto } from './dto/star-message.dto';
+import { ClearChatDto } from './dto/clear-chat.dto';
+import { UpdateChannelMetaDto } from './dto/update-channel-meta.dto';
+import { CreateReminderDto } from './dto/create-reminder.dto';
+import { ChatReminderService } from './chat-reminder.service';
 
 @Controller('chat')
 export class ChatController {
@@ -31,10 +40,24 @@ export class ChatController {
 
   constructor(
     private readonly chatService: ChatService,
+    private readonly chatReminders: ChatReminderService,
     private readonly jwtService: JwtService,
     private readonly mediaService: MediaService,
     private readonly storage: MediaStorageService,
   ) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Post('reminders')
+  createReminder(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: CreateReminderDto,
+  ) {
+    return this.chatReminders.create(user.userId, {
+      channelKey: dto.channelKey,
+      message: dto.message,
+      fireAt: dto.fireAt,
+    });
+  }
 
   @UseGuards(JwtAuthGuard)
   @Get('channels')
@@ -54,11 +77,141 @@ export class ChatController {
     @CurrentUser() user: { userId: string },
     @Query('channelKey') channelKey?: string,
     @Query('before') before?: string,
+    @Query('starred') starred?: string,
   ) {
     return this.chatService.listMessages(
       user.userId,
       channelKey?.trim() || ORG_CHANNEL,
       before,
+      { starredOnly: starred === '1' || starred === 'true' },
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('messages/delete')
+  deleteMessages(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: DeleteMessagesDto,
+  ) {
+    return this.chatService.deleteOwnMessages(user.userId, dto.ids);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('messages/edit')
+  editMessage(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: EditMessageDto,
+  ) {
+    return this.chatService.editOwnMessage(user.userId, dto.id, dto.text);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('mute')
+  muteChannel(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: MuteChannelDto,
+  ) {
+    return this.chatService.setChannelMuted(
+      user.userId,
+      dto.channelKey,
+      dto.muted,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('clear')
+  clearChat(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: ClearChatDto,
+  ) {
+    return this.chatService.clearChatForMe(user.userId, dto.channelKey);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('pin')
+  pinMessage(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: PinMessageDto,
+  ) {
+    return this.chatService.setMessagePinned(
+      user.userId,
+      dto.channelKey,
+      dto.messageId,
+      dto.pinned,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('pins')
+  listPins(
+    @CurrentUser() user: { userId: string },
+    @Query('channelKey') channelKey?: string,
+  ) {
+    return this.chatService.listPinnedMessages(
+      user.userId,
+      channelKey?.trim() || ORG_CHANNEL,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('star')
+  starMessage(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: StarMessageDto,
+  ) {
+    return this.chatService.setMessageStarred(
+      user.userId,
+      dto.channelKey,
+      dto.messageId,
+      dto.starred,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('meta')
+  getMeta(
+    @CurrentUser() user: { userId: string },
+    @Query('channelKey') channelKey?: string,
+  ) {
+    return this.chatService.getChannelMeta(
+      user.userId,
+      channelKey?.trim() || ORG_CHANNEL,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('meta')
+  updateMeta(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: UpdateChannelMetaDto,
+  ) {
+    return this.chatService.updateChannelMeta(
+      user.userId,
+      dto.channelKey?.trim() || ORG_CHANNEL,
+      {
+        description: dto.description,
+        disappearAfterSec: dto.disappearAfterSec,
+      },
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('meta/avatar')
+  @UseInterceptors(FileInterceptor('file', mediaFileInterceptorOptions(8 * 1024 * 1024)))
+  async uploadChannelAvatar(
+    @CurrentUser() user: { userId: string },
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body('channelKey') channelKey?: string,
+  ) {
+    if (!file) throw new BadRequestException('Image file is required');
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Only image files are allowed for avatars');
+    }
+    const stored = await this.storage.storeUploadedFile(file);
+    return this.chatService.setChannelAvatar(
+      user.userId,
+      channelKey?.trim() || ORG_CHANNEL,
+      stored,
     );
   }
 
@@ -209,14 +362,15 @@ export class ChatController {
     resourceType: 'image' | 'video',
   ) {
     const mediaType = resourceType === 'video' ? 'VIDEO' : 'IMAGE';
-    const cloudUrl = this.storage.buildDeliveryUrl(fileKey);
+    // Always store the API proxy path (not a raw Cloudinary delivery URL).
+    // Signed CDN URLs expire (~1h) and then chat history thumbnails die;
+    // listMessages/rescope regenerates a fresh delivery URL from this fileKey
+    // on every read, same pattern as the Media feed.
     const token = await this.jwtService.signAsync(
       { sub: userId, fileKey, purpose: 'chat-file' },
       { expiresIn: '7d' },
     );
-    const mediaUrl =
-      cloudUrl ??
-      `/chat/files/${encodeURIComponent(fileKey)}?token=${token}`;
+    const mediaUrl = `/chat/files/${encodeURIComponent(fileKey)}?token=${token}`;
 
     let mediaPostId: string | null = null;
     try {

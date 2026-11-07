@@ -5,7 +5,6 @@ import { AppShell } from './layout/AppShell';
 import { ChatPage } from './pages/ChatPage';
 import { GuildSpacePage } from './pages/guild/GuildSpacePage';
 import { HomePage } from './pages/HomePage';
-import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ManageTournamentRecordsPage } from './pages/ManageTournamentRecordsPage';
@@ -24,7 +23,6 @@ import { ProfilePage } from './pages/ProfilePage';
 import { RuleBookPage } from './pages/RuleBookPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { StatsPage } from './pages/StatsPage';
-import { SignupPage } from './pages/SignupPage';
 import { SocialHandlesPage } from './pages/SocialHandlesPage';
 import { TwoFactorPage } from './pages/TwoFactorPage';
 import { TwoFactorSetupPage } from './pages/TwoFactorSetupPage';
@@ -35,7 +33,9 @@ import { SesLoader } from './ui/SesLoader';
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isLoading, user } = useAuth();
   if (isLoading) return <SesLoader label="Loading" />;
-  if (!user) return <Navigate to="/login" replace />;
+  // Login/signup live on the home page's Guild tab now — no standalone
+  // /login page to send people to.
+  if (!user) return <Navigate to="/signin" replace />;
   return children;
 }
 
@@ -73,23 +73,14 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      {/* Same component for every home tab — each gets its own path (see
+          TAB_PATHS in home/homeTabs.ts) so refresh/back-button/deep-links
+          land on that tab instead of resetting to Home. */}
+      <Route path="/tournaments" element={<HomePage />} />
+      <Route path="/records" element={<HomePage />} />
+      <Route path="/roster" element={<HomePage />} />
+      <Route path="/signin" element={<HomePage />} />
 
-      <Route
-        path="/login"
-        element={
-          <PublicOnly>
-            <LoginPage />
-          </PublicOnly>
-        }
-      />
-      <Route
-        path="/signup"
-        element={
-          <PublicOnly>
-            <SignupPage />
-          </PublicOnly>
-        }
-      />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route
         path="/forgot-password"

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Text, View, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
-import { OrgDetail } from '../api/types';
+import { useAuth } from '../auth/AuthContext';
+import { MembershipRole, OrgDetail, OrgMember } from '../api/types';
 import { roleLabel } from '../api/roles';
 import { MainStackParamList } from '../navigation/types';
 import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
@@ -11,6 +13,10 @@ import { colors } from '../theme';
 import { SoftPressable } from '../ui/SoftPressable';
 import { InviteQr } from '../ui/InviteQr';
 import { CopyButton } from './profile/CopyButton';
+import { RoleSelector } from './RoleSelector';
+import { emitToast } from '../ui/toastBus';
+import { confirmAsync } from '../ui/confirmAsync';
+import { apiErrorMessage } from '../api/apiErrorMessage';
 
 function formatInGameRoles(roles: string[]): string | null {
   if (roles.length === 0) return null;
@@ -19,10 +25,12 @@ function formatInGameRoles(roles: string[]): string | null {
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Members'>;
 
-/** Esports roster list. Owner/coach see a distinct roster code + invite link. */
+/** Esports roster list. Owner/coach see invite + add/remove controls. */
 export function MembersScreen({ navigation }: Props) {
+  const { user, refreshOrg } = useAuth();
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const realtime = useOrgRealtimeOptional();
 
   const load = useCallback(async () => {
@@ -54,6 +62,46 @@ export function MembersScreen({ navigation }: Props) {
     setIsRefreshing(false);
   };
 
+  const canManage =
+    !!detail?.canInviteRoster || !!detail?.isOwner;
+  const canChangeRoles = !!detail?.isOwner;
+
+  const onChangeRole = async (member: OrgMember, role: MembershipRole) => {
+    if (role === member.role) return;
+    setBusyId(member.userId);
+    try {
+      await orgApi.changeMemberRole(member.userId, role);
+      emitToast(
+        `${member.name} is now ${role.charAt(0)}${role.slice(1).toLowerCase()}`,
+      );
+      await refreshOrg();
+      await load();
+    } catch (err) {
+      emitToast(apiErrorMessage(err, 'Could not change role'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onRemove = async (member: OrgMember) => {
+    const confirmed = await confirmAsync(
+      'Remove Member',
+      `Remove ${member.name} from the roster? They will need a new invite to rejoin.`,
+      'Remove',
+    );
+    if (!confirmed) return;
+    setBusyId(member.userId);
+    try {
+      await orgApi.removeMember(member.userId);
+      emitToast(`${member.name} removed`);
+      await load();
+    } catch (err) {
+      emitToast(apiErrorMessage(err, 'Could not remove member'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const canInviteRoster =
     !!detail?.canInviteRoster &&
     !!detail.rosterReferralLink &&
@@ -79,9 +127,9 @@ export function MembersScreen({ navigation }: Props) {
                 <View style={styles.inviteCard}>
                   <Text style={styles.inviteTitle}>Esports Roster Invite</Text>
                   <Text style={styles.inviteHint}>
-                    Owner/coach only. Roster code is separate from the guild
-                    code. Already registered users can open the link and join
-                    without a new signup.
+                    Owner/coach only. Share this to add someone to the roster.
+                    Already registered users can open the link and join without
+                    a new signup.
                   </Text>
                   <InviteQr value={detail.rosterReferralLink!} label="Scan to join roster" />
                   <View style={styles.inviteRow}>
@@ -105,37 +153,73 @@ export function MembersScreen({ navigation }: Props) {
                 <Text style={styles.rosterHint}>
                   {detail.members.length} roster member
                   {detail.members.length === 1 ? '' : 's'}. Only the owner or a
-                  coach can share roster invites.
+                  coach can share roster invites or remove members.
                 </Text>
               )}
+              {canManage ? (
+                <Text style={styles.manageHint}>
+                  Tap − to remove someone
+                  {canChangeRoles ? ', or change their role below' : ''}.
+                </Text>
+              ) : null}
             </View>
           ) : null
         }
         contentContainerStyle={styles.listContent}
         renderItem={({ item, index }) => {
           const inGameRoles = formatInGameRoles(item.inGameRoles);
+          const showRemove =
+            canManage &&
+            !item.isOwner &&
+            item.userId !== user?.id &&
+            !(
+              !detail?.isOwner &&
+              detail?.myRole === 'COACH' &&
+              item.role === 'COACH'
+            );
           return (
-            <SoftPressable
-              style={styles.memberRow}
-              onPress={() =>
-                navigation.push('MemberProfile', {
-                  userId: item.userId,
-                  name: item.name,
-                })
-              }
-              pressScale={0.985}
-            >
-              <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>
-                  {index + 1}. {item.name}
-                  {item.isOwner ? ' (Owner)' : ''}
-                </Text>
-                {inGameRoles && (
-                  <Text style={styles.memberInGameRoles}>{inGameRoles}</Text>
-                )}
-              </View>
-              <Text style={styles.memberRole}>{item.role}</Text>
-            </SoftPressable>
+            <View style={styles.memberCard}>
+              <SoftPressable
+                style={styles.memberRow}
+                onPress={() =>
+                  navigation.push('MemberProfile', {
+                    userId: item.userId,
+                    name: item.name,
+                  })
+                }
+                pressScale={0.985}
+              >
+                <View style={styles.memberInfo}>
+                  <Text style={styles.memberName}>
+                    {index + 1}. {item.name}
+                    {item.isOwner ? ' (Owner)' : ''}
+                  </Text>
+                  {inGameRoles && (
+                    <Text style={styles.memberInGameRoles}>{inGameRoles}</Text>
+                  )}
+                </View>
+                <Text style={styles.memberRole}>{item.role}</Text>
+              </SoftPressable>
+              {canChangeRoles && !item.isOwner ? (
+                <RoleSelector
+                  value={item.role}
+                  onChange={(role) => void onChangeRole(item, role)}
+                />
+              ) : null}
+              {showRemove ? (
+                <SoftPressable
+                  style={styles.removeBtn}
+                  disabled={busyId === item.userId}
+                  onPress={() => void onRemove(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${item.name}`}
+                  pressScale={0.94}
+                >
+                  <Ionicons name="person-remove-outline" size={18} color={colors.text} />
+                  <Text style={styles.removeLabel}>Remove</Text>
+                </SoftPressable>
+              ) : null}
+            </View>
           );
         }}
       />
@@ -151,6 +235,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 16,
+  },
+  manageHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginBottom: 12,
+    lineHeight: 16,
   },
   inviteCard: {
     borderWidth: 1,
@@ -183,21 +273,39 @@ const styles = StyleSheet.create({
   inviteTextCol: { flex: 1 },
   inviteLabel: { color: colors.textMuted, fontSize: 12 },
   inviteValue: { color: colors.text, fontWeight: '600', marginTop: 2 },
+  memberCard: {
+    marginBottom: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    overflow: 'hidden',
+  },
   memberRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 13,
     paddingHorizontal: 12,
-    marginBottom: 6,
     gap: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
   },
   memberInfo: { flex: 1 },
   memberName: { fontSize: 16, color: colors.text, fontWeight: '600' },
   memberInGameRoles: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   memberRole: { color: colors.textMuted, fontWeight: '600', fontSize: 12 },
+  removeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    marginHorizontal: 12,
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  removeLabel: { color: colors.text, fontWeight: '600', fontSize: 13 },
 });

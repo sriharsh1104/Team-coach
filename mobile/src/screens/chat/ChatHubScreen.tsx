@@ -6,6 +6,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as chatApi from '../../api/chat';
 import { ChatChannel, ChatTeammate } from '../../api/types';
 import { colors } from '../../theme';
@@ -14,6 +15,9 @@ import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
 import { ChatMembersPanel } from './ChatMembersPanel';
 import { ChatMemberProfilePanel } from './ChatMemberProfilePanel';
+import { ChatSettingsSheet } from './ChatSettingsSheet';
+import { ChatFlowHeader } from './ChatFlowHeader';
+import { ChannelAvatar } from './ChannelAvatar';
 
 interface Props {
   /** Called when loading the channel list fails — e.g. to surface a toast.
@@ -27,6 +31,8 @@ type ActiveChat = {
   type: 'ORG' | 'DM';
   memberCount: number | null;
   peerUserId: string | null;
+  muted: boolean;
+  avatarUrl: string | null;
 };
 
 /** Local steps on top of an open chat — back pops in reverse order. */
@@ -44,6 +50,9 @@ export function ChatHubScreen({ onLoadError }: Props) {
   const [active, setActive] = useState<ActiveChat | null>(null);
   const [overlayStack, setOverlayStack] = useState<ChatOverlay[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [starredOnly, setStarredOnly] = useState(false);
+  const [chatEpoch, setChatEpoch] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -93,6 +102,9 @@ export function ChatHubScreen({ onLoadError }: Props) {
     type: 'ORG' | 'DM';
     memberCount?: number | null;
     peerUserId?: string | null;
+    muted?: boolean;
+    peerAvatarUrl?: string | null;
+    avatarUrl?: string | null;
   }) => {
     setOverlayStack([]);
     setActive({
@@ -101,12 +113,37 @@ export function ChatHubScreen({ onLoadError }: Props) {
       type: channel.type,
       memberCount: channel.memberCount ?? null,
       peerUserId: channel.peerUserId ?? null,
+      muted: !!channel.muted,
+      avatarUrl: channel.peerAvatarUrl ?? channel.avatarUrl ?? null,
     });
+  };
+
+  const toggleMute = async () => {
+    if (!active) return;
+    const next = !active.muted;
+    setActive({ ...active, muted: next });
+    setChannels((prev) =>
+      prev.map((c) =>
+        c.channelKey === active.channelKey ? { ...c, muted: next } : c,
+      ),
+    );
+    try {
+      await chatApi.setChannelMuted(active.channelKey, next);
+    } catch {
+      setActive({ ...active, muted: !next });
+      setChannels((prev) =>
+        prev.map((c) =>
+          c.channelKey === active.channelKey ? { ...c, muted: !next } : c,
+        ),
+      );
+    }
   };
 
   const backToInbox = () => {
     setOverlayStack([]);
     setSearchOpen(false);
+    setSettingsOpen(false);
+    setStarredOnly(false);
     setActive(null);
     // The inbox was loaded once on mount — without this, returning from a
     // conversation you just sent a message in still shows the stale
@@ -168,72 +205,126 @@ export function ChatHubScreen({ onLoadError }: Props) {
 
     return (
       <View style={styles.flex}>
-        <View style={styles.chatHeader}>
-          <SoftPressable
-            onPress={backToInbox}
-            style={styles.backBtn}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={10}
-            pressScale={0.92}
-          >
-            <Text style={styles.backIcon}>←</Text>
-          </SoftPressable>
+        <ChatFlowHeader
+          title={active.title}
+          subtitle={subtitle}
+          onBack={backToInbox}
+          onTitlePress={openHeaderInfo}
+          titleAccessibilityLabel={
+            active.type === 'ORG' ? 'Team members' : 'Member profile'
+          }
+          leading={
+            <ChannelAvatar
+              uri={active.avatarUrl}
+              size={34}
+              fallback={active.type === 'ORG' ? '◈' : active.title.slice(0, 1)}
+            />
+          }
+          trailing={
+            <>
+              <SoftPressable
+                style={styles.mediaBtn}
+                onPress={() => pushOverlay({ kind: 'media' })}
+                accessibilityRole="button"
+                accessibilityLabel="Chat Media"
+                hitSlop={8}
+                pressScale={0.95}
+              >
+                <Text style={styles.mediaBtnText}>Media</Text>
+              </SoftPressable>
 
-          {/* Outer flex:1 — SoftPressable puts styles on its inner view, so flex
-              must live on a real row child or Media sits next to the title. */}
-          <View style={styles.chatTitleBlock}>
+              <SoftPressable
+                style={styles.iconBtn}
+                onPress={() => void toggleMute()}
+                accessibilityRole="button"
+                accessibilityLabel={active.muted ? 'Unmute chat' : 'Mute chat'}
+                hitSlop={8}
+                pressScale={0.92}
+              >
+                <Ionicons
+                  name={active.muted ? 'notifications-off-outline' : 'notifications-outline'}
+                  size={18}
+                  color={active.muted ? colors.textMuted : colors.chrome}
+                />
+              </SoftPressable>
+
+              <SoftPressable
+                style={styles.iconBtn}
+                onPress={() => setSearchOpen((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel="Search chat"
+                hitSlop={8}
+                pressScale={0.92}
+              >
+                <Ionicons name="search-outline" size={18} color={colors.chrome} />
+              </SoftPressable>
+
+              <SoftPressable
+                style={styles.iconBtn}
+                onPress={() => setSettingsOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Chat settings"
+                hitSlop={8}
+                pressScale={0.92}
+              >
+                <Ionicons name="ellipsis-vertical" size={16} color={colors.chrome} />
+              </SoftPressable>
+            </>
+          }
+        />
+        {starredOnly ? (
+          <View style={styles.starredBanner}>
+            <Text style={styles.starredBannerText}>Starred messages</Text>
             <SoftPressable
-              onPress={openHeaderInfo}
+              onPress={() => setStarredOnly(false)}
+              hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={
-                active.type === 'ORG' ? 'Team members' : 'Member profile'
-              }
-              pressScale={0.98}
+              accessibilityLabel="Show all messages"
+              pressScale={0.95}
             >
-              <Text style={styles.chatTitle} numberOfLines={1}>
-                {active.title}
-              </Text>
-              <Text style={styles.chatSubtitle} numberOfLines={1}>
-                {subtitle}
-              </Text>
+              <Text style={styles.starredBannerAction}>Show all</Text>
             </SoftPressable>
           </View>
-
-          <SoftPressable
-            style={styles.mediaBtn}
-            onPress={() => pushOverlay({ kind: 'media' })}
-            accessibilityRole="button"
-            accessibilityLabel="Chat Media"
-            hitSlop={8}
-            pressScale={0.95}
-          >
-            <Text style={styles.mediaBtnText}>Media</Text>
-          </SoftPressable>
-
-          <SoftPressable
-            style={styles.searchBtn}
-            onPress={() => setSearchOpen((v) => !v)}
-            accessibilityRole="button"
-            accessibilityLabel="Search chat"
-            hitSlop={8}
-            pressScale={0.92}
-          >
-            <Text style={styles.searchIcon}>⌕</Text>
-          </SoftPressable>
-        </View>
+        ) : null}
         <ChatScreen
-          key={active.channelKey}
+          key={`${active.channelKey}:${starredOnly ? 'starred' : 'all'}:${chatEpoch}`}
           embedded
           channelKey={active.channelKey}
           searchActive={searchOpen}
           onCloseSearch={() => setSearchOpen(false)}
+          starredOnly={starredOnly}
         />
         <ChatMediaModal
           visible={mediaOpen}
           channelKey={active.channelKey}
           title={active.title}
           onClose={popOverlay}
+        />
+        <ChatSettingsSheet
+          visible={settingsOpen}
+          channelKey={active.channelKey}
+          isGroup={active.type === 'ORG'}
+          onClose={() => setSettingsOpen(false)}
+          onCleared={() => {
+            setStarredOnly(false);
+            setChatEpoch((n) => n + 1);
+          }}
+          onStarredFilter={() => {
+            setSettingsOpen(false);
+            setStarredOnly(true);
+          }}
+          onMetaChanged={(meta) => {
+            setActive((prev) =>
+              prev ? { ...prev, avatarUrl: meta.avatarUrl } : prev,
+            );
+            setChannels((prev) =>
+              prev.map((c) =>
+                c.channelKey === meta.channelKey
+                  ? { ...c, peerAvatarUrl: meta.avatarUrl }
+                  : c,
+              ),
+            );
+          }}
         />
       </View>
     );
@@ -258,16 +349,15 @@ export function ChatHubScreen({ onLoadError }: Props) {
               <Text style={styles.section}>Group Chats</Text>
             ) : null}
             {groupChannels.map((ch) => (
-              <SoftPressable
-                key={ch.channelKey}
-                style={[styles.row, styles.teamRow]}
-                onPress={() => openChannel(ch)}
-                pressScale={0.985}
-              >
-                <View style={styles.teamAvatar}>
-                  <Text style={styles.teamAvatarText}>◈</Text>
-                </View>
-                <View style={styles.rowMain}>
+              <View key={ch.channelKey} style={[styles.row, styles.teamRow]}>
+                <ChannelAvatar uri={ch.peerAvatarUrl} size={40} />
+                <SoftPressable
+                  style={styles.rowMain}
+                  onPress={() => openChannel(ch)}
+                  pressScale={0.985}
+                  accessibilityRole="button"
+                  accessibilityLabel={ch.title}
+                >
                   <Text style={styles.rowTitle}>{ch.title}</Text>
                   <Text style={styles.preview} numberOfLines={1}>
                     {ch.memberCount ? `${ch.memberCount} members` : 'Group'}
@@ -275,13 +365,13 @@ export function ChatHubScreen({ onLoadError }: Props) {
                       ? ` · ${ch.lastPreview}`
                       : ' · No messages yet'}
                   </Text>
-                </View>
+                </SoftPressable>
                 {ch.unreadCount > 0 ? (
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>{ch.unreadCount}</Text>
                   </View>
                 ) : null}
-              </SoftPressable>
+              </View>
             ))}
 
             {(dmChannels.length > 0 || startDmTeammates.length > 0) && (
@@ -300,6 +390,12 @@ export function ChatHubScreen({ onLoadError }: Props) {
                 }
                 pressScale={0.985}
               >
+                <ChannelAvatar
+                  uri={item.peerAvatarUrl}
+                  size={40}
+                  fallback={(item.title || '?').slice(0, 1).toUpperCase()}
+                  previewable={!!item.peerAvatarUrl}
+                />
                 <View style={styles.rowMain}>
                   <Text style={styles.rowTitle}>{item.title}</Text>
                   {item.lastPreview ? (
@@ -335,10 +431,17 @@ export function ChatHubScreen({ onLoadError }: Props) {
                         type: 'DM',
                         memberCount: null,
                         peerUserId: mate.userId,
+                        avatarUrl: mate.avatarUrl,
                       })
                     }
                     pressScale={0.985}
                   >
+                    <ChannelAvatar
+                      uri={mate.avatarUrl}
+                      size={40}
+                      fallback={(mate.name || '?').slice(0, 1).toUpperCase()}
+                      previewable={!!mate.avatarUrl}
+                    />
                     <Text style={styles.rowTitle}>{mate.name}</Text>
                     <Text style={styles.dmHint}>1:1</Text>
                   </SoftPressable>
@@ -358,6 +461,26 @@ export function ChatHubScreen({ onLoadError }: Props) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  starredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(201,204,209,0.08)',
+  },
+  starredBannerText: {
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  starredBannerAction: {
+    color: colors.link,
+    fontWeight: '700',
+    fontSize: 13,
+  },
   inboxTitle: {
     color: colors.text,
     fontSize: 22,
@@ -402,15 +525,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(201,204,209,0.08)',
     borderColor: 'rgba(201,204,209,0.18)',
   },
-  teamAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(201,204,209,0.18)',
-  },
-  teamAvatarText: { color: colors.chrome, fontWeight: '700', fontSize: 16 },
   rowMain: { flex: 1, minWidth: 0 },
   rowTitle: { color: colors.text, fontWeight: '700', fontSize: 16 },
   preview: { color: colors.textMuted, marginTop: 2, fontSize: 13 },
@@ -430,47 +544,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  chatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 4,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(10,10,12,0.92)',
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: {
-    color: colors.link,
-    fontWeight: '700',
-    fontSize: 22,
-    lineHeight: 24,
-  },
-  chatTitleBlock: {
-    flex: 1,
-    minWidth: 0,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chatTitle: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 17,
-    textAlign: 'center',
-  },
-  chatSubtitle: {
-    color: colors.textDim,
-    fontSize: 11,
-    marginTop: 2,
-    textAlign: 'center',
-  },
   mediaBtn: {
     height: 36,
     justifyContent: 'center',
@@ -483,16 +556,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  searchBtn: {
-    width: 36,
-    height: 36,
+  iconBtn: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  searchIcon: {
-    color: colors.chrome,
-    fontWeight: '700',
-    fontSize: 20,
-    lineHeight: 22,
   },
 });

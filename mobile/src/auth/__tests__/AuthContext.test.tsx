@@ -92,13 +92,30 @@ describe('AuthContext', () => {
 
   it('clears a stored token that no longer verifies (expired/invalid) instead of getting stuck', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'stale-token');
-    mockedAuthApi.me.mockRejectedValue(new Error('401'));
+    // Shaped like a real axios error for a 401 response — the only case
+    // that should actually clear the saved session.
+    mockedAuthApi.me.mockRejectedValue({ response: { status: 401 } });
 
     const { result } = renderAuth();
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.user).toBeNull();
     expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBeNull();
+  });
+
+  it('keeps a saved token after a transient /auth/me failure (network blip, timeout, 5xx) instead of forcing a logout', async () => {
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'still-good-token');
+    // No `response` on the error — e.g. axios timeout or network error, or a
+    // transient 500/429 — must NOT be treated as "session invalid".
+    mockedAuthApi.me.mockRejectedValue(new Error('Network Error'));
+
+    const { result } = renderAuth();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.user).toBeNull();
+    expect(await SecureStore.getItemAsync(TOKEN_STORAGE_KEY)).toBe(
+      'still-good-token',
+    );
   });
 
   it('signup persists the token and populates user/org from the response', async () => {

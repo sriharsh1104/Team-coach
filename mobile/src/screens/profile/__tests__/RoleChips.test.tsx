@@ -19,8 +19,16 @@ describe('RoleChips', () => {
 
   it('does not call onToggle when editable is false', () => {
     const onToggle = jest.fn();
-    render(<RoleChips selected={[]} onToggle={onToggle} editable={false} />);
+    render(
+      <RoleChips selected={['SNIPER']} onToggle={onToggle} editable={false} />,
+    );
     fireEvent.press(screen.getByText('Sniper'));
     expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it('only shows selected roles when not editable', () => {
+    render(<RoleChips selected={['IGL']} editable={false} />);
+    expect(screen.getByText('IGL')).toBeTruthy();
+    expect(screen.queryByText('Sniper')).toBeNull();
   });
 });

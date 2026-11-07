@@ -490,12 +490,18 @@ export class OrgService {
     if (!current) {
       throw new NotFoundException('You are not part of an org yet');
     }
-    if (!current.isOwner) {
-      throw new ForbiddenException('Only the org owner can remove members');
+    const canRemove =
+      current.isOwner || current.role === MembershipRole.COACH;
+    if (!canRemove) {
+      throw new ForbiddenException(
+        'Only the org owner or a coach can remove members',
+      );
     }
     if (current.userId === dto.targetUserId) {
       throw new BadRequestException(
-        'You cannot remove yourself — transfer ownership first',
+        current.isOwner
+          ? 'You cannot remove yourself — transfer ownership first'
+          : 'You cannot remove yourself from the roster',
       );
     }
 
@@ -504,6 +510,17 @@ export class OrgService {
     });
     if (!target) {
       throw new NotFoundException('That user is not a member of your org');
+    }
+    if (target.isOwner) {
+      throw new ForbiddenException('The org owner cannot be removed');
+    }
+    // Coaches may remove players/analysts, not other coaches.
+    if (
+      !current.isOwner &&
+      current.role === MembershipRole.COACH &&
+      target.role === MembershipRole.COACH
+    ) {
+      throw new ForbiddenException('Coaches cannot remove other coaches');
     }
 
     // No soft-delete concept anywhere in this schema — a hard delete here

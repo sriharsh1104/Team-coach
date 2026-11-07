@@ -37,6 +37,11 @@ import { generateEmailOtp } from './email-verification.util';
 import { PASSWORD_REGEX, generateRandomPassword } from './password.util';
 
 const BCRYPT_SALT_ROUNDS = 12;
+// Mobile app sessions stay logged in much longer than the configured
+// JWT_EXPIRES_IN default (which is tuned for the web app) — nobody wants to
+// re-enter their password every few days on their phone. Requested
+// explicitly as a floor regardless of whatever JWT_EXPIRES_IN is set to.
+const MOBILE_ACCESS_TOKEN_EXPIRES_IN = '30d';
 // A 6-digit OTP is short-lived (10 min), single-use, and already capped at
 // MAX_EMAIL_OTP_ATTEMPTS guesses — it doesn't need the same bcrypt cost as a
 // long-lived account password.
@@ -216,7 +221,7 @@ export class AuthService {
     return user;
   }
 
-  async verifyEmailSignup(dto: VerifyEmailDto) {
+  async verifyEmailSignup(dto: VerifyEmailDto, mobile = false) {
     const user = await this.resolveEmailVerificationChallenge(dto.challengeToken);
     if (user.emailVerified) {
       // Minting a session here with no code check at all — on the strength
@@ -258,7 +263,7 @@ export class AuthService {
       where: { id: user.id },
       data: { emailVerified: true },
     });
-    return this.buildAuthResponse(updated);
+    return this.buildAuthResponse(updated, mobile);
   }
 
   async resendEmailVerification(dto: ResendEmailVerificationDto) {
@@ -370,7 +375,7 @@ export class AuthService {
     return { success: true as const };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, mobile = false) {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -396,10 +401,10 @@ export class AuthService {
       return { requiresEmailVerification: true as const, challengeToken };
     }
 
-    return this.completeLoginOrChallenge(user);
+    return this.completeLoginOrChallenge(user, mobile);
   }
 
-  async googleLogin(dto: GoogleLoginDto) {
+  async googleLogin(dto: GoogleLoginDto, mobile = false) {
     // Anything that goes wrong here — a malformed/garbage token, an expired
     // one, or even a transient failure fetching Google's verification certs —
     // is something the caller should see as "couldn't verify your Google
@@ -512,7 +517,7 @@ export class AuthService {
           );
         }
 
-        const auth = await this.completeLoginOrChallenge(user);
+        const auth = await this.completeLoginOrChallenge(user, mobile);
         if ('accessToken' in auth) {
           return { ...auth, passwordEmailSent: true as const };
         }
@@ -520,14 +525,14 @@ export class AuthService {
       }
     }
 
-    return this.completeLoginOrChallenge(user);
+    return this.completeLoginOrChallenge(user, mobile);
   }
 
   // 2FA is a property of the account, not the login method — applies the
   // same way whether credentials came from a password or Google.
-  private async completeLoginOrChallenge(user: User) {
+  private async completeLoginOrChallenge(user: User, mobile = false) {
     if (!user.twoFactorEnabled) {
-      return this.buildAuthResponse(user);
+      return this.buildAuthResponse(user, mobile);
     }
     const payload: TwoFactorChallengePayload = {
       sub: user.id,
@@ -539,7 +544,7 @@ export class AuthService {
     return { requiresTwoFactor: true as const, challengeToken };
   }
 
-  async verifyTwoFactorLogin(dto: TwoFactorVerifyDto) {
+  async verifyTwoFactorLogin(dto: TwoFactorVerifyDto, mobile = false) {
     let payload: TwoFactorChallengePayload;
     try {
       payload = await this.jwtService.verifyAsync<TwoFactorChallengePayload>(
@@ -566,7 +571,7 @@ export class AuthService {
         where: { id: user.id },
         data: { lastTotpStep: result.step },
       });
-      return this.buildAuthResponse(updated);
+      return this.buildAuthResponse(updated, mobile);
     }
 
     if (dto.backupCode) {
@@ -584,7 +589,7 @@ export class AuthService {
         where: { id: user.id },
         data: { twoFactorBackupCodeHashes: remaining },
       });
-      return this.buildAuthResponse(updated);
+      return this.buildAuthResponse(updated, mobile);
     }
 
     throw new BadRequestException('A code or backup code is required');
@@ -695,7 +700,7 @@ export class AuthService {
     return { success: true };
   }
 
-  async changePassword(userId: string, dto: ChangePasswordDto) {
+  async changePassword(userId: string, dto: ChangePasswordDto, mobile = false) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!user.passwordHash) {
       throw new BadRequestException(
@@ -716,7 +721,7 @@ export class AuthService {
       data: { passwordHash, tokenVersion: { increment: 1 } },
     });
 
-    return this.buildAuthResponse(updated);
+    return this.buildAuthResponse(updated, mobile);
   }
 
   // `exp` is always present in practice — it comes from the verified JWT
@@ -776,17 +781,27 @@ export class AuthService {
     };
   }
 
-  private async buildAuthResponse(user: User) {
+  private async buildAuthResponse(user: User, mobile = false) {
     const session = await this.currentSession(user.id);
 
-    const accessToken = await this.jwtService.signAsync({
+    const payload = {
       sub: user.id,
       email: user.email,
       tokenVersion: user.tokenVersion,
       // Gives this specific token an identity RevokedToken can target —
       // without it, logout would have no way to revoke only this session.
       jti: randomUUID(),
-    });
+    };
+    // Mobile keeps people logged in for a month regardless of JWT_EXPIRES_IN
+    // (tuned for the web app) — nobody wants to re-enter their password
+    // every few days on their phone. Only overriding expiresIn when mobile
+    // keeps the existing single-arg signAsync call (and its tests) intact
+    // for every other login path.
+    const accessToken = mobile
+      ? await this.jwtService.signAsync(payload, {
+          expiresIn: MOBILE_ACCESS_TOKEN_EXPIRES_IN,
+        })
+      : await this.jwtService.signAsync(payload);
 
     return {
       accessToken,

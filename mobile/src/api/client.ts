@@ -37,8 +37,20 @@ function shouldSkipLoader(cfg?: RequestConfigWithFlags): boolean {
   return false;
 }
 
+function metroHost(): string | null {
+  // Expo Go / dev client: hostUri looks like "192.168.1.13:8081".
+  const hostUri =
+    Constants.expoConfig?.hostUri ??
+    (Constants as { manifest?: { debuggerHost?: string } }).manifest
+      ?.debuggerHost ??
+    null;
+  if (!hostUri) return null;
+  const host = hostUri.split(':')[0]?.trim();
+  return host || null;
+}
+
 function resolveApiBaseUrl(): string {
-  const configured =
+  let configured =
     (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ??
     'http://localhost:3000';
   // `.env.development` uses 10.0.2.2 for the Android emulator. That address
@@ -46,6 +58,20 @@ function resolveApiBaseUrl(): string {
   // so `npm start` → press `w` still hits the Nest API.
   if (Platform.OS === 'web' && configured.includes('10.0.2.2')) {
     return configured.replace('10.0.2.2', 'localhost');
+  }
+  // Physical phone / Expo Go: `localhost` is the phone itself, not the
+  // laptop running Nest. Point API (and relative media URLs) at the same
+  // machine Metro is served from.
+  if (
+    Platform.OS !== 'web' &&
+    (configured.includes('localhost') || configured.includes('127.0.0.1'))
+  ) {
+    const host = metroHost();
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+      configured = configured
+        .replace('localhost', host)
+        .replace('127.0.0.1', host);
+    }
   }
   return configured;
 }
@@ -67,6 +93,12 @@ export const apiClient = axios.create({
   // Physical devices hanging on a bad host (e.g. localhost baked into an APK
   // when .env.production was gitignored) used to leave cold start stuck forever.
   timeout: 15000,
+  // Lets the backend mint a longer-lived access token for this app (see
+  // MOBILE_ACCESS_TOKEN_EXPIRES_IN in auth.service.ts) — the web app has no
+  // equivalent header, so it keeps whatever JWT_EXPIRES_IN is configured.
+  headers: {
+    'X-Client-Platform': 'mobile',
+  },
 });
 
 apiClient.interceptors.request.use(async (requestConfig) => {

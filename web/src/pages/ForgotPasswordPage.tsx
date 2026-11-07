@@ -61,7 +61,7 @@ export function ForgotPasswordPage() {
         </button>
 
         <p className="auth-footer">
-          <Link to="/login">← Back to log in</Link>
+          <Link to="/signin">← Back to log in</Link>
         </p>
       </form>
       {busy ? <SesLoader label="Sending code" /> : null}

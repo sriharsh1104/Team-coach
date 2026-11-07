@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { Socket } from 'socket.io-client';
 import * as chatApi from '../api/chat';
-import { TOKEN_STORAGE_KEY } from '../api/client';
+import { TOKEN_STORAGE_KEY, resolveMediaUrl } from '../api/client';
 import { ChatChannel, ChatMessage, ChatTeammate } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import {
@@ -459,6 +459,7 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
                 <div className="messages" ref={listRef}>
                   {messages.map((m) => {
                     const mine = m.senderId === user?.id;
+                    const mediaSrc = resolveMediaUrl(m.mediaUrl);
                     return (
                       <div
                         key={m.id}
@@ -469,6 +470,28 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
                       >
                         {!mine ? (
                           <div className="sender">{m.senderName}</div>
+                        ) : null}
+                        {m.mediaType === 'IMAGE' && mediaSrc ? (
+                          <a
+                            href={mediaSrc}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="chat-media-link"
+                          >
+                            <img
+                              src={mediaSrc}
+                              alt=""
+                              className="chat-media"
+                            />
+                          </a>
+                        ) : null}
+                        {m.mediaType === 'VIDEO' && mediaSrc ? (
+                          <video
+                            className="chat-media"
+                            src={mediaSrc}
+                            controls
+                            preload="metadata"
+                          />
                         ) : null}
                         <MessageBody text={m.text} knownIgns={knownIgns} />
                       </div>

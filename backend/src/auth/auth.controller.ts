@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
@@ -28,6 +36,11 @@ const authThrottleLimit = () => (process.env.NODE_ENV === 'test' ? 100000 : 5);
 const resendVerificationThrottleLimit = () =>
   process.env.NODE_ENV === 'test' ? 100000 : 3;
 
+// The mobile app sets this header on every request (see mobile/src/api/client.ts)
+// so routes that mint an access token can give it a much longer lifetime —
+// see MOBILE_ACCESS_TOKEN_EXPIRES_IN in auth.service.ts.
+const isMobileClient = (platform?: string) => platform === 'mobile';
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -43,26 +56,38 @@ export class AuthController {
 
   @Throttle({ default: { limit: authThrottleLimit, ttl: 60000 } })
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  login(
+    @Body() dto: LoginDto,
+    @Headers('x-client-platform') platform?: string,
+  ) {
+    return this.authService.login(dto, isMobileClient(platform));
   }
 
   @Throttle({ default: { limit: authThrottleLimit, ttl: 60000 } })
   @Post('google')
-  googleLogin(@Body() dto: GoogleLoginDto) {
-    return this.authService.googleLogin(dto);
+  googleLogin(
+    @Body() dto: GoogleLoginDto,
+    @Headers('x-client-platform') platform?: string,
+  ) {
+    return this.authService.googleLogin(dto, isMobileClient(platform));
   }
 
   @Throttle({ default: { limit: authThrottleLimit, ttl: 60000 } })
   @Post('2fa/verify')
-  verifyTwoFactor(@Body() dto: TwoFactorVerifyDto) {
-    return this.authService.verifyTwoFactorLogin(dto);
+  verifyTwoFactor(
+    @Body() dto: TwoFactorVerifyDto,
+    @Headers('x-client-platform') platform?: string,
+  ) {
+    return this.authService.verifyTwoFactorLogin(dto, isMobileClient(platform));
   }
 
   @Throttle({ default: { limit: authThrottleLimit, ttl: 60000 } })
   @Post('verify-email')
-  verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.authService.verifyEmailSignup(dto);
+  verifyEmail(
+    @Body() dto: VerifyEmailDto,
+    @Headers('x-client-platform') platform?: string,
+  ) {
+    return this.authService.verifyEmailSignup(dto, isMobileClient(platform));
   }
 
   @Throttle({ default: { limit: resendVerificationThrottleLimit, ttl: 60000 } })
@@ -99,8 +124,13 @@ export class AuthController {
   changePassword(
     @CurrentUser() currentUser: { userId: string },
     @Body() dto: ChangePasswordDto,
+    @Headers('x-client-platform') platform?: string,
   ) {
-    return this.authService.changePassword(currentUser.userId, dto);
+    return this.authService.changePassword(
+      currentUser.userId,
+      dto,
+      isMobileClient(platform),
+    );
   }
 
   @UseGuards(JwtAuthGuard)

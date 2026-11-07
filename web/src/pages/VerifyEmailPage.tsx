@@ -29,9 +29,12 @@ export function VerifyEmailPage() {
   if (!state.challengeToken) {
     return (
       <div className="auth-shell">
+        <div className="brand-watermark auth" aria-hidden="true">
+          <img src="/sacred-logo-transparent.png" alt="" />
+        </div>
         <div className="auth-card">
           <p className="auth-sub">No verification session. Start from signup.</p>
-          <Link to="/signup">Back to signup</Link>
+          <Link to="/signin">Back to signup</Link>
         </div>
       </div>
     );
@@ -92,6 +95,9 @@ export function VerifyEmailPage() {
 
   return (
     <div className="auth-shell">
+      <div className="brand-watermark auth" aria-hidden="true">
+        <img src="/sacred-logo-transparent.png" alt="" />
+      </div>
       <form className="auth-card" onSubmit={onSubmit}>
         <button type="button" className="auth-back" onClick={() => navigate(-1)}>
           <span className="auth-back-chevron" aria-hidden="true" />

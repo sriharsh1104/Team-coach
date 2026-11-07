@@ -9,12 +9,20 @@ import { JwtService } from '@nestjs/jwt';
 import { MembershipRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationService, PushMessage } from '../common/push-notification.service';
+import { MediaStorageService } from '../media/media-storage.service';
+import { ChatPresenceTracker } from './chat-presence.tracker';
 
-// Matches the local (non-Cloudinary) chat-file URL chat.controller.ts mints
-// at upload time — see rescopeMediaUrlForViewer below.
+// Matches the chat-file proxy URL chat.controller.ts mints at upload time
+// (local disk or Cloudinary fileKey) — see rescopeMediaUrlForViewer below.
 const LOCAL_CHAT_FILE_URL_RE = /^\/chat\/files\/([^?]+)\?token=/;
+// Legacy messages that baked a Cloudinary delivery URL into mediaUrl.
+const CLOUDINARY_DELIVERY_RE =
+  /res\.cloudinary\.com\/[^/]+\/(image|video)\/authenticated\/(?:s--[^/]+--\/)?(?:v\d+\/)?([^?]+)/;
 
 const HISTORY_LIMIT = 50;
+const MAX_PINS_PER_CHANNEL = 3;
+/** Allowed disappearing-message timers (seconds). 0 = off. */
+export const DISAPPEAR_OPTIONS_SEC = [0, 3600, 86400, 604800] as const;
 export const ORG_CHANNEL = 'org';
 export const GUILD_CHANNEL = 'guild';
 
@@ -23,6 +31,16 @@ const MENTION_TOKEN_RE = /@([^\s@]+)/g;
 
 function normalizeIgnKey(value: string): string {
   return value.trim().toLowerCase().replace(/[\s~_\-.]+/g, '');
+}
+
+function truncatePushBody(
+  text: string | null | undefined,
+  max: number,
+): string | null {
+  const t = text?.trim();
+  if (!t) return null;
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
 function extractMentionTokens(text: string): string[] {
@@ -41,6 +59,8 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly pushNotifications: PushNotificationService,
     private readonly jwtService: JwtService,
+    private readonly storage: MediaStorageService,
+    private readonly presence: ChatPresenceTracker,
   ) {}
 
   async getMembershipForUser(userId: string) {
@@ -70,7 +90,7 @@ export class ChatService {
     return { orgId, roster: !!roster };
   }
 
-  private async resolveChannel(userId: string, channelKey: string) {
+  async resolveChannel(userId: string, channelKey: string) {
     if (channelKey === ORG_CHANNEL) {
       const membership = await this.getMembershipForUser(userId);
       await this.assertChannelAccess(userId, membership.orgId, channelKey);
@@ -202,11 +222,42 @@ export class ChatService {
     for (const g of guildSeats) peerById.set(g.user.id, g.user);
     const peers = [...peerById.values()].sort((a, b) => a.name.localeCompare(b.name));
 
+    const [selfRoster, selfGuild] = await Promise.all([
+      roster
+        ? this.prisma.membership.findFirst({
+            where: { userId, orgId },
+            select: { createdAt: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.guildMembership.findFirst({
+        where: { userId, orgId },
+        select: { createdAt: true },
+      }),
+    ]);
+    const groupCutoff = selfRoster
+      ? await this.historyCutoffFor(orgId, ORG_CHANNEL, selfRoster.createdAt)
+      : undefined;
+    const mutedRows = await this.prisma.chatMute.findMany({
+      where: { userId, orgId },
+      select: { channelKey: true },
+    });
+    const mutedKeys = new Set(mutedRows.map((r) => r.channelKey));
+    const channelMetas = await this.prisma.chatChannelMeta.findMany({
+      where: {
+        orgId,
+        channelKey: { in: [ORG_CHANNEL, GUILD_CHANNEL] },
+      },
+      select: { channelKey: true, avatarUrl: true },
+    });
+    const avatarByChannel = new Map(
+      channelMetas.map((m) => [m.channelKey, m.avatarUrl] as const),
+    );
+
     const groupUnread = roster
-      ? await this.countUnread(userId, orgId, ORG_CHANNEL)
+      ? await this.countUnread(userId, orgId, ORG_CHANNEL, groupCutoff)
       : 0;
     const groupLast = roster
-      ? await this.lastMessage(orgId, ORG_CHANNEL)
+      ? await this.lastMessage(orgId, ORG_CHANNEL, groupCutoff)
       : null;
 
     const dms = await Promise.all(
@@ -224,6 +275,7 @@ export class ChatService {
           unreadCount,
           lastMessageAt: last?.createdAt ?? null,
           lastPreview: last ? this.preview(last) : null,
+          muted: mutedKeys.has(channelKey),
         };
       }),
     );
@@ -249,8 +301,18 @@ export class ChatService {
     // "Start new chat" / DM candidate pool — every guild member, roster or not.
     const teammates = peers.map(toMentionable);
 
-    const guildUnread = await this.countUnread(userId, orgId, GUILD_CHANNEL);
-    const guildLast = await this.lastMessage(orgId, GUILD_CHANNEL);
+    const guildJoinedAt =
+      selfGuild?.createdAt ?? selfRoster?.createdAt;
+    const guildCutoff = guildJoinedAt
+      ? await this.historyCutoffFor(orgId, GUILD_CHANNEL, guildJoinedAt)
+      : undefined;
+    const guildUnread = await this.countUnread(
+      userId,
+      orgId,
+      GUILD_CHANNEL,
+      guildCutoff,
+    );
+    const guildLast = await this.lastMessage(orgId, GUILD_CHANNEL, guildCutoff);
     const guildSeatCount = await this.prisma.guildMembership.count({
       where: { orgId },
     });
@@ -263,11 +325,12 @@ export class ChatService {
               type: 'ORG' as const,
               title: 'Team Chat',
               peerUserId: null as string | null,
-              peerAvatarUrl: null as string | null,
+              peerAvatarUrl: avatarByChannel.get(ORG_CHANNEL) ?? null,
               memberCount,
               unreadCount: groupUnread,
               lastMessageAt: groupLast?.createdAt ?? null,
               lastPreview: groupLast ? this.preview(groupLast) : null,
+              muted: mutedKeys.has(ORG_CHANNEL),
             },
           ]
         : []),
@@ -276,11 +339,12 @@ export class ChatService {
         type: 'ORG' as const,
         title: 'Guild Chat',
         peerUserId: null as string | null,
-        peerAvatarUrl: null as string | null,
+        peerAvatarUrl: avatarByChannel.get(GUILD_CHANNEL) ?? null,
         memberCount: guildSeatCount,
         unreadCount: guildUnread,
         lastMessageAt: guildLast?.createdAt ?? null,
         lastPreview: guildLast ? this.preview(guildLast) : null,
+        muted: mutedKeys.has(GUILD_CHANNEL),
       },
       ...activeDms.sort((a, b) => {
         const at = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
@@ -305,31 +369,74 @@ export class ChatService {
     };
   }
 
+  /**
+   * When the org hides pre-join history, group channels only show messages
+   * at/after the viewer's join time. DMs are never cut off.
+   * Unread badges / pushes must use the same floor or a late opener gets
+   * notified for messages they can never load.
+   */
+  private async historyCutoffFor(
+    orgId: string,
+    channelKey: string,
+    joinedAt: Date,
+  ): Promise<Date | undefined> {
+    if (channelKey !== ORG_CHANNEL && channelKey !== GUILD_CHANNEL) {
+      return undefined;
+    }
+    const org = await this.prisma.org.findUnique({
+      where: { id: orgId },
+      select: { historyVisibleToNewMembers: true },
+    });
+    if (org && !org.historyVisibleToNewMembers) return joinedAt;
+    return undefined;
+  }
+
   // `before` is a message id cursor — pass the oldest message id currently
   // loaded on the client to fetch the next (older) page. Omit it for the
   // initial/most-recent page.
-  async listMessages(userId: string, channelKey = ORG_CHANNEL, before?: string) {
+  async listMessages(
+    userId: string,
+    channelKey = ORG_CHANNEL,
+    before?: string,
+    opts?: { starredOnly?: boolean },
+  ) {
     const place = await this.resolveChannel(userId, channelKey);
     const orgId = place.orgId;
-
-    // Group channels can be capped to "since I joined". A DM only ever has
-    // messages from after it started, so this never applies there.
-    let historyCutoff: Date | undefined;
-    if (channelKey === ORG_CHANNEL || channelKey === GUILD_CHANNEL) {
-      const org = await this.prisma.org.findUnique({
-        where: { id: orgId },
-        select: { historyVisibleToNewMembers: true },
-      });
-      if (org && !org.historyVisibleToNewMembers) {
-        historyCutoff = place.joinedAt;
-      }
+    const historyCutoff = await this.historyCutoffFor(
+      orgId,
+      channelKey,
+      place.joinedAt,
+    );
+    const clear = await this.prisma.chatClear.findUnique({
+      where: {
+        userId_orgId_channelKey: { userId, orgId, channelKey },
+      },
+      select: { clearedAt: true },
+    });
+    // Soft clear-for-me + join-date history floor — take the later of the two.
+    let lowerBound = historyCutoff;
+    if (clear?.clearedAt) {
+      lowerBound =
+        !lowerBound || clear.clearedAt > lowerBound ? clear.clearedAt : lowerBound;
     }
+
+    const starredIds = opts?.starredOnly
+      ? (
+          await this.prisma.chatStar.findMany({
+            where: { userId, orgId, channelKey },
+            select: { messageId: true },
+          })
+        ).map((s) => s.messageId)
+      : null;
 
     const messages = await this.prisma.chatMessage.findMany({
       where: {
         orgId,
         channelKey,
-        ...(historyCutoff ? { createdAt: { gte: historyCutoff } } : {}),
+        ...(lowerBound ? { createdAt: { gte: lowerBound } } : {}),
+        ...(starredIds
+          ? { id: { in: starredIds.length ? starredIds : ['__none__'] } }
+          : {}),
       },
       include: { sender: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
@@ -343,13 +450,46 @@ export class ChatService {
     // storing role on the message (which would go stale on a promotion).
     const senderIds = [...new Set(messages.map((m) => m.senderId))];
     const roleByUserId = await this.loadRoles(orgId, senderIds);
+    const replyMap = await this.loadReplyPreviews(
+      messages.map((m) => m.replyToId).filter((id): id is string => !!id),
+    );
+    const starSet = new Set(
+      (
+        await this.prisma.chatStar.findMany({
+          where: {
+            userId,
+            messageId: { in: messages.map((m) => m.id) },
+          },
+          select: { messageId: true },
+        })
+      ).map((s) => s.messageId),
+    );
+    const pinSet = new Set(
+      (
+        await this.prisma.chatPin.findMany({
+          where: {
+            orgId,
+            channelKey,
+            messageId: { in: messages.map((m) => m.id) },
+          },
+          select: { messageId: true },
+        })
+      ).map((p) => p.messageId),
+    );
 
     return this.rescopeForViewer(
       messages
         .reverse()
-        .map((m) =>
-          this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
-        ),
+        .map((m) => ({
+          ...this.toResponse(
+            m,
+            m.sender.name,
+            roleByUserId.get(m.senderId),
+            m.replyToId ? replyMap.get(m.replyToId) : undefined,
+          ),
+          starred: starSet.has(m.id),
+          pinned: pinSet.has(m.id),
+        })),
       userId,
     );
   }
@@ -394,17 +534,11 @@ export class ChatService {
 
     const place = await this.resolveChannel(userId, channelKey);
     const orgId = place.orgId;
-
-    let historyCutoff: Date | undefined;
-    if (channelKey === ORG_CHANNEL || channelKey === GUILD_CHANNEL) {
-      const org = await this.prisma.org.findUnique({
-        where: { id: orgId },
-        select: { historyVisibleToNewMembers: true },
-      });
-      if (org && !org.historyVisibleToNewMembers) {
-        historyCutoff = place.joinedAt;
-      }
-    }
+    const historyCutoff = await this.historyCutoffFor(
+      orgId,
+      channelKey,
+      place.joinedAt,
+    );
 
     const messages = await this.prisma.chatMessage.findMany({
       where: {
@@ -466,6 +600,9 @@ export class ChatService {
       channelKey?: string;
       mediaUrl?: string;
       mediaType?: 'IMAGE' | 'VIDEO';
+      replyToId?: string;
+      /** Skip Expo push (e.g. scrim auto-post that already sent its own push). */
+      skipPush?: boolean;
     },
   ) {
     const channelKey = input.channelKey?.trim() || ORG_CHANNEL;
@@ -476,6 +613,22 @@ export class ChatService {
       throw new BadRequestException('Message text or media is required');
     }
 
+    let replyToId: string | null = null;
+    if (input.replyToId?.trim()) {
+      const parent = await this.prisma.chatMessage.findFirst({
+        where: {
+          id: input.replyToId.trim(),
+          orgId,
+          channelKey,
+        },
+        select: { id: true },
+      });
+      if (!parent) {
+        throw new BadRequestException('Reply target not found in this chat');
+      }
+      replyToId = parent.id;
+    }
+
     const message = await this.prisma.chatMessage.create({
       data: {
         orgId,
@@ -484,6 +637,7 @@ export class ChatService {
         text,
         mediaUrl: input.mediaUrl ?? null,
         mediaType: input.mediaType ?? null,
+        replyToId,
       },
     });
 
@@ -500,32 +654,468 @@ export class ChatService {
       ? await this.resolveMentionedUserIds(orgId, channelKey, text, userId)
       : [];
 
-    // @IGN mentions get a dedicated push; everyone else gets count-only unread.
-    if (mentionedIds.length > 0) {
-      void this.notifyMentions(
+    // @IGN mentions get a dedicated push; everyone else gets unread + preview.
+    if (!input.skipPush) {
+      if (mentionedIds.length > 0) {
+        void this.notifyMentions(
+          orgId,
+          channelKey,
+          userId,
+          senderName,
+          mentionedIds,
+          text!,
+        ).catch((err) =>
+          this.logger.warn(
+            `Chat mention push failed: ${(err as Error).message}`,
+          ),
+        );
+      }
+      void this.notifyUnreadCounts(
         orgId,
         channelKey,
         userId,
-        senderName,
         mentionedIds,
-        text!,
+        text,
+        input.mediaType,
       ).catch((err) =>
-        this.logger.warn(`Chat mention push failed: ${(err as Error).message}`),
+        this.logger.warn(`Chat push failed: ${(err as Error).message}`),
       );
     }
-    void this.notifyUnreadCounts(orgId, channelKey, userId, mentionedIds).catch(
-      (err) => this.logger.warn(`Chat push failed: ${(err as Error).message}`),
-    );
 
     const senderMembership = await this.prisma.membership.findFirst({
       where: { userId, orgId },
     });
 
+    // Socket broadcast is one payload for every viewer — mint a fresh CDN
+    // URL (or viewer-scoped proxy) so the image paints immediately instead
+    // of shipping the raw upload-time proxy token.
+    const replyPreview = replyToId
+      ? await this.loadReplyPreviews([replyToId]).then((m) => m.get(replyToId!))
+      : undefined;
+    const response = this.toResponse(
+      message,
+      senderName,
+      senderMembership ?? undefined,
+      replyPreview,
+    );
+    response.mediaUrl = await this.rescopeMediaUrlForViewer(
+      response.mediaUrl,
+      userId,
+    );
+
     return {
       orgId,
       channelKey,
-      message: this.toResponse(message, senderName, senderMembership ?? undefined),
+      message: response,
     };
+  }
+
+  /**
+   * Edit own text message only while nobody else has read it yet
+   * (WhatsApp-style "edit before seen").
+   */
+  async editOwnMessage(userId: string, messageId: string, text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Message text is required');
+    }
+    const { orgId } = await this.getChatContext(userId);
+    const message = await this.prisma.chatMessage.findFirst({
+      where: { id: messageId, senderId: userId, orgId },
+      include: { sender: { select: { name: true } } },
+    });
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+    if (!message.text && !trimmed) {
+      throw new BadRequestException('Only text messages can be edited');
+    }
+
+    const readers = await this.prisma.chatReadState.count({
+      where: {
+        orgId,
+        channelKey: message.channelKey,
+        userId: { not: userId },
+        lastReadAt: { gte: message.createdAt },
+      },
+    });
+    if (readers > 0) {
+      throw new ForbiddenException(
+        'This message was already read — edit is no longer allowed',
+      );
+    }
+
+    const updated = await this.prisma.chatMessage.update({
+      where: { id: message.id },
+      data: { text: trimmed, editedAt: new Date() },
+      include: { sender: { select: { name: true } } },
+    });
+
+    const senderMembership = await this.prisma.membership.findFirst({
+      where: { userId, orgId },
+    });
+    const replyPreview = updated.replyToId
+      ? await this.loadReplyPreviews([updated.replyToId]).then((m) =>
+          m.get(updated.replyToId!),
+        )
+      : undefined;
+    const response = this.toResponse(
+      updated,
+      updated.sender.name,
+      senderMembership ?? undefined,
+      replyPreview,
+    );
+    response.mediaUrl = await this.rescopeMediaUrlForViewer(
+      response.mediaUrl,
+      userId,
+    );
+
+    return {
+      orgId,
+      channelKey: updated.channelKey,
+      message: response,
+    };
+  }
+
+  async setChannelMuted(userId: string, channelKey: string, muted: boolean) {
+    const key = channelKey.trim() || ORG_CHANNEL;
+    const { orgId } = await this.resolveChannel(userId, key);
+    if (muted) {
+      await this.prisma.chatMute.upsert({
+        where: {
+          userId_orgId_channelKey: { userId, orgId, channelKey: key },
+        },
+        create: { userId, orgId, channelKey: key },
+        update: {},
+      });
+    } else {
+      await this.prisma.chatMute.deleteMany({
+        where: { userId, orgId, channelKey: key },
+      });
+    }
+    return { channelKey: key, muted };
+  }
+
+  async isChannelMuted(userId: string, orgId: string, channelKey: string) {
+    const row = await this.prisma.chatMute.findUnique({
+      where: {
+        userId_orgId_channelKey: { userId, orgId, channelKey },
+      },
+      select: { id: true },
+    });
+    return !!row;
+  }
+
+  async clearChatForMe(userId: string, channelKey: string) {
+    const key = channelKey.trim() || ORG_CHANNEL;
+    const { orgId } = await this.resolveChannel(userId, key);
+    const clearedAt = new Date();
+    await this.prisma.chatClear.upsert({
+      where: {
+        userId_orgId_channelKey: { userId, orgId, channelKey: key },
+      },
+      create: { userId, orgId, channelKey: key, clearedAt },
+      update: { clearedAt },
+    });
+    // Unpin/unstar for this user is optional — cleared messages just hide.
+    return { channelKey: key, clearedAt };
+  }
+
+  async setMessagePinned(
+    userId: string,
+    channelKey: string,
+    messageId: string,
+    pinned: boolean,
+  ) {
+    const key = channelKey.trim() || ORG_CHANNEL;
+    const { orgId } = await this.resolveChannel(userId, key);
+    const message = await this.prisma.chatMessage.findFirst({
+      where: { id: messageId, orgId, channelKey: key },
+      select: { id: true },
+    });
+    if (!message) throw new NotFoundException('Message not found');
+
+    if (!pinned) {
+      await this.prisma.chatPin.deleteMany({
+        where: { orgId, channelKey: key, messageId },
+      });
+      return { channelKey: key, messageId, pinned: false };
+    }
+
+    const existing = await this.prisma.chatPin.count({
+      where: { orgId, channelKey: key },
+    });
+    const already = await this.prisma.chatPin.findUnique({
+      where: {
+        orgId_channelKey_messageId: {
+          orgId,
+          channelKey: key,
+          messageId,
+        },
+      },
+    });
+    if (!already && existing >= MAX_PINS_PER_CHANNEL) {
+      throw new BadRequestException(
+        `You can pin up to ${MAX_PINS_PER_CHANNEL} messages`,
+      );
+    }
+    await this.prisma.chatPin.upsert({
+      where: {
+        orgId_channelKey_messageId: {
+          orgId,
+          channelKey: key,
+          messageId,
+        },
+      },
+      create: {
+        orgId,
+        channelKey: key,
+        messageId,
+        pinnedById: userId,
+      },
+      update: { pinnedById: userId, pinnedAt: new Date() },
+    });
+    return { channelKey: key, messageId, pinned: true };
+  }
+
+  async listPinnedMessages(userId: string, channelKey: string) {
+    const key = channelKey.trim() || ORG_CHANNEL;
+    const { orgId } = await this.resolveChannel(userId, key);
+    const pins = await this.prisma.chatPin.findMany({
+      where: { orgId, channelKey: key },
+      include: {
+        message: { include: { sender: { select: { name: true } } } },
+      },
+      orderBy: { pinnedAt: 'desc' },
+    });
+    const senderIds = [...new Set(pins.map((p) => p.message.senderId))];
+    const roleByUserId = await this.loadRoles(orgId, senderIds);
+    return this.rescopeForViewer(
+      pins.map((p) => ({
+        ...this.toResponse(
+          p.message,
+          p.message.sender.name,
+          roleByUserId.get(p.message.senderId),
+        ),
+        pinned: true,
+        pinnedAt: p.pinnedAt,
+      })),
+      userId,
+    );
+  }
+
+  async setMessageStarred(
+    userId: string,
+    channelKey: string,
+    messageId: string,
+    starred: boolean,
+  ) {
+    const key = channelKey.trim() || ORG_CHANNEL;
+    const { orgId } = await this.resolveChannel(userId, key);
+    const message = await this.prisma.chatMessage.findFirst({
+      where: { id: messageId, orgId, channelKey: key },
+      select: { id: true },
+    });
+    if (!message) throw new NotFoundException('Message not found');
+
+    if (!starred) {
+      await this.prisma.chatStar.deleteMany({
+        where: { userId, messageId },
+      });
+      return { messageId, starred: false };
+    }
+    await this.prisma.chatStar.upsert({
+      where: { userId_messageId: { userId, messageId } },
+      create: { userId, orgId, channelKey: key, messageId },
+      update: {},
+    });
+    return { messageId, starred: true };
+  }
+
+  async getChannelMeta(userId: string, channelKey: string) {
+    const key = channelKey.trim() || ORG_CHANNEL;
+    const { orgId } = await this.resolveChannel(userId, key);
+    const meta = await this.prisma.chatChannelMeta.findUnique({
+      where: { orgId_channelKey: { orgId, channelKey: key } },
+    });
+    return {
+      channelKey: key,
+      description: meta?.description ?? null,
+      avatarUrl: meta?.avatarUrl ?? null,
+      disappearAfterSec: meta?.disappearAfterSec ?? null,
+    };
+  }
+
+  async updateChannelMeta(
+    userId: string,
+    channelKey: string,
+    input: {
+      description?: string | null;
+      disappearAfterSec?: number | null;
+    },
+  ) {
+    const key = channelKey.trim() || ORG_CHANNEL;
+    const { orgId } = await this.resolveChannel(userId, key);
+    if (key === ORG_CHANNEL || key === GUILD_CHANNEL) {
+      await this.assertCanManageGroup(userId, orgId);
+    }
+
+    let disappearAfterSec = input.disappearAfterSec;
+    if (disappearAfterSec != null) {
+      if (
+        !(DISAPPEAR_OPTIONS_SEC as readonly number[]).includes(disappearAfterSec)
+      ) {
+        throw new BadRequestException('Invalid disappearing-message timer');
+      }
+      if (disappearAfterSec === 0) disappearAfterSec = null;
+    }
+
+    const description =
+      input.description === undefined
+        ? undefined
+        : input.description == null
+          ? null
+          : input.description.trim().slice(0, 500) || null;
+
+    const meta = await this.prisma.chatChannelMeta.upsert({
+      where: { orgId_channelKey: { orgId, channelKey: key } },
+      create: {
+        orgId,
+        channelKey: key,
+        description: description ?? null,
+        disappearAfterSec: disappearAfterSec ?? null,
+        updatedById: userId,
+      },
+      update: {
+        ...(description !== undefined ? { description } : {}),
+        ...(input.disappearAfterSec !== undefined
+          ? { disappearAfterSec }
+          : {}),
+        updatedById: userId,
+      },
+    });
+    return {
+      channelKey: key,
+      description: meta.description,
+      avatarUrl: meta.avatarUrl,
+      disappearAfterSec: meta.disappearAfterSec,
+    };
+  }
+
+  async setChannelAvatar(
+    userId: string,
+    channelKey: string,
+    stored: { fileKey: string; deliveryUrl: string | null },
+  ) {
+    const key = channelKey.trim() || ORG_CHANNEL;
+    if (key !== ORG_CHANNEL && key !== GUILD_CHANNEL) {
+      throw new BadRequestException('Only group chats can have an avatar');
+    }
+    const { orgId } = await this.resolveChannel(userId, key);
+    await this.assertCanManageGroup(userId, orgId);
+
+    const existing = await this.prisma.chatChannelMeta.findUnique({
+      where: { orgId_channelKey: { orgId, channelKey: key } },
+      select: { avatarFileKey: true },
+    });
+
+    const avatarUrl =
+      stored.deliveryUrl ?? `/chat/files/${encodeURIComponent(stored.fileKey)}`;
+
+    const meta = await this.prisma.chatChannelMeta.upsert({
+      where: { orgId_channelKey: { orgId, channelKey: key } },
+      create: {
+        orgId,
+        channelKey: key,
+        avatarUrl,
+        avatarFileKey: stored.fileKey,
+        updatedById: userId,
+      },
+      update: {
+        avatarUrl,
+        avatarFileKey: stored.fileKey,
+        updatedById: userId,
+      },
+    });
+
+    if (existing?.avatarFileKey && existing.avatarFileKey !== stored.fileKey) {
+      await this.storage.deleteFile(existing.avatarFileKey);
+    }
+
+    return {
+      channelKey: key,
+      description: meta.description,
+      avatarUrl: meta.avatarUrl,
+      disappearAfterSec: meta.disappearAfterSec,
+    };
+  }
+
+  /** Cron helper — hard-delete messages past each channel's disappear timer. */
+  async purgeExpiredMessages() {
+    const metas = await this.prisma.chatChannelMeta.findMany({
+      where: { disappearAfterSec: { not: null } },
+      select: { orgId: true, channelKey: true, disappearAfterSec: true },
+    });
+    let deleted = 0;
+    const now = Date.now();
+    for (const meta of metas) {
+      const sec = meta.disappearAfterSec;
+      if (!sec || sec <= 0) continue;
+      const cutoff = new Date(now - sec * 1000);
+      const result = await this.prisma.chatMessage.deleteMany({
+        where: {
+          orgId: meta.orgId,
+          channelKey: meta.channelKey,
+          createdAt: { lt: cutoff },
+        },
+      });
+      deleted += result.count;
+    }
+    return deleted;
+  }
+
+  private async assertCanManageGroup(userId: string, orgId: string) {
+    const membership = await this.prisma.membership.findFirst({
+      where: { userId, orgId },
+    });
+    if (membership?.isOwner || membership?.role === 'COACH') return;
+    const guild = await this.prisma.guildMembership.findFirst({
+      where: {
+        userId,
+        orgId,
+        role: { in: ['LEADER', 'ELDER', 'ACTIVE_LEADER'] },
+      },
+    });
+    if (guild) return;
+    throw new ForbiddenException('Only coaches / owners can edit group settings');
+  }
+
+  /**
+   * WhatsApp-style "delete for everyone" — only the sender can remove their
+   * own messages. Returns the rows that were actually deleted so the gateway
+   * can broadcast per-channel.
+   */
+  async deleteOwnMessages(userId: string, ids: string[]) {
+    const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      throw new BadRequestException('No message ids provided');
+    }
+    const { orgId } = await this.getChatContext(userId);
+    const rows = await this.prisma.chatMessage.findMany({
+      where: {
+        id: { in: uniqueIds },
+        senderId: userId,
+        orgId,
+      },
+      select: { id: true, channelKey: true, orgId: true },
+    });
+    if (rows.length === 0) {
+      return { deleted: [] as Array<{ id: string; channelKey: string; orgId: string }> };
+    }
+    await this.prisma.chatMessage.deleteMany({
+      where: { id: { in: rows.map((r) => r.id) } },
+    });
+    return { deleted: rows };
   }
 
   async markRead(userId: string, channelKey = ORG_CHANNEL) {
@@ -595,7 +1185,12 @@ export class ChatService {
     return { totalUnread: summary.totalUnread, channels: summary.channels };
   }
 
-  private async countUnread(userId: string, orgId: string, channelKey: string) {
+  private async countUnread(
+    userId: string,
+    orgId: string,
+    channelKey: string,
+    historyCutoff?: Date,
+  ) {
     const read = await this.prisma.chatReadState.findUnique({
       where: {
         userId_orgId_channelKey: { userId, orgId, channelKey },
@@ -606,15 +1201,28 @@ export class ChatService {
       where: {
         orgId,
         channelKey,
-        createdAt: { gt: since },
+        // Same visibility floor as listMessages — never notify for rows the
+        // viewer cannot load when history is hidden for new members.
+        createdAt: {
+          gt: since,
+          ...(historyCutoff ? { gte: historyCutoff } : {}),
+        },
         senderId: { not: userId },
       },
     });
   }
 
-  private async lastMessage(orgId: string, channelKey: string) {
+  private async lastMessage(
+    orgId: string,
+    channelKey: string,
+    historyCutoff?: Date,
+  ) {
     return this.prisma.chatMessage.findFirst({
-      where: { orgId, channelKey },
+      where: {
+        orgId,
+        channelKey,
+        ...(historyCutoff ? { createdAt: { gte: historyCutoff } } : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -720,6 +1328,8 @@ export class ChatService {
     const messages: PushMessage[] = [];
     for (const u of users) {
       if (!this.pushNotifications.isValidExpoPushToken(u.expoPushToken)) continue;
+      if (this.presence.isViewing(u.id, channelKey)) continue;
+      if (await this.isChannelMuted(u.id, orgId, channelKey)) continue;
       const ign = u.inGameName ?? 'you';
       const matched =
         tokens.find(
@@ -727,16 +1337,20 @@ export class ChatService {
             u.inGameName &&
             normalizeIgnKey(t) === normalizeIgnKey(u.inGameName),
         ) ?? ign;
+      const preview = truncatePushBody(text, 80);
       messages.push({
         to: u.expoPushToken,
         title: `${senderName} mentioned you`,
-        // No full message body — just who was tagged and where.
-        body: `@${matched} in ${channelLabel}`,
+        body: preview
+          ? `@${matched}: ${preview}`
+          : `@${matched} in ${channelLabel}`,
         data: {
           channelKey,
           type: 'chat_mention',
           mentionedBy: senderId,
         },
+        collapseId: `chat-mention:${orgId}:${channelKey}:${u.id}`,
+        channelId: 'chat',
       });
     }
     await this.pushNotifications.send(messages);
@@ -747,6 +1361,8 @@ export class ChatService {
     channelKey: string,
     senderId: string,
     skipUserIds: string[] = [],
+    latestText: string | null = null,
+    mediaType?: 'IMAGE' | 'VIDEO' | null,
   ) {
     const skip = new Set(skipUserIds);
     const sender = await this.prisma.user.findUnique({
@@ -797,25 +1413,64 @@ export class ChatService {
     const messages: PushMessage[] = [];
     for (const m of recipients) {
       if (skip.has(m.userId)) continue;
+      // They're looking at this thread right now — live socket already
+      // delivers the bubble; a push would just spam the shade.
+      if (this.presence.isViewing(m.userId, channelKey)) continue;
+      if (await this.isChannelMuted(m.userId, orgId, channelKey)) continue;
       const token = m.expoPushToken;
       if (!this.pushNotifications.isValidExpoPushToken(token)) continue;
-      const unread = await this.countUnread(m.userId, orgId, channelKey);
+      let cutoff: Date | undefined;
+      if (channelKey === ORG_CHANNEL || channelKey === GUILD_CHANNEL) {
+        const seat =
+          channelKey === ORG_CHANNEL
+            ? await this.prisma.membership.findFirst({
+                where: { userId: m.userId, orgId },
+                select: { createdAt: true },
+              })
+            : (await this.prisma.guildMembership.findFirst({
+                where: { userId: m.userId, orgId },
+                select: { createdAt: true },
+              })) ??
+              (await this.prisma.membership.findFirst({
+                where: { userId: m.userId, orgId },
+                select: { createdAt: true },
+              }));
+        if (seat) {
+          cutoff = await this.historyCutoffFor(orgId, channelKey, seat.createdAt);
+        }
+      }
+      const unread = await this.countUnread(m.userId, orgId, channelKey, cutoff);
       if (unread <= 0) continue;
       const isDm = channelKey.startsWith('dm:');
+      const title =
+        channelKey === GUILD_CHANNEL
+          ? 'Guild Chat'
+          : isDm
+            ? 'Direct Message'
+            : 'Team Chat';
+      // Show preview when free (single unread); otherwise count so tray stays tidy.
+      // collapseId replaces the previous tray entry for this channel.
+      const preview =
+        unread === 1
+          ? truncatePushBody(latestText, 100) ||
+            (mediaType === 'VIDEO'
+              ? 'Sent a video'
+              : mediaType === 'IMAGE'
+                ? 'Sent a photo'
+                : null)
+          : null;
       messages.push({
         to: token,
-        title:
-          channelKey === GUILD_CHANNEL
-            ? 'Guild Chat'
-            : isDm
-              ? 'Direct Message'
-              : 'Team Chat',
-        // Sender name + unread count — never include message text.
-        body:
-          unread === 1
+        title,
+        body: preview
+          ? `${senderLabel}: ${preview}`
+          : unread === 1
             ? `${senderLabel}: 1 unread message`
             : `${senderLabel}: ${unread} unread messages`,
         data: { channelKey, unreadCount: unread, type: 'chat_unread' },
+        collapseId: `chat:${orgId}:${channelKey}`,
+        channelId: 'chat',
+        badge: unread,
       });
     }
     await this.pushNotifications.send(messages);
@@ -830,30 +1485,46 @@ export class ChatService {
     return new Map(memberships.map((m) => [m.userId, m]));
   }
 
-  // The token embedded in a message's mediaUrl is minted once, at upload
-  // time, scoped to whoever uploaded it (chat.controller.ts uploadChatMedia)
-  // — every viewer who ever loads this message's history would otherwise
-  // reuse that SAME token, so downloadChatFile ends up re-checking the
-  // uploader's current org membership forever, never the actual current
-  // viewer's. Re-minting it here, scoped to the viewer asking for this page
-  // of history right now, means a departed member's cached/shared link
-  // starts failing the next time downloadChatFile checks *their* membership
-  // — not the original uploader's, who might still be in the org.
-  // Cloudinary URLs (no embedded token, access is "unguessable public id")
-  // pass through unchanged, same as media.service.ts's equivalent case.
+  // Chat messages store a stable `/chat/files/{fileKey}?token=…` proxy
+  // (or, for older rows, a Cloudinary delivery URL). On every history/media
+  // list we turn that into something the viewer can load right now:
+  //   • Cloudinary fileKey → freshly signed CDN URL (same as Media feed)
+  //   • Local fileKey → reminted proxy token scoped to this viewer
+  //   • Legacy Cloudinary delivery URL → regenerate from the public_id
+  // Reminting the proxy token matters because the upload-time token is
+  // scoped to the uploader — a departed member's shared link must stop
+  // working against *their* membership, not the original uploader's.
   private async rescopeMediaUrlForViewer(
     mediaUrl: string | null,
     viewerId: string,
   ): Promise<string | null> {
     if (!mediaUrl) return null;
-    const match = mediaUrl.match(LOCAL_CHAT_FILE_URL_RE);
-    if (!match) return mediaUrl;
-    const fileKey = decodeURIComponent(match[1]);
-    const token = await this.jwtService.signAsync(
-      { sub: viewerId, fileKey, purpose: 'chat-file' },
-      { expiresIn: '7d' },
-    );
-    return `/chat/files/${encodeURIComponent(fileKey)}?token=${token}`;
+
+    const local = mediaUrl.match(LOCAL_CHAT_FILE_URL_RE);
+    if (local) {
+      const fileKey = decodeURIComponent(local[1]);
+      if (this.storage.isCloudinaryKey(fileKey)) {
+        const fresh = this.storage.buildDeliveryUrl(fileKey);
+        if (fresh) return fresh;
+      }
+      const token = await this.jwtService.signAsync(
+        { sub: viewerId, fileKey, purpose: 'chat-file' },
+        { expiresIn: '7d' },
+      );
+      return `/chat/files/${encodeURIComponent(fileKey)}?token=${token}`;
+    }
+
+    const cloud = mediaUrl.match(CLOUDINARY_DELIVERY_RE);
+    if (cloud) {
+      const resourceType = cloud[1] as 'image' | 'video';
+      const publicId = decodeURIComponent(cloud[2].replace(/\/$/, ''));
+      const fresh = this.storage.buildDeliveryUrl(
+        `${resourceType}:${publicId}`,
+      );
+      if (fresh) return fresh;
+    }
+
+    return mediaUrl;
   }
 
   private async rescopeForViewer<T extends { mediaUrl: string | null }>(
@@ -868,6 +1539,28 @@ export class ChatService {
     );
   }
 
+  private async loadReplyPreviews(ids: string[]) {
+    const unique = [...new Set(ids.filter(Boolean))];
+    const map = new Map<
+      string,
+      { id: string; text: string | null; senderName: string; mediaType: string | null }
+    >();
+    if (unique.length === 0) return map;
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { id: { in: unique } },
+      include: { sender: { select: { name: true } } },
+    });
+    for (const row of rows) {
+      map.set(row.id, {
+        id: row.id,
+        text: row.text,
+        senderName: row.sender.name,
+        mediaType: row.mediaType,
+      });
+    }
+    return map;
+  }
+
   private toResponse(
     message: {
       id: string;
@@ -877,9 +1570,17 @@ export class ChatService {
       mediaUrl: string | null;
       mediaType: string | null;
       createdAt: Date;
+      editedAt?: Date | null;
+      replyToId?: string | null;
     },
     senderName: string,
     senderMembership?: { role: MembershipRole; isOwner: boolean },
+    replyTo?: {
+      id: string;
+      text: string | null;
+      senderName: string;
+      mediaType: string | null;
+    },
   ) {
     return {
       id: message.id,
@@ -894,6 +1595,16 @@ export class ChatService {
       mediaUrl: message.mediaUrl,
       mediaType: message.mediaType,
       createdAt: message.createdAt,
+      editedAt: message.editedAt ?? null,
+      replyToId: message.replyToId ?? null,
+      replyTo: replyTo
+        ? {
+            id: replyTo.id,
+            text: replyTo.text,
+            senderName: replyTo.senderName,
+            mediaType: replyTo.mediaType,
+          }
+        : null,
     };
   }
 }

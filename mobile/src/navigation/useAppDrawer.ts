@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { SideDrawerSection } from '../ui/SideDrawer';
 import { MainStackParamList } from './types';
 import { goToSection } from './goToSection';
+import { drawerItemKeyForRoute, withActiveDrawerItem } from './drawerActive';
 
 type MainNav = NativeStackNavigationProp<MainStackParamList, keyof MainStackParamList>;
 
@@ -11,15 +12,20 @@ type MainNav = NativeStackNavigationProp<MainStackParamList, keyof MainStackPara
 // render a hamburger button that opens this same drawer, so any of them can
 // jump straight to another section — see useDrawerHeader below. The
 // `navigation` passed in is whichever screen's own nav prop opened the
-// drawer; goToSection resets that shared MainStack regardless of which
-// screen instance triggered it, so this works the same from anywhere.
+// drawer; goToSection navigates on that shared MainStack (push/pop) so
+// Android back reverses the same path from anywhere.
 function useDrawerHeader() {
   const [open, setOpen] = useState(false);
   const [navigation, setNavigation] = useState<MainNav | null>(null);
+  // Set from RootNavigator's NavigationContainer onStateChange — these hooks
+  // live *outside* the container, so useNavigationState() cannot be used here.
+  const [routeName, setRouteName] = useState<string | null>(null);
 
   return {
     open,
     navigation,
+    routeName,
+    setRouteName,
     openWith: (nav: MainNav) => {
       setNavigation(nav);
       setOpen(true);
@@ -37,7 +43,8 @@ function useDrawerHeader() {
 export function useOrgDrawer() {
   const { org } = useAuth();
   const isOwner = !!org?.isOwner;
-  const { open, navigation, openWith, close } = useDrawerHeader();
+  const { open, navigation, openWith, close, routeName, setRouteName } =
+    useDrawerHeader();
 
   const sections = useMemo((): SideDrawerSection[] => {
     if (!navigation) return [];
@@ -148,19 +155,23 @@ export function useOrgDrawer() {
       ],
     });
 
-    return sections;
-  }, [navigation, isOwner]);
+    return withActiveDrawerItem(
+      sections,
+      drawerItemKeyForRoute(routeName ?? undefined),
+    );
+  }, [navigation, isOwner, routeName]);
 
-  return { open, sections, openWith, close };
+  return { open, sections, openWith, close, setRouteName };
 }
 
 // Same sections GuildHomeScreen shows (guild-only members have no org).
 export function useGuildDrawer() {
-  const { open, navigation, openWith, close } = useDrawerHeader();
+  const { open, navigation, openWith, close, routeName, setRouteName } =
+    useDrawerHeader();
 
   const sections = useMemo((): SideDrawerSection[] => {
     if (!navigation) return [];
-    return [
+    const base: SideDrawerSection[] = [
       {
         key: 'chat',
         label: 'Chat',
@@ -178,7 +189,7 @@ export function useGuildDrawer() {
         split: true,
         items: [
           {
-            key: 'guildRoster',
+            key: 'guildHome',
             label: 'Guild Roster',
             onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Guild' }),
           },
@@ -203,7 +214,11 @@ export function useGuildDrawer() {
         ],
       },
     ];
-  }, [navigation]);
+    return withActiveDrawerItem(
+      base,
+      drawerItemKeyForRoute(routeName ?? undefined),
+    );
+  }, [navigation, routeName]);
 
-  return { open, sections, openWith, close };
+  return { open, sections, openWith, close, setRouteName };
 }

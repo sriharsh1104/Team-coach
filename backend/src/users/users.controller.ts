@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -6,10 +7,14 @@ import {
   Param,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { mediaFileInterceptorOptions } from '../media/multer-options';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
@@ -31,6 +36,21 @@ export class UsersController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.usersService.updateMyProfile(user.userId, dto);
+  }
+
+  @Post('me/avatar')
+  @UseInterceptors(
+    FileInterceptor('file', mediaFileInterceptorOptions(5 * 1024 * 1024)),
+  )
+  setMyAvatar(
+    @CurrentUser() user: { userId: string },
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    if (!file) throw new BadRequestException('Image file is required');
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Only image files are allowed for avatars');
+    }
+    return this.usersService.setMyAvatar(user.userId, file);
   }
 
   @Get('me/devices')

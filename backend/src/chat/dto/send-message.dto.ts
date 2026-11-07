@@ -21,4 +21,16 @@ export class SendMessageDto {
   @IsOptional()
   @IsIn(['IMAGE', 'VIDEO'])
   mediaType?: 'IMAGE' | 'VIDEO';
+
+  /** Client-generated id so the sender can reconcile an optimistic bubble. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  clientId?: string;
+
+  /** Optional parent message id for a reply. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  replyToId?: string;
 }

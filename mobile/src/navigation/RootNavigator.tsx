@@ -1,8 +1,10 @@
 import React from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
-import { DarkTheme, NavigationContainer, NavigationState } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer, NavigationState } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
+import { getThemeColors } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { TwoFactorChallengeScreen } from '../screens/TwoFactorChallengeScreen';
@@ -64,31 +66,43 @@ function sectionOptions(
 ) {
   return (args: { navigation: any; route: any }) => ({
     ...(build ? build(args) : {}),
+    // Same drawer entry point as OrgHome / GuildHome AppShellHeader.
     headerLeft: () => <MenuButton onPress={() => openWith(args.navigation)} />,
+    headerBackVisible: false,
   });
 }
 
-const sacredNavTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    background: colors.bg,
-    card: colors.bg,
-    text: colors.text,
-    border: colors.border,
-    primary: colors.chrome,
-    notification: colors.link,
-  },
-};
+function buildNavTheme(themeId: 'black' | 'white' | 'lavender') {
+  const c = getThemeColors(themeId);
+  const base = c.statusBar === 'dark' ? DefaultTheme : DarkTheme;
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      background: c.bg,
+      card: c.bg,
+      text: c.text,
+      border: c.border,
+      primary: c.chrome,
+      notification: c.link,
+    },
+  };
+}
 
-const mainScreenOptions = {
-  headerStyle: { backgroundColor: colors.bg },
-  headerTintColor: colors.text,
-  headerTitleStyle: { fontWeight: '700' as const, color: colors.text },
-  headerShadowVisible: false,
-  headerBackButtonDisplayMode: 'minimal' as const,
-  contentStyle: { backgroundColor: colors.bg },
-};
+function buildMainScreenOptions(themeId: 'black' | 'white' | 'lavender') {
+  const c = getThemeColors(themeId);
+  return {
+    headerStyle: { backgroundColor: c.bg },
+    headerTintColor: c.text,
+    headerTitleStyle: { fontWeight: '700' as const, color: c.text },
+    headerShadowVisible: false,
+    headerBackButtonDisplayMode: 'minimal' as const,
+    contentStyle: { backgroundColor: c.bg },
+    // Soft fade when pushing/popping sections from the drawer or system back.
+    animation: 'fade' as const,
+    animationDuration: 280,
+  };
+}
 
 // On a web page refresh, React Navigation has nothing to restore from and
 // always boots back at the default route — this persists/restores the
@@ -138,6 +152,9 @@ function persistNavState(phase: NavPhase, state: NavigationState | undefined) {
 
 export function RootNavigator() {
   const { isLoading, user, org, guild, needsBiometricUnlock } = useAuth();
+  const { themeId } = useTheme();
+  const sacredNavTheme = buildNavTheme(themeId);
+  const mainScreenOptions = buildMainScreenOptions(themeId);
   // Called unconditionally (Rules of Hooks) even though only one of these is
   // ever actually used below, depending on phase/org — see useAppDrawer.ts.
   const orgDrawer = useOrgDrawer();
@@ -181,7 +198,25 @@ export function RootNavigator() {
       key={navKey}
       theme={sacredNavTheme}
       initialState={initialNavState}
-      onStateChange={(state) => persistNavState(phase, state)}
+      onReady={() => {
+        const name =
+          (initialNavState?.routes?.[initialNavState.index ?? 0]?.name as
+            | string
+            | undefined) ??
+          (phase === 'guild' ? 'GuildHome' : phase === 'main' ? 'OrgHome' : null);
+        if (name) {
+          orgDrawer.setRouteName(name);
+          guildDrawer.setRouteName(name);
+        }
+      }}
+      onStateChange={(state) => {
+        persistNavState(phase, state);
+        const name =
+          (state?.routes?.[state.index ?? 0]?.name as string | undefined) ??
+          null;
+        orgDrawer.setRouteName(name);
+        guildDrawer.setRouteName(name);
+      }}
     >
       {!user ? (
         <AuthStack.Navigator screenOptions={{ headerShown: false }}>

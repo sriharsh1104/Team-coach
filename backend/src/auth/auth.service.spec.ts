@@ -525,6 +525,54 @@ describe('AuthService (unit)', () => {
     });
   });
 
+  describe('login', () => {
+    async function buildLoginableUser() {
+      const passwordHash = await bcrypt.hash('CorrectHorse1!', 4);
+      return buildService({
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'u1',
+            email: 'a@b.com',
+            passwordHash,
+            emailVerified: true,
+            twoFactorEnabled: false,
+            tokenVersion: 2,
+          }),
+        },
+      });
+    }
+
+    it('signs a normal (web) access token without an explicit expiry override', async () => {
+      const { service, jwtService } = await buildLoginableUser();
+
+      const result = await service.login({
+        email: 'a@b.com',
+        password: 'CorrectHorse1!',
+      });
+
+      // Called with just the payload — no second `options` argument — so the
+      // token falls back to the server's configured JWT_EXPIRES_IN.
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: 'u1' }),
+      );
+      expect('accessToken' in result && result.accessToken).toBe('signed-jwt');
+    });
+
+    it('signs a 30-day access token when the request comes from the mobile app', async () => {
+      const { service, jwtService } = await buildLoginableUser();
+
+      await service.login(
+        { email: 'a@b.com', password: 'CorrectHorse1!' },
+        true,
+      );
+
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: 'u1' }),
+        { expiresIn: '30d' },
+      );
+    });
+  });
+
   describe('logout', () => {
     it('revokes only the one token (by jti), not every session for the user', async () => {
       const { service, prisma } = buildService();
