@@ -71,24 +71,27 @@ export class ChatService {
   }
 
   private async resolveChannel(userId: string, channelKey: string) {
-    if (channelKey === GUILD_CHANNEL) {
-      const guild = await this.prisma.guildMembership.findFirst({
-        where: { userId },
-      });
-      const roster = guild
-        ? null
-        : await this.prisma.membership.findFirst({ where: { userId } });
-      const orgId = guild?.orgId ?? roster?.orgId;
-      if (!orgId) {
-        throw new NotFoundException('You are not part of a guild yet');
-      }
-      await this.assertChannelAccess(userId, orgId, channelKey);
-      return { orgId, joinedAt: guild?.createdAt ?? roster!.createdAt };
+    if (channelKey === ORG_CHANNEL) {
+      const membership = await this.getMembershipForUser(userId);
+      await this.assertChannelAccess(userId, membership.orgId, channelKey);
+      return { orgId: membership.orgId, joinedAt: membership.createdAt };
     }
 
-    const membership = await this.getMembershipForUser(userId);
-    await this.assertChannelAccess(userId, membership.orgId, channelKey);
-    return { orgId: membership.orgId, joinedAt: membership.createdAt };
+    // Guild chat and DMs are open to roster players and guild-only members
+    // alike — resolve orgId from whichever membership the caller actually
+    // has, same as getChatContext.
+    const guild = await this.prisma.guildMembership.findFirst({
+      where: { userId },
+    });
+    const roster = guild
+      ? null
+      : await this.prisma.membership.findFirst({ where: { userId } });
+    const orgId = guild?.orgId ?? roster?.orgId;
+    if (!orgId) {
+      throw new NotFoundException('You are not part of a guild yet');
+    }
+    await this.assertChannelAccess(userId, orgId, channelKey);
+    return { orgId, joinedAt: guild?.createdAt ?? roster!.createdAt };
   }
 
   /** Sorted DM channel key so either side resolves the same room. */
@@ -119,13 +122,25 @@ export class ChatService {
       return;
     }
 
-    const roster = await this.prisma.membership.findFirst({
-      where: { userId, orgId },
-    });
-    if (!roster) {
-      throw new ForbiddenException('Roster chat is only for the esports roster');
+    if (channelKey === ORG_CHANNEL) {
+      const roster = await this.prisma.membership.findFirst({
+        where: { userId, orgId },
+      });
+      if (!roster) {
+        throw new ForbiddenException('Roster chat is only for the esports roster');
+      }
+      return;
     }
-    if (channelKey === ORG_CHANNEL) return;
+
+    // DM — 1:1 chat is for the whole guild, not just the roster. Either a
+    // roster seat or a plain guild seat in this org qualifies both sides.
+    const [guild, roster] = await Promise.all([
+      this.prisma.guildMembership.findFirst({ where: { userId, orgId } }),
+      this.prisma.membership.findFirst({ where: { userId, orgId } }),
+    ]);
+    if (!guild && !roster) {
+      throw new ForbiddenException('You are not in this guild');
+    }
     const peerId = this.parseDmPeer(channelKey, userId);
     if (!peerId) {
       throw new BadRequestException('Invalid channel');
@@ -133,11 +148,12 @@ export class ChatService {
     if (this.dmChannelKey(userId, peerId) !== channelKey) {
       throw new ForbiddenException('Not a member of this DM');
     }
-    const peerMembership = await this.prisma.membership.findFirst({
-      where: { userId: peerId, orgId },
-    });
-    if (!peerMembership) {
-      throw new NotFoundException('Teammate not found in your org');
+    const [peerGuild, peerRoster] = await Promise.all([
+      this.prisma.guildMembership.findFirst({ where: { userId: peerId, orgId } }),
+      this.prisma.membership.findFirst({ where: { userId: peerId, orgId } }),
+    ]);
+    if (!peerGuild && !peerRoster) {
+      throw new NotFoundException('That person is not in your guild');
     }
   }
 
@@ -145,23 +161,46 @@ export class ChatService {
     // Guild-only members (joined via guild code, no roster seat) still need
     // mentionables + unread for GuildHome — do not require Membership here.
     const { orgId, roster } = await this.getChatContext(userId);
-    const members = roster
-      ? await this.prisma.membership.findMany({
-          where: { orgId, userId: { not: userId } },
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                avatarUrl: true,
-                inGameName: true,
+
+    const [rosterRows, guildSeats] = await Promise.all([
+      roster
+        ? this.prisma.membership.findMany({
+            where: { orgId, userId: { not: userId } },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatarUrl: true,
+                  inGameName: true,
+                },
               },
             },
+            orderBy: { user: { name: 'asc' } },
+          })
+        : Promise.resolve([]),
+      this.prisma.guildMembership.findMany({
+        where: { orgId, userId: { not: userId } },
+        include: {
+          user: {
+            select: { id: true, name: true, avatarUrl: true, inGameName: true },
           },
-          orderBy: { user: { name: 'asc' } },
-        })
-      : [];
-    const memberCount = members.length + (roster ? 1 : 0);
+        },
+      }),
+    ]);
+    const memberCount = rosterRows.length + (roster ? 1 : 0);
+
+    // 1:1 chat is for the whole guild, not just the roster — union both
+    // pools (a roster player is almost always also a guild member, so this
+    // is usually just guildSeats, but either seat qualifies someone as a DM
+    // candidate for everyone else here) de-duplicated by user.
+    const peerById = new Map<
+      string,
+      { id: string; name: string; avatarUrl: string | null; inGameName: string | null }
+    >();
+    for (const m of rosterRows) peerById.set(m.user.id, m.user);
+    for (const g of guildSeats) peerById.set(g.user.id, g.user);
+    const peers = [...peerById.values()].sort((a, b) => a.name.localeCompare(b.name));
 
     const groupUnread = roster
       ? await this.countUnread(userId, orgId, ORG_CHANNEL)
@@ -171,16 +210,16 @@ export class ChatService {
       : null;
 
     const dms = await Promise.all(
-      members.map(async (m) => {
-        const channelKey = this.dmChannelKey(userId, m.userId);
+      peers.map(async (u) => {
+        const channelKey = this.dmChannelKey(userId, u.id);
         const unreadCount = await this.countUnread(userId, orgId, channelKey);
         const last = await this.lastMessage(orgId, channelKey);
         return {
           channelKey,
           type: 'DM' as const,
-          title: m.user.name,
-          peerUserId: m.user.id,
-          peerAvatarUrl: m.user.avatarUrl,
+          title: u.name,
+          peerUserId: u.id,
+          peerAvatarUrl: u.avatarUrl,
           memberCount: null as number | null,
           unreadCount,
           lastMessageAt: last?.createdAt ?? null,
@@ -191,16 +230,6 @@ export class ChatService {
 
     // Only surface DMs that already have messages, plus always show group.
     const activeDms = dms.filter((d) => d.lastMessageAt || d.unreadCount > 0);
-
-    // Guild seats for guild-chat @IGN only — never mixed into roster chat.
-    const guildSeats = await this.prisma.guildMembership.findMany({
-      where: { orgId, userId: { not: userId } },
-      include: {
-        user: {
-          select: { id: true, name: true, avatarUrl: true, inGameName: true },
-        },
-      },
-    });
 
     const toMentionable = (u: {
       id: string;
@@ -215,8 +244,10 @@ export class ChatService {
       channelKey: this.dmChannelKey(userId, u.id),
     });
 
-    const rosterMentionables = members.map((m) => toMentionable(m.user));
+    const rosterMentionables = rosterRows.map((m) => toMentionable(m.user));
     const guildMentionables = guildSeats.map((g) => toMentionable(g.user));
+    // "Start new chat" / DM candidate pool — every guild member, roster or not.
+    const teammates = peers.map(toMentionable);
 
     const guildUnread = await this.countUnread(userId, orgId, GUILD_CHANNEL);
     const guildLast = await this.lastMessage(orgId, GUILD_CHANNEL);
@@ -260,7 +291,8 @@ export class ChatService {
 
     return {
       channels,
-      teammates: rosterMentionables,
+      // DM candidate pool — the whole guild, not just the roster.
+      teammates,
       // Legacy alias = roster only (org / esports chat). Prefer the scoped
       // lists on clients that know the active channelKey.
       mentionables: rosterMentionables,

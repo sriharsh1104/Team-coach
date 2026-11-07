@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { PasswordField } from '../auth/PasswordField';
 import { useAuth } from '../auth/AuthContext';
 import { extractInviteToken, savePendingInvite } from '../auth/invitePending';
@@ -14,6 +14,10 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const resetSuccess = Boolean(
+    (useLocation().state as { passwordResetSuccess?: boolean } | null)
+      ?.passwordResetSuccess,
+  );
 
   useEffect(() => {
     const invite = extractInviteToken(searchParams.get('invite') || '');
@@ -83,7 +87,13 @@ export function LoginPage() {
           onChange={setPassword}
           required
         />
+        <p className="auth-footer">
+          <Link to="/forgot-password">Forgot password?</Link>
+        </p>
 
+        {resetSuccess ? (
+          <p className="muted">Password reset — sign in with your new password.</p>
+        ) : null}
         {error ? <p className="error">{error}</p> : null}
         <button className="btn btn-primary" type="submit" disabled={busy}>
           Sign in

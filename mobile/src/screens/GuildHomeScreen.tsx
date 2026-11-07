@@ -8,7 +8,9 @@ import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
 import { MenuButton, SideDrawer, SideDrawerSection } from '../ui/SideDrawer';
 import { SoftPressable } from '../ui/SoftPressable';
-import { ChatScreen } from './chat/ChatScreen';
+import { Toast, useToast } from '../ui/Toast';
+import { goToSection } from '../navigation/goToSection';
+import { ChatHubScreen } from './chat/ChatHubScreen';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'GuildHome'>;
 
@@ -21,24 +23,35 @@ export function GuildHomeScreen({ navigation }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
+  const { message: toastMessage, showToast } = useToast();
 
   const drawerSections = useMemo((): SideDrawerSection[] => {
     return [
       {
-        key: 'guild',
-        label: 'Guild',
+        key: 'chat',
+        label: 'Chat',
         items: [
           {
             key: 'guildChat',
             label: 'Guild Chat',
-            onPress: () => {
-              // Already on GuildHome which embeds guild chat.
-            },
+            // Resets the stack to just GuildHome (which embeds ChatHubScreen)
+            // instead of pushing a duplicate — lets Chat be switched back to
+            // from anywhere via the drawer, with no back button needed, and
+            // without leaving whatever section was open underneath.
+            onPress: () => goToSection(navigation, 'GuildHome'),
           },
+        ],
+      },
+      {
+        key: 'guild',
+        label: 'Guild',
+        split: true,
+        items: [
           {
             key: 'guildRoster',
             label: 'Guild Roster',
-            onPress: () => navigation.navigate('Guild'),
+            onPress: () =>
+              goToSection(navigation, 'GuildHome', { screen: 'Guild' }),
           },
         ],
       },
@@ -50,12 +63,14 @@ export function GuildHomeScreen({ navigation }: Props) {
           {
             key: 'profile',
             label: 'Profile',
-            onPress: () => navigation.navigate('Profile'),
+            onPress: () =>
+              goToSection(navigation, 'GuildHome', { screen: 'Profile' }),
           },
           {
             key: 'socialHandles',
             label: 'Social Handles',
-            onPress: () => navigation.navigate('SocialHandles'),
+            onPress: () =>
+              goToSection(navigation, 'GuildHome', { screen: 'SocialHandles' }),
           },
         ],
       },
@@ -87,7 +102,7 @@ export function GuildHomeScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.chat}>
-        <ChatScreen embedded channelKey="guild" />
+        <ChatHubScreen onLoadError={() => showToast('Could not load chats')} />
       </View>
 
       <SideDrawer
@@ -137,6 +152,8 @@ export function GuildHomeScreen({ navigation }: Props) {
           </View>
         </View>
       </Modal>
+
+      <Toast message={toastMessage} />
     </Screen>
   );
 }

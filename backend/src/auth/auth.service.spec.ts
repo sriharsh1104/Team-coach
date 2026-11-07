@@ -51,6 +51,12 @@ describe('AuthService (unit)', () => {
         update: jest.fn().mockResolvedValue({}),
         delete: jest.fn().mockResolvedValue({}),
       },
+      passwordResetCode: {
+        upsert: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
+      },
       membership: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
@@ -75,6 +81,7 @@ describe('AuthService (unit)', () => {
     const mailerService = {
       sendSignupOtp: jest.fn().mockResolvedValue(undefined),
       sendGeneratedPassword: jest.fn().mockResolvedValue(undefined),
+      sendPasswordReset: jest.fn().mockResolvedValue(undefined),
     } as unknown as MailerService;
 
     const service = new AuthService(prisma, jwtService, configService, mailerService);
@@ -363,6 +370,158 @@ describe('AuthService (unit)', () => {
         service.resendEmailVerification({ challengeToken: 'token' }),
       ).rejects.toThrow(BadRequestException);
       expect(mailerService.sendSignupOtp).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('forgotPassword', () => {
+    it('issues and emails a reset code when the account exists', async () => {
+      const { service, prisma, mailerService } = buildService({
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'u1',
+            email: 'a@b.com',
+            passwordHash: 'hashed',
+          }),
+        },
+      });
+
+      const result = await service.forgotPassword({ email: 'a@b.com' });
+
+      expect(result).toEqual({ success: true });
+      expect(prisma.passwordResetCode.upsert).toHaveBeenCalled();
+      expect(mailerService.sendPasswordReset).toHaveBeenCalledWith(
+        'a@b.com',
+        expect.stringMatching(/^\d{6}$/),
+      );
+    });
+
+    it('SECURITY: returns the same generic success for an unknown email, without emailing anyone', async () => {
+      const { service, mailerService } = buildService({
+        user: { findUnique: jest.fn().mockResolvedValue(null) },
+      });
+
+      const result = await service.forgotPassword({ email: 'nobody@b.com' });
+
+      expect(result).toEqual({ success: true });
+      expect(mailerService.sendPasswordReset).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword', () => {
+    async function buildResetChallenge({
+      code = '123456',
+      storedCode = '123456',
+      attempts = 0,
+      expiresAt = new Date(Date.now() + 60000),
+    }: {
+      code?: string;
+      storedCode?: string;
+      attempts?: number;
+      expiresAt?: Date;
+    } = {}) {
+      const codeHash = await bcrypt.hash(storedCode, 4);
+      const { service, prisma } = buildService({
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'u1',
+            email: 'a@b.com',
+            tokenVersion: 3,
+          }),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        passwordResetCode: {
+          findUnique: jest.fn().mockResolvedValue({
+            userId: 'u1',
+            codeHash,
+            expiresAt,
+            attempts,
+          }),
+          update: jest.fn().mockResolvedValue({}),
+          delete: jest.fn().mockResolvedValue({}),
+        },
+      });
+      return { service, prisma, code };
+    }
+
+    it('rotates the password hash and bumps tokenVersion on a correct code', async () => {
+      const { service, prisma } = await buildResetChallenge();
+
+      const result = await service.resetPassword({
+        email: 'a@b.com',
+        code: '123456',
+        newPassword: 'NewPassword123!',
+      });
+
+      expect(prisma.passwordResetCode.delete).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: {
+          passwordHash: expect.any(String),
+          tokenVersion: { increment: 1 },
+        },
+      });
+      expect(result).toEqual({ success: true });
+    });
+
+    it('rejects an incorrect code and increments the attempt counter', async () => {
+      const { service, prisma } = await buildResetChallenge({ storedCode: '654321' });
+
+      await expect(
+        service.resetPassword({
+          email: 'a@b.com',
+          code: '123456',
+          newPassword: 'NewPassword123!',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(prisma.passwordResetCode.update).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+        data: { attempts: { increment: 1 } },
+      });
+    });
+
+    it('rejects an expired code', async () => {
+      const { service } = await buildResetChallenge({
+        expiresAt: new Date(Date.now() - 1000),
+      });
+
+      await expect(
+        service.resetPassword({
+          email: 'a@b.com',
+          code: '123456',
+          newPassword: 'NewPassword123!',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('deletes the code and refuses further attempts once the attempt cap is hit', async () => {
+      const { service, prisma } = await buildResetChallenge({ attempts: 5 });
+
+      await expect(
+        service.resetPassword({
+          email: 'a@b.com',
+          code: '123456',
+          newPassword: 'NewPassword123!',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(prisma.passwordResetCode.delete).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
+    });
+
+    it('rejects an unknown email rather than revealing whether the account exists', async () => {
+      const { service } = buildService({
+        user: { findUnique: jest.fn().mockResolvedValue(null) },
+      });
+
+      await expect(
+        service.resetPassword({
+          email: 'nobody@b.com',
+          code: '123456',
+          newPassword: 'NewPassword123!',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 

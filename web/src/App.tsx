@@ -6,6 +6,8 @@ import { ChatPage } from './pages/ChatPage';
 import { GuildSpacePage } from './pages/guild/GuildSpacePage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ManageTournamentRecordsPage } from './pages/ManageTournamentRecordsPage';
 import { MapsPage } from './pages/MapsPage';
 import { MediaFeedPage } from './pages/MediaFeedPage';
@@ -89,6 +91,22 @@ export default function App() {
         }
       />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route
+        path="/forgot-password"
+        element={
+          <PublicOnly>
+            <ForgotPasswordPage />
+          </PublicOnly>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <PublicOnly>
+            <ResetPasswordPage />
+          </PublicOnly>
+        }
+      />
       <Route path="/2fa" element={<TwoFactorPage />} />
       <Route path="/join/:token" element={<InviteJoinPage />} />
 

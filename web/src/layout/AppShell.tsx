@@ -40,10 +40,16 @@ export function AppShell() {
     );
   }
 
-  const guildNav: NavItem[] = [
-    { to: '/guild/chat', label: 'Guild Chat' },
-    { to: '/guild', label: 'Guild Roster', end: true },
-  ];
+  // Owners already get Team Chat + Guild Chat + every 1:1 DM in one place
+  // at /app — a separate "Guild Chat" link there would just be a duplicate
+  // destination. Pure guild-only members (no org) have nowhere else to
+  // reach chat, so they keep it.
+  const guildNav: NavItem[] = org
+    ? [{ to: '/guild', label: 'Guild Roster', end: true }]
+    : [
+        { to: '/guild/chat', label: 'Guild Chat' },
+        { to: '/guild', label: 'Guild Roster', end: true },
+      ];
 
   return (
     <div className="shell">

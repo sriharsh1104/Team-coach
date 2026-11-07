@@ -49,6 +49,12 @@ export function LoginScreen({ navigation }: Props) {
         onChangeText={setEmail}
       />
       <PasswordField value={password} onChangeText={setPassword} />
+      <Text
+        style={[authStyles.link, { marginTop: 0, marginBottom: 12 }]}
+        onPress={() => navigation.navigate('ForgotPassword')}
+      >
+        Forgot password?
+      </Text>
       <SoftPressable
         style={[
           authStyles.button,

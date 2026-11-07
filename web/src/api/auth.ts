@@ -33,6 +33,22 @@ export function login(email: string, password: string) {
     .then((res) => res.data);
 }
 
+export function forgotPassword(email: string) {
+  return apiClient
+    .post<{ success: boolean }>('/auth/forgot-password', { email })
+    .then((res) => res.data);
+}
+
+export function resetPassword(email: string, code: string, newPassword: string) {
+  return apiClient
+    .post<{ success: boolean }>('/auth/reset-password', {
+      email,
+      code,
+      newPassword,
+    })
+    .then((res) => res.data);
+}
+
 export function googleLogin(idToken: string) {
   return apiClient
     .post<GoogleLoginResult>('/auth/google', { idToken })

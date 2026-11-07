@@ -7,6 +7,8 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { TwoFactorChallengeScreen } from '../screens/TwoFactorChallengeScreen';
 import { EmailVerificationScreen } from '../screens/EmailVerificationScreen';
+import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
+import { ResetPasswordScreen } from '../screens/ResetPasswordScreen';
 import { BiometricLockScreen } from '../screens/BiometricLockScreen';
 import { OrgChoiceScreen } from '../screens/OrgChoiceScreen';
 import { CreateOrgScreen } from '../screens/CreateOrgScreen';
@@ -34,7 +36,8 @@ import { MapsScreen } from '../screens/MapsScreen';
 import { RuleBookScreen } from '../screens/RuleBookScreen';
 import { PointsTableScreen } from '../screens/PointsTableScreen';
 import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
-import { HeaderBackButton } from '../ui/HeaderBackButton';
+import { MenuButton, SideDrawer } from '../ui/SideDrawer';
+import { useGuildDrawer, useOrgDrawer } from './useAppDrawer';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -48,6 +51,22 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
 const ProfileSetupStack = createNativeStackNavigator<ProfileSetupStackParamList>();
 const MainStack = createNativeStackNavigator<MainStackParamList>();
+
+// Every screen reachable directly from OrgHome/GuildHome (not a drill-down
+// detail like MemberProfile or PlayerStats) gets this as headerLeft instead
+// of the default back chevron — opens the same drawer Home uses, so users
+// can jump straight to another section without backing out first. `openWith`
+// captures whichever screen's nav prop opened it; dispatching a reset from
+// any screen in this stack resets the whole (shared) stack the same way.
+function sectionOptions(
+  openWith: (nav: any) => void,
+  build?: (args: { navigation: any; route: any }) => Record<string, unknown>,
+) {
+  return (args: { navigation: any; route: any }) => ({
+    ...(build ? build(args) : {}),
+    headerLeft: () => <MenuButton onPress={() => openWith(args.navigation)} />,
+  });
+}
 
 const sacredNavTheme = {
   ...DarkTheme,
@@ -119,6 +138,10 @@ function persistNavState(phase: NavPhase, state: NavigationState | undefined) {
 
 export function RootNavigator() {
   const { isLoading, user, org, guild, needsBiometricUnlock } = useAuth();
+  // Called unconditionally (Rules of Hooks) even though only one of these is
+  // ever actually used below, depending on phase/org — see useAppDrawer.ts.
+  const orgDrawer = useOrgDrawer();
+  const guildDrawer = useGuildDrawer();
   const phase = computeNavPhase(user, org, guild);
   // Deliberately NOT memoized with useState: RootNavigator itself mounts
   // immediately (while isLoading is still true, before `phase` can possibly
@@ -172,6 +195,14 @@ export function RootNavigator() {
             name="EmailVerification"
             component={EmailVerificationScreen}
           />
+          <AuthStack.Screen
+            name="ForgotPassword"
+            component={ForgotPasswordScreen}
+          />
+          <AuthStack.Screen
+            name="ResetPassword"
+            component={ResetPasswordScreen}
+          />
         </AuthStack.Navigator>
       ) : !user.profileComplete ? (
         <ProfileSetupStack.Navigator screenOptions={{ headerShown: false }}>
@@ -186,169 +217,202 @@ export function RootNavigator() {
           <OrgSetupStack.Screen name="JoinOrg" component={JoinOrgScreen} />
         </OrgSetupStack.Navigator>
       ) : !org && guild ? (
-        <MainStack.Navigator screenOptions={mainScreenOptions}>
-          <MainStack.Screen
-            name="GuildHome"
-            component={GuildHomeScreen}
-            options={{ headerShown: false }}
+        <>
+          <MainStack.Navigator screenOptions={mainScreenOptions}>
+            <MainStack.Screen
+              name="GuildHome"
+              component={GuildHomeScreen}
+              options={{ headerShown: false }}
+            />
+            <MainStack.Screen
+              name="Guild"
+              component={GuildScreen}
+              options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Guild' }))}
+            />
+            <MainStack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Profile' }))}
+            />
+            <MainStack.Screen
+              name="AccountSettings"
+              component={AccountSettingsScreen}
+              options={sectionOptions(guildDrawer.openWith, () => ({
+                title: 'Account Settings',
+              }))}
+            />
+            <MainStack.Screen
+              name="TwoFactorSetup"
+              component={TwoFactorSetupScreen}
+              options={{ title: 'Two-Factor Authentication' }}
+            />
+            <MainStack.Screen
+              name="Chat"
+              options={sectionOptions(guildDrawer.openWith, () => ({
+                title: 'Guild Chat',
+              }))}
+            >
+              {() => <ChatScreenWithMedia channelKey="guild" title="Guild Chat" />}
+            </MainStack.Screen>
+            <MainStack.Screen
+              name="SocialHandles"
+              component={SocialHandlesScreen}
+              options={sectionOptions(guildDrawer.openWith, () => ({
+                title: 'Social Handles',
+              }))}
+            />
+            <MainStack.Screen
+              name="MemberProfile"
+              component={MemberProfileScreen}
+              options={({ route }) => ({ title: titleCase(route.params.name) })}
+            />
+          </MainStack.Navigator>
+          <SideDrawer
+            open={guildDrawer.open}
+            onClose={guildDrawer.close}
+            title="Sacred Esports"
+            subtitle={guild?.name ?? user?.name}
+            sections={guildDrawer.sections}
           />
-          <MainStack.Screen
-            name="Guild"
-            component={GuildScreen}
-            options={{ title: 'Guild' }}
-          />
-          <MainStack.Screen
-            name="Profile"
-            component={ProfileScreen}
-            options={{ title: 'Profile' }}
-          />
-          <MainStack.Screen
-            name="AccountSettings"
-            component={AccountSettingsScreen}
-            options={{ title: 'Account Settings' }}
-          />
-          <MainStack.Screen
-            name="TwoFactorSetup"
-            component={TwoFactorSetupScreen}
-            options={{ title: 'Two-Factor Authentication' }}
-          />
-          <MainStack.Screen
-            name="Chat"
-            options={{ title: 'Guild Chat' }}
-          >
-            {() => <ChatScreenWithMedia channelKey="guild" title="Guild Chat" />}
-          </MainStack.Screen>
-          <MainStack.Screen
-            name="SocialHandles"
-            component={SocialHandlesScreen}
-            options={{ title: 'Social Handles' }}
-          />
-          <MainStack.Screen
-            name="MemberProfile"
-            component={MemberProfileScreen}
-            options={({ route }) => ({ title: titleCase(route.params.name) })}
-          />
-        </MainStack.Navigator>
+        </>
       ) : (
-        <MainStack.Navigator screenOptions={mainScreenOptions}>
-          <MainStack.Screen
-            name="OrgHome"
-            component={OrgHomeScreen}
-            options={{ headerShown: false }}
-          />
-          <MainStack.Screen
-            name="Profile"
-            component={ProfileScreen}
-            options={{ title: 'Profile' }}
-          />
-          <MainStack.Screen
-            name="Members"
-            component={MembersScreen}
-            options={({ navigation }) => ({
-              title: 'Roster',
-              headerLeft: () => (
-                <HeaderBackButton onPress={() => navigation.goBack()} />
-              ),
-            })}
-          />
-          <MainStack.Screen
-            name="Guild"
-            component={GuildScreen}
-            options={{ title: 'Guild' }}
-          />
-          <MainStack.Screen
-            name="OrgSettings"
-            component={OrgSettingsScreen}
-            options={{ title: 'Org Settings' }}
-          />
-          <MainStack.Screen
-            name="AccountSettings"
-            component={AccountSettingsScreen}
-            options={{ title: 'Account Settings' }}
-          />
-          <MainStack.Screen
-            name="TwoFactorSetup"
-            component={TwoFactorSetupScreen}
-            options={{ title: 'Two-Factor Authentication' }}
-          />
-          <MainStack.Screen
-            name="MemberProfile"
-            component={MemberProfileScreen}
-            options={({ route }) => ({ title: titleCase(route.params.name) })}
-          />
-          <MainStack.Screen
-            name="MediaFeed"
-            component={MediaFeedScreen}
-            options={{ title: 'Media' }}
-          />
-          <MainStack.Screen
-            name="Chat"
-            options={({ route }) => ({
-              title:
-                route.params?.channelKey === 'guild' ? 'Guild Chat' : 'Team Chat',
-            })}
-          >
-            {({ route }) => (
-              <ChatScreenWithMedia
-                channelKey={route.params?.channelKey ?? 'org'}
-                title={route.params?.channelKey === 'guild' ? 'Guild Chat' : 'Team Chat'}
-              />
-            )}
-          </MainStack.Screen>
-          <MainStack.Screen
-            name="Scrims"
-            component={ScrimsListScreen}
-            options={{ title: 'Scrims & Tournaments' }}
-          />
-          <MainStack.Screen
-            name="AddEditScrim"
-            component={AddEditScrimScreen}
-            options={{ title: 'Scrim / Tournament' }}
-          />
-          <MainStack.Screen
-            name="Stats"
-            component={StatsHomeScreen}
-            options={{ title: 'Stats' }}
-          />
-          <MainStack.Screen
-            name="ExtractionReview"
-            component={ExtractionReviewScreen}
-            options={{ title: 'Review Stats' }}
-          />
-          <MainStack.Screen
-            name="PlayerStats"
-            component={PlayerStatsScreen}
-            options={({ route }) => ({ title: titleCase(route.params.name) })}
-          />
-          <MainStack.Screen
-            name="Voice"
-            getComponent={() =>
-              require('../screens/voice/VoiceChannelScreen').VoiceChannelScreen
-            }
-            options={{ title: 'Team Voice' }}
-          />
-          <MainStack.Screen
-            name="Maps"
-            component={MapsScreen}
-            options={{ title: 'Maps' }}
-          />
-          <MainStack.Screen
-            name="RuleBook"
-            component={RuleBookScreen}
-            options={{ title: 'Rule Book' }}
-          />
-          <MainStack.Screen
-            name="PointsTable"
-            component={PointsTableScreen}
-            options={{ title: 'Points Table' }}
-          />
+        <>
+          <MainStack.Navigator screenOptions={mainScreenOptions}>
+            <MainStack.Screen
+              name="OrgHome"
+              component={OrgHomeScreen}
+              options={{ headerShown: false }}
+            />
+            <MainStack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Profile' }))}
+            />
+            <MainStack.Screen
+              name="Members"
+              component={MembersScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Roster' }))}
+            />
+            <MainStack.Screen
+              name="Guild"
+              component={GuildScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Guild' }))}
+            />
+            <MainStack.Screen
+              name="OrgSettings"
+              component={OrgSettingsScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Org Settings',
+              }))}
+            />
+            <MainStack.Screen
+              name="AccountSettings"
+              component={AccountSettingsScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Account Settings',
+              }))}
+            />
+            <MainStack.Screen
+              name="TwoFactorSetup"
+              component={TwoFactorSetupScreen}
+              options={{ title: 'Two-Factor Authentication' }}
+            />
+            <MainStack.Screen
+              name="MemberProfile"
+              component={MemberProfileScreen}
+              options={({ route }) => ({ title: titleCase(route.params.name) })}
+            />
+            <MainStack.Screen
+              name="MediaFeed"
+              component={MediaFeedScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Media' }))}
+            />
+            <MainStack.Screen
+              name="Chat"
+              options={sectionOptions(orgDrawer.openWith, ({ route }) => ({
+                title:
+                  route.params?.channelKey === 'guild' ? 'Guild Chat' : 'Team Chat',
+              }))}
+            >
+              {({ route }) => (
+                <ChatScreenWithMedia
+                  channelKey={route.params?.channelKey ?? 'org'}
+                  title={route.params?.channelKey === 'guild' ? 'Guild Chat' : 'Team Chat'}
+                />
+              )}
+            </MainStack.Screen>
+            <MainStack.Screen
+              name="Scrims"
+              component={ScrimsListScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Scrims & Tournaments',
+              }))}
+            />
+            <MainStack.Screen
+              name="AddEditScrim"
+              component={AddEditScrimScreen}
+              options={{ title: 'Scrim / Tournament' }}
+            />
+            <MainStack.Screen
+              name="Stats"
+              component={StatsHomeScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Stats' }))}
+            />
+            <MainStack.Screen
+              name="ExtractionReview"
+              component={ExtractionReviewScreen}
+              options={{ title: 'Review Stats' }}
+            />
+            <MainStack.Screen
+              name="PlayerStats"
+              component={PlayerStatsScreen}
+              options={({ route }) => ({ title: titleCase(route.params.name) })}
+            />
+            <MainStack.Screen
+              name="Voice"
+              getComponent={() =>
+                require('../screens/voice/VoiceChannelScreen').VoiceChannelScreen
+              }
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Team Voice',
+              }))}
+            />
+            <MainStack.Screen
+              name="Maps"
+              component={MapsScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Maps' }))}
+            />
+            <MainStack.Screen
+              name="RuleBook"
+              component={RuleBookScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Rule Book',
+              }))}
+            />
+            <MainStack.Screen
+              name="PointsTable"
+              component={PointsTableScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Points Table',
+              }))}
+            />
 
-          <MainStack.Screen
-            name="SocialHandles"
-            component={SocialHandlesScreen}
-            options={{ title: 'Social Handles' }}
+            <MainStack.Screen
+              name="SocialHandles"
+              component={SocialHandlesScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Social Handles',
+              }))}
+            />
+          </MainStack.Navigator>
+          <SideDrawer
+            open={orgDrawer.open}
+            onClose={orgDrawer.close}
+            title="Sacred Esports"
+            subtitle={org?.name ?? user?.name}
+            sections={orgDrawer.sections}
           />
-        </MainStack.Navigator>
+        </>
       )}
     </NavigationContainer>
   );

@@ -5,6 +5,8 @@ export type AuthStackParamList = {
   Signup: undefined;
   TwoFactorChallenge: { challengeToken: string };
   EmailVerification: { challengeToken: string };
+  ForgotPassword: undefined;
+  ResetPassword: { email: string };
 };
 
 export type OrgSetupStackParamList = {

@@ -11,6 +11,8 @@ import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
 import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendEmailVerificationDto } from './dto/resend-email-verification.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -67,6 +69,20 @@ export class AuthController {
   @Post('resend-verification')
   resendVerification(@Body() dto: ResendEmailVerificationDto) {
     return this.authService.resendEmailVerification(dto);
+  }
+
+  // Same tight limit as resend-verification — this is the other route that
+  // sends an email per request and must not become a spam vector.
+  @Throttle({ default: { limit: resendVerificationThrottleLimit, ttl: 60000 } })
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Throttle({ default: { limit: authThrottleLimit, ttl: 60000 } })
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 
   @UseGuards(JwtAuthGuard)

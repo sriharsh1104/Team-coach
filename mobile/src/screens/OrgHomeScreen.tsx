@@ -13,6 +13,7 @@ import { colors } from '../theme';
 import { MenuButton, SideDrawer, SideDrawerSection } from '../ui/SideDrawer';
 import { SoftPressable } from '../ui/SoftPressable';
 import { emitToast } from '../ui/toastBus';
+import { goToSection } from '../navigation/goToSection';
 import { ChatHubScreen } from './chat/ChatHubScreen';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgHome'>;
@@ -63,53 +64,52 @@ export function OrgHomeScreen({ navigation }: Props) {
   const drawerSections = useMemo((): SideDrawerSection[] => {
     const arenaItems = [
       {
-        key: 'chat',
-        label: 'Chats',
-        onPress: () => {
-          // Already on OrgHome which embeds the chat hub.
-        },
-      },
-      {
         key: 'members',
         label: 'Roster',
-        onPress: () => navigation.navigate('Members'),
+        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Members' }),
       },
       {
         key: 'media',
         label: 'Media',
-        onPress: () => navigation.navigate('MediaFeed'),
+        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'MediaFeed' }),
       },
       {
         key: 'stats',
         label: 'Stats & Schedule',
-        onPress: () => navigation.navigate('Stats', { mode: 'BR' }),
+        onPress: () =>
+          goToSection(navigation, 'OrgHome', {
+            screen: 'Stats',
+            params: { mode: 'BR' },
+          }),
       },
       {
         key: 'voice',
         label: 'Team Voice',
-        onPress: () => navigation.navigate('Voice'),
+        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Voice' }),
       },
       {
         key: 'maps',
         label: 'Maps',
-        onPress: () => navigation.navigate('Maps'),
+        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Maps' }),
       },
       {
         key: 'ruleBook',
         label: 'Rule Book',
-        onPress: () => navigation.navigate('RuleBook'),
+        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'RuleBook' }),
       },
       {
         key: 'pointsTable',
         label: 'Points Table',
-        onPress: () => navigation.navigate('PointsTable'),
+        onPress: () =>
+          goToSection(navigation, 'OrgHome', { screen: 'PointsTable' }),
       },
       ...(isOwner
         ? [
             {
               key: 'orgSettings',
               label: 'Org Settings',
-              onPress: () => navigation.navigate('OrgSettings'),
+              onPress: () =>
+                goToSection(navigation, 'OrgHome', { screen: 'OrgSettings' }),
             },
           ]
         : []),
@@ -117,8 +117,24 @@ export function OrgHomeScreen({ navigation }: Props) {
 
     const sections: SideDrawerSection[] = [
       {
+        key: 'chat',
+        label: 'Chat',
+        items: [
+          {
+            key: 'teamChat',
+            label: 'Team Chat',
+            // Resets the stack to just OrgHome (which embeds ChatHubScreen)
+            // instead of pushing a duplicate — lets Chat be switched back to
+            // from anywhere via the drawer, with no back button needed, and
+            // without leaving whatever section was open underneath.
+            onPress: () => goToSection(navigation, 'OrgHome'),
+          },
+        ],
+      },
+      {
         key: 'arena',
         label: 'Esports Arena',
+        split: true,
         items: arenaItems,
       },
     ];
@@ -130,15 +146,9 @@ export function OrgHomeScreen({ navigation }: Props) {
         split: true,
         items: [
           {
-            key: 'guildChat',
-            label: 'Guild Chat',
-            onPress: () =>
-              navigation.navigate('Chat', { channelKey: 'guild' }),
-          },
-          {
             key: 'guildHome',
             label: 'Guild Roster',
-            onPress: () => navigation.navigate('Guild'),
+            onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
           },
         ],
       });
@@ -152,12 +162,13 @@ export function OrgHomeScreen({ navigation }: Props) {
         {
           key: 'profile',
           label: 'Profile',
-          onPress: () => navigation.navigate('Profile'),
+          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Profile' }),
         },
         {
           key: 'socialHandles',
           label: 'Social Handles',
-          onPress: () => navigation.navigate('SocialHandles'),
+          onPress: () =>
+            goToSection(navigation, 'OrgHome', { screen: 'SocialHandles' }),
         },
       ],
     });

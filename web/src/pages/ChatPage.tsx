@@ -84,8 +84,10 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
     const key = activeKey ?? (variant === 'guild' ? 'guild' : 'org');
     if (key === 'guild') return guildMentionables;
     if (key === 'org') return rosterMentionables;
-    return rosterMentionables.filter((m) => m.channelKey === key);
-  }, [activeKey, variant, guildMentionables, rosterMentionables]);
+    // A DM's peer may be roster or guild-only — `teammates` is the union of
+    // both, unlike rosterMentionables.
+    return teammates.filter((m) => m.channelKey === key);
+  }, [activeKey, variant, guildMentionables, rosterMentionables, teammates]);
 
   const knownIgns = useMemo(
     () =>
@@ -123,35 +125,39 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
     };
 
     if (variant === 'guild') {
-      setChannels([
-        {
-          channelKey: 'guild',
-          type: 'ORG',
-          title: 'Guild Chat',
-          peerUserId: null,
-          peerAvatarUrl: null,
-          memberCount: null,
-          unreadCount: 0,
-          lastMessageAt: null,
-          lastPreview: null,
-        },
-      ]);
-      setTeammates([]);
+      // Land straight in Guild Chat; channels/teammates still come from the
+      // real API response below, same as the roster path — 1:1 chat is for
+      // the whole guild now, not just the esports roster.
       setActiveKey('guild');
-      chatApi
-        .getChatChannels()
-        .then(applyMentions)
-        .catch(() => {
-          setRosterMentionables([]);
-          setGuildMentionables([]);
-        });
-      return;
     }
-    chatApi.getChatChannels().then((data) => {
-      setChannels(data.channels);
-      setTeammates(data.teammates);
-      applyMentions(data);
-    });
+    chatApi
+      .getChatChannels()
+      .then((data) => {
+        setChannels(data.channels);
+        setTeammates(data.teammates);
+        applyMentions(data);
+      })
+      .catch(() => {
+        if (variant === 'guild') {
+          // Still let a guild-only user open the one channel they always
+          // have, even if the full channel/teammate list failed to load.
+          setChannels([
+            {
+              channelKey: 'guild',
+              type: 'ORG',
+              title: 'Guild Chat',
+              peerUserId: null,
+              peerAvatarUrl: null,
+              memberCount: null,
+              unreadCount: 0,
+              lastMessageAt: null,
+              lastPreview: null,
+            },
+          ]);
+        }
+        setRosterMentionables([]);
+        setGuildMentionables([]);
+      });
   }, [variant]);
 
   useEffect(() => {
@@ -365,34 +371,28 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
                 </button>
               ))}
             </div>
-            {variant === 'roster' ? (
-              <>
-                <h2 style={{ marginTop: 18 }}>Direct</h2>
-                <div className="list">
-                  {teammates.length === 0 ? (
-                    <p className="muted">No teammates yet.</p>
-                  ) : (
-                    teammates.map((t) => (
-                      <button
-                        key={t.userId}
-                        type="button"
-                        className="list-row"
-                        onClick={() => openChannel(t.channelKey)}
-                      >
-                        <div>
-                          <strong>{t.name}</strong>
-                          <span>
-                            {t.inGameName
-                              ? `@${t.inGameName}`
-                              : 'Direct message'}
-                          </span>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
-            ) : null}
+            <h2 style={{ marginTop: 18 }}>Direct</h2>
+            <div className="list">
+              {teammates.length === 0 ? (
+                <p className="muted">No teammates yet.</p>
+              ) : (
+                teammates.map((t) => (
+                  <button
+                    key={t.userId}
+                    type="button"
+                    className="list-row"
+                    onClick={() => openChannel(t.channelKey)}
+                  >
+                    <div>
+                      <strong>{t.name}</strong>
+                      <span>
+                        {t.inGameName ? `@${t.inGameName}` : 'Direct message'}
+                      </span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
 
           <div className="chat-thread">

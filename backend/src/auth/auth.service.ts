@@ -23,6 +23,8 @@ import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
 import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendEmailVerificationDto } from './dto/resend-email-verification.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { GuildRole, User } from '@prisma/client';
 import { isProfileComplete } from '../users/users.service';
 import {
@@ -47,6 +49,12 @@ const MAX_EMAIL_OTP_ATTEMPTS = 5;
 // actual thing that matters (how often one address gets emailed) regardless
 // of how many IPs ask for it.
 const EMAIL_OTP_RESEND_COOLDOWN_SECONDS = 30;
+
+// Same lifecycle as the signup OTP above, kept as separate constants since
+// the two gates are independent and could diverge later.
+const PASSWORD_RESET_TTL_MINUTES = 10;
+const MAX_PASSWORD_RESET_ATTEMPTS = 5;
+const PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 30;
 
 interface TwoFactorChallengePayload {
   sub: string;
@@ -261,6 +269,94 @@ export class AuthService {
 
     await this.issueEmailVerificationCode(user.id, user.email);
     return { success: true };
+  }
+
+  // Always returns the same generic response whether or not the email has
+  // an account — leaking that distinction would let anyone enumerate
+  // registered addresses one request at a time.
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (user && user.passwordHash) {
+      await this.issuePasswordResetCode(user.id, user.email);
+    }
+    return { success: true as const };
+  }
+
+  private async issuePasswordResetCode(userId: string, email: string) {
+    const existing = await this.prisma.passwordResetCode.findUnique({
+      where: { userId },
+      select: { expiresAt: true },
+    });
+    if (existing) {
+      // Same back-out-the-last-send trick as issueEmailVerificationCode.
+      const lastSentAt =
+        existing.expiresAt.getTime() - PASSWORD_RESET_TTL_MINUTES * 60 * 1000;
+      const sinceLastSend = Date.now() - lastSentAt;
+      if (sinceLastSend < PASSWORD_RESET_RESEND_COOLDOWN_SECONDS * 1000) {
+        // forgotPassword's response must stay generic regardless — a
+        // cooldown hit just means no second email goes out this time.
+        return;
+      }
+    }
+
+    const code = generateEmailOtp();
+    const codeHash = await bcrypt.hash(code, EMAIL_OTP_BCRYPT_SALT_ROUNDS);
+    const expiresAt = new Date(
+      Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000,
+    );
+
+    await this.prisma.passwordResetCode.upsert({
+      where: { userId },
+      create: { userId, codeHash, expiresAt },
+      update: { codeHash, expiresAt, attempts: 0 },
+    });
+
+    await this.mailerService.sendPasswordReset(email, code);
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired code');
+    }
+
+    const record = await this.prisma.passwordResetCode.findUnique({
+      where: { userId: user.id },
+    });
+    if (!record || record.expiresAt < new Date()) {
+      throw new UnauthorizedException(
+        'That code has expired — request a new one',
+      );
+    }
+    if (record.attempts >= MAX_PASSWORD_RESET_ATTEMPTS) {
+      await this.prisma.passwordResetCode.delete({ where: { userId: user.id } });
+      throw new UnauthorizedException(
+        'Too many incorrect attempts — request a new code',
+      );
+    }
+
+    const matches = await bcrypt.compare(dto.code, record.codeHash);
+    if (!matches) {
+      await this.prisma.passwordResetCode.update({
+        where: { userId: user.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('Invalid code');
+    }
+
+    await this.prisma.passwordResetCode.delete({ where: { userId: user.id } });
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_SALT_ROUNDS);
+    // Bumping tokenVersion kills every existing session — same reasoning as
+    // changePassword: whoever reset the password is the only one who should
+    // stay (or rather start fresh and have to) sign back in.
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    });
+
+    return { success: true as const };
   }
 
   async login(dto: LoginDto) {

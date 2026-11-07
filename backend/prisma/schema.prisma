@@ -72,6 +72,7 @@ model User {
   emailVerified Boolean @default(false)
 
   emailVerificationCode EmailVerificationCode?
+  passwordResetCode     PasswordResetCode?
 
   memberships        Membership[]
   guildMemberships   GuildMembership[]
@@ -104,6 +105,22 @@ model RevokedToken {
 }
 
 model EmailVerificationCode {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// One outstanding forgot-password code per user — same shape and lifecycle
+// as EmailVerificationCode (bcrypt-hashed, TTL + attempts cap, a resend
+// overwrites the row). Kept as its own table rather than reusing
+// EmailVerificationCode so a password-reset code can never be replayed to
+// satisfy the signup email-verification gate, or vice versa.
+model PasswordResetCode {
   id        String   @id @default(cuid())
   userId    String   @unique
   codeHash  String

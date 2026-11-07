@@ -62,8 +62,11 @@ export function ChatHubScreen({ onLoadError }: Props) {
     setIsRefreshing(false);
   };
 
-  const teamChannel = useMemo(
-    () => channels.find((c) => c.type === 'ORG') ?? null,
+  // Every group channel the user has (Team Chat and/or Guild Chat) — a
+  // roster member who's also a guild member sees both, not just whichever
+  // came first, so there's no longer a separate "Guild Chat" destination.
+  const groupChannels = useMemo(
+    () => channels.filter((c) => c.type === 'ORG'),
     [channels],
   );
   const dmChannels = useMemo(
@@ -251,34 +254,35 @@ export function ChatHubScreen({ onLoadError }: Props) {
         }
         renderItem={() => (
           <View>
-            <Text style={styles.section}>Team</Text>
-            {teamChannel ? (
+            {groupChannels.length > 0 ? (
+              <Text style={styles.section}>Group Chats</Text>
+            ) : null}
+            {groupChannels.map((ch) => (
               <SoftPressable
+                key={ch.channelKey}
                 style={[styles.row, styles.teamRow]}
-                onPress={() => openChannel(teamChannel)}
+                onPress={() => openChannel(ch)}
                 pressScale={0.985}
               >
                 <View style={styles.teamAvatar}>
                   <Text style={styles.teamAvatarText}>◈</Text>
                 </View>
                 <View style={styles.rowMain}>
-                  <Text style={styles.rowTitle}>{teamChannel.title}</Text>
+                  <Text style={styles.rowTitle}>{ch.title}</Text>
                   <Text style={styles.preview} numberOfLines={1}>
-                    {teamChannel.memberCount
-                      ? `${teamChannel.memberCount} members`
-                      : 'Group'}
-                    {teamChannel.lastPreview
-                      ? ` · ${teamChannel.lastPreview}`
+                    {ch.memberCount ? `${ch.memberCount} members` : 'Group'}
+                    {ch.lastPreview
+                      ? ` · ${ch.lastPreview}`
                       : ' · No messages yet'}
                   </Text>
                 </View>
-                {teamChannel.unreadCount > 0 ? (
+                {ch.unreadCount > 0 ? (
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{teamChannel.unreadCount}</Text>
+                    <Text style={styles.badgeText}>{ch.unreadCount}</Text>
                   </View>
                 ) : null}
               </SoftPressable>
-            ) : null}
+            ))}
 
             {(dmChannels.length > 0 || startDmTeammates.length > 0) && (
               <Text style={styles.section}>Direct Messages</Text>

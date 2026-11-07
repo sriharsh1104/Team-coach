@@ -34,6 +34,7 @@ const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
 const mockedUseAuth = useAuth as jest.Mock;
 const navigation = {
   navigate: jest.fn(),
+  dispatch: jest.fn(),
   addListener: jest.fn(() => jest.fn()),
 } as any;
 
@@ -96,7 +97,6 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Sacred Esports')).toBeTruthy();
     expect(screen.getByText('Esports Arena')).toBeTruthy();
     expect(screen.getByText('Guild')).toBeTruthy();
-    expect(screen.getByText('Guild Chat')).toBeTruthy();
     expect(screen.getByText('Guild Roster')).toBeTruthy();
     expect(screen.getByText('Account')).toBeTruthy();
     expect(screen.getByText('Roster')).toBeTruthy();
@@ -137,7 +137,15 @@ describe('OrgHomeScreen', () => {
         requestAnimationFrame(() => resolve());
       });
     });
-    expect(navigation.navigate).toHaveBeenCalledWith('Members');
+    // Drawer items reset the stack to [OrgHome, target] instead of calling
+    // navigate() directly — see goToSection.
+    expect(navigation.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          routes: [{ name: 'OrgHome' }, { name: 'Members', params: undefined }],
+        }),
+      }),
+    );
   });
 
   it('shows Guild to coaches who can invite roster even when not owner', async () => {
