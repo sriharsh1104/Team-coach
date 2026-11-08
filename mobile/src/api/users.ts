@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 import { Device, Profile, UpdateProfileInput } from './types';
 import { appendFileToFormData } from './uploadFile';
+import { compressForUpload } from '../media/compressForUpload';
 
 export function getMyProfile() {
   return apiClient.get<Profile>('/users/me').then((res) => res.data);
@@ -23,11 +24,13 @@ export async function uploadMyAvatar(file: {
   fileName: string;
   mimeType: string;
 }) {
+  // Same content:// → file:// pass as chat media / group photo uploads.
+  const prepared = await compressForUpload(file);
   const form = new FormData();
   await appendFileToFormData(form, {
-    uri: file.uri,
-    name: file.fileName,
-    type: file.mimeType,
+    uri: prepared.uri,
+    name: prepared.fileName,
+    type: prepared.mimeType,
   });
   return apiClient
     .post<Profile>('/users/me/avatar', form, {

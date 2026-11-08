@@ -31,16 +31,11 @@ type SocialContact = {
   label: string;
   value: string;
   href?: string;
-};
-
-type QrItem = {
-  key: string;
-  label: string;
-  title: string;
-  source: ImageSourcePropType;
-  href: string;
-  linkLabel: string;
-  platform: SocialOpenPlatform;
+  qr?: {
+    title: string;
+    source: ImageSourcePropType;
+    linkLabel: string;
+  };
 };
 
 const SOCIAL_CONTACTS: SocialContact[] = [
@@ -55,12 +50,22 @@ const SOCIAL_CONTACTS: SocialContact[] = [
     label: 'Instagram',
     value: 'https://www.instagram.com/sacredesportss',
     href: 'https://www.instagram.com/sacredesportss',
+    qr: {
+      title: '@SACREDESPORTSS',
+      source: INSTAGRAM_QR,
+      linkLabel: 'instagram.com/sacredesportss',
+    },
   },
   {
     key: 'discord',
     label: 'Discord',
     value: 'https://discord.gg/mUES4kcAE',
     href: 'https://discord.gg/mUES4kcAE',
+    qr: {
+      title: 'SACRED ESPORTS',
+      source: DISCORD_QR,
+      linkLabel: 'discord.gg/mUES4kcAE',
+    },
   },
   {
     key: 'youtube',
@@ -73,27 +78,6 @@ const SOCIAL_CONTACTS: SocialContact[] = [
     label: 'Telegram',
     value: '',
     href: '',
-  },
-];
-
-const QR_ITEMS: QrItem[] = [
-  {
-    key: 'instagram',
-    label: 'Instagram',
-    title: '@SACREDESPORTSS',
-    source: INSTAGRAM_QR,
-    href: 'https://www.instagram.com/sacredesportss',
-    linkLabel: 'instagram.com/sacredesportss',
-    platform: 'instagram',
-  },
-  {
-    key: 'discord',
-    label: 'Discord',
-    title: 'SACRED ESPORTS',
-    source: DISCORD_QR,
-    href: 'https://discord.gg/mUES4kcAE',
-    linkLabel: 'discord.gg/mUES4kcAE',
-    platform: 'discord',
   },
 ];
 
@@ -114,8 +98,17 @@ async function openContact(contact: SocialContact) {
   await openSocialUrl(url, contact.key);
 }
 
+type FullscreenQr = {
+  label: string;
+  title: string;
+  source: ImageSourcePropType;
+  href: string;
+  linkLabel: string;
+  platform: SocialOpenPlatform;
+};
+
 export function SocialHandlesScreen(_props: Props) {
-  const [fullscreenQr, setFullscreenQr] = useState<QrItem | null>(null);
+  const [fullscreenQr, setFullscreenQr] = useState<FullscreenQr | null>(null);
 
   return (
     <Screen>
@@ -150,53 +143,37 @@ export function SocialHandlesScreen(_props: Props) {
                     </MarqueeText>
                   </SoftPressable>
                 </View>
+                {contact.qr ? (
+                  <SoftPressable
+                    onPress={() =>
+                      setFullscreenQr({
+                        label: contact.label,
+                        title: contact.qr!.title,
+                        source: contact.qr!.source,
+                        href: contact.href || contact.value,
+                        linkLabel: contact.qr!.linkLabel,
+                        platform: contact.key,
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${contact.label} QR full screen`}
+                    pressScale={0.94}
+                    style={styles.qrChip}
+                  >
+                    <Image
+                      source={contact.qr.source}
+                      style={styles.qrChipImage}
+                      resizeMode="cover"
+                      accessibilityLabel={`${contact.label} QR preview`}
+                    />
+                  </SoftPressable>
+                ) : null}
                 <View style={styles.copySlot}>
                   <CopyButton value={contact.value} />
                 </View>
               </View>
             );
           })}
-        </View>
-
-        <View style={styles.qrCard}>
-          <Text style={styles.qrLabel}>Scan to connect</Text>
-          <View style={styles.qrRow}>
-            {QR_ITEMS.map((item) => (
-              <View key={item.key} style={styles.qrItem}>
-                <Text style={styles.qrItemLabel}>{item.label}</Text>
-                <Text style={styles.qrTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <SoftPressable
-                  onPress={() => setFullscreenQr(item)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`View ${item.label} QR full screen`}
-                  pressScale={0.97}
-                  style={styles.qrThumbBtn}
-                >
-                  <View style={styles.qrThumbFrame}>
-                    <Image
-                      source={item.source}
-                      style={styles.qrThumb}
-                      resizeMode="contain"
-                      accessibilityLabel={`${item.label} QR preview`}
-                    />
-                  </View>
-                  <Text style={styles.qrExpandHint}>Tap to enlarge</Text>
-                </SoftPressable>
-                <SoftPressable
-                  onPress={() => openSocialUrl(item.href, item.platform)}
-                  accessibilityRole="link"
-                  accessibilityLabel={`Open ${item.label}`}
-                  pressScale={0.99}
-                >
-                  <Text style={styles.qrLink} numberOfLines={1}>
-                    {item.linkLabel}
-                  </Text>
-                </SoftPressable>
-              </View>
-            ))}
-          </View>
         </View>
       </ScrollView>
 
@@ -212,10 +189,7 @@ export function SocialHandlesScreen(_props: Props) {
           accessibilityRole="button"
           accessibilityLabel="Close QR"
         >
-          <Pressable
-            style={styles.qrModalSheet}
-            onPress={() => undefined}
-          >
+          <Pressable style={styles.qrModalSheet} onPress={() => undefined}>
             {fullscreenQr ? (
               <>
                 <Text style={styles.qrModalLabel}>{fullscreenQr.label}</Text>
@@ -228,6 +202,16 @@ export function SocialHandlesScreen(_props: Props) {
                     accessibilityLabel={`${fullscreenQr.label} QR full screen`}
                   />
                 </View>
+                <SoftPressable
+                  onPress={() =>
+                    openSocialUrl(fullscreenQr.href, fullscreenQr.platform)
+                  }
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open ${fullscreenQr.label}`}
+                  pressScale={0.99}
+                >
+                  <Text style={styles.qrModalLink}>{fullscreenQr.linkLabel}</Text>
+                </SoftPressable>
                 <SoftPressable
                   onPress={() => setFullscreenQr(null)}
                   style={styles.qrModalClose}
@@ -253,7 +237,7 @@ const styles = StyleSheet.create({
   contactRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     paddingVertical: 12,
     paddingLeft: 14,
     paddingRight: 10,
@@ -270,6 +254,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginRight: 4,
   },
+  qrChip: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(201,204,209,0.4)',
+    flexShrink: 0,
+  },
+  qrChipImage: { width: '100%', height: '100%' },
   copySlot: {
     width: 44,
     flexShrink: 0,
@@ -293,70 +288,6 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     fontStyle: 'italic',
     fontSize: 13,
-  },
-  qrCard: {
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  qrLabel: {
-    color: colors.chrome,
-    fontWeight: '700',
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 14,
-  },
-  qrRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  qrItem: { flex: 1, alignItems: 'center', minWidth: 0 },
-  qrItemLabel: {
-    color: colors.textDim,
-    fontWeight: '700',
-    fontSize: 11,
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  qrTitle: {
-    color: colors.text,
-    fontWeight: '800',
-    fontSize: 13,
-    letterSpacing: -0.2,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  qrThumbBtn: { alignItems: 'center', width: '100%' },
-  qrThumbFrame: {
-    width: 96,
-    height: 96,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderColor: 'rgba(201,204,209,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 6,
-  },
-  qrThumb: { width: '100%', height: '100%' },
-  qrExpandHint: {
-    marginTop: 6,
-    color: colors.link,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  qrLink: {
-    marginTop: 8,
-    color: colors.link,
-    fontWeight: '600',
-    fontSize: 11,
-    textAlign: 'center',
   },
   qrModalBackdrop: {
     flex: 1,
@@ -395,8 +326,15 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   qrModalImage: { width: '100%', height: '100%' },
+  qrModalLink: {
+    marginTop: 14,
+    color: colors.link,
+    fontWeight: '600',
+    fontSize: 13,
+    textAlign: 'center',
+  },
   qrModalClose: {
-    marginTop: 20,
+    marginTop: 12,
     paddingHorizontal: 24,
     paddingVertical: 12,
   },

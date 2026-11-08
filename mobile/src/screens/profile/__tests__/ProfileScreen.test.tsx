@@ -259,27 +259,22 @@ describe('ProfileScreen', () => {
   });
 
   describe('Devices Profile tab', () => {
-    async function enterDevicesEditMode() {
-      await screen.findByText('Coach (Owner)');
-      goToDevicesTab();
-      await act(async () => {
-        fireEvent.press(screen.getByText('Edit'));
-      });
-      await screen.findByText('Add Device');
-    }
-
-    it('shows a read-only list with Edit — add/remove only after Edit', async () => {
+    it('shows device list plus add inputs immediately (no Edit gate)', async () => {
       render(<ProfileScreen />);
       await screen.findByText('Coach (Owner)');
       goToDevicesTab();
 
       expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();
-      expect(screen.getByText('Edit')).toBeTruthy();
-      expect(screen.queryByText('Add Device')).toBeNull();
-      expect(screen.queryByText('Remove')).toBeNull();
+      expect(screen.getByText('Add Device')).toBeTruthy();
+      expect(screen.getByPlaceholderText('Device name (e.g. Main rig)')).toBeTruthy();
+      expect(
+        screen.getByPlaceholderText('Device model (e.g. ROG Phone 8)'),
+      ).toBeTruthy();
+      expect(screen.getByText('Remove')).toBeTruthy();
+      expect(screen.queryByText('Edit')).toBeNull();
     });
 
-    it('lets you add and remove devices after pressing Edit', async () => {
+    it('lets you add and remove devices from the open form', async () => {
       mockedUsersApi.addDevice.mockResolvedValue({
         id: 'device-2',
         name: 'Backup',
@@ -298,7 +293,9 @@ describe('ProfileScreen', () => {
         });
 
       render(<ProfileScreen />);
-      await enterDevicesEditMode();
+      await screen.findByText('Coach (Owner)');
+      goToDevicesTab();
+      await screen.findByText('Add Device');
 
       await act(async () => {
         fireEvent.press(screen.getByText('Add Device'));

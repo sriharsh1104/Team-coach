@@ -34,7 +34,9 @@ import {
   insertMention,
   splitMentionParts,
 } from './chatMentions';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import { emitToast } from '../../ui/toastBus';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
 import { setActiveChatChannel } from '../../notifications/activeChatChannel';
@@ -57,6 +59,7 @@ function MessageText({
   knownIgns: string[];
   mine: boolean;
 }) {
+  const styles = useThemedStyles(chatStyles);
   if (isStickerEmoji(text)) {
     return <Text style={styles.stickerEmoji}>{text.trim()}</Text>;
   }
@@ -101,6 +104,8 @@ export function ChatScreen({
   starredOnly?: boolean;
 } = {}) {
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(chatStyles);
   const isGroup = channelKey === 'org' || channelKey === 'guild';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
@@ -142,15 +147,28 @@ export function ChatScreen({
   /** Stick to latest unless the user scrolls up to read history. */
   const stickToBottomRef = useRef(true);
   const initialScrollDoneRef = useRef(false);
+  /** Hide list until first non-animated bottom pin — avoids top→bottom scroll flash. */
+  const [listReady, setListReady] = useState(false);
 
   messagesRef.current = messages;
   hasOlderRef.current = hasOlderMessages;
 
   const scrollToLatest = useCallback((animated = false) => {
+    // Never animate until the first pin finished — opening must not "fly" to bottom.
+    const useAnim = animated && initialScrollDoneRef.current;
     requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated });
+      listRef.current?.scrollToEnd({ animated: useAnim });
+      if (!useAnim) {
+        requestAnimationFrame(() => {
+          listRef.current?.scrollToEnd({ animated: false });
+        });
+      }
     });
   }, []);
+
+  const pinToBottom = useCallback(() => {
+    scrollToLatest(false);
+  }, [scrollToLatest]);
 
   const mentionables = useMemo(() => {
     if (channelKey === 'guild') return guildMentionables;
@@ -233,6 +251,7 @@ export function ChatScreen({
     setActiveChatChannel(channelKey);
     stickToBottomRef.current = true;
     initialScrollDoneRef.current = false;
+    setListReady(false);
     return () => {
       setActiveChatChannel(null);
     };
@@ -242,34 +261,40 @@ export function ChatScreen({
     let cancelled = false;
     const scrollTimers: ReturnType<typeof setTimeout>[] = [];
 
-    (async () => {
-      const history = await chatApi.getChatHistory(channelKey, undefined, {
-        starredOnly,
-      });
+    const revealList = () => {
       if (cancelled) return;
-      stickToBottomRef.current = true;
-      mergeHistory(history);
-      await chatApi.markChatRead(channelKey).catch(() => undefined);
-      chatApi.getReadReceipts(channelKey).then((r) => {
-        if (!cancelled) setReceipts(r);
-      }).catch(() => undefined);
-      chatApi.getDeliveryReceipts(channelKey).then((d) => {
-        if (!cancelled) setDeliveries(d);
-      }).catch(() => undefined);
-      // Layout often settles after the first paint — nudge a few times.
-      scrollToLatest(false);
+      pinToBottom();
+      initialScrollDoneRef.current = true;
+      setListReady(true);
+    };
+
+    (async () => {
+      try {
+        const history = await chatApi.getChatHistory(channelKey, undefined, {
+          starredOnly,
+        });
+        if (cancelled) return;
+        stickToBottomRef.current = true;
+        mergeHistory(history);
+        await chatApi.markChatRead(channelKey).catch(() => undefined);
+        chatApi.getReadReceipts(channelKey).then((r) => {
+          if (!cancelled) setReceipts(r);
+        }).catch(() => undefined);
+        chatApi.getDeliveryReceipts(channelKey).then((d) => {
+          if (!cancelled) setDeliveries(d);
+        }).catch(() => undefined);
+      } catch {
+        /* keep empty — still reveal */
+      }
+      if (cancelled) return;
+      // Pin to bottom without animation, then reveal once settled.
+      pinToBottom();
       scrollTimers.push(
         setTimeout(() => {
-          if (!cancelled) scrollToLatest(false);
-        }, 80),
+          if (!cancelled) pinToBottom();
+        }, 50),
       );
-      scrollTimers.push(
-        setTimeout(() => {
-          if (cancelled) return;
-          scrollToLatest(false);
-          initialScrollDoneRef.current = true;
-        }, 280),
-      );
+      scrollTimers.push(setTimeout(revealList, 120));
 
       const token = await getToken();
       if (!token || cancelled) return;
@@ -382,6 +407,7 @@ export function ChatScreen({
   }, [
     channelKey,
     mergeHistory,
+    pinToBottom,
     refreshHistory,
     scrollToLatest,
     starredOnly,
@@ -417,6 +443,7 @@ export function ChatScreen({
     if (searchActive && searchQuery) return;
     if (!stickToBottomRef.current) return;
     if (messages.length === 0) return;
+    // First paint: silent pin. Later live messages: soft animated follow.
     scrollToLatest(initialScrollDoneRef.current);
   }, [messages.length, searchActive, searchQuery, scrollToLatest]);
 
@@ -1192,7 +1219,7 @@ export function ChatScreen({
 
       <FlatList
         ref={listRef}
-        style={{ flex: 1, minWidth: 0 }}
+        style={{ flex: 1, minWidth: 0, opacity: listReady ? 1 : 0 }}
         contentContainerStyle={{ padding: 16, flexGrow: 1 }}
         data={messages}
         keyExtractor={(item) => item.id}
@@ -1210,7 +1237,12 @@ export function ChatScreen({
         }}
         scrollEventThrottle={16}
         onContentSizeChange={() => {
-          if (stickToBottomRef.current) scrollToLatest(false);
+          if (!stickToBottomRef.current) return;
+          if (!initialScrollDoneRef.current) {
+            pinToBottom();
+            return;
+          }
+          scrollToLatest(false);
         }}
         onStartReached={onLoadOlder}
         onStartReachedThreshold={0.3}
@@ -1372,14 +1404,14 @@ export function ChatScreen({
                       <Ionicons
                         name="pin"
                         size={12}
-                        color={isMine ? 'rgba(10,10,12,0.55)' : colors.textDim}
+                        color={isMine ? colors.chromeInk : colors.textDim}
                       />
                     ) : null}
                     {item.starred ? (
                       <Ionicons
                         name="star"
                         size={12}
-                        color={isMine ? 'rgba(10,10,12,0.55)' : colors.textDim}
+                        color={isMine ? colors.chromeInk : colors.textDim}
                       />
                     ) : null}
                     {item.editedAt ? (
@@ -1489,12 +1521,19 @@ export function ChatScreen({
           style={styles.attachBtn}
           disabled={!!editingId}
         >
-          <Text style={[styles.toolIcon, editingId && { opacity: 0.35 }]}>
-            {showAttach ? '✕' : '➕'}
-          </Text>
+          <Ionicons
+            name={showAttach ? 'close' : 'add-circle'}
+            size={28}
+            color={colors.icon}
+            style={editingId ? { opacity: 0.35 } : undefined}
+          />
         </Pressable>
         <TextInput
-          style={[sharedStyles.input, { flex: 1, marginBottom: 0 }]}
+          style={[
+            sharedStyles.input,
+            styles.composeInput,
+            { flex: 1, marginBottom: 0 },
+          ]}
           placeholder={
             editingId
               ? 'Edit message…'
@@ -1502,7 +1541,7 @@ export function ChatScreen({
                 ? 'Reply…'
                 : 'Message… @IGN to mention'
           }
-          placeholderTextColor="#8b8f97"
+          placeholderTextColor={colors.textDim}
           value={draft}
           onChangeText={(text) => {
             setDraft(text);
@@ -1521,7 +1560,11 @@ export function ChatScreen({
           accessibilityLabel={editingId ? 'Save edit' : 'Send'}
           hitSlop={8}
         >
-          <Text style={styles.sendIcon}>{editingId ? '✓' : '➤'}</Text>
+          <Ionicons
+            name={editingId ? 'checkmark-circle' : 'send'}
+            size={24}
+            color={colors.icon}
+          />
         </Pressable>
       </View>
 
@@ -1550,73 +1593,82 @@ export function ChatScreen({
   return <Screen>{body}</Screen>;
 }
 
-const styles = StyleSheet.create({
+const chatStyles = (c: ThemeColors) => ({
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(10,10,12,0.96)',
+    borderBottomColor: c.border,
+    backgroundColor: c.bg,
   },
-  searchGlyph: { color: colors.textDim, fontSize: 16, fontWeight: '700' },
+  searchGlyph: { color: c.textDim, fontSize: 16, fontWeight: '700' as const },
   searchInput: {
     flex: 1,
     minWidth: 0,
-    color: colors.text,
+    color: c.text,
     fontSize: 15,
     paddingVertical: 6,
     paddingHorizontal: 8,
   },
   searchCount: {
-    color: colors.textMuted,
+    color: c.textMuted,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     minWidth: 28,
-    textAlign: 'center',
+    textAlign: 'center' as const,
   },
   searchNavBtn: {
     width: 28,
     height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   searchNavDisabled: { opacity: 0.3 },
-  searchNavText: { color: colors.chrome, fontSize: 16, fontWeight: '700' },
-  searchClose: { color: colors.link, fontSize: 16, fontWeight: '700', paddingHorizontal: 4 },
+  searchNavText: { color: c.chrome, fontSize: 16, fontWeight: '700' as const },
+  searchClose: {
+    color: c.link,
+    fontSize: 16,
+    fontWeight: '700' as const,
+    paddingHorizontal: 4,
+  },
   selectBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(10,10,12,0.96)',
+    borderBottomColor: c.border,
+    backgroundColor: c.bg,
   },
   selectBarCount: {
     flex: 1,
-    color: colors.text,
+    color: c.text,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '700' as const,
   },
-  selectBarActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  selectBarActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+  },
   selectBarBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   selectBarDisabled: { opacity: 0.35 },
   selectBarAction: {
-    color: colors.link,
+    color: c.link,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '700' as const,
   },
-  selectBarDelete: { color: '#e57373' },
+  selectBarDelete: { color: c.danger },
   composeBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: 10,
     marginHorizontal: 16,
     marginBottom: 6,
@@ -1624,119 +1676,127 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
     borderLeftWidth: 3,
-    borderLeftColor: colors.link,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderLeftColor: c.link,
+    backgroundColor: c.surface,
   },
   composeBannerBody: { flex: 1, minWidth: 0 },
   composeBannerTitle: {
-    color: colors.link,
+    color: c.link,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '700' as const,
     marginBottom: 2,
   },
-  composeBannerPreview: { color: colors.textMuted, fontSize: 13 },
+  composeBannerPreview: { color: c.textMuted, fontSize: 13 },
   composeBannerClose: {
-    color: colors.textDim,
+    color: c.textDim,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '700' as const,
     paddingHorizontal: 4,
   },
   replyQuote: {
     borderLeftWidth: 3,
-    borderLeftColor: colors.link,
-    backgroundColor: 'rgba(0,0,0,0.18)',
+    borderLeftColor: c.link,
+    backgroundColor: c.surface,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 5,
     marginBottom: 6,
   },
   replyQuoteMine: {
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    borderLeftColor: '#1a2a8a',
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    borderLeftColor: c.chromeInk,
   },
   replyQuoteName: {
-    color: colors.link,
+    color: c.link,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '700' as const,
     marginBottom: 1,
   },
-  replyQuoteNameMine: { color: '#1a2a8a' },
-  replyQuoteText: { color: colors.textMuted, fontSize: 12 },
-  replyQuoteTextMine: { color: 'rgba(10,10,12,0.65)' },
+  replyQuoteNameMine: { color: c.chromeInk },
+  replyQuoteText: { color: c.textMuted, fontSize: 12 },
+  replyQuoteTextMine: { color: c.chromeInk, opacity: 0.75 },
   metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: 6,
     marginTop: 4,
   },
   editedLabel: {
     fontSize: 10,
-    color: colors.textDim,
-    fontStyle: 'italic',
+    color: c.textDim,
+    fontStyle: 'italic' as const,
   },
-  editedLabelMine: { color: 'rgba(10,10,12,0.45)' },
-  bubbleRow: { flexDirection: 'row', marginBottom: 10, maxWidth: '100%', alignItems: 'center' },
-  bubbleRowMine: { justifyContent: 'flex-end' },
-  bubbleRowTheirs: { justifyContent: 'flex-start' },
-  bubbleRowSelected: { backgroundColor: 'rgba(139, 156, 255, 0.12)', borderRadius: 8 },
+  editedLabelMine: { color: c.chromeInk, opacity: 0.55 },
+  bubbleRow: {
+    flexDirection: 'row' as const,
+    marginBottom: 10,
+    maxWidth: '100%' as const,
+    alignItems: 'center' as const,
+  },
+  bubbleRowMine: { justifyContent: 'flex-end' as const },
+  bubbleRowTheirs: { justifyContent: 'flex-start' as const },
+  bubbleRowSelected: {
+    backgroundColor: 'rgba(139, 156, 255, 0.12)',
+    borderRadius: 8,
+  },
   selectCheck: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: c.border,
     marginHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   selectCheckOn: {
-    borderColor: colors.link,
-    backgroundColor: colors.link,
+    borderColor: c.link,
+    backgroundColor: c.link,
   },
-  selectCheckMark: { color: '#0a0a0c', fontSize: 12, fontWeight: '800' },
-  bubbleCol: { maxWidth: '80%', minWidth: 0, alignItems: 'flex-end' },
+  selectCheckMark: { color: c.chromeInk, fontSize: 12, fontWeight: '800' as const },
+  bubbleCol: { maxWidth: '80%' as const, minWidth: 0, alignItems: 'flex-end' as const },
   bubble: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: c.bubbleTheirs,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    alignSelf: 'stretch',
-    maxWidth: '100%',
+    alignSelf: 'stretch' as const,
+    maxWidth: '100%' as const,
   },
-  bubbleMine: { backgroundColor: '#c9ccd1' },
+  bubbleMine: { backgroundColor: c.bubbleMine },
   bubbleHit: {
     borderWidth: 2,
-    borderColor: colors.link,
+    borderColor: c.link,
     backgroundColor: 'rgba(139, 156, 255, 0.22)',
   },
   bubbleSelected: {
     borderWidth: 1.5,
-    borderColor: colors.link,
+    borderColor: c.link,
   },
-  sender: { fontSize: 11, color: '#9aa0a6', marginBottom: 2 },
-  text: { color: '#f2f3f5', flexShrink: 1 },
-  textMine: { color: '#0a0a0c', flexShrink: 1 },
+  sender: { fontSize: 11, color: c.textMuted, marginBottom: 2 },
+  text: { color: c.text, flexShrink: 1 },
+  textMine: { color: c.chromeInk, flexShrink: 1 },
   stickerEmoji: { fontSize: 56, lineHeight: 64 },
-  mention: { color: colors.link, fontWeight: '700' },
-  mentionMine: { color: '#1a2a8a', fontWeight: '700' },
+  mention: { color: c.link, fontWeight: '700' as const },
+  mentionMine: { color: c.chromeInk, fontWeight: '700' as const, opacity: 0.9 },
   mentionMenu: {
     marginHorizontal: 12,
     marginBottom: 4,
     borderRadius: 10,
-    backgroundColor: 'rgba(20,20,24,0.96)',
+    backgroundColor: c.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.1)',
-    overflow: 'hidden',
+    borderColor: c.border,
+    overflow: 'hidden' as const,
   },
   mentionOption: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    flexDirection: 'row' as const,
+    alignItems: 'baseline' as const,
     gap: 10,
   },
-  mentionIgn: { color: colors.link, fontWeight: '700', fontSize: 14 },
-  mentionName: { color: colors.textMuted, fontSize: 12 },
+  mentionIgn: { color: c.link, fontWeight: '700' as const, fontSize: 14 },
+  mentionName: { color: c.textMuted, fontSize: 12 },
   media: { width: 200, height: 160, borderRadius: 8, marginBottom: 6 },
   videoThumb: {
     width: 200,
@@ -1744,39 +1804,38 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 6,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   playIcon: { color: '#fff', fontSize: 32 },
   seenRow: { marginTop: 2, paddingHorizontal: 4 },
-  tick: { color: colors.textMuted, fontSize: 13 },
-  tickSeen: { color: colors.link },
-  connecting: { textAlign: 'center', color: '#9aa0a6', paddingBottom: 4 },
-  toolIcon: { fontSize: 20, color: colors.text },
+  tick: { color: c.textMuted, fontSize: 13 },
+  tickSeen: { color: c.link },
+  connecting: { textAlign: 'center' as const, color: c.textMuted, paddingBottom: 4 },
+  composeInput: {
+    backgroundColor: c.surface,
+    borderColor: c.border,
+    color: c.text,
+  },
   attachBtn: {
     width: 40,
     height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     gap: 8,
     padding: 16,
     paddingTop: 0,
-    maxWidth: '100%',
+    maxWidth: '100%' as const,
   },
   sendIconBtn: {
     width: 40,
     height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   sendIconDisabled: { opacity: 0.35 },
-  sendIcon: {
-    color: '#c9ccd1',
-    fontSize: 22,
-    fontWeight: '700',
-  },
 });

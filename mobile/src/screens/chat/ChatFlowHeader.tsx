@@ -1,8 +1,8 @@
 import React, { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../theme';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { useTheme } from '../../theme/ThemeContext';
 
 type Props = {
   title: string;
@@ -24,8 +24,18 @@ export function ChatFlowHeader({
   leading,
   trailing,
 }: Props) {
+  const { colors } = useTheme();
+
   return (
-    <View style={styles.header}>
+    <View
+      style={[
+        styles.header,
+        {
+          backgroundColor: colors.bg,
+          borderBottomColor: colors.border,
+        },
+      ]}
+    >
       <SoftPressable
         onPress={onBack}
         style={styles.backBtn}
@@ -34,7 +44,7 @@ export function ChatFlowHeader({
         hitSlop={10}
         pressScale={0.92}
       >
-        <Ionicons name="chevron-back" size={22} color={colors.link} />
+        <Ionicons name="chevron-back" size={26} color={colors.icon} />
       </SoftPressable>
 
       {leading}
@@ -47,22 +57,28 @@ export function ChatFlowHeader({
             accessibilityLabel={titleAccessibilityLabel ?? title}
             pressScale={0.98}
           >
-            <Text style={styles.title} numberOfLines={1}>
+            <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
               {title}
             </Text>
             {subtitle ? (
-              <Text style={styles.subtitle} numberOfLines={1}>
+              <Text
+                style={[styles.subtitle, { color: colors.textDim }]}
+                numberOfLines={1}
+              >
                 {subtitle}
               </Text>
             ) : null}
           </SoftPressable>
         ) : (
           <>
-            <Text style={styles.title} numberOfLines={1}>
+            <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
               {title}
             </Text>
             {subtitle ? (
-              <Text style={styles.subtitle} numberOfLines={1}>
+              <Text
+                style={[styles.subtitle, { color: colors.textDim }]}
+                numberOfLines={1}
+              >
                 {subtitle}
               </Text>
             ) : null}
@@ -70,7 +86,9 @@ export function ChatFlowHeader({
         )}
       </View>
 
-      {trailing}
+      {trailing ? (
+        <View style={styles.trailing}>{trailing}</View>
+      ) : null}
     </View>
   );
 }
@@ -83,8 +101,6 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(10,10,12,0.92)',
   },
   backBtn: {
     width: 36,
@@ -98,13 +114,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     justifyContent: 'center',
   },
+  trailing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: 2,
+  },
   title: {
-    color: colors.text,
     fontWeight: '700',
     fontSize: 17,
   },
   subtitle: {
-    color: colors.textDim,
     fontSize: 11,
     marginTop: 2,
   },

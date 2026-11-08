@@ -9,7 +9,6 @@ import { OrgDetail } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
 import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
 import { Screen } from '../brand/Screen';
-import { colors } from '../theme';
 import { SideDrawer, SideDrawerSection } from '../ui/SideDrawer';
 import { SoftPressable } from '../ui/SoftPressable';
 import { AppShellHeader } from '../ui/AppShellHeader';
@@ -25,7 +24,7 @@ type Props = NativeStackScreenProps<MainStackParamList, 'OrgHome'>;
 
 export function OrgHomeScreen({ navigation }: Props) {
   const { logout, org, user } = useAuth();
-  const { themeId, setTheme } = useTheme();
+  const { themeId, setTheme, colors: theme } = useTheme();
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
@@ -198,9 +197,11 @@ export function OrgHomeScreen({ navigation }: Props) {
                 hitSlop={6}
                 pressScale={0.97}
               >
-                <Text style={styles.orgCode}>Org Code: {detail.orgCode}</Text>
+                <Text style={[styles.orgCode, { color: theme.link }]}>
+                  Org Code: {detail.orgCode}
+                </Text>
               </SoftPressable>
-              <Text style={styles.subtitle}>
+              <Text style={[styles.subtitle, { color: theme.textMuted }]}>
                 {' '}
                 · {detail.members.length} Member(s)
               </Text>
@@ -233,7 +234,16 @@ export function OrgHomeScreen({ navigation }: Props) {
             onPress={() => setSettingsMenuOpen(false)}
             accessibilityLabel="Close Account Settings Menu"
           />
-          <View style={[styles.dropdownPanel, { top: insets.top + 56 }]}>
+          <View
+            style={[
+              styles.dropdownPanel,
+              {
+                top: insets.top + 56,
+                backgroundColor: theme.bg,
+                borderColor: theme.border,
+              },
+            ]}
+          >
             <SoftPressable
               style={styles.dropdownItem}
               onPress={() => {
@@ -242,7 +252,9 @@ export function OrgHomeScreen({ navigation }: Props) {
               }}
               pressScale={0.97}
             >
-              <Text style={styles.dropdownItemText}>Security</Text>
+              <Text style={[styles.dropdownItemText, { color: theme.text }]}>
+                Security
+              </Text>
             </SoftPressable>
             <SoftPressable
               style={styles.dropdownItem}
@@ -252,9 +264,13 @@ export function OrgHomeScreen({ navigation }: Props) {
               }}
               pressScale={0.97}
             >
-              <Text style={styles.dropdownItemText}>Theme</Text>
+              <Text style={[styles.dropdownItemText, { color: theme.text }]}>
+                Theme
+              </Text>
             </SoftPressable>
-            <View style={styles.dropdownDivider} />
+            <View
+              style={[styles.dropdownDivider, { backgroundColor: theme.border }]}
+            />
             <SoftPressable
               style={styles.dropdownItem}
               onPress={() => {
@@ -263,7 +279,7 @@ export function OrgHomeScreen({ navigation }: Props) {
               }}
               pressScale={0.97}
             >
-              <Text style={[styles.dropdownItemText, { color: colors.danger }]}>
+              <Text style={[styles.dropdownItemText, { color: theme.danger }]}>
                 Logout
               </Text>
             </SoftPressable>
@@ -283,8 +299,19 @@ export function OrgHomeScreen({ navigation }: Props) {
             onPress={() => setThemePickerOpen(false)}
             accessibilityLabel="Close Theme Picker"
           />
-          <View style={[styles.dropdownPanel, { top: insets.top + 56 }]}>
-            <Text style={styles.themeHeading}>Theme</Text>
+          <View
+            style={[
+              styles.dropdownPanel,
+              {
+                top: insets.top + 56,
+                backgroundColor: theme.bg,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <Text style={[styles.themeHeading, { color: theme.textMuted }]}>
+              Theme
+            </Text>
             {THEME_OPTIONS.map((opt) => {
               const active = themeId === opt.id;
               return (
@@ -298,10 +325,22 @@ export function OrgHomeScreen({ navigation }: Props) {
                   pressScale={0.97}
                 >
                   <View
-                    style={[styles.themeSwatch, { backgroundColor: opt.swatch }]}
+                    style={[
+                      styles.themeSwatch,
+                      {
+                        backgroundColor: opt.swatch,
+                        borderColor: theme.border,
+                      },
+                    ]}
                   />
-                  <Text style={styles.dropdownItemText}>{opt.label}</Text>
-                  {active ? <Text style={styles.themeCheck}>✓</Text> : null}
+                  <Text style={[styles.dropdownItemText, { color: theme.text }]}>
+                    {opt.label}
+                  </Text>
+                  {active ? (
+                    <Text style={[styles.themeCheck, { color: theme.link }]}>
+                      ✓
+                    </Text>
+                  ) : null}
                 </SoftPressable>
               );
             })}
@@ -321,11 +360,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   orgCode: {
-    color: colors.link,
     fontSize: 12,
     fontWeight: '600',
   },
-  subtitle: { color: colors.textMuted, fontSize: 12 },
+  subtitle: { fontSize: 12 },
   dropdownRoot: { flex: 1 },
   dropdownBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -335,10 +373,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     minWidth: 180,
-    backgroundColor: '#121216',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
     paddingVertical: 6,
     overflow: 'hidden',
   },
@@ -347,17 +383,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   dropdownItemText: {
-    color: colors.text,
     fontWeight: '700',
     fontSize: 15,
   },
   dropdownDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
     marginVertical: 2,
   },
   themeHeading: {
-    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.6,
@@ -378,8 +411,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 11,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
   },
-  themeCheck: { marginLeft: 'auto', color: colors.link, fontWeight: '800' },
+  themeCheck: { marginLeft: 'auto', fontWeight: '800' },
   chat: { flex: 1 },
 });

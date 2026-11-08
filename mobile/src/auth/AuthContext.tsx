@@ -221,7 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await applyAuthResponse(result);
       if (result.passwordEmailSent) {
         emitToast(
-          `Password sent to ${result.user.email}. Check inbox (and spam).`,
+          `Email login password sent to ${result.user.email}. Check inbox (and spam) — you can sign in without Google.`,
         );
       }
     },

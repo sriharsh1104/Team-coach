@@ -147,16 +147,21 @@ export class MailerService implements OnModuleInit {
   }
 
   sendGeneratedPassword(to: string, password: string): Promise<void> {
-    const safe = escapeHtml(password);
+    const safePassword = escapeHtml(password);
+    const safeEmail = escapeHtml(to);
     const html = sacredEmailLayout({
       logoUrl: this.logoUrl(),
-      preheader: 'Your Sacred Esports account password',
+      preheader: 'Your Sacred Esports email login password',
       title: 'Your Account Password',
       bodyHtml: `
-        <p style="margin:0 0 14px;color:#9aa0a6;">Your account was created with Google sign-in. You can also log in with email using this password:</p>
+        <p style="margin:0 0 14px;color:#9aa0a6;">Your account was created with Google sign-in. You can also log in <strong style="color:#f2f3f5;">without Google</strong> using email + password:</p>
+        <div style="margin:0 0 12px;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#9aa0a6;margin-bottom:6px;">Email</div>
+          <div style="font-size:16px;font-weight:600;color:#f2f3f5;word-break:break-all;">${safeEmail}</div>
+        </div>
         <div style="margin:0 0 18px;padding:16px 18px;border-radius:12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);text-align:center;">
           <div style="font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#9aa0a6;margin-bottom:8px;">Password</div>
-          <div style="font-size:24px;font-weight:800;letter-spacing:0.12em;color:#f2f3f5;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">${safe}</div>
+          <div style="font-size:24px;font-weight:800;letter-spacing:0.12em;color:#f2f3f5;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">${safePassword}</div>
         </div>
         <p style="margin:0 0 10px;color:#c9ccd1;">Change it anytime from <strong style="color:#f2f3f5;">Account → Security</strong> after you sign in.</p>
         <p style="margin:0;color:#8b8f97;font-size:13px;">Keep this email private. Anyone with this password can access your account.</p>

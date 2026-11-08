@@ -54,7 +54,10 @@ async function persistThemeId(id: ThemeId) {
       localStorage.setItem(THEME_STORAGE_KEY, id);
       return;
     }
-    await readNativeStore().setItemAsync(THEME_STORAGE_KEY, id);
+    const SecureStore = readNativeStore();
+    await SecureStore.setItemAsync(THEME_STORAGE_KEY, id, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+    });
   } catch {
     /* ignore */
   }

@@ -15,6 +15,8 @@ export type ThemeColors = {
   danger: string;
   bubbleMine: string;
   bubbleTheirs: string;
+  /** High-contrast icon/action color on bg (always readable). */
+  icon: string;
   watermarkOpacity: number;
   statusBar: 'light' | 'dark';
 };
@@ -43,13 +45,14 @@ const PALETTES: Record<ThemeId, ThemeColors> = {
     danger: '#f87171',
     bubbleMine: '#c9ccd1',
     bubbleTheirs: 'rgba(255,255,255,0.08)',
-    watermarkOpacity: 0.12,
+    icon: '#f2f3f5',
+    watermarkOpacity: 0.18,
     statusBar: 'light',
   },
   white: {
     bg: '#f4f4f7',
-    surface: 'rgba(0,0,0,0.04)',
-    border: '#d4d6dc',
+    surface: 'rgba(0,0,0,0.05)',
+    border: '#d0d3da',
     text: '#16171c',
     textMuted: '#5c616b',
     textDim: '#7a808c',
@@ -58,13 +61,14 @@ const PALETTES: Record<ThemeId, ThemeColors> = {
     link: '#4a55c7',
     danger: '#dc2626',
     bubbleMine: '#2a2d36',
-    bubbleTheirs: 'rgba(0,0,0,0.06)',
-    watermarkOpacity: 0.07,
+    bubbleTheirs: 'rgba(0,0,0,0.07)',
+    icon: '#16171c',
+    watermarkOpacity: 0.22,
     statusBar: 'dark',
   },
   lavender: {
     bg: '#ebe4f5',
-    surface: 'rgba(70,40,120,0.07)',
+    surface: 'rgba(70,40,120,0.08)',
     border: '#c9bdd9',
     text: '#1f1830',
     textMuted: '#5e5474',
@@ -74,14 +78,14 @@ const PALETTES: Record<ThemeId, ThemeColors> = {
     link: '#5b4a82',
     danger: '#c0392b',
     bubbleMine: '#5b4a82',
-    bubbleTheirs: 'rgba(70,40,120,0.1)',
-    watermarkOpacity: 0.09,
+    bubbleTheirs: 'rgba(70,40,120,0.12)',
+    icon: '#1f1830',
+    watermarkOpacity: 0.2,
     statusBar: 'dark',
   },
 };
 
-/** Mutable current theme — StyleSheet.create reads these getters at create time
- * for modules loaded after ThemeProvider hydrates; prefer useTheme() for live UI. */
+/** Mutable current theme — prefer useTheme() for live UI (StyleSheet.create freezes values). */
 let currentId: ThemeId = 'black';
 
 export function getThemeId(): ThemeId {

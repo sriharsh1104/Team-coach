@@ -189,8 +189,14 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
             <Text style={styles.avatarHint}>Change photo</Text>
           </SoftPressable>
           <View style={styles.headerText}>
-            <Text style={sharedStyles.title}>{profile.name}</Text>
-            {roleBadge ? <Text style={styles.roleBadge}>{roleBadge}</Text> : null}
+            <Text style={styles.displayName} numberOfLines={2}>
+              {profile.name}
+            </Text>
+            {roleBadge ? (
+              <View style={styles.rolePill}>
+                <Text style={styles.roleBadge}>{roleBadge}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -495,7 +501,6 @@ function DevicesProfileSection({
   onAdvance?: () => void;
   showToast: (message: string) => void;
 }) {
-  const [isEditing, setIsEditing] = useState(mustComplete);
   const [deviceName, setDeviceName] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
   const [isAddingDevice, setIsAddingDevice] = useState(false);
@@ -528,44 +533,15 @@ function DevicesProfileSection({
     }
   };
 
-  if (!isEditing) {
-    return (
-      <View>
-        <Text style={styles.sectionLabel}>My Devices</Text>
-        {profile.devices.length === 0 ? (
-          <Text style={{ color: '#9aa0a6', marginBottom: 12 }}>No devices yet.</Text>
-        ) : (
-          profile.devices.map((device) => (
-            <View key={device.id} style={styles.deviceRow}>
-              <Text style={{ flex: 1, color: '#f2f3f5' }}>
-                {device.name} — {device.model}
-              </Text>
-              <CopyButton value={`${device.name} — ${device.model}`} />
-            </View>
-          ))
-        )}
-        <SoftPressable
-          style={styles.editButton}
-          onPress={() => setIsEditing(true)}
-          pressScale={0.97}
-        >
-          <ButtonLabel icon="edit" color={colors.link}>
-            Edit
-          </ButtonLabel>
-        </SoftPressable>
-      </View>
-    );
-  }
-
   return (
     <View>
       <Text style={styles.sectionLabel}>My Devices</Text>
       {profile.devices.length === 0 ? (
-        <Text style={{ color: '#9aa0a6', marginBottom: 12 }}>No devices yet.</Text>
+        <Text style={styles.emptyHint}>No devices yet — add your first below.</Text>
       ) : (
         profile.devices.map((device) => (
           <View key={device.id} style={styles.deviceRow}>
-            <Text style={{ flex: 1, color: '#f2f3f5' }}>
+            <Text style={styles.deviceText}>
               {device.name} — {device.model}
             </Text>
             <CopyButton value={`${device.name} — ${device.model}`} />
@@ -573,12 +549,16 @@ function DevicesProfileSection({
               onPress={() => onRemoveDevice(device.id)}
               hitSlop={8}
               pressScale={0.95}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${device.name}`}
             >
-              <Text style={{ color: '#f87171' }}>Remove</Text>
+              <Text style={styles.removeText}>Remove</Text>
             </SoftPressable>
           </View>
         ))
       )}
+
+      <Text style={styles.sectionLabel}>Add device</Text>
       <CopyableInput
         placeholder="Device name (e.g. Main rig)"
         value={deviceName}
@@ -599,19 +579,8 @@ function DevicesProfileSection({
         onPress={onAddDevice}
         pressScale={0.98}
       >
-        <ButtonLabel icon="phone">Add Device</ButtonLabel>
-      </SoftPressable>
-      <SoftPressable
-        style={styles.editButton}
-        onPress={() => {
-          setDeviceName('');
-          setDeviceModel('');
-          setIsEditing(false);
-        }}
-        pressScale={0.97}
-      >
-        <ButtonLabel icon="edit" color={colors.link}>
-          Done
+        <ButtonLabel icon="phone">
+          {isAddingDevice ? 'Adding…' : 'Add Device'}
         </ButtonLabel>
       </SoftPressable>
       {mustComplete ? (
@@ -764,11 +733,26 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    marginBottom: 16,
+    gap: 14,
+    marginBottom: 18,
   },
-  headerText: { flex: 1, minWidth: 0 },
-  avatarBtn: { alignItems: 'center', gap: 6 },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    gap: 8,
+  },
+  displayName: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  avatarBtn: {
+    alignItems: 'center',
+    width: 84,
+    gap: 8,
+  },
   avatar: {
     width: 72,
     height: 72,
@@ -790,11 +774,21 @@ const styles = StyleSheet.create({
     color: colors.link,
     fontSize: 11,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  rolePill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(168,176,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(168,176,255,0.28)',
   },
   roleBadge: {
     color: colors.link,
-    fontWeight: '600',
-    marginTop: 4,
+    fontWeight: '700',
+    fontSize: 12,
   },
   panelCard: {
     borderRadius: 16,
@@ -814,9 +808,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+  },
+  deviceText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 15,
+  },
+  removeText: {
+    color: colors.danger,
+    fontWeight: '600',
+  },
+  emptyHint: {
+    color: colors.textMuted,
+    marginBottom: 8,
+    fontSize: 13,
   },
   introText: {
     color: colors.textMuted,

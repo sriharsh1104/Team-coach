@@ -110,11 +110,14 @@ export function ChatSettingsSheet({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.9,
+      allowsEditing: true,
+      aspect: [1, 1],
     });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     setBusy(true);
     try {
+      emitToast('Uploading group photo…');
       const next = await chatApi.uploadChannelAvatar(channelKey, {
         uri: asset.uri,
         fileName: asset.fileName ?? `group-${Date.now()}.jpg`,

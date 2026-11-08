@@ -22,6 +22,10 @@ type VoiceHooks = {
 };
 
 function ensureLiveKitGlobals() {
+  // Re-apply in case a native module wiped globals before voice load.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require('../../polyfills/weakRef').ensureWeakRefPolyfill();
+
   const g = globalThis as typeof globalThis & { DOMException?: unknown };
   if (typeof g.DOMException === 'undefined') {
     g.DOMException = class DOMException extends Error {
@@ -38,15 +42,27 @@ function ensureLiveKitGlobals() {
   registerGlobals();
 }
 
-function loadVoiceHooks(): VoiceHooks {
+function loadVoiceHooks(mode: VoiceConfig['mode']): VoiceHooks {
   ensureLiveKitGlobals();
+  // Self-hosted only needs mediasoup + WebRTC — skip livekit-client Room
+  // import so Hermes WeakRef paths in LiveKit never run in that mode.
+  if (mode === 'self') {
+    return {
+      useHostedVoiceChannel: () => {
+        throw new Error('Hosted voice hook loaded in self-hosted mode');
+      },
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      useSelfHostedVoiceChannel: require('../../voice/useSelfHostedVoiceChannel')
+        .useSelfHostedVoiceChannel,
+    };
+  }
   return {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     useHostedVoiceChannel: require('../../voice/useHostedVoiceChannel')
       .useHostedVoiceChannel,
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    useSelfHostedVoiceChannel: require('../../voice/useSelfHostedVoiceChannel')
-      .useSelfHostedVoiceChannel,
+    useSelfHostedVoiceChannel: () => {
+      throw new Error('Self-hosted voice hook loaded in hosted mode');
+    },
   };
 }
 
@@ -243,35 +259,38 @@ function VoiceChannelScreenInner() {
   const [nativeError, setNativeError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      setHooks(loadVoiceHooks());
-    } catch (err) {
-      setNativeError(
-        err instanceof Error
-          ? err.message
-          : 'Voice native modules failed to load. Reinstall the APK.',
-      );
-    }
-  }, []);
-
-  useEffect(() => {
+    let cancelled = false;
     Promise.all([voiceApi.getVoiceConfig(), getToken()])
       .then(([cfg, token]) => {
+        if (cancelled) return;
         if (!token) {
           setError(
             'You are signed out. Please log in again to use voice channels.',
           );
           return;
         }
-        setConfig(cfg);
-        setAuthToken(token);
+        try {
+          setHooks(loadVoiceHooks(cfg.mode));
+          setConfig(cfg);
+          setAuthToken(token);
+        } catch (err) {
+          setNativeError(
+            err instanceof Error
+              ? err.message
+              : 'Voice native modules failed to load. Reinstall the APK.',
+          );
+        }
       })
-      .catch((err) =>
+      .catch((err) => {
+        if (cancelled) return;
         setError(
           err?.response?.data?.message?.toString() ??
             'Could not load voice config',
-        ),
-      );
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (nativeError || error) {

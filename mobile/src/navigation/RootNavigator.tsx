@@ -54,21 +54,29 @@ const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
 const ProfileSetupStack = createNativeStackNavigator<ProfileSetupStackParamList>();
 const MainStack = createNativeStackNavigator<MainStackParamList>();
 
-// Every screen reachable directly from OrgHome/GuildHome (not a drill-down
-// detail like MemberProfile or PlayerStats) gets this as headerLeft instead
-// of the default back chevron — opens the same drawer Home uses, so users
-// can jump straight to another section without backing out first. `openWith`
-// captures whichever screen's nav prop opened it; dispatching a reset from
-// any screen in this stack resets the whole (shared) stack the same way.
+// Top-level drawer destinations (Roster, Maps, Stats, …): hamburger opens the
+// same drawer as Home so users can jump sections without backing out first.
 function sectionOptions(
   openWith: (nav: any) => void,
   build?: (args: { navigation: any; route: any }) => Record<string, unknown>,
 ) {
   return (args: { navigation: any; route: any }) => ({
     ...(build ? build(args) : {}),
-    // Same drawer entry point as OrgHome / GuildHome AppShellHeader.
     headerLeft: () => <MenuButton onPress={() => openWith(args.navigation)} />,
     headerBackVisible: false,
+  });
+}
+
+// Nested drill-downs (member profile, edit scrim, player stats, …): system
+// back chevron pops to the previous screen. Sidebar is for section switches,
+// not for unwinding an in-section stack.
+function detailOptions(
+  build?: (args: { navigation: any; route: any }) => Record<string, unknown>,
+) {
+  return (args: { navigation: any; route: any }) => ({
+    ...(build ? build(args) : {}),
+    headerBackVisible: true,
+    headerBackButtonDisplayMode: 'minimal' as const,
   });
 }
 
@@ -279,7 +287,9 @@ export function RootNavigator() {
             <MainStack.Screen
               name="TwoFactorSetup"
               component={TwoFactorSetupScreen}
-              options={{ title: 'Two-Factor Authentication' }}
+              options={detailOptions(() => ({
+                title: 'Two-Factor Authentication',
+              }))}
             />
             <MainStack.Screen
               name="Chat"
@@ -299,7 +309,9 @@ export function RootNavigator() {
             <MainStack.Screen
               name="MemberProfile"
               component={MemberProfileScreen}
-              options={({ route }) => ({ title: titleCase(route.params.name) })}
+              options={detailOptions(({ route }) => ({
+                title: titleCase(route.params.name),
+              }))}
             />
           </MainStack.Navigator>
           <SideDrawer
@@ -350,12 +362,16 @@ export function RootNavigator() {
             <MainStack.Screen
               name="TwoFactorSetup"
               component={TwoFactorSetupScreen}
-              options={{ title: 'Two-Factor Authentication' }}
+              options={detailOptions(() => ({
+                title: 'Two-Factor Authentication',
+              }))}
             />
             <MainStack.Screen
               name="MemberProfile"
               component={MemberProfileScreen}
-              options={({ route }) => ({ title: titleCase(route.params.name) })}
+              options={detailOptions(({ route }) => ({
+                title: titleCase(route.params.name),
+              }))}
             />
             <MainStack.Screen
               name="MediaFeed"
@@ -386,7 +402,9 @@ export function RootNavigator() {
             <MainStack.Screen
               name="AddEditScrim"
               component={AddEditScrimScreen}
-              options={{ title: 'Scrim / Tournament' }}
+              options={detailOptions(() => ({
+                title: 'Scrim / Tournament',
+              }))}
             />
             <MainStack.Screen
               name="Stats"
@@ -396,12 +414,16 @@ export function RootNavigator() {
             <MainStack.Screen
               name="ExtractionReview"
               component={ExtractionReviewScreen}
-              options={{ title: 'Review Stats' }}
+              options={detailOptions(() => ({
+                title: 'Review Stats',
+              }))}
             />
             <MainStack.Screen
               name="PlayerStats"
               component={PlayerStatsScreen}
-              options={({ route }) => ({ title: titleCase(route.params.name) })}
+              options={detailOptions(({ route }) => ({
+                title: titleCase(route.params.name),
+              }))}
             />
             <MainStack.Screen
               name="Voice"

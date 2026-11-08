@@ -15,7 +15,6 @@ import { MembershipRole, OrgDetail, OrgMember } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { colors } from '../theme';
-import { sharedStyles } from './shared';
 import { RoleSelector } from './RoleSelector';
 import { Toast, useToast } from '../ui/Toast';
 import { confirmAsync } from '../ui/confirmAsync';
@@ -67,9 +66,10 @@ export function OrgSettingsScreen({ navigation }: Props) {
 
   const onMakeOwner = async (member: OrgMember) => {
     const confirmed = await confirmAsync(
-      'Make Owner',
-      `Make ${member.name} the org owner? You will no longer be the owner.`,
-      'Make Owner',
+      'Transfer ownership?',
+      `Do you want to transfer ownership to ${member.name}? You will no longer be the owner.`,
+      'Yes',
+      'No',
     );
     if (!confirmed) return;
     try {
@@ -125,7 +125,6 @@ export function OrgSettingsScreen({ navigation }: Props) {
         }
         ListHeaderComponent={
           <>
-            <Text style={sharedStyles.title}>Org Settings</Text>
             {detail && (
               <View style={styles.settingRow}>
                 <View style={styles.settingTextCol}>

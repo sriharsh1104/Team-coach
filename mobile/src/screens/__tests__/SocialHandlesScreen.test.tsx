@@ -14,12 +14,12 @@ beforeEach(() => {
 });
 
 describe('SocialHandlesScreen', () => {
-  it('lists social channels with copy; email opens mailto', async () => {
+  it('lists social channels with inline QR chips; email opens mailto', async () => {
     render(<SocialHandlesScreen navigation={navigation} route={{} as any} />);
 
     expect(screen.getByText('Email')).toBeTruthy();
-    expect(screen.getAllByText('Instagram').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Discord').length).toBeGreaterThan(0);
+    expect(screen.getByText('Instagram')).toBeTruthy();
+    expect(screen.getByText('Discord')).toBeTruthy();
     expect(screen.getByText('YouTube')).toBeTruthy();
     expect(screen.getByText('Telegram')).toBeTruthy();
     expect(
@@ -37,15 +37,13 @@ describe('SocialHandlesScreen', () => {
       screen.getAllByText('https://discord.gg/mUES4kcAE').length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByText('Add your link here').length).toBeGreaterThan(0);
-    expect(screen.getByText('@SACREDESPORTSS')).toBeTruthy();
-    expect(screen.getByText('SACRED ESPORTS')).toBeTruthy();
-    expect(screen.getByText('instagram.com/sacredesportss')).toBeTruthy();
-    expect(screen.getByText('discord.gg/mUES4kcAE')).toBeTruthy();
+
+    // Bottom "Scan to connect" block removed — QR lives on the row.
+    expect(screen.queryByText('Scan to connect')).toBeNull();
     expect(screen.getByLabelText('Instagram QR preview')).toBeTruthy();
     expect(screen.getByLabelText('Discord QR preview')).toBeTruthy();
     expect(screen.getByLabelText('View Instagram QR full screen')).toBeTruthy();
     expect(screen.getByLabelText('View Discord QR full screen')).toBeTruthy();
-    expect(screen.getByText('Scan to connect')).toBeTruthy();
 
     await act(async () => {
       fireEvent.press(
@@ -68,16 +66,16 @@ describe('SocialHandlesScreen', () => {
     );
 
     await act(async () => {
-      fireEvent.press(screen.getByLabelText('Open Discord'));
-    });
-    expect(Linking.openURL).toHaveBeenCalledWith(
-      'discord://invite/mUES4kcAE',
-    );
-
-    await act(async () => {
       fireEvent.press(screen.getByLabelText('View Instagram QR full screen'));
     });
     expect(screen.getByLabelText('Instagram QR full screen')).toBeTruthy();
+    expect(screen.getByText('@SACREDESPORTSS')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Open Instagram'));
+    });
+    expect(Linking.openURL).toHaveBeenCalledWith(
+      'instagram://user?username=sacredesportss',
+    );
     await act(async () => {
       fireEvent.press(screen.getByLabelText('Close'));
     });

@@ -138,9 +138,9 @@ describe('OrgSettingsScreen', () => {
     expect(mockedOrgApi.changeMemberRole).toHaveBeenCalledWith('user-2', 'COACH');
   });
 
-  it('transfers ownership after confirming', async () => {
+  it('transfers ownership after confirming Yes', async () => {
     jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const confirm = buttons?.find((b) => b.text === 'Make Owner');
+      const confirm = buttons?.find((b) => b.text === 'Yes');
       confirm?.onPress?.(undefined as any);
     });
     mockedOrgApi.transferOwnership.mockResolvedValue(undefined);
@@ -151,6 +151,11 @@ describe('OrgSettingsScreen', () => {
       fireEvent.press(screen.getByText('Make Owner'));
     });
 
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Transfer ownership?',
+      expect.stringContaining('Do you want to transfer ownership'),
+      expect.any(Array),
+    );
     expect(mockedOrgApi.transferOwnership).toHaveBeenCalledWith('user-2');
     expect(refreshOrg).toHaveBeenCalled();
   });

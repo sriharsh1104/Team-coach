@@ -247,11 +247,15 @@ export class ChatService {
         orgId,
         channelKey: { in: [ORG_CHANNEL, GUILD_CHANNEL] },
       },
-      select: { channelKey: true, avatarUrl: true },
+      select: { channelKey: true, avatarUrl: true, avatarFileKey: true },
     });
-    const avatarByChannel = new Map(
-      channelMetas.map((m) => [m.channelKey, m.avatarUrl] as const),
-    );
+    const avatarByChannel = new Map<string, string | null>();
+    for (const m of channelMetas) {
+      avatarByChannel.set(
+        m.channelKey,
+        await this.resolveChannelAvatarUrl(m.avatarUrl, m.avatarFileKey, userId),
+      );
+    }
 
     const groupUnread = roster
       ? await this.countUnread(userId, orgId, ORG_CHANNEL, groupCutoff)
@@ -941,7 +945,11 @@ export class ChatService {
     return {
       channelKey: key,
       description: meta?.description ?? null,
-      avatarUrl: meta?.avatarUrl ?? null,
+      avatarUrl: await this.resolveChannelAvatarUrl(
+        meta?.avatarUrl,
+        meta?.avatarFileKey,
+        userId,
+      ),
       disappearAfterSec: meta?.disappearAfterSec ?? null,
     };
   }
@@ -997,7 +1005,11 @@ export class ChatService {
     return {
       channelKey: key,
       description: meta.description,
-      avatarUrl: meta.avatarUrl,
+      avatarUrl: await this.resolveChannelAvatarUrl(
+        meta.avatarUrl,
+        meta.avatarFileKey,
+        userId,
+      ),
       disappearAfterSec: meta.disappearAfterSec,
     };
   }
@@ -1019,20 +1031,20 @@ export class ChatService {
       select: { avatarFileKey: true },
     });
 
-    const avatarUrl =
-      stored.deliveryUrl ?? `/chat/files/${encodeURIComponent(stored.fileKey)}`;
-
+    // Persist fileKey as source of truth; delivery URL is reminted on read
+    // (same pattern as profile avatars). Never store a bare `/chat/files/…`
+    // path — that endpoint requires a signed token and would 404 forever.
     const meta = await this.prisma.chatChannelMeta.upsert({
       where: { orgId_channelKey: { orgId, channelKey: key } },
       create: {
         orgId,
         channelKey: key,
-        avatarUrl,
+        avatarUrl: stored.deliveryUrl,
         avatarFileKey: stored.fileKey,
         updatedById: userId,
       },
       update: {
-        avatarUrl,
+        avatarUrl: stored.deliveryUrl,
         avatarFileKey: stored.fileKey,
         updatedById: userId,
       },
@@ -1045,7 +1057,11 @@ export class ChatService {
     return {
       channelKey: key,
       description: meta.description,
-      avatarUrl: meta.avatarUrl,
+      avatarUrl: await this.resolveChannelAvatarUrl(
+        meta.avatarUrl,
+        meta.avatarFileKey,
+        userId,
+      ),
       disappearAfterSec: meta.disappearAfterSec,
     };
   }
@@ -1088,6 +1104,37 @@ export class ChatService {
     });
     if (guild) return;
     throw new ForbiddenException('Only coaches / owners can edit group settings');
+  }
+
+  /**
+   * Remint a loadable group-photo URL from avatarFileKey (Cloudinary signed
+   * CDN or /media/files JWT proxy). Matches profile avatar resolution so
+   * Image components never hit an unauthenticated /chat/files path.
+   */
+  private async resolveChannelAvatarUrl(
+    avatarUrl: string | null | undefined,
+    avatarFileKey: string | null | undefined,
+    viewerId: string,
+  ): Promise<string | null> {
+    if (avatarFileKey) {
+      const cloud = this.storage.buildDeliveryUrl(avatarFileKey);
+      if (cloud) return cloud;
+      const token = await this.jwtService.signAsync(
+        { sub: viewerId, fileKey: avatarFileKey, purpose: 'media-file' },
+        { expiresIn: '7d' },
+      );
+      return `/media/files/${encodeURIComponent(avatarFileKey)}?token=${token}`;
+    }
+    // Legacy rows that stored a bare /chat/files/{key} without a token —
+    // extract the key and remint through the media proxy.
+    if (avatarUrl) {
+      const bare = avatarUrl.match(/^\/chat\/files\/([^?]+)$/);
+      if (bare) {
+        const fileKey = decodeURIComponent(bare[1]);
+        return this.resolveChannelAvatarUrl(null, fileKey, viewerId);
+      }
+    }
+    return avatarUrl ?? null;
   }
 
   /**

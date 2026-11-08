@@ -32,6 +32,7 @@ export type FreeFireMap = {
   theme: string;
   size: string;
   imageUrl: string;
+  canUpload?: boolean;
   primary: MapDrop;
   secondary: MapDrop;
   vendingMachines: VendingMachine[];
@@ -54,6 +55,7 @@ type CatalogMap = Omit<
 function withAbsoluteUrls(map: CatalogMap): FreeFireMap {
   return {
     ...map,
+    canUpload: !!(map as FreeFireMap).canUpload,
     imageUrl: resolveMediaUrl(map.imageUrl) || map.imageUrl,
     primary: {
       ...map.primary,

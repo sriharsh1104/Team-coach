@@ -181,6 +181,67 @@ model Org {
   scrimEvents        ScrimEvent[]
   statExtractions StatExtraction[]
   playerStats     PlayerStat[]
+  mapImages          OrgMapImage[]
+  customMaps         OrgCustomMap[]
+  mapDropPoints      OrgMapDropPoint[]
+}
+
+// Org overrides for shared catalog images (Cloudinary / local fileKey).
+model OrgMapImage {
+  id        String   @id @default(cuid())
+  orgId     String
+  // Catalog map id, e.g. bermuda
+  mapId     String
+  // overview | primary | secondary | vending:machineId
+  slot      String
+  fileKey   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, mapId, slot])
+  @@index([orgId, mapId])
+}
+
+// Fully custom map created by owner / coach / analyst.
+model OrgCustomMap {
+  id              String   @id @default(cuid())
+  orgId           String
+  name            String
+  theme           String   @default("")
+  size            String   @default("")
+  overviewFileKey String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  org   Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  drops OrgMapDropPoint[]
+
+  @@index([orgId])
+}
+
+// Extra (or sole) drop points for a catalog map or a custom map.
+model OrgMapDropPoint {
+  id           String   @id @default(cuid())
+  orgId        String
+  catalogMapId String?
+  customMapId  String?
+  name         String
+  // primary | secondary | extra
+  tier         String   @default("extra")
+  note         String   @default("")
+  x            Float    @default(0.5)
+  y            Float    @default(0.5)
+  fileKey      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  org       Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  customMap OrgCustomMap? @relation(fields: [customMapId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, catalogMapId])
+  @@index([customMapId])
 }
 
 enum ScrimEventType {

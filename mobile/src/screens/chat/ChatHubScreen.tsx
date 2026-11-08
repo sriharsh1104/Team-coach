@@ -9,7 +9,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as chatApi from '../../api/chat';
 import { ChatChannel, ChatTeammate } from '../../api/types';
-import { colors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
@@ -45,6 +45,7 @@ type ChatOverlay =
  * Inbox + conversation: Team Chat (group) separate from 1:1 DMs.
  */
 export function ChatHubScreen({ onLoadError }: Props) {
+  const { colors: theme } = useTheme();
   const [channels, setChannels] = useState<ChatChannel[]>([]);
   const [teammates, setTeammates] = useState<ChatTeammate[]>([]);
   const [active, setActive] = useState<ActiveChat | null>(null);
@@ -204,7 +205,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
         : 'Direct message · Tap for profile';
 
     return (
-      <View style={styles.flex}>
+      <View style={[styles.flex, { backgroundColor: theme.bg }]}>
         <ChatFlowHeader
           title={active.title}
           subtitle={subtitle}
@@ -230,7 +231,9 @@ export function ChatHubScreen({ onLoadError }: Props) {
                 hitSlop={8}
                 pressScale={0.95}
               >
-                <Text style={styles.mediaBtnText}>Media</Text>
+                <Text style={[styles.mediaBtnText, { color: theme.icon }]}>
+                  Media
+                </Text>
               </SoftPressable>
 
               <SoftPressable
@@ -238,13 +241,13 @@ export function ChatHubScreen({ onLoadError }: Props) {
                 onPress={() => void toggleMute()}
                 accessibilityRole="button"
                 accessibilityLabel={active.muted ? 'Unmute chat' : 'Mute chat'}
-                hitSlop={8}
+                hitSlop={10}
                 pressScale={0.92}
               >
                 <Ionicons
-                  name={active.muted ? 'notifications-off-outline' : 'notifications-outline'}
-                  size={18}
-                  color={active.muted ? colors.textMuted : colors.chrome}
+                  name={active.muted ? 'notifications-off' : 'notifications'}
+                  size={22}
+                  color={active.muted ? theme.textMuted : theme.icon}
                 />
               </SoftPressable>
 
@@ -253,10 +256,10 @@ export function ChatHubScreen({ onLoadError }: Props) {
                 onPress={() => setSearchOpen((v) => !v)}
                 accessibilityRole="button"
                 accessibilityLabel="Search chat"
-                hitSlop={8}
+                hitSlop={10}
                 pressScale={0.92}
               >
-                <Ionicons name="search-outline" size={18} color={colors.chrome} />
+                <Ionicons name="search" size={22} color={theme.icon} />
               </SoftPressable>
 
               <SoftPressable
@@ -264,17 +267,27 @@ export function ChatHubScreen({ onLoadError }: Props) {
                 onPress={() => setSettingsOpen(true)}
                 accessibilityRole="button"
                 accessibilityLabel="Chat settings"
-                hitSlop={8}
+                hitSlop={10}
                 pressScale={0.92}
               >
-                <Ionicons name="ellipsis-vertical" size={16} color={colors.chrome} />
+                <Ionicons name="ellipsis-vertical" size={20} color={theme.icon} />
               </SoftPressable>
             </>
           }
         />
         {starredOnly ? (
-          <View style={styles.starredBanner}>
-            <Text style={styles.starredBannerText}>Starred messages</Text>
+          <View
+            style={[
+              styles.starredBanner,
+              {
+                backgroundColor: theme.surface,
+                borderBottomColor: theme.border,
+              },
+            ]}
+          >
+            <Text style={[styles.starredBannerText, { color: theme.text }]}>
+              Starred messages
+            </Text>
             <SoftPressable
               onPress={() => setStarredOnly(false)}
               hitSlop={8}
@@ -282,7 +295,9 @@ export function ChatHubScreen({ onLoadError }: Props) {
               accessibilityLabel="Show all messages"
               pressScale={0.95}
             >
-              <Text style={styles.starredBannerAction}>Show all</Text>
+              <Text style={[styles.starredBannerAction, { color: theme.link }]}>
+                Show all
+              </Text>
             </SoftPressable>
           </View>
         ) : null}
@@ -331,8 +346,8 @@ export function ChatHubScreen({ onLoadError }: Props) {
   }
 
   return (
-    <View style={styles.flex}>
-      <Text style={styles.inboxTitle}>Chats</Text>
+    <View style={[styles.flex, { backgroundColor: theme.bg }]}>
+      <Text style={[styles.inboxTitle, { color: theme.text }]}>Chats</Text>
       <FlatList
         data={[{ key: 'inbox' }]}
         keyExtractor={(item) => item.key}
@@ -340,16 +355,25 @@ export function ChatHubScreen({ onLoadError }: Props) {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={onRefresh}
-            tintColor={colors.chrome}
+            tintColor={theme.chrome}
           />
         }
         renderItem={() => (
           <View>
             {groupChannels.length > 0 ? (
-              <Text style={styles.section}>Group Chats</Text>
+              <Text style={[styles.section, { color: theme.textMuted }]}>
+                Group Chats
+              </Text>
             ) : null}
             {groupChannels.map((ch) => (
-              <View key={ch.channelKey} style={[styles.row, styles.teamRow]}>
+              <View
+                key={ch.channelKey}
+                style={[
+                  styles.row,
+                  styles.teamRow,
+                  { backgroundColor: theme.surface, borderColor: theme.border },
+                ]}
+              >
                 <ChannelAvatar uri={ch.peerAvatarUrl} size={40} />
                 <SoftPressable
                   style={styles.rowMain}
@@ -358,8 +382,13 @@ export function ChatHubScreen({ onLoadError }: Props) {
                   accessibilityRole="button"
                   accessibilityLabel={ch.title}
                 >
-                  <Text style={styles.rowTitle}>{ch.title}</Text>
-                  <Text style={styles.preview} numberOfLines={1}>
+                  <Text style={[styles.rowTitle, { color: theme.text }]}>
+                    {ch.title}
+                  </Text>
+                  <Text
+                    style={[styles.preview, { color: theme.textMuted }]}
+                    numberOfLines={1}
+                  >
                     {ch.memberCount ? `${ch.memberCount} members` : 'Group'}
                     {ch.lastPreview
                       ? ` · ${ch.lastPreview}`
@@ -367,21 +396,28 @@ export function ChatHubScreen({ onLoadError }: Props) {
                   </Text>
                 </SoftPressable>
                 {ch.unreadCount > 0 ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{ch.unreadCount}</Text>
+                  <View style={[styles.badge, { backgroundColor: theme.chrome }]}>
+                    <Text style={[styles.badgeText, { color: theme.chromeInk }]}>
+                      {ch.unreadCount}
+                    </Text>
                   </View>
                 ) : null}
               </View>
             ))}
 
             {(dmChannels.length > 0 || startDmTeammates.length > 0) && (
-              <Text style={styles.section}>Direct Messages</Text>
+              <Text style={[styles.section, { color: theme.textMuted }]}>
+                Direct Messages
+              </Text>
             )}
 
             {dmChannels.map((item) => (
               <SoftPressable
                 key={item.channelKey}
-                style={styles.row}
+                style={[
+                  styles.row,
+                  { backgroundColor: theme.surface, borderColor: theme.border },
+                ]}
                 onPress={() =>
                   openChannel({
                     ...item,
@@ -397,19 +433,30 @@ export function ChatHubScreen({ onLoadError }: Props) {
                   previewable={!!item.peerAvatarUrl}
                 />
                 <View style={styles.rowMain}>
-                  <Text style={styles.rowTitle}>{item.title}</Text>
+                  <Text style={[styles.rowTitle, { color: theme.text }]}>
+                    {item.title}
+                  </Text>
                   {item.lastPreview ? (
-                    <Text style={styles.preview} numberOfLines={1}>
+                    <Text
+                      style={[styles.preview, { color: theme.textMuted }]}
+                      numberOfLines={1}
+                    >
                       {item.lastPreview}
                     </Text>
                   ) : (
-                    <Text style={styles.preview}>No messages yet</Text>
+                    <Text style={[styles.preview, { color: theme.textMuted }]}>
+                      No messages yet
+                    </Text>
                   )}
                 </View>
-                <Text style={styles.dmHint}>1:1</Text>
+                <Text style={[styles.dmHint, { color: theme.textMuted }]}>
+                  1:1
+                </Text>
                 {item.unreadCount > 0 ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{item.unreadCount}</Text>
+                  <View style={[styles.badge, { backgroundColor: theme.chrome }]}>
+                    <Text style={[styles.badgeText, { color: theme.chromeInk }]}>
+                      {item.unreadCount}
+                    </Text>
                   </View>
                 ) : null}
               </SoftPressable>
@@ -418,12 +465,20 @@ export function ChatHubScreen({ onLoadError }: Props) {
             {startDmTeammates.length > 0 && (
               <>
                 {dmChannels.length > 0 ? (
-                  <Text style={styles.sectionSoft}>Start new</Text>
+                  <Text style={[styles.sectionSoft, { color: theme.textDim }]}>
+                    Start new
+                  </Text>
                 ) : null}
                 {startDmTeammates.map((mate) => (
                   <SoftPressable
                     key={mate.userId}
-                    style={styles.row}
+                    style={[
+                      styles.row,
+                      {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                      },
+                    ]}
                     onPress={() =>
                       openChannel({
                         channelKey: mate.channelKey,
@@ -442,15 +497,21 @@ export function ChatHubScreen({ onLoadError }: Props) {
                       fallback={(mate.name || '?').slice(0, 1).toUpperCase()}
                       previewable={!!mate.avatarUrl}
                     />
-                    <Text style={styles.rowTitle}>{mate.name}</Text>
-                    <Text style={styles.dmHint}>1:1</Text>
+                    <Text style={[styles.rowTitle, { color: theme.text }]}>
+                      {mate.name}
+                    </Text>
+                    <Text style={[styles.dmHint, { color: theme.textMuted }]}>
+                      1:1
+                    </Text>
                   </SoftPressable>
                 ))}
               </>
             )}
 
             {teammates.length === 0 ? (
-              <Text style={styles.empty}>No teammates yet.</Text>
+              <Text style={[styles.empty, { color: theme.textMuted }]}>
+                No teammates yet.
+              </Text>
             ) : null}
           </View>
         )}
@@ -468,21 +529,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(201,204,209,0.08)',
   },
   starredBannerText: {
-    color: colors.text,
     fontWeight: '700',
     fontSize: 13,
   },
   starredBannerAction: {
-    color: colors.link,
     fontWeight: '700',
     fontSize: 13,
   },
   inboxTitle: {
-    color: colors.text,
     fontSize: 22,
     fontWeight: '700',
     paddingHorizontal: 16,
@@ -491,7 +547,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   section: {
-    color: colors.textMuted,
     fontWeight: '700',
     fontSize: 12,
     letterSpacing: 0.6,
@@ -501,7 +556,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sectionSoft: {
-    color: colors.textDim,
     fontWeight: '600',
     fontSize: 12,
     paddingHorizontal: 16,
@@ -517,30 +571,23 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     gap: 10,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
   },
-  teamRow: {
-    backgroundColor: 'rgba(201,204,209,0.08)',
-    borderColor: 'rgba(201,204,209,0.18)',
-  },
+  teamRow: {},
   rowMain: { flex: 1, minWidth: 0 },
-  rowTitle: { color: colors.text, fontWeight: '700', fontSize: 16 },
-  preview: { color: colors.textMuted, marginTop: 2, fontSize: 13 },
+  rowTitle: { fontWeight: '700', fontSize: 16 },
+  preview: { marginTop: 2, fontSize: 13 },
   badge: {
     minWidth: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: colors.chrome,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  badgeText: { color: colors.chromeInk, fontWeight: '700', fontSize: 12 },
-  dmHint: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  badgeText: { fontWeight: '700', fontSize: 12 },
+  dmHint: { fontSize: 12, fontWeight: '600' },
   empty: {
-    color: colors.textMuted,
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
@@ -549,16 +596,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 4,
-    marginLeft: 'auto',
   },
   mediaBtnText: {
-    color: colors.chrome,
     fontWeight: '700',
     fontSize: 14,
   },
   iconBtn: {
-    width: 32,
-    height: 32,
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -176,7 +176,12 @@ describe('AuthService (unit)', () => {
     });
 
     it('links googleId onto an existing password account with the same verified email, without creating a duplicate or generating a password', async () => {
-      const existingUser = { id: 'existing-id', email: 'player@example.com', tokenVersion: 0 };
+      const existingUser = {
+        id: 'existing-id',
+        email: 'player@example.com',
+        passwordHash: 'already-hashed',
+        tokenVersion: 0,
+      };
       const { service, prisma, mailerService } = buildService({
         user: {
           findUnique: jest
@@ -197,6 +202,47 @@ describe('AuthService (unit)', () => {
       });
       expect(prisma.user.create).not.toHaveBeenCalled();
       expect(mailerService.sendGeneratedPassword).not.toHaveBeenCalled();
+    });
+
+    it('backfills and emails a password for a legacy Google user that still has no passwordHash', async () => {
+      const legacyUser = {
+        id: 'legacy-id',
+        email: 'player@example.com',
+        googleId: 'google-sub-123',
+        passwordHash: null,
+        tokenVersion: 0,
+        twoFactorEnabled: false,
+        name: 'Player',
+      };
+      const { service, prisma, mailerService } = buildService({
+        user: {
+          findUnique: jest.fn().mockResolvedValue(legacyUser),
+          update: jest.fn().mockImplementation(
+            ({ data }: { data: Record<string, unknown> }) => ({
+              ...legacyUser,
+              ...data,
+            }),
+          ),
+          create: jest.fn(),
+        },
+      });
+      mockGooglePayload(verifiedPayload);
+
+      const result = await service.googleLogin({ idToken: 'fake' });
+
+      expect(mailerService.sendGeneratedPassword).toHaveBeenCalledWith(
+        'player@example.com',
+        expect.any(String),
+      );
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'legacy-id' },
+          data: expect.objectContaining({ passwordHash: expect.any(String) }),
+        }),
+      );
+      expect(
+        'passwordEmailSent' in result && result.passwordEmailSent,
+      ).toBe(true);
     });
   });
 

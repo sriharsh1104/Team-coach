@@ -180,11 +180,14 @@ export async function uploadChannelAvatar(channelKey: string, file: {
   fileName: string;
   mimeType: string;
 }) {
+  // Android gallery often returns content:// — must materialize to file://
+  // before FormData or the backend receives an empty upload.
+  const prepared = await compressForUpload(file);
   const form = new FormData();
   await appendFileToFormData(form, {
-    uri: file.uri,
-    name: file.fileName,
-    type: file.mimeType,
+    uri: prepared.uri,
+    name: prepared.fileName,
+    type: prepared.mimeType,
   });
   form.append('channelKey', channelKey);
   return apiClient

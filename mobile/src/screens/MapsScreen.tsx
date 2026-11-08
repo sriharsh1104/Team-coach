@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   LayoutChangeEvent,
@@ -8,18 +9,29 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as mapsApi from '../api/maps';
-import { FreeFireMap, MapPin, mapPins } from '../api/maps';
+import {
+  DropTier,
+  FreeFireMap,
+  MapImageSlot,
+  MapPin,
+  mapPins,
+} from '../api/maps';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { SoftPressable } from '../ui/SoftPressable';
-import { sharedStyles } from './shared';
+import { emitToast } from '../ui/toastBus';
+import { apiErrorMessage } from '../api/apiErrorMessage';
 import { colors } from '../theme';
+
+type PickedFile = { uri: string; fileName: string; mimeType: string };
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Maps'>;
 
@@ -56,12 +68,52 @@ export function MapsScreen(_props: Props) {
   const [viewer, setViewer] = useState<ViewerTarget | null>(null);
   const [pinFilter, setPinFilter] = useState<PinFilter>('all');
   const [overviewBoxSize, setOverviewBoxSize] = useState(0);
+  const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
+  const [addMapOpen, setAddMapOpen] = useState(false);
+  const [addDropFor, setAddDropFor] = useState<FreeFireMap | null>(null);
+  const [mapName, setMapName] = useState('');
+  const [mapTheme, setMapTheme] = useState('');
+  const [mapFile, setMapFile] = useState<PickedFile | null>(null);
+  const [dropName, setDropName] = useState('');
+  const [dropNote, setDropNote] = useState('');
+  const [dropTier, setDropTier] = useState<DropTier>('extra');
+  const [dropFile, setDropFile] = useState<PickedFile | null>(null);
+  const [savingForm, setSavingForm] = useState(false);
+
+  const canManage = maps.some((m) => m.canUpload);
 
   const load = useCallback(async () => {
     setError(null);
     try {
       const next = await mapsApi.listMaps();
       setMaps(next);
+      setViewer((prev) => {
+        if (!prev) return prev;
+        const fresh = next.find((m) => m.id === prev.map.id);
+        if (!fresh) return prev;
+        if (prev.kind === 'overview') return { kind: 'overview', map: fresh };
+        if (prev.pin.category === 'vending_machine') {
+          const machine =
+            fresh.vendingMachines.find((v) => v.id === prev.pin.id) ?? prev.pin;
+          return {
+            kind: 'poi',
+            map: fresh,
+            pin: { ...machine, category: 'vending_machine' },
+          };
+        }
+        const dropList = fresh.drops?.length
+          ? fresh.drops
+          : [fresh.primary, fresh.secondary];
+        const drop =
+          dropList.find((d) => d.id === prev.pin.id) ??
+          dropList.find((d) => d.tier === prev.pin.tier) ??
+          fresh.primary;
+        return {
+          kind: 'poi',
+          map: fresh,
+          pin: { ...drop, category: 'drop' },
+        };
+      });
     } catch {
       setError('Could not load maps');
     } finally {
@@ -77,6 +129,100 @@ export function MapsScreen(_props: Props) {
     setPinFilter('all');
     setViewer(target);
   }, []);
+
+  const pickImage = useCallback(async (): Promise<PickedFile | null> => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Permission needed',
+        'Allow gallery access to upload a map image.',
+      );
+      return null;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+      allowsEditing: true,
+    });
+    if (result.canceled || !result.assets[0]) return null;
+    const asset = result.assets[0];
+    return {
+      uri: asset.uri,
+      fileName: asset.fileName ?? `map-${Date.now()}.jpg`,
+      mimeType: asset.mimeType ?? 'image/jpeg',
+    };
+  }, []);
+
+  const uploadSlot = useCallback(
+    async (mapId: string, slot: MapImageSlot, label: string) => {
+      const file = await pickImage();
+      if (!file) return;
+      const key = `${mapId}:${slot}`;
+      setUploadingSlot(key);
+      try {
+        await mapsApi.uploadMapImage(mapId, slot, file);
+        emitToast(`${label} updated`);
+        await load();
+      } catch (err) {
+        emitToast(apiErrorMessage(err, 'Could not upload map image'));
+      } finally {
+        setUploadingSlot(null);
+      }
+    },
+    [load, pickImage],
+  );
+
+  const submitNewMap = useCallback(async () => {
+    if (!mapName.trim() || !mapFile) {
+      emitToast('Name and overview photo are required');
+      return;
+    }
+    setSavingForm(true);
+    try {
+      await mapsApi.createMap({
+        name: mapName.trim(),
+        theme: mapTheme.trim() || undefined,
+        file: mapFile,
+      });
+      emitToast('Map added');
+      setAddMapOpen(false);
+      setMapName('');
+      setMapTheme('');
+      setMapFile(null);
+      await load();
+    } catch (err) {
+      emitToast(apiErrorMessage(err, 'Could not create map'));
+    } finally {
+      setSavingForm(false);
+    }
+  }, [load, mapFile, mapName, mapTheme]);
+
+  const submitNewDrop = useCallback(async () => {
+    if (!addDropFor || !dropName.trim()) {
+      emitToast('Drop name is required');
+      return;
+    }
+    setSavingForm(true);
+    try {
+      await mapsApi.addDropPoint(addDropFor.id, {
+        name: dropName.trim(),
+        tier: dropTier,
+        note: dropNote.trim() || undefined,
+        file: dropFile ?? undefined,
+      });
+      emitToast('Drop point added');
+      setAddDropFor(null);
+      setDropName('');
+      setDropNote('');
+      setDropTier('extra');
+      setDropFile(null);
+      await load();
+    } catch (err) {
+      emitToast(apiErrorMessage(err, 'Could not add drop point'));
+    } finally {
+      setSavingForm(false);
+    }
+  }, [addDropFor, dropFile, dropName, dropNote, dropTier, load]);
 
   const pins = useMemo(
     () => (viewer ? mapPins(viewer.map) : []),
@@ -125,77 +271,195 @@ export function MapsScreen(_props: Props) {
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <>
-            <Text style={sharedStyles.title}>Maps</Text>
             <Text style={styles.hint}>
               Team drop points — primary & secondary per map.
+              {canManage
+                ? ' Owner, coach, and analyst can add maps and drop points (cloud).'
+                : ''}
             </Text>
+            {canManage ? (
+              <SoftPressable
+                style={styles.uploadChip}
+                onPress={() => setAddMapOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Add new map"
+                pressScale={0.96}
+              >
+                <Ionicons name="add-circle-outline" size={16} color={colors.chromeInk} />
+                <Text style={styles.uploadChipText}>Add map</Text>
+              </SoftPressable>
+            ) : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
           </>
         }
-        renderItem={({ item: map, index }) => (
-          <View style={styles.block}>
-            <View style={styles.blockHead}>
-              <Text style={styles.sno}>{index + 1}</Text>
-              <View style={styles.blockText}>
-                <Text style={styles.mapName}>{map.name}</Text>
-                <Text style={styles.mapMeta}>
-                  {map.theme}
-                  {map.size ? ` · ${map.size}` : ''}
-                </Text>
-              </View>
-            </View>
-
-            <SoftPressable
-              style={styles.overviewBtn}
-              onPress={() => openViewer({ kind: 'overview', map })}
-              accessibilityLabel={`Open ${map.name} interactive map`}
-              pressScale={0.99}
-            >
-              <Image
-                source={{ uri: map.imageUrl }}
-                style={styles.overviewImage}
-                resizeMode="cover"
-              />
-            </SoftPressable>
-
-            <Text style={styles.dropEyebrow}>Sacred drops</Text>
-            <View style={styles.dropRow}>
-              {[map.primary, map.secondary].map((drop) => (
-                <SoftPressable
-                  key={drop.id}
-                  style={styles.dropCard}
-                  onPress={() =>
-                    openViewer({
-                      kind: 'poi',
-                      map,
-                      pin: { ...drop, category: 'drop' },
-                    })
-                  }
-                  accessibilityLabel={`Open ${drop.name}`}
-                  pressScale={0.98}
-                >
-                  <Text
-                    style={[
-                      styles.tierBadge,
-                      drop.tier === 'primary'
-                        ? styles.tierPrimary
-                        : styles.tierSecondary,
-                    ]}
-                  >
-                    {drop.tier === 'primary' ? 'Primary' : 'Secondary'}
+        renderItem={({ item: map, index }) => {
+          const dropList = map.drops?.length
+            ? map.drops
+            : [map.primary, map.secondary];
+          return (
+            <View style={styles.block}>
+              <View style={styles.blockHead}>
+                <Text style={styles.sno}>{index + 1}</Text>
+                <View style={styles.blockText}>
+                  <Text style={styles.mapName}>{map.name}</Text>
+                  <Text style={styles.mapMeta}>
+                    {map.isCustom ? 'Custom · ' : ''}
+                    {map.theme}
+                    {map.size ? ` · ${map.size}` : ''}
                   </Text>
+                </View>
+              </View>
+
+              <View style={styles.overviewWrap}>
+                <SoftPressable
+                  style={styles.overviewBtn}
+                  onPress={() => openViewer({ kind: 'overview', map })}
+                  accessibilityLabel={`Open ${map.name} interactive map`}
+                  pressScale={0.99}
+                >
                   <Image
-                    source={{ uri: drop.imageUrl }}
-                    style={styles.dropImage}
+                    source={{ uri: map.imageUrl }}
+                    style={styles.overviewImage}
                     resizeMode="cover"
                   />
-                  <Text style={styles.dropName}>{drop.name}</Text>
-                  <Text style={styles.dropNote}>{drop.note}</Text>
                 </SoftPressable>
-              ))}
+                {map.canUpload ? (
+                  <View style={styles.actionRow}>
+                    <SoftPressable
+                      style={styles.uploadChip}
+                      disabled={uploadingSlot === `${map.id}:overview`}
+                      onPress={() =>
+                        void uploadSlot(
+                          map.id,
+                          'overview',
+                          `${map.name} overview`,
+                        )
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`Replace ${map.name} overview`}
+                      pressScale={0.96}
+                    >
+                      {uploadingSlot === `${map.id}:overview` ? (
+                        <ActivityIndicator
+                          color={colors.chromeInk}
+                          size="small"
+                        />
+                      ) : (
+                        <>
+                          <Ionicons
+                            name="cloud-upload-outline"
+                            size={16}
+                            color={colors.chromeInk}
+                          />
+                          <Text style={styles.uploadChipText}>
+                            Replace map photo
+                          </Text>
+                        </>
+                      )}
+                    </SoftPressable>
+                    <SoftPressable
+                      style={styles.secondaryChip}
+                      onPress={() => {
+                        setDropName('');
+                        setDropNote('');
+                        setDropTier('extra');
+                        setDropFile(null);
+                        setAddDropFor(map);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add drop point on ${map.name}`}
+                      pressScale={0.96}
+                    >
+                      <Ionicons name="flag-outline" size={16} color={colors.link} />
+                      <Text style={styles.secondaryChipText}>Add drop</Text>
+                    </SoftPressable>
+                  </View>
+                ) : null}
+              </View>
+
+              <Text style={styles.dropEyebrow}>Drop points</Text>
+              <View style={styles.dropRow}>
+                {dropList.map((drop) => {
+                  const canReplaceSlot =
+                    map.canUpload &&
+                    !map.isCustom &&
+                    !drop.isCustomDrop &&
+                    (drop.tier === 'primary' || drop.tier === 'secondary');
+                  const busy = uploadingSlot === `${map.id}:${drop.tier}`;
+                  return (
+                    <View key={drop.id} style={styles.dropCard}>
+                      <SoftPressable
+                        onPress={() =>
+                          openViewer({
+                            kind: 'poi',
+                            map,
+                            pin: { ...drop, category: 'drop' },
+                          })
+                        }
+                        accessibilityLabel={`Open ${drop.name}`}
+                        pressScale={0.98}
+                      >
+                        <Text
+                          style={[
+                            styles.tierBadge,
+                            drop.tier === 'primary'
+                              ? styles.tierPrimary
+                              : drop.tier === 'secondary'
+                                ? styles.tierSecondary
+                                : styles.tierExtra,
+                          ]}
+                        >
+                          {drop.tier === 'primary'
+                            ? 'Primary'
+                            : drop.tier === 'secondary'
+                              ? 'Secondary'
+                              : 'Drop'}
+                        </Text>
+                        <Image
+                          source={{ uri: drop.imageUrl }}
+                          style={styles.dropImage}
+                          resizeMode="cover"
+                        />
+                        <Text style={styles.dropName}>{drop.name}</Text>
+                        <Text style={styles.dropNote}>{drop.note}</Text>
+                      </SoftPressable>
+                      {canReplaceSlot ? (
+                        <SoftPressable
+                          style={styles.uploadChipCompact}
+                          disabled={busy}
+                          onPress={() =>
+                            void uploadSlot(map.id, drop.tier, drop.name)
+                          }
+                          accessibilityRole="button"
+                          accessibilityLabel={`Upload ${drop.name} photo`}
+                          pressScale={0.96}
+                        >
+                          {busy ? (
+                            <ActivityIndicator
+                              color={colors.link}
+                              size="small"
+                            />
+                          ) : (
+                            <>
+                              <Ionicons
+                                name="cloud-upload-outline"
+                                size={14}
+                                color={colors.link}
+                              />
+                              <Text style={styles.uploadChipCompactText}>
+                                Replace photo
+                              </Text>
+                            </>
+                          )}
+                        </SoftPressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
             </View>
-          </View>
-        )}
+          );
+        }}
         ListEmptyComponent={
           !error ? (
             <Text style={styles.empty}>No maps in the catalog yet.</Text>
@@ -381,6 +645,128 @@ export function MapsScreen(_props: Props) {
           ) : null}
         </View>
       </Modal>
+
+      <Modal
+        visible={addMapOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddMapOpen(false)}
+      >
+        <Pressable style={styles.formBackdrop} onPress={() => setAddMapOpen(false)}>
+          <Pressable style={styles.formSheet} onPress={() => undefined}>
+            <Text style={styles.formTitle}>Add map</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="Map name"
+              placeholderTextColor={colors.textDim}
+              value={mapName}
+              onChangeText={setMapName}
+            />
+            <TextInput
+              style={styles.formInput}
+              placeholder="Theme / note (optional)"
+              placeholderTextColor={colors.textDim}
+              value={mapTheme}
+              onChangeText={setMapTheme}
+            />
+            <SoftPressable
+              style={styles.secondaryChip}
+              onPress={() => void pickImage().then((f) => f && setMapFile(f))}
+              pressScale={0.96}
+            >
+              <Ionicons name="image-outline" size={16} color={colors.link} />
+              <Text style={styles.secondaryChipText}>
+                {mapFile ? 'Overview photo selected' : 'Pick overview photo'}
+              </Text>
+            </SoftPressable>
+            <SoftPressable
+              style={[styles.uploadChip, styles.formSubmit]}
+              disabled={savingForm}
+              onPress={() => void submitNewMap()}
+              pressScale={0.96}
+            >
+              {savingForm ? (
+                <ActivityIndicator color={colors.chromeInk} size="small" />
+              ) : (
+                <Text style={styles.uploadChipText}>Create map</Text>
+              )}
+            </SoftPressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={!!addDropFor}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddDropFor(null)}
+      >
+        <Pressable style={styles.formBackdrop} onPress={() => setAddDropFor(null)}>
+          <Pressable style={styles.formSheet} onPress={() => undefined}>
+            <Text style={styles.formTitle}>
+              Add drop · {addDropFor?.name ?? ''}
+            </Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="Drop point name"
+              placeholderTextColor={colors.textDim}
+              value={dropName}
+              onChangeText={setDropName}
+            />
+            <TextInput
+              style={styles.formInput}
+              placeholder="Note (optional)"
+              placeholderTextColor={colors.textDim}
+              value={dropNote}
+              onChangeText={setDropNote}
+            />
+            <View style={styles.tierPickRow}>
+              {(['primary', 'secondary', 'extra'] as DropTier[]).map((tier) => {
+                const active = dropTier === tier;
+                return (
+                  <SoftPressable
+                    key={tier}
+                    style={[styles.tierPick, active && styles.tierPickActive]}
+                    onPress={() => setDropTier(tier)}
+                    pressScale={0.96}
+                  >
+                    <Text
+                      style={[
+                        styles.tierPickText,
+                        active && styles.tierPickTextActive,
+                      ]}
+                    >
+                      {tier === 'extra' ? 'Extra' : tier}
+                    </Text>
+                  </SoftPressable>
+                );
+              })}
+            </View>
+            <SoftPressable
+              style={styles.secondaryChip}
+              onPress={() => void pickImage().then((f) => f && setDropFile(f))}
+              pressScale={0.96}
+            >
+              <Ionicons name="image-outline" size={16} color={colors.link} />
+              <Text style={styles.secondaryChipText}>
+                {dropFile ? 'Drop photo selected' : 'Pick drop photo (optional)'}
+              </Text>
+            </SoftPressable>
+            <SoftPressable
+              style={[styles.uploadChip, styles.formSubmit]}
+              disabled={savingForm}
+              onPress={() => void submitNewDrop()}
+              pressScale={0.96}
+            >
+              {savingForm ? (
+                <ActivityIndicator color={colors.chromeInk} size="small" />
+              ) : (
+                <Text style={styles.uploadChipText}>Add drop point</Text>
+              )}
+            </SoftPressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -426,12 +812,112 @@ const styles = StyleSheet.create({
   blockText: { flex: 1 },
   mapName: { color: colors.text, fontWeight: '800', fontSize: 17 },
   mapMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  overviewBtn: { borderRadius: 12, overflow: 'hidden', marginBottom: 14 },
+  overviewWrap: { marginBottom: 14, gap: 8 },
+  overviewBtn: { borderRadius: 12, overflow: 'hidden' },
   overviewImage: {
     width: '100%',
     aspectRatio: 1,
     backgroundColor: '#0a0a0c',
   },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  uploadChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.chrome,
+    marginBottom: 12,
+  },
+  uploadChipText: {
+    color: colors.chromeInk,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  secondaryChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  secondaryChipText: {
+    color: colors.link,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  uploadChipCompact: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  uploadChipCompactText: {
+    color: colors.link,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  formBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  formSheet: {
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 10,
+  },
+  formTitle: {
+    color: colors.text,
+    fontWeight: '800',
+    fontSize: 18,
+    marginBottom: 4,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    color: colors.text,
+    fontSize: 15,
+  },
+  formSubmit: { marginBottom: 0, alignSelf: 'stretch', justifyContent: 'center' },
+  tierPickRow: { flexDirection: 'row', gap: 8 },
+  tierPick: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tierPickActive: {
+    backgroundColor: colors.chrome,
+    borderColor: colors.chrome,
+  },
+  tierPickText: {
+    color: colors.textMuted,
+    fontWeight: '700',
+    fontSize: 12,
+    textTransform: 'capitalize',
+  },
+  tierPickTextActive: { color: colors.chromeInk },
   dropEyebrow: {
     color: colors.textDim,
     fontSize: 11,
@@ -463,6 +949,10 @@ const styles = StyleSheet.create({
   tierSecondary: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     color: colors.text,
+  },
+  tierExtra: {
+    backgroundColor: 'rgba(168,176,255,0.2)',
+    color: colors.link,
   },
   dropImage: {
     width: '100%',

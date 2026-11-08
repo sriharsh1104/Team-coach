@@ -15,6 +15,14 @@ function nativeSecureStore() {
   return require('expo-secure-store') as typeof import('expo-secure-store');
 }
 
+/** Survive device lock / process death better than default WHEN_UNLOCKED. */
+function secureOpts() {
+  const SecureStore = nativeSecureStore();
+  return {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+  };
+}
+
 export async function getToken(): Promise<string | null> {
   if (Platform.OS === 'web') {
     return localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -29,7 +37,7 @@ export async function setToken(token: string): Promise<void> {
     return;
   }
   const SecureStore = nativeSecureStore();
-  await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, token);
+  await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, token, secureOpts());
 }
 
 export async function deleteToken(): Promise<void> {
@@ -62,7 +70,11 @@ export async function setBiometricEnabled(enabled: boolean): Promise<void> {
   }
   const SecureStore = nativeSecureStore();
   if (enabled) {
-    await SecureStore.setItemAsync(BIOMETRIC_ENABLED_KEY, 'true');
+    await SecureStore.setItemAsync(
+      BIOMETRIC_ENABLED_KEY,
+      'true',
+      secureOpts(),
+    );
   } else {
     await SecureStore.deleteItemAsync(BIOMETRIC_ENABLED_KEY);
   }

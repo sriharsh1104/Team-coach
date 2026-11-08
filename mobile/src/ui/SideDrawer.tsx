@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
 import { SoftPressable } from './SoftPressable';
 
 const WINDOW = Dimensions.get('window');
@@ -56,6 +56,7 @@ export function SideDrawer({
   sections?: SideDrawerSection[];
   footerItems?: SideDrawerItem[];
 }) {
+  const { colors: theme } = useTheme();
   const insets = useSafeAreaInsets();
   const slide = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdrop = useRef(new Animated.Value(0)).current;
@@ -134,6 +135,7 @@ export function SideDrawer({
       key={item.key}
       style={({ pressed }) => [
         styles.item,
+        { backgroundColor: theme.surface, borderColor: theme.border },
         item.danger && styles.itemDanger,
         item.active && styles.itemActive,
         pressed && styles.itemPressed,
@@ -151,8 +153,8 @@ export function SideDrawer({
       <Text
         style={[
           styles.itemText,
-          item.danger && { color: colors.danger },
-          item.active && styles.itemTextActive,
+          { color: theme.text },
+          item.danger && { color: theme.danger },
         ]}
       >
         {item.label}
@@ -186,14 +188,21 @@ export function SideDrawer({
               paddingTop: topPad,
               paddingBottom: bottomPad,
               transform: [{ translateX: slide }],
+              backgroundColor: theme.bg,
+              borderRightColor: theme.border,
             },
           ]}
         >
           <View style={styles.header}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              {title ? <Text style={styles.title}>{title}</Text> : null}
+              {title ? (
+                <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+              ) : null}
               {subtitle ? (
-                <Text style={styles.subtitle} numberOfLines={1}>
+                <Text
+                  style={[styles.subtitle, { color: theme.textMuted }]}
+                  numberOfLines={1}
+                >
                   {subtitle}
                 </Text>
               ) : null}
@@ -204,7 +213,7 @@ export function SideDrawer({
               accessibilityLabel="Close Menu"
               style={styles.closeBtn}
             >
-              <Ionicons name="close" size={26} color={colors.text} />
+              <Ionicons name="close" size={26} color={theme.icon} />
             </Pressable>
           </View>
 
@@ -224,7 +233,11 @@ export function SideDrawer({
                   <Text
                     style={[
                       styles.sectionLabel,
-                      (section.split || index > 0) && styles.sectionSplit,
+                      { color: theme.textDim },
+                      (section.split || index > 0) && [
+                        styles.sectionSplit,
+                        { borderTopColor: theme.border },
+                      ],
                     ]}
                   >
                     {section.label}
@@ -236,7 +249,9 @@ export function SideDrawer({
               </View>
             ))}
             {footerItems.length > 0 ? (
-              <View style={styles.footer}>{footerItems.map(renderItem)}</View>
+              <View style={[styles.footer, { borderTopColor: theme.border }]}>
+                {footerItems.map(renderItem)}
+              </View>
             ) : null}
             <View style={{ height: 24 }} />
           </ScrollView>
@@ -247,17 +262,18 @@ export function SideDrawer({
 }
 
 export function MenuButton({ onPress }: { onPress: () => void }) {
+  const { colors: theme } = useTheme();
   return (
     <SoftPressable
       onPress={onPress}
-      style={styles.menuBtn}
+      style={[styles.menuBtn, { backgroundColor: theme.surface }]}
       accessibilityLabel="Open Menu"
       hitSlop={8}
       pressScale={0.94}
     >
-      <View style={styles.menuBar} />
-      <View style={styles.menuBar} />
-      <View style={styles.menuBar} />
+      <View style={[styles.menuBar, { backgroundColor: theme.icon }]} />
+      <View style={[styles.menuBar, { backgroundColor: theme.icon }]} />
+      <View style={[styles.menuBar, { backgroundColor: theme.icon }]} />
     </SoftPressable>
   );
 }
@@ -275,9 +291,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: '#0e0e12',
     borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 14,
     zIndex: 2,
     // Explicit column + stretch so ScrollView gets a bounded height.
@@ -292,13 +306,11 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   title: {
-    color: colors.text,
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: -0.3,
   },
   subtitle: {
-    color: colors.textMuted,
     marginTop: 4,
     fontSize: 12,
     fontWeight: '500',
@@ -320,7 +332,6 @@ const styles = StyleSheet.create({
   sectionLabel: {
     marginHorizontal: 4,
     marginBottom: 2,
-    color: colors.textDim,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.4,
@@ -330,28 +341,23 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
   },
   sectionItems: { gap: 6 },
   footer: {
     gap: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
     paddingTop: 12,
     marginTop: 8,
   },
   item: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 14,
     alignItems: 'flex-start',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
     overflow: 'hidden',
   },
   itemActive: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
     borderColor: '#e8c547',
     borderWidth: 1.5,
   },
@@ -380,13 +386,9 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   itemText: {
-    color: colors.text,
     fontWeight: '700',
     fontSize: 15,
     zIndex: 1,
-  },
-  itemTextActive: {
-    color: colors.text,
   },
   itemDanger: {
     backgroundColor: 'rgba(248,113,113,0.12)',
@@ -396,7 +398,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
@@ -405,6 +406,5 @@ const styles = StyleSheet.create({
     width: 18,
     height: 2,
     borderRadius: 1,
-    backgroundColor: colors.text,
   },
 });

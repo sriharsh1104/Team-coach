@@ -442,13 +442,20 @@ export class AuthService {
     let user = await this.prisma.user.findUnique({
       where: { googleId: payload.sub },
     });
+    let passwordEmailSent = false;
 
     if (user) {
-      // Returning Google user — password mail was already sent (or skipped) at
-      // first signup. Re-login must never re-email a new password.
+      // Returning Google user — only email a password when this account still
+      // has none (legacy Google-only rows created before we started mailing).
       this.logger.log(
-        `Google login: existing googleId for ${email} — no password email`,
+        `Google login: existing googleId for ${email}${
+          user.passwordHash ? ' — no password email' : ' — backfilling password email'
+        }`,
       );
+      if (!user.passwordHash) {
+        user = await this.assignAndEmailGooglePassword(user);
+        passwordEmailSent = true;
+      }
     } else {
       const existingByEmail = await this.prisma.user.findUnique({
         where: { email },
@@ -460,8 +467,18 @@ export class AuthService {
           data: { googleId: payload.sub, emailVerified: true },
         });
         this.logger.log(
-          `Google login: linked googleId onto existing email ${email} — no password email`,
+          `Google login: linked googleId onto existing email ${email}${
+            existingByEmail.passwordHash
+              ? ' — no password email'
+              : ' — backfilling password email'
+          }`,
         );
+        // Linked an email-only account that somehow has no password — still
+        // give them one so email login works without Google.
+        if (!existingByEmail.passwordHash) {
+          user = await this.assignAndEmailGooglePassword(user);
+          passwordEmailSent = true;
+        }
       } else {
         // Google already required a verified email above, so this account
         // doesn't need the signup OTP gate — emailVerified is true from
@@ -499,6 +516,7 @@ export class AuthService {
             generatedPassword,
           );
           this.logger.log(`Google login: password email accepted for ${email}`);
+          passwordEmailSent = true;
         } catch (err) {
           this.logger.error(
             `Failed to email generated password to ${user.email} — rolling back user`,
@@ -516,16 +534,47 @@ export class AuthService {
             'Could not email your account password. Please try Google sign-in again.',
           );
         }
-
-        const auth = await this.completeLoginOrChallenge(user, mobile);
-        if ('accessToken' in auth) {
-          return { ...auth, passwordEmailSent: true as const };
-        }
-        return auth;
       }
     }
 
-    return this.completeLoginOrChallenge(user, mobile);
+    const auth = await this.completeLoginOrChallenge(user, mobile);
+    if (passwordEmailSent && 'accessToken' in auth) {
+      return { ...auth, passwordEmailSent: true as const };
+    }
+    return auth;
+  }
+
+  /**
+   * Generate + email a login password for a Google-linked user that still has
+   * no passwordHash. Used for legacy Google-only accounts that never received
+   * a mail. Returns the updated user row.
+   */
+  private async assignAndEmailGooglePassword(user: User): Promise<User> {
+    const generatedPassword = generateRandomPassword();
+    if (!PASSWORD_REGEX.test(generatedPassword)) {
+      throw new ServiceUnavailableException('Could not generate a password');
+    }
+    try {
+      await this.emailGeneratedPasswordWithRetry(user.email, generatedPassword);
+    } catch (err) {
+      this.logger.error(
+        `Failed to email generated password to ${user.email}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      throw new ServiceUnavailableException(
+        'Could not email your account password. Please try Google sign-in again.',
+      );
+    }
+    const passwordHash = await bcrypt.hash(
+      generatedPassword,
+      BCRYPT_SALT_ROUNDS,
+    );
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+    this.logger.log(`Google login: password email accepted for ${user.email}`);
+    return updated;
   }
 
   // 2FA is a property of the account, not the login method — applies the

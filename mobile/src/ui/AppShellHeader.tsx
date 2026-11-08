@@ -1,9 +1,9 @@
 import React, { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme';
 import { MenuButton } from './SideDrawer';
 import { SoftPressable } from './SoftPressable';
+import { useTheme } from '../theme/ThemeContext';
 
 type Props = {
   title: string;
@@ -26,21 +26,29 @@ export function AppShellHeader({
   includeSafeArea = true,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   return (
     <View
       style={[
         styles.topBar,
-        includeSafeArea ? { paddingTop: insets.top + 12 } : null,
+        {
+          backgroundColor: colors.bg,
+          borderBottomColor: colors.border,
+          paddingTop: includeSafeArea ? insets.top + 12 : 12,
+        },
       ]}
     >
       <MenuButton onPress={onMenu} />
       <View style={styles.titleBlock}>
-        <Text style={styles.title} numberOfLines={1}>
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
           {title}
         </Text>
         {subtitle ? (
           typeof subtitle === 'string' ? (
-            <Text style={styles.subtitle} numberOfLines={1}>
+            <Text
+              style={[styles.subtitle, { color: colors.textMuted }]}
+              numberOfLines={1}
+            >
               {subtitle}
             </Text>
           ) : (
@@ -54,10 +62,10 @@ export function AppShellHeader({
           accessibilityRole="button"
           accessibilityLabel="Account Settings"
           hitSlop={8}
-          style={styles.settingsBtn}
+          style={[styles.settingsBtn, { backgroundColor: colors.surface }]}
           pressScale={0.9}
         >
-          <Text style={styles.settingsIcon}>⚙</Text>
+          <Text style={[styles.settingsIcon, { color: colors.icon }]}>⚙</Text>
         </SoftPressable>
       ) : (
         <View style={styles.settingsBtn} />
@@ -74,24 +82,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   titleBlock: { flex: 1, minWidth: 0 },
   title: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.text,
     textTransform: 'capitalize',
     letterSpacing: -0.2,
   },
-  subtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  subtitle: { fontSize: 12, marginTop: 2 },
   settingsBtn: {
     width: 36,
     height: 36,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  settingsIcon: { fontSize: 18, color: colors.text },
+  settingsIcon: { fontSize: 18 },
 });

@@ -1,3 +1,6 @@
+// Must run before any LiveKit / WebRTC import — Hermes often lacks WeakRef.
+import './src/polyfills/weakRef';
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';
