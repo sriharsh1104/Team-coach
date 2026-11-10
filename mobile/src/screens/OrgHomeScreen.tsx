@@ -17,6 +17,8 @@ import { emitToast } from '../ui/toastBus';
 import { goToSection } from '../navigation/goToSection';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
+import { ExitConfirmModal } from '../ui/ExitConfirmModal';
+import { useRecording } from '../recording/RecordingContext';
 import { ChatHubScreen } from './chat/ChatHubScreen';
 import { useTheme } from '../theme/ThemeContext';
 import { THEME_OPTIONS, ThemeId } from '../theme';
@@ -33,7 +35,8 @@ export function OrgHomeScreen({ navigation }: Props) {
   const realtime = useOrgRealtimeOptional();
   const insets = useSafeAreaInsets();
   const isOwner = !!org?.isOwner;
-  useBlockExitOnRoot(navigation);
+  const { exitModalVisible, confirmExit, cancelExit } = useBlockExitOnRoot(navigation);
+  const { startRecording } = useRecording();
   // Owner or coach can manage guild ↔ roster; Guild drawer used to be
   // owner-only so coaches never saw Add/Remove even though the API allows it.
   const canManageGuild = isOwner || !!detail?.canInviteRoster;
@@ -162,6 +165,19 @@ export function OrgHomeScreen({ navigation }: Props) {
     }
 
     sections.push({
+      key: 'tools',
+      label: 'Tools',
+      split: true,
+      items: [
+        {
+          key: 'recorder',
+          label: '⏺  Recorder',
+          onPress: () => startRecording(),
+        },
+      ],
+    });
+
+    sections.push({
       key: 'account',
       label: 'Account',
       split: true,
@@ -181,7 +197,7 @@ export function OrgHomeScreen({ navigation }: Props) {
     });
 
     return withActiveDrawerItem(sections, 'teamChat');
-  }, [navigation, isOwner, canManageGuild]);
+  }, [navigation, isOwner, canManageGuild, startRecording]);
 
   return (
     <Screen padBottom={false}>
@@ -350,6 +366,11 @@ export function OrgHomeScreen({ navigation }: Props) {
         </View>
       </Modal>
 
+      <ExitConfirmModal
+        visible={exitModalVisible}
+        onStay={cancelExit}
+        onExit={confirmExit}
+      />
     </Screen>
   );
 }

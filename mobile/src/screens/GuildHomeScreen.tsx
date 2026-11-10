@@ -12,6 +12,8 @@ import { Toast, useToast } from '../ui/Toast';
 import { goToSection } from '../navigation/goToSection';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
+import { ExitConfirmModal } from '../ui/ExitConfirmModal';
+import { useRecording } from '../recording/RecordingContext';
 import { ChatHubScreen } from './chat/ChatHubScreen';
 import { useTheme } from '../theme/ThemeContext';
 import { THEME_OPTIONS, ThemeId } from '../theme';
@@ -30,7 +32,8 @@ export function GuildHomeScreen({ navigation }: Props) {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const { message: toastMessage, showToast } = useToast();
-  useBlockExitOnRoot(navigation);
+  const { exitModalVisible, confirmExit, cancelExit } = useBlockExitOnRoot(navigation);
+  const { startRecording } = useRecording();
 
   const drawerSections = useMemo((): SideDrawerSection[] => {
     return withActiveDrawerItem(
@@ -62,6 +65,18 @@ export function GuildHomeScreen({ navigation }: Props) {
           ],
         },
         {
+          key: 'tools',
+          label: 'Tools',
+          split: true,
+          items: [
+            {
+              key: 'recorder',
+              label: '⏺  Recorder',
+              onPress: () => startRecording(),
+            },
+          ],
+        },
+        {
           key: 'account',
           label: 'Account',
           split: true,
@@ -83,7 +98,7 @@ export function GuildHomeScreen({ navigation }: Props) {
       ],
       'guildChat',
     );
-  }, [navigation]);
+  }, [navigation, startRecording]);
 
   return (
     <Screen padBottom={false}>
@@ -233,6 +248,12 @@ export function GuildHomeScreen({ navigation }: Props) {
       </Modal>
 
       <Toast message={toastMessage} />
+
+      <ExitConfirmModal
+        visible={exitModalVisible}
+        onStay={cancelExit}
+        onExit={confirmExit}
+      />
     </Screen>
   );
 }

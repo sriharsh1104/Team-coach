@@ -12,6 +12,8 @@ import { AppErrorBoundary } from './src/ui/AppErrorBoundary';
 import { LoaderProvider } from './src/ui/SesLoader';
 import { ToastProvider } from './src/ui/Toast';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { RecordingProvider } from './src/recording/RecordingContext';
+import { RecordingWidget } from './src/recording/RecordingWidget';
 
 // Notification handler is registered lazily after login (see registerPushToken)
 // so a missing notifications native module cannot crash cold start.
@@ -27,7 +29,11 @@ function AppShell() {
           <LoaderProvider>
             <AuthProvider>
               <OrgRealtimeProvider>
-                <RootNavigator />
+                <RecordingProvider>
+                  <RootNavigator />
+                  {/* Floating widget — rendered above all screens when recording */}
+                  <RecordingWidget />
+                </RecordingProvider>
               </OrgRealtimeProvider>
             </AuthProvider>
           </LoaderProvider>
