@@ -93,6 +93,25 @@ export function GoogleSignInButtonInner() {
       if (isErrorWithCode(err) && err.code === statusCodes.SIGN_IN_CANCELLED) {
         return;
       }
+      const errText = err instanceof Error ? err.message : String(err ?? '');
+      const errCode = isErrorWithCode(err) ? err.code : '';
+      // DEVELOPER_ERROR (code 10) = this APK's signing SHA-1 isn't
+      // registered for com.teamcoach.app in Google Cloud yet — happens
+      // after an Expo/EAS account or keystore change. Not a user error.
+      if (
+        errCode === 'DEVELOPER_ERROR' ||
+        errText.includes('DEVELOPER_ERROR') ||
+        errText.includes('Troubleshooting')
+      ) {
+        emitToast(
+          'Google sign-in is not set up for this app build yet. Please use email login for now.',
+        );
+        console.warn(
+          'Google DEVELOPER_ERROR — register the EAS keystore SHA-1 in Google Cloud / Firebase for com.teamcoach.app',
+          err,
+        );
+        return;
+      }
       if (!isAxiosError(err)) {
         emitToast(apiErrorMessage(err, 'Google sign-in failed'));
       }
