@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { ThemeId } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { SoftPressable } from './SoftPressable';
 
@@ -27,8 +28,36 @@ export type SideDrawerItem = {
   label: string;
   onPress: () => void;
   danger?: boolean;
-  /** Currently open section — soft gold glow. */
+  /** Currently open section — gold rail, tint, and label. */
   active?: boolean;
+};
+
+/**
+ * Selected-row gold. Black keeps a dark gold wash; white and lavender
+ * use a champagne fill with a deeper border so the row still reads as gold.
+ */
+const ACTIVE_GOLD: Record<
+  ThemeId,
+  { border: string; fill: string; rail: string; text: string }
+> = {
+  black: {
+    border: '#e8c547',
+    fill: 'rgba(232, 197, 71, 0.2)',
+    rail: '#e8c547',
+    text: '#f8e7a2',
+  },
+  white: {
+    border: '#c8960a',
+    fill: 'rgba(232, 197, 71, 0.42)',
+    rail: '#c8960a',
+    text: '#6a4e00',
+  },
+  lavender: {
+    border: '#c8960a',
+    fill: 'rgba(232, 197, 71, 0.5)',
+    rail: '#c8960a',
+    text: '#5c4300',
+  },
 };
 
 export type SideDrawerSection = {
@@ -56,7 +85,8 @@ export function SideDrawer({
   sections?: SideDrawerSection[];
   footerItems?: SideDrawerItem[];
 }) {
-  const { colors: theme } = useTheme();
+  const { colors: theme, themeId } = useTheme();
+  const gold = ACTIVE_GOLD[themeId];
   const insets = useSafeAreaInsets();
   const slide = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdrop = useRef(new Animated.Value(0)).current;
@@ -133,27 +163,33 @@ export function SideDrawer({
   const renderItem = (item: SideDrawerItem) => (
     <Pressable
       key={item.key}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!item.active }}
       style={({ pressed }) => [
         styles.item,
         { backgroundColor: theme.surface, borderColor: theme.border },
         item.danger && styles.itemDanger,
-        item.active && styles.itemActive,
+        item.active && {
+          backgroundColor: gold.fill,
+          borderColor: gold.border,
+          borderWidth: 1.5,
+        },
         pressed && styles.itemPressed,
       ]}
       onPress={() => animateClosed(() => item.onPress())}
     >
       {item.active ? (
-        <View pointerEvents="none" style={styles.itemShineWrap}>
-          {/* Left → right: soft → strong, so shine comes in from the right edge */}
-          <View style={[styles.itemShineBand, styles.itemShineInner]} />
-          <View style={[styles.itemShineBand, styles.itemShineMid]} />
-          <View style={[styles.itemShineBand, styles.itemShineOuter]} />
-        </View>
+        <View
+          pointerEvents="none"
+          style={[styles.activeRail, { backgroundColor: gold.rail }]}
+        />
       ) : null}
       <Text
         style={[
           styles.itemText,
           { color: theme.text },
+          item.active && styles.itemTextActive,
+          item.active && !item.danger && { color: gold.text },
           item.danger && { color: theme.danger },
         ]}
       >
@@ -357,30 +393,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
-  itemActive: {
-    borderColor: '#e8c547',
-    borderWidth: 1.5,
-  },
-  // Soft gold wash from the right edge inward (no full-card glow).
-  itemShineWrap: {
-    ...StyleSheet.absoluteFillObject,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  itemShineBand: {
-    height: '100%',
-  },
-  itemShineOuter: {
-    width: 8,
-    backgroundColor: 'rgba(232,197,71,0.28)',
-  },
-  itemShineMid: {
-    width: 14,
-    backgroundColor: 'rgba(232,197,71,0.14)',
-  },
-  itemShineInner: {
-    width: 18,
-    backgroundColor: 'rgba(232,197,71,0.06)',
+  activeRail: {
+    position: 'absolute',
+    left: 0,
+    top: 9,
+    bottom: 9,
+    width: 4,
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
   },
   itemPressed: {
     opacity: 0.75,
@@ -389,6 +409,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
     zIndex: 1,
+  },
+  itemTextActive: {
+    fontWeight: '800',
   },
   itemDanger: {
     backgroundColor: 'rgba(248,113,113,0.12)',
