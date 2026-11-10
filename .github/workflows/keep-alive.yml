@@ -1,0 +1,15 @@
+name: Keep backend alive
+
+on:
+  schedule:
+    # Every 10 minutes — Render's free tier spins a service down after
+    # ~15 minutes of inactivity, so this stays comfortably under that.
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit health check endpoint
+        run: curl -fsS --max-time 20 https://api.sacredesports.com/health
