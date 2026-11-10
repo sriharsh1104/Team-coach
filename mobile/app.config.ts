@@ -126,10 +126,10 @@ const expoConfig: ExpoConfig = {
     // on standalone APKs (Expo Go can work without it).
     eas: {
       projectId:
-        process.env.EAS_PROJECT_ID ?? '63a5440b-4571-420c-bf7b-93a651f57e27',
+        process.env.EAS_PROJECT_ID ?? 'b1dbbf92-a882-487d-9927-1bba7fd2da03',
     },
   },
-  owner: process.env.EAS_OWNER ?? 'sacredesportss-team',
+  owner: process.env.EAS_OWNER ?? 'antier1s-team',
 };
 
 export default expoConfig;

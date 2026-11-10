@@ -15,8 +15,8 @@
         "API_BASE_URL": "https://api.sacredesports.com",
         "GOOGLE_WEB_CLIENT_ID": "336205731590-146um1oq33n50t5179dp03855792nsgn.apps.googleusercontent.com",
         "GOOGLE_ANDROID_CLIENT_ID": "336205731590-0o85tdoqaeormsr53alprugchlvggr3i.apps.googleusercontent.com",
-        "EAS_PROJECT_ID": "63a5440b-4571-420c-bf7b-93a651f57e27",
-        "EAS_OWNER": "sacredesportss-team"
+        "EAS_PROJECT_ID": "b1dbbf92-a882-487d-9927-1bba7fd2da03",
+        "EAS_OWNER": "antier1s-team"
       }
     },
     "preview": {
@@ -29,8 +29,8 @@
         "API_BASE_URL": "https://api.sacredesports.com",
         "GOOGLE_WEB_CLIENT_ID": "336205731590-146um1oq33n50t5179dp03855792nsgn.apps.googleusercontent.com",
         "GOOGLE_ANDROID_CLIENT_ID": "336205731590-0o85tdoqaeormsr53alprugchlvggr3i.apps.googleusercontent.com",
-        "EAS_PROJECT_ID": "63a5440b-4571-420c-bf7b-93a651f57e27",
-        "EAS_OWNER": "sacredesportss-team"
+        "EAS_PROJECT_ID": "b1dbbf92-a882-487d-9927-1bba7fd2da03",
+        "EAS_OWNER": "antier1s-team"
       }
     },
     "production": {
@@ -42,8 +42,8 @@
         "API_BASE_URL": "https://api.sacredesports.com",
         "GOOGLE_WEB_CLIENT_ID": "336205731590-146um1oq33n50t5179dp03855792nsgn.apps.googleusercontent.com",
         "GOOGLE_ANDROID_CLIENT_ID": "336205731590-0o85tdoqaeormsr53alprugchlvggr3i.apps.googleusercontent.com",
-        "EAS_PROJECT_ID": "63a5440b-4571-420c-bf7b-93a651f57e27",
-        "EAS_OWNER": "sacredesportss-team"
+        "EAS_PROJECT_ID": "b1dbbf92-a882-487d-9927-1bba7fd2da03",
+        "EAS_OWNER": "antier1s-team"
       }
     }
   },
