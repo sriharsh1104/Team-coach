@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Platform, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { DarkTheme, DefaultTheme, NavigationContainer, NavigationState } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
@@ -39,6 +39,7 @@ import { RuleBookScreen } from '../screens/RuleBookScreen';
 import { PointsTableScreen } from '../screens/PointsTableScreen';
 import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
 import { MenuButton, SideDrawer } from '../ui/SideDrawer';
+import { HeaderBackButton } from '../ui/HeaderBackButton';
 import { useGuildDrawer, useOrgDrawer } from './useAppDrawer';
 import {
   AuthStackParamList,
@@ -56,16 +57,34 @@ const MainStack = createNativeStackNavigator<MainStackParamList>();
 
 // Top-level drawer destinations (Roster, Maps, Stats, …): hamburger opens the
 // same drawer as Home so users can jump sections without backing out first.
+// Also shows a back chevron (when there's actually a previous screen to pop
+// to — not on Home itself) so a section reached by drilling in doesn't force
+// a trip through the drawer just to go back the way you came.
 function sectionOptions(
   openWith: (nav: any) => void,
   build?: (args: { navigation: any; route: any }) => Record<string, unknown>,
 ) {
   return (args: { navigation: any; route: any }) => ({
     ...(build ? build(args) : {}),
-    headerLeft: () => <MenuButton onPress={() => openWith(args.navigation)} />,
+    headerLeft: () => (
+      <View style={styles.sectionHeaderLeft}>
+        {args.navigation.canGoBack() ? (
+          <HeaderBackButton onPress={() => args.navigation.goBack()} />
+        ) : null}
+        <MenuButton onPress={() => openWith(args.navigation)} />
+      </View>
+    ),
     headerBackVisible: false,
   });
 }
+
+const styles = StyleSheet.create({
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+});
 
 // Nested drill-downs (member profile, edit scrim, player stats, …): system
 // back chevron pops to the previous screen. Sidebar is for section switches,
