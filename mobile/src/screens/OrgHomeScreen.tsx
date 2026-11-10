@@ -12,6 +12,7 @@ import { Screen } from '../brand/Screen';
 import { SideDrawer, SideDrawerSection } from '../ui/SideDrawer';
 import { SoftPressable } from '../ui/SoftPressable';
 import { AppShellHeader } from '../ui/AppShellHeader';
+import { updateOrgHeaderCache } from '../ui/HeaderOrgInfo';
 import { emitToast } from '../ui/toastBus';
 import { goToSection } from '../navigation/goToSection';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
@@ -46,6 +47,7 @@ export function OrgHomeScreen({ navigation }: Props) {
   const load = useCallback(async () => {
     const data = await orgApi.getMyOrg();
     setDetail(data);
+    updateOrgHeaderCache(data);
   }, []);
 
   useEffect(() => {

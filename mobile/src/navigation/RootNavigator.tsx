@@ -40,6 +40,8 @@ import { PointsTableScreen } from '../screens/PointsTableScreen';
 import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
 import { MenuButton, SideDrawer } from '../ui/SideDrawer';
 import { HeaderBackButton } from '../ui/HeaderBackButton';
+import { HeaderOrgInfo } from '../ui/HeaderOrgInfo';
+import { HeaderSettingsButton } from '../ui/HeaderSettingsButton';
 import { useGuildDrawer, useOrgDrawer } from './useAppDrawer';
 import {
   AuthStackParamList,
@@ -64,18 +66,28 @@ function sectionOptions(
   openWith: (nav: any) => void,
   build?: (args: { navigation: any; route: any }) => Record<string, unknown>,
 ) {
-  return (args: { navigation: any; route: any }) => ({
-    ...(build ? build(args) : {}),
-    headerLeft: () => (
-      <View style={styles.sectionHeaderLeft}>
-        {args.navigation.canGoBack() ? (
-          <HeaderBackButton onPress={() => args.navigation.goBack()} />
-        ) : null}
-        <MenuButton onPress={() => openWith(args.navigation)} />
-      </View>
-    ),
-    headerBackVisible: false,
-  });
+  return (args: { navigation: any; route: any }) => {
+    const built = build ? build(args) : {};
+    const sectionTitle =
+      typeof built.title === 'string' ? built.title : args.route.name;
+    return {
+      ...built,
+      headerLeft: () => (
+        <View style={styles.sectionHeaderLeft}>
+          {args.navigation.canGoBack() ? (
+            <HeaderBackButton onPress={() => args.navigation.goBack()} />
+          ) : null}
+          <MenuButton onPress={() => openWith(args.navigation)} />
+        </View>
+      ),
+      // Org identity (name · code · members) rides along under the section
+      // name, and the settings gear is always within reach — the user asked
+      // for the Home header's block on every screen, not just Home.
+      headerTitle: () => <HeaderOrgInfo sectionTitle={sectionTitle} />,
+      headerRight: () => <HeaderSettingsButton />,
+      headerBackVisible: false,
+    };
+  };
 }
 
 const styles = StyleSheet.create({
