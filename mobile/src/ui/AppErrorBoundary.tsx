@@ -19,7 +19,7 @@ function ErrorFallback({ error }: { error: Error }) {
       <Text style={styles.hint}>
         Restart the app. If this keeps happening, send this message:
       </Text>
-      <ScrollView style={staticStyles.box} contentContainerStyle={staticStyles.boxInner}>
+      <ScrollView style={styles.box} contentContainerStyle={staticStyles.boxInner}>
         <Text style={styles.message} selectable>
           {error.message}
         </Text>
@@ -54,11 +54,6 @@ export class AppErrorBoundary extends Component<Props, State> {
 
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
-  box: {
-    maxHeight: 280,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 12,
-  },
   boxInner: { padding: 14 },
 });
 
@@ -70,6 +65,11 @@ function boundaryStyles(c: ThemeColors) {
       backgroundColor: c.bg,
       padding: 24,
       justifyContent: 'center' as const,
+    },
+    box: {
+      maxHeight: 280,
+      backgroundColor: c.surface,
+      borderRadius: 12,
     },
     title: {
       color: c.text,

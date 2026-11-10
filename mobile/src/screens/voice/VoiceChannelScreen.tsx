@@ -15,6 +15,9 @@ import { VoiceChannelController } from '../../voice/types';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { useSharedStyles } from '../shared';
+import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 
 type VoiceHooks = {
   useHostedVoiceChannel: typeof import('../../voice/useHostedVoiceChannel').useHostedVoiceChannel;
@@ -147,6 +150,8 @@ function SelfHostedVoiceChannel({
 
 function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const themed = useThemedStyles(voiceStyles);
   const inChannel = voice.status === 'connected';
 
   return (
@@ -191,7 +196,7 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
 
         {inChannel && (
           <>
-            <Text style={styles.sectionTitle}>In Channel</Text>
+            <Text style={themed.sectionTitle}>In Channel</Text>
             <FlatList
               data={[
                 {
@@ -205,7 +210,7 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContent}
               renderItem={({ item }) => (
-                <View style={styles.participantRow}>
+                <View style={themed.participantRow}>
                   <View style={styles.participantInfo}>
                     <View style={styles.avatar}>
                       <Text style={styles.avatarText}>
@@ -213,9 +218,9 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
                       </Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.participantName}>{item.name}</Text>
+                      <Text style={themed.participantName}>{item.name}</Text>
                       {item.isLocallyMuted && (
-                        <Text style={styles.mutedHint}>Muted for you</Text>
+                        <Text style={themed.mutedHint}>Muted for you</Text>
                       )}
                     </View>
                   </View>
@@ -223,14 +228,14 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
                     <Pressable
                       style={[
                         styles.smallButton,
-                        item.isLocallyMuted && styles.smallButtonActive,
+                        item.isLocallyMuted && themed.smallButtonActive,
                       ]}
                       onPress={() => voice.toggleParticipantMute(item.id)}
                     >
                       <Text
                         style={[
-                          styles.smallButtonText,
-                          item.isLocallyMuted && styles.smallButtonTextActive,
+                          themed.smallButtonText,
+                          item.isLocallyMuted && themed.smallButtonTextActive,
                         ]}
                       >
                         {item.isLocallyMuted ? 'Unmute' : 'Mute'}
@@ -241,20 +246,20 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
               )}
             />
 
-            <View style={styles.bottomBar}>
+            <View style={themed.bottomBar}>
               <Pressable
-                style={[styles.barButton, voice.isMuted && styles.barButtonDanger]}
+                style={[themed.barButton, voice.isMuted && styles.barButtonDanger]}
                 onPress={voice.toggleMute}
               >
                 <ButtonLabel
                   icon={voice.isMuted ? 'mic-off' : 'mic'}
-                  color={voice.isMuted ? '#fff' : '#0a0a0c'}
+                  color={voice.isMuted ? '#fff' : colors.chromeInk}
                 >
                   {voice.isMuted ? 'Unmute Mic' : 'Mute Mic'}
                 </ButtonLabel>
               </Pressable>
               <Pressable
-                style={[styles.barButton, styles.barButtonDanger]}
+                style={[themed.barButton, styles.barButtonDanger]}
                 onPress={voice.leave}
               >
                 <ButtonLabel icon="call" color="#fff">
@@ -271,6 +276,7 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
 
 function VoiceChannelScreenInner() {
   const shared = useSharedStyles();
+  const { colors } = useTheme();
   const [config, setConfig] = useState<VoiceConfig | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -326,7 +332,7 @@ function VoiceChannelScreenInner() {
     return (
       <Screen>
         <View style={shared.container}>
-          <ActivityIndicator color="#c9ccd1" />
+          <ActivityIndicator color={colors.chrome} />
         </View>
       </Screen>
     );
@@ -374,22 +380,7 @@ const styles = StyleSheet.create({
   },
   connectingBlock: { alignItems: 'center', paddingVertical: 8 },
   errorText: { color: '#f23f43', marginBottom: 12 },
-  sectionTitle: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    color: '#9aa0a6',
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
-  participantRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3a3d44',
-  },
   participantInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -405,8 +396,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: '#fff', fontWeight: '700' },
-  participantName: { fontSize: 16, color: '#f2f3f5' },
-  mutedHint: { fontSize: 12, color: '#9aa0a6', marginTop: 2 },
   smallButton: {
     borderWidth: 1,
     borderColor: '#5f6368',
@@ -414,22 +403,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  smallButtonActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
-  smallButtonText: { fontWeight: '600', color: '#f2f3f5' },
-  smallButtonTextActive: { color: '#0a0a0c' },
-  bottomBar: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#3a3d44',
-  },
-  barButton: {
-    flex: 1,
-    backgroundColor: '#c9ccd1',
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
   barButtonDanger: { backgroundColor: '#dc2626' },
 });
+
+/**
+ * Theme-dependent — everything here sits directly on the themed <Screen>
+ * background, so it must follow the palette. The `channelCard` block above
+ * stays a deliberate fixed-dark panel (Discord-style) and is self-consistent.
+ */
+function voiceStyles(c: ThemeColors) {
+  return {
+    sectionTitle: {
+      marginHorizontal: 16,
+      marginBottom: 8,
+      color: c.textMuted,
+      fontWeight: '600' as const,
+      textTransform: 'capitalize' as const,
+    },
+    participantRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    participantName: { fontSize: 16, color: c.text },
+    mutedHint: { fontSize: 12, color: c.textMuted, marginTop: 2 },
+    smallButtonActive: { backgroundColor: c.chrome, borderColor: c.chrome },
+    smallButtonText: { fontWeight: '600' as const, color: c.text },
+    smallButtonTextActive: { color: c.chromeInk },
+    bottomBar: {
+      flexDirection: 'row' as const,
+      gap: 10,
+      padding: 16,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+    },
+    barButton: {
+      flex: 1,
+      backgroundColor: c.chrome,
+      borderRadius: 8,
+      paddingVertical: 14,
+      alignItems: 'center' as const,
+    },
+  };
+}

@@ -20,6 +20,9 @@ import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { confirmAsync } from '../../ui/confirmAsync';
+import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import { useSharedStyles } from '../shared';
 
 const POLL_INTERVAL_MS = 3000;
@@ -47,6 +50,8 @@ function matchMemberId(rawName: string, members: OrgMember[]): string | null {
 
 export function ExtractionReviewScreen({ navigation, route }: Props) {
   const shared = useSharedStyles();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(extractionReviewStyles);
   const [extraction, setExtraction] = useState<StatExtraction>(route.params.extraction);
   const [rows, setRows] = useState<ExtractionRow[]>(extraction.rows);
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -242,12 +247,12 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
   const renderRow = (row: ExtractionRow, index: number, willSave: boolean) => (
     <View
       key={`${row.rawName}-${index}`}
-      style={[styles.card, !willSave && styles.cardSkipped]}
+      style={[styles.card, !willSave && staticStyles.cardSkipped]}
     >
       {!willSave && (
-        <Text style={styles.skipBadge}>Not On Team · Won't Save</Text>
+        <Text style={staticStyles.skipBadge}>Not On Team · Won't Save</Text>
       )}
-      {willSave && <Text style={styles.saveBadge}>Teammate · Will Save</Text>}
+      {willSave && <Text style={staticStyles.saveBadge}>Teammate · Will Save</Text>}
       <TextInput
         style={shared.input}
         value={row.rawName}
@@ -255,9 +260,9 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
         placeholder="Name as read from screenshot"
       />
       <Text style={styles.label}>Match to teammate:</Text>
-      <View style={styles.chipRow}>
+      <View style={staticStyles.chipRow}>
         <Pressable
-          style={[styles.chip, !row.matchedUserId && styles.chipActive]}
+          style={[staticStyles.chip, !row.matchedUserId && styles.chipActive]}
           onPress={() => updateRow(index, { matchedUserId: null })}
         >
           <Text style={!row.matchedUserId ? styles.chipTextActive : styles.chipText}>
@@ -267,7 +272,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
         {members.map((m) => (
           <Pressable
             key={m.userId}
-            style={[styles.chip, row.matchedUserId === m.userId && styles.chipActive]}
+            style={[staticStyles.chip, row.matchedUserId === m.userId && styles.chipActive]}
             onPress={() => updateRow(index, { matchedUserId: m.userId })}
           >
             <Text
@@ -282,7 +287,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
           </Pressable>
         ))}
       </View>
-      <View style={styles.statRow}>
+      <View style={staticStyles.statRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Kills (K)</Text>
           <TextInput
@@ -324,7 +329,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
     return (
       <Screen>
         <View style={shared.container}>
-          <ActivityIndicator color="#c9ccd1" />
+          <ActivityIndicator color={colors.chrome} />
           <Text style={[styles.hint, { marginTop: 16 }]}>
             Still processing this screenshot — this updates automatically
             once it's ready to review.
@@ -372,13 +377,13 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
         {extraction.mediaUrl && (
           <Image
             source={{ uri: resolveMediaUrl(extraction.mediaUrl) ?? undefined }}
-            style={styles.preview}
+            style={staticStyles.preview}
             resizeMode="contain"
           />
         )}
 
         {teammateRows.length > 0 && (
-          <Text style={styles.sectionHeader}>
+          <Text style={staticStyles.sectionHeader}>
             Will Save ({teammateRows.length})
           </Text>
         )}
@@ -387,7 +392,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
         )}
 
         {outsiderRows.length > 0 && (
-          <Text style={styles.sectionHeader}>
+          <Text style={staticStyles.sectionHeader}>
             Not On Team — Skipped ({outsiderRows.length})
           </Text>
         )}
@@ -419,14 +424,8 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  hint: {
-    color: '#9aa0a6',
-    marginBottom: 16,
-    textAlign: 'center',
-    lineHeight: 18,
-    fontSize: 13,
-  },
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   sectionHeader: {
     color: '#e8eaed',
     fontWeight: '700',
@@ -439,13 +438,6 @@ const styles = StyleSheet.create({
     height: 220,
     marginBottom: 16,
     backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: '#3a3d44',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
   },
   cardSkipped: { opacity: 0.55, borderStyle: 'dashed' },
   saveBadge: {
@@ -462,7 +454,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textTransform: 'uppercase',
   },
-  label: { color: '#9aa0a6', fontSize: 12, marginBottom: 6, marginTop: 4 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   chip: {
     borderWidth: 1,
@@ -471,8 +462,29 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 10,
   },
-  chipActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
-  chipText: { color: '#f2f3f5', fontSize: 13 },
-  chipTextActive: { color: '#0a0a0c', fontSize: 13 },
   statRow: { flexDirection: 'row', gap: 8 },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function extractionReviewStyles(c: ThemeColors) {
+  return {
+    hint: {
+      color: c.textMuted,
+      marginBottom: 16,
+      textAlign: 'center' as const,
+      lineHeight: 18,
+      fontSize: 13,
+    },
+    card: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      padding: 12,
+      marginBottom: 16,
+    },
+    label: { color: c.textMuted, fontSize: 12, marginBottom: 6, marginTop: 4 },
+    chipActive: { backgroundColor: c.chrome, borderColor: c.chrome },
+    chipText: { color: c.text, fontSize: 13 },
+    chipTextActive: { color: c.chromeInk, fontSize: 13 },
+  };
+}

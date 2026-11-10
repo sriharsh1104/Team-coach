@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import { CopyButton } from './CopyButton';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 
 export function CopyableField({
   label,
@@ -9,6 +11,7 @@ export function CopyableField({
   label: string;
   value: string;
 }) {
+  const styles = useThemedStyles(fieldStyles);
   return (
     <View style={styles.row}>
       <View style={{ flex: 1 }}>
@@ -20,14 +23,17 @@ export function CopyableField({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3a3d44',
-  },
-  label: { color: '#9aa0a6', fontSize: 12 },
-  value: { fontSize: 16, marginTop: 2, color: '#f2f3f5' },
-});
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function fieldStyles(c: ThemeColors) {
+  return {
+    row: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    label: { color: c.textMuted, fontSize: 12 },
+    value: { fontSize: 16, marginTop: 2, color: c.text },
+  };
+}

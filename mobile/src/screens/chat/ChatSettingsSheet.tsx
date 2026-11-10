@@ -168,18 +168,18 @@ export function ChatSettingsSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={staticStyles.backdrop} onPress={onClose}>
-        <Pressable style={staticStyles.sheet} onPress={() => undefined}>
+        <Pressable style={styles.sheet} onPress={() => undefined}>
           <Text style={styles.title}>Chat settings</Text>
           {busy ? (
             <ActivityIndicator color={colors.chrome} style={{ marginVertical: 8 }} />
           ) : null}
 
-          <Pressable style={staticStyles.row} onPress={onStarredFilter}>
+          <Pressable style={styles.row} onPress={onStarredFilter}>
             <Text style={staticStyles.rowIcon}>★</Text>
             <Text style={styles.rowLabel}>Starred messages</Text>
           </Pressable>
 
-          <Pressable style={staticStyles.row} onPress={clearChat}>
+          <Pressable style={styles.row} onPress={clearChat}>
             <Text style={staticStyles.rowIcon}>⌫</Text>
             <Text style={[styles.rowLabel, staticStyles.danger]}>Clear chat</Text>
           </Pressable>
@@ -193,7 +193,7 @@ export function ChatSettingsSheet({
               return (
                 <Pressable
                   key={opt.label}
-                  style={[staticStyles.chip, active && styles.chipOn]}
+                  style={[styles.chip, active && styles.chipOn]}
                   onPress={() => void setDisappear(opt.sec)}
                 >
                   <Text style={[styles.chipText, active && styles.chipTextOn]}>
@@ -250,34 +250,9 @@ const staticStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-  sheet: {
-    backgroundColor: '#121216',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingTop: 16,
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-    maxHeight: '85%',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
   rowIcon: { fontSize: 18, width: 24, textAlign: 'center' },
   danger: { color: '#e57373' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
   saveBtn: { marginTop: 8, alignSelf: 'flex-start', paddingVertical: 8 },
   avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: {
@@ -297,6 +272,33 @@ const staticStyles = StyleSheet.create({
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function chatSettingsStyles(c: ThemeColors) {
   return {
+    // Was a fixed '#121216' panel while every label inside it is themed —
+    // dark-on-dark, i.e. unreadable, once the white / lavender theme is on.
+    sheet: {
+      backgroundColor: c.bg,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      paddingTop: 16,
+      paddingHorizontal: 20,
+      paddingBottom: 28,
+      maxHeight: '85%' as const,
+    },
+    row: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 12,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    chip: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
     title: {
       color: c.text,
       fontWeight: '700' as const,
@@ -324,9 +326,9 @@ function chatSettingsStyles(c: ThemeColors) {
       borderRadius: 10,
       padding: 12,
       color: c.text,
-      backgroundColor: 'rgba(255,255,255,0.06)',
+      backgroundColor: c.surface,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
+      borderColor: c.border,
       textAlignVertical: 'top' as const,
     },
     saveText: { color: c.link, fontWeight: '700' as const },

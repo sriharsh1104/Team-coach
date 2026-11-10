@@ -53,6 +53,7 @@ function isFormComplete(inGameName: string, inGameUid: string, phone: string) {
 export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean } = {}) {
   const shared = useSharedStyles();
   const { refreshUser } = useAuth();
+  const { colors } = useTheme();
   const styles = useThemedStyles(profileStyles);
   const { message: toastMessage, showToast } = useToast();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -124,7 +125,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
     return (
       <Screen>
         <View style={shared.container}>
-          <ActivityIndicator color="#c9ccd1" />
+          <ActivityIndicator color={colors.chrome} />
         </View>
       </Screen>
     );
@@ -438,7 +439,7 @@ function GameProfileSection({
         {knownRolesOnly(profile.roles).length > 0 ? (
           <RoleChips selected={profile.roles} editable={false} />
         ) : (
-          <Text style={{ color: '#9aa0a6', marginTop: 12, marginBottom: 12 }}>
+          <Text style={{ color: colors.textMuted, marginTop: 12, marginBottom: 12 }}>
             No role set yet
           </Text>
         )}

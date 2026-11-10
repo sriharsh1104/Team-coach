@@ -91,7 +91,7 @@ export function StickerPicker({ onPickBuiltin, onPickCustom }: Props) {
           <Pressable
             key={emoji}
             onPress={() => onPickBuiltin(emoji)}
-            style={staticStyles.cell}
+            style={styles.cell}
             accessibilityLabel={`Sticker ${emoji}`}
           >
             <Text style={staticStyles.emoji}>{emoji}</Text>
@@ -124,7 +124,7 @@ export function StickerPicker({ onPickBuiltin, onPickCustom }: Props) {
               onPress={() => onPickCustom(stk)}
               onLongPress={() => onLongPressCustom(stk)}
               delayLongPress={400}
-              style={staticStyles.cell}
+              style={styles.cell}
               accessibilityLabel="Custom sticker"
             >
               <Image
@@ -155,15 +155,6 @@ const staticStyles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  cell: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
   emoji: { fontSize: 32 },
   thumb: { width: 48, height: 48 },
 });
@@ -171,6 +162,15 @@ const staticStyles = StyleSheet.create({
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function stickerPickerStyles(c: ThemeColors) {
   return {
+    cell: {
+      width: 56,
+      height: 56,
+      borderRadius: 12,
+      backgroundColor: c.surface,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      overflow: 'hidden' as const,
+    },
     section: {
       color: c.textMuted,
       fontSize: 11,

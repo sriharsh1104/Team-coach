@@ -28,7 +28,7 @@ export function RoleChips({
             key={role}
             disabled={!editable}
             onPress={() => onToggle?.(role)}
-            style={[staticStyles.pill, isActive && styles.pillActive]}
+            style={[styles.pill, isActive && styles.pillActive]}
             pressScale={0.96}
           >
             <Text style={isActive ? styles.pillTextActive : styles.pillText}>
@@ -44,20 +44,23 @@ export function RoleChips({
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  pill: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    marginBottom: 4,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function roleChipStyles(c: ThemeColors) {
   return {
+    // Was a hardcoded white wash (rgba(255,255,255,.14)/.04) that assumed a
+    // dark backdrop — the unselected chip had no visible edge at all on the
+    // white / lavender themes.
+    pill: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      marginBottom: 4,
+      backgroundColor: c.surface,
+    },
     pillActive: {
       backgroundColor: c.chrome,
       borderColor: c.chrome,

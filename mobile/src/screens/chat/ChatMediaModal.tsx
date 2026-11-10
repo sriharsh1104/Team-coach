@@ -132,13 +132,13 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
                   onPress={() => setViewerMedia({ type: isVideo ? 'VIDEO' : 'IMAGE', uri })}
                 >
                   {isVideo ? (
-                    <View style={[staticStyles.thumb, staticStyles.videoThumb]}>
+                    <View style={[styles.thumb, staticStyles.videoThumb]}>
                       <Text style={styles.playIcon}>▶</Text>
                     </View>
                   ) : (
                     <Image
                       source={{ uri }}
-                      style={staticStyles.thumb}
+                      style={styles.thumb}
                       contentFit="cover"
                       cachePolicy="memory-disk"
                       recyclingKey={item.id}
@@ -207,7 +207,6 @@ const staticStyles = StyleSheet.create({
   },
   grid: { padding: 4 },
   thumbWrap: { width: '33.33%', aspectRatio: 1, padding: 2 },
-  thumb: { width: '100%', height: '100%', borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.06)' },
   videoThumb: { alignItems: 'center', justifyContent: 'center' },
   linkList: { padding: 16 },
 });
@@ -215,6 +214,12 @@ const staticStyles = StyleSheet.create({
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function mediaModalStyles(c: ThemeColors) {
   return {
+    thumb: {
+      width: '100%' as const,
+      height: '100%' as const,
+      borderRadius: 4,
+      backgroundColor: c.surface,
+    },
     root: { flex: 1, backgroundColor: c.bg },
     closeText: { color: c.link, fontWeight: '700' as const },
     title: {

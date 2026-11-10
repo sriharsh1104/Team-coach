@@ -27,7 +27,7 @@ export function MessageInfoModal({ visible, deliveredTo, readBy, onClose }: Prop
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={staticStyles.backdrop} onPress={onClose}>
-        <Pressable style={staticStyles.sheet} onPress={() => undefined}>
+        <Pressable style={styles.sheet} onPress={() => undefined}>
           <Text style={styles.title}>Message Info</Text>
 
           <Text style={styles.sectionLabel}>Read by</Text>
@@ -78,21 +78,23 @@ const staticStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-  sheet: {
-    backgroundColor: '#121216',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingTop: 16,
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-    maxHeight: '70%',
-  },
   closeBtn: { alignItems: 'center', paddingTop: 16 },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function messageInfoStyles(c: ThemeColors) {
   return {
+    // Was a fixed '#121216' panel while every label inside it is themed —
+    // dark-on-dark, i.e. unreadable, once the white / lavender theme is on.
+    sheet: {
+      backgroundColor: c.bg,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      paddingTop: 16,
+      paddingHorizontal: 20,
+      paddingBottom: 28,
+      maxHeight: '70%' as const,
+    },
     title: {
       color: c.text,
       fontWeight: '700' as const,

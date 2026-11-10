@@ -26,7 +26,7 @@ export function RoleSelector({ value, onChange }: Props) {
         return (
           <SoftPressable
             key={option.value}
-            style={[staticStyles.pill, isActive && styles.pillActive]}
+            style={[styles.pill, isActive && styles.pillActive]}
             onPress={() => onChange(option.value)}
             pressScale={0.96}
           >
@@ -43,19 +43,22 @@ export function RoleSelector({ value, onChange }: Props) {
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
-  pill: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function roleSelectorStyles(c: ThemeColors) {
   return {
+    // Was a hardcoded white wash (rgba(255,255,255,.14)/.04) that assumed a
+    // dark backdrop — the unselected pill had no visible edge at all on the
+    // white / lavender themes.
+    pill: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      paddingVertical: 9,
+      paddingHorizontal: 16,
+      backgroundColor: c.surface,
+    },
     pillActive: {
       backgroundColor: c.chrome,
       borderColor: c.chrome,

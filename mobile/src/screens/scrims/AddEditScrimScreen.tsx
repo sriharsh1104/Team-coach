@@ -175,7 +175,7 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
 
         <View style={staticStyles.row}>
           <Pressable
-            style={[staticStyles.pill, type === 'SCRIM' && staticStyles.pillActive]}
+            style={[staticStyles.pill, type === 'SCRIM' && styles.pillActive]}
             onPress={() => {
               setType('SCRIM');
               // Scrims don't have a qualification/rounds concept — collapse
@@ -183,16 +183,16 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
               setRounds((prev) => [{ ...prev[0], result: 'PENDING' }]);
             }}
           >
-            <Text style={type === 'SCRIM' ? staticStyles.pillTextActive : staticStyles.pillText}>
+            <Text style={type === 'SCRIM' ? styles.pillTextActive : styles.pillText}>
               Scrim
             </Text>
           </Pressable>
           <Pressable
-            style={[staticStyles.pill, type === 'TOURNAMENT' && staticStyles.pillActive]}
+            style={[staticStyles.pill, type === 'TOURNAMENT' && styles.pillActive]}
             onPress={() => setType('TOURNAMENT')}
           >
             <Text
-              style={type === 'TOURNAMENT' ? staticStyles.pillTextActive : staticStyles.pillText}
+              style={type === 'TOURNAMENT' ? styles.pillTextActive : styles.pillText}
             >
               Tournament
             </Text>
@@ -272,7 +272,7 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
                       key={value}
                       style={[
                         staticStyles.pill,
-                        round.result === value && staticStyles.pillActive,
+                        round.result === value && styles.pillActive,
                       ]}
                       onPress={() => {
                         updateRound(index, { result: value });
@@ -287,8 +287,8 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
                       <Text
                         style={
                           round.result === value
-                            ? staticStyles.pillTextActive
-                            : staticStyles.pillText
+                            ? styles.pillTextActive
+                            : styles.pillText
                         }
                       >
                         {label}
@@ -359,9 +359,6 @@ const staticStyles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
-  pillActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
-  pillText: { color: '#f2f3f5' },
-  pillTextActive: { color: '#0a0a0c' },
   roundHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -372,6 +369,9 @@ const staticStyles = StyleSheet.create({
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function addEditScrimStyles(c: ThemeColors) {
   return {
+    pillActive: { backgroundColor: c.chrome, borderColor: c.chrome },
+    pillText: { color: c.text },
+    pillTextActive: { color: c.chromeInk },
     sectionLabel: {
       marginTop: 8,
       marginBottom: 4,

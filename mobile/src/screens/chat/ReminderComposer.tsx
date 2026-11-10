@@ -61,7 +61,7 @@ export function ReminderComposer({ visible, channelKey, onClose }: Props) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={staticStyles.backdrop} onPress={onClose}>
-        <Pressable style={staticStyles.sheet} onPress={() => undefined}>
+        <Pressable style={styles.sheet} onPress={() => undefined}>
           <Text style={styles.title}>Set reminder</Text>
           <Text style={styles.hint}>
             You&apos;ll get a notification with this note (max {MAX_LEN} characters).
@@ -108,13 +108,6 @@ const staticStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-  sheet: {
-    backgroundColor: '#121216',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    paddingBottom: 32,
-  },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -127,6 +120,15 @@ const staticStyles = StyleSheet.create({
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function reminderComposerStyles(c: ThemeColors) {
   return {
+    // Was a fixed '#121216' panel while every label inside it is themed —
+    // dark-on-dark, i.e. unreadable, once the white / lavender theme is on.
+    sheet: {
+      backgroundColor: c.bg,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      padding: 20,
+      paddingBottom: 32,
+    },
     title: {
       color: c.text,
       fontWeight: '700' as const,
@@ -143,9 +145,9 @@ function reminderComposerStyles(c: ThemeColors) {
       borderRadius: 10,
       padding: 12,
       color: c.text,
-      backgroundColor: 'rgba(255,255,255,0.06)',
+      backgroundColor: c.surface,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
+      borderColor: c.border,
       fontSize: 15,
     },
     counter: {

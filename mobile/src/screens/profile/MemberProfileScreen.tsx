@@ -13,6 +13,7 @@ import {
   openSocialUrl,
   SocialOpenPlatform,
 } from '../../lib/openSocialUrl';
+import { useTheme } from '../../theme/ThemeContext';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'MemberProfile'>;
 
@@ -29,6 +30,7 @@ const SOCIAL_LINKS: Array<{
 
 export function MemberProfileScreen({ route }: Props) {
   const shared = useSharedStyles();
+  const { colors } = useTheme();
   const { userId, name } = route.params;
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,7 +50,7 @@ export function MemberProfileScreen({ route }: Props) {
     return (
       <Screen>
         <View style={shared.container}>
-          <ActivityIndicator color="#c9ccd1" />
+          <ActivityIndicator color={colors.chrome} />
         </View>
       </Screen>
     );
@@ -76,7 +78,7 @@ export function MemberProfileScreen({ route }: Props) {
       {roleBadge && (
         <Text
           style={{
-            color: '#a8b0ff',
+            color: colors.link,
             fontWeight: '600',
             textAlign: 'center',
             marginTop: -16,
@@ -93,7 +95,7 @@ export function MemberProfileScreen({ route }: Props) {
           editable={false}
         />
       ) : (
-        <Text style={{ color: '#9aa0a6', marginBottom: 12 }}>No role set yet</Text>
+        <Text style={{ color: colors.textMuted, marginBottom: 12 }}>No role set yet</Text>
       )}
 
       {profile.inGameName && (
@@ -123,7 +125,7 @@ export function MemberProfileScreen({ route }: Props) {
               style={{ flex: 1 }}
               onPress={() => openSocialUrl(url, platform)}
             >
-              <Text style={{ color: '#a8b0ff' }}>
+              <Text style={{ color: colors.link }}>
                 {label}: {url}
               </Text>
             </Pressable>
@@ -147,7 +149,7 @@ export function MemberProfileScreen({ route }: Props) {
                 marginBottom: 6,
               }}
             >
-              <Text style={{ flex: 1, color: '#f2f3f5' }}>
+              <Text style={{ flex: 1, color: colors.text }}>
                 {device.name} — {device.model}
               </Text>
               <CopyButton value={`${device.name} — ${device.model}`} />

@@ -25,6 +25,7 @@ import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { useSharedStyles } from '../shared';
 import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
@@ -79,6 +80,7 @@ function applyBundle(
 
 export function StatsHomeScreen({ navigation, route }: Props) {
   const shared = useSharedStyles();
+  const { colors } = useTheme();
   const styles = useThemedStyles(statsStyles);
   const { org } = useAuth();
   const realtime = useOrgRealtimeOptional();
@@ -329,7 +331,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                   navigation.navigate('ExtractionReview', { extraction })
                 }
               >
-                <Text style={{ color: '#f2f3f5' }}>
+                <Text style={{ color: colors.text }}>
                   {extraction.status === 'FAILED'
                     ? "Couldn't read this screenshot"
                     : `${extraction.rows.length} player(s)`}{' '}
@@ -345,7 +347,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                     Retry
                   </Text>
                   <Text
-                    style={[styles.reviewLink, { color: '#f87171' }]}
+                    style={[styles.reviewLink, { color: colors.danger }]}
                     onPress={() => onDiscard(extraction.id)}
                   >
                     Discard
@@ -424,7 +426,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
             onEndReachedThreshold={0.5}
             ListFooterComponent={
               isLoadingMoreHistory ? (
-                <ActivityIndicator color="#c9ccd1" style={{ marginVertical: 12 }} />
+                <ActivityIndicator color={colors.chrome} style={{ marginVertical: 12 }} />
               ) : null
             }
             ListEmptyComponent={
@@ -472,7 +474,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
             pressScale={0.97}
           >
             {uploading ? (
-              <ActivityIndicator color="#0a0a0c" />
+              <ActivityIndicator color={colors.chromeInk} />
             ) : (
               <Text style={styles.uploadText}>Upload {modeLabel}</Text>
             )}

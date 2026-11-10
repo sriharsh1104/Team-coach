@@ -212,7 +212,7 @@ export function MembersScreen({ navigation }: Props) {
               ) : null}
               {showRemove ? (
                 <SoftPressable
-                  style={staticStyles.removeBtn}
+                  style={styles.removeBtn}
                   disabled={busyId === item.userId}
                   onPress={() => void onRemove(item)}
                   accessibilityRole="button"
@@ -261,25 +261,25 @@ const staticStyles = StyleSheet.create({
     gap: 8,
   },
   memberInfo: { flex: 1 },
-  removeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    marginHorizontal: 12,
-    marginBottom: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function membersStyles(c: ThemeColors) {
   return {
+    removeBtn: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      alignSelf: 'flex-start' as const,
+      marginHorizontal: 12,
+      marginBottom: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+    },
     rosterHint: {
       color: c.textMuted,
       fontSize: 13,

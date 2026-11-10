@@ -327,11 +327,11 @@ export function AccountSettingsScreen({ navigation }: Props) {
                       onValueChange={onToggleBiometric}
                       accessibilityLabel="Enable biometric login"
                       trackColor={{
-                        false: '#3a3d44',
+                        false: colors.border,
                         true: 'rgba(201,204,209,0.55)',
                       }}
                       thumbColor={
-                        biometricEnabled ? colors.chrome : '#9aa0a6'
+                        biometricEnabled ? colors.chrome : colors.textMuted
                       }
                     />
                   </View>

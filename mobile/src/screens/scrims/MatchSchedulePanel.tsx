@@ -259,7 +259,7 @@ export function MatchSchedulePanel({
             pressScale={0.97}
           >
             {uploadingEventId === item.id ? (
-              <ActivityIndicator color="#0a0a0c" />
+              <ActivityIndicator color={colors.chromeInk} />
             ) : (
               <Text style={styles.primaryActionText}>Upload Result</Text>
             )}
@@ -307,7 +307,7 @@ export function MatchSchedulePanel({
 
   return (
     <View style={staticStyles.root}>
-      <Text style={staticStyles.hint}>
+      <Text style={styles.hint}>
         Add {typeLabel.toLowerCase()} date/time, then upload that match&apos;s
         scoreboard to update each player&apos;s {typeLabel.toLowerCase()} stats.
       </Text>
@@ -438,13 +438,6 @@ export function MatchSchedulePanel({
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
   root: { flex: 1 },
-  hint: {
-    color: '#9aa0a6',
-    fontSize: 13,
-    marginBottom: 12,
-    lineHeight: 18,
-    paddingHorizontal: 16,
-  },
   tabPad: { paddingHorizontal: 16 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
@@ -492,6 +485,13 @@ const staticStyles = StyleSheet.create({
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function matchScheduleStyles(c: ThemeColors) {
   return {
+    hint: {
+      color: c.textMuted,
+      fontSize: 13,
+      marginBottom: 12,
+      lineHeight: 18,
+      paddingHorizontal: 16,
+    },
     empty: { textAlign: 'center' as const, color: c.textMuted, marginTop: 28 },
     cardTitle: { fontSize: 16, fontWeight: '600' as const, color: c.text },
     meta: { color: c.textMuted, fontSize: 12, marginTop: 6 },

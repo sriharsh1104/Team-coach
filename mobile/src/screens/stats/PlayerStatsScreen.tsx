@@ -6,12 +6,17 @@ import { PlayerStatsResponse, STAT_MODES } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { useSharedStyles } from '../shared';
+import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import { groupEntriesByDay } from './dayGroups';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'PlayerStats'>;
 
 export function PlayerStatsScreen({ route }: Props) {
   const shared = useSharedStyles();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(playerStatsStyles);
   const { userId, name, mode } = route.params;
   const [data, setData] = useState<PlayerStatsResponse | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -46,7 +51,7 @@ export function PlayerStatsScreen({ route }: Props) {
     return (
       <Screen>
         <View style={shared.container}>
-          <ActivityIndicator color="#c9ccd1" />
+          <ActivityIndicator color={colors.chrome} />
         </View>
       </Screen>
     );
@@ -57,20 +62,20 @@ export function PlayerStatsScreen({ route }: Props) {
       <View style={shared.container}>
         <Text style={shared.title}>{name}</Text>
         <Text style={styles.modeLabel}>{modeLabel} · Day History</Text>
-        <View style={styles.totalsRow}>
-          <View style={styles.totalCard}>
+        <View style={staticStyles.totalsRow}>
+          <View style={staticStyles.totalCard}>
             <Text style={styles.totalValue}>{data.totals.kills}</Text>
             <Text style={styles.totalLabel}>Kills (K)</Text>
           </View>
-          <View style={styles.totalCard}>
+          <View style={staticStyles.totalCard}>
             <Text style={styles.totalValue}>{data.totals.assists}</Text>
             <Text style={styles.totalLabel}>Assists (A)</Text>
           </View>
-          <View style={styles.totalCard}>
+          <View style={staticStyles.totalCard}>
             <Text style={styles.totalValue}>{data.totals.damage}</Text>
             <Text style={styles.totalLabel}>Damage</Text>
           </View>
-          <View style={styles.totalCard}>
+          <View style={staticStyles.totalCard}>
             <Text style={styles.totalValue}>{data.matches}</Text>
             <Text style={styles.totalLabel}>Matches</Text>
           </View>
@@ -83,7 +88,7 @@ export function PlayerStatsScreen({ route }: Props) {
           onEndReachedThreshold={0.5}
           ListFooterComponent={
             isLoadingMore ? (
-              <ActivityIndicator color="#c9ccd1" style={{ marginVertical: 12 }} />
+              <ActivityIndicator color={colors.chrome} style={{ marginVertical: 12 }} />
             ) : null
           }
           ListEmptyComponent={
@@ -93,7 +98,7 @@ export function PlayerStatsScreen({ route }: Props) {
           }
           renderItem={({ item: group }) => (
             <View style={styles.dayCard}>
-              <View style={styles.dayHeader}>
+              <View style={staticStyles.dayHeader}>
                 <Text style={styles.dayTitle}>{group.label}</Text>
                 <Text style={styles.dayTotals}>
                   {group.kills}K / {group.assists}A / {group.damage} DMG ·{' '}
@@ -101,14 +106,14 @@ export function PlayerStatsScreen({ route }: Props) {
                 </Text>
               </View>
               {group.entries.map((entry) => (
-                <View key={entry.id} style={styles.entryRow}>
+                <View key={entry.id} style={staticStyles.entryRow}>
                   <Text style={styles.entryTime}>
                     {new Date(entry.recordedAt).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
                   </Text>
-                  <Text style={styles.entryStats}>
+                  <Text style={staticStyles.entryStats}>
                     {entry.kills}K / {entry.assists}A / {entry.damage} DMG
                   </Text>
                 </View>
@@ -121,26 +126,10 @@ export function PlayerStatsScreen({ route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  modeLabel: {
-    color: '#9aa0a6',
-    marginBottom: 12,
-    textTransform: 'capitalize',
-  },
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   totalsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
   totalCard: { alignItems: 'center', flex: 1 },
-  totalValue: { fontSize: 24, fontWeight: '700', color: '#f2f3f5' },
-  totalLabel: { color: '#9aa0a6', fontSize: 12 },
-  empty: { textAlign: 'center', color: '#9aa0a6', marginTop: 24 },
-  dayCard: {
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#3a3d44',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
   dayHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -148,8 +137,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     gap: 8,
   },
-  dayTitle: { color: '#f2f3f5', fontWeight: '700', flexShrink: 1 },
-  dayTotals: { color: '#9aa0a6', fontSize: 11, fontWeight: '600' },
   entryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -157,6 +144,31 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#2a2d33',
   },
-  entryTime: { color: '#9aa0a6', fontSize: 12 },
   entryStats: { color: '#e8eaed', fontWeight: '600' },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function playerStatsStyles(c: ThemeColors) {
+  return {
+    modeLabel: {
+      color: c.textMuted,
+      marginBottom: 12,
+      textTransform: 'capitalize' as const,
+    },
+    totalValue: { fontSize: 24, fontWeight: '700' as const, color: c.text },
+    totalLabel: { color: c.textMuted, fontSize: 12 },
+    empty: { textAlign: 'center' as const, color: c.textMuted, marginTop: 24 },
+    dayCard: {
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    dayTitle: { color: c.text, fontWeight: '700' as const, flexShrink: 1 },
+    dayTotals: { color: c.textMuted, fontSize: 11, fontWeight: '600' as const },
+    entryTime: { color: c.textMuted, fontSize: 12 },
+  };
+}

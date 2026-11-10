@@ -512,7 +512,7 @@ export function MapsScreen(_props: Props) {
               <View style={staticStyles.rail}>
                 <SoftPressable
                   style={[
-                    staticStyles.railItem,
+                    styles.railItem,
                     viewer.kind === 'overview' && styles.railItemActive,
                   ]}
                   onPress={() =>
@@ -535,7 +535,7 @@ export function MapsScreen(_props: Props) {
                   return (
                     <SoftPressable
                       key={drop.id}
-                      style={[staticStyles.railItem, active && styles.railItemActive]}
+                      style={[styles.railItem, active && styles.railItemActive]}
                       onPress={() =>
                         openViewer({
                           kind: 'poi',
@@ -861,12 +861,6 @@ const staticStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  railItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
   filterRow: {
     flexDirection: 'row',
     gap: 8,
@@ -1048,6 +1042,12 @@ function mapsStyles(c: ThemeColors) {
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
       backgroundColor: c.chrome,
+    },
+    railItem: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+      backgroundColor: c.surface,
     },
     railItemActive: { backgroundColor: c.chrome },
     railLabel: { color: c.text, fontWeight: '700' as const, fontSize: 12 },
