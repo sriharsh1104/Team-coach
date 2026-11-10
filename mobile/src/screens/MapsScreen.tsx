@@ -29,7 +29,9 @@ import { Screen } from '../brand/Screen';
 import { SoftPressable } from '../ui/SoftPressable';
 import { emitToast } from '../ui/toastBus';
 import { apiErrorMessage } from '../api/apiErrorMessage';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type PickedFile = { uri: string; fileName: string; mimeType: string };
 
@@ -62,6 +64,8 @@ function pinIcon(pin: MapPin): keyof typeof Ionicons.glyphMap {
 
 export function MapsScreen(_props: Props) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(mapsStyles);
   const [maps, setMaps] = useState<FreeFireMap[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -255,7 +259,7 @@ export function MapsScreen(_props: Props) {
   if (loading) {
     return (
       <Screen>
-        <View style={styles.center}>
+        <View style={staticStyles.center}>
           <ActivityIndicator color={colors.chrome} />
         </View>
       </Screen>
@@ -265,10 +269,10 @@ export function MapsScreen(_props: Props) {
   return (
     <Screen>
       <FlatList
-        style={styles.list}
+        style={staticStyles.list}
         data={maps}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={staticStyles.content}
         ListHeaderComponent={
           <>
             <Text style={styles.hint}>
@@ -297,10 +301,10 @@ export function MapsScreen(_props: Props) {
             ? map.drops
             : [map.primary, map.secondary];
           return (
-            <View style={styles.block}>
-              <View style={styles.blockHead}>
+            <View style={staticStyles.block}>
+              <View style={staticStyles.blockHead}>
                 <Text style={styles.sno}>{index + 1}</Text>
-                <View style={styles.blockText}>
+                <View style={staticStyles.blockText}>
                   <Text style={styles.mapName}>{map.name}</Text>
                   <Text style={styles.mapMeta}>
                     {map.isCustom ? 'Custom · ' : ''}
@@ -310,21 +314,21 @@ export function MapsScreen(_props: Props) {
                 </View>
               </View>
 
-              <View style={styles.overviewWrap}>
+              <View style={staticStyles.overviewWrap}>
                 <SoftPressable
-                  style={styles.overviewBtn}
+                  style={staticStyles.overviewBtn}
                   onPress={() => openViewer({ kind: 'overview', map })}
                   accessibilityLabel={`Open ${map.name} interactive map`}
                   pressScale={0.99}
                 >
                   <Image
                     source={{ uri: map.imageUrl }}
-                    style={styles.overviewImage}
+                    style={staticStyles.overviewImage}
                     resizeMode="cover"
                   />
                 </SoftPressable>
                 {map.canUpload ? (
-                  <View style={styles.actionRow}>
+                  <View style={staticStyles.actionRow}>
                     <SoftPressable
                       style={styles.uploadChip}
                       disabled={uploadingSlot === `${map.id}:overview`}
@@ -378,7 +382,7 @@ export function MapsScreen(_props: Props) {
               </View>
 
               <Text style={styles.dropEyebrow}>Drop points</Text>
-              <View style={styles.dropRow}>
+              <View style={staticStyles.dropRow}>
                 {dropList.map((drop) => {
                   const canReplaceSlot =
                     map.canUpload &&
@@ -387,7 +391,7 @@ export function MapsScreen(_props: Props) {
                     (drop.tier === 'primary' || drop.tier === 'secondary');
                   const busy = uploadingSlot === `${map.id}:${drop.tier}`;
                   return (
-                    <View key={drop.id} style={styles.dropCard}>
+                    <View key={drop.id} style={staticStyles.dropCard}>
                       <SoftPressable
                         onPress={() =>
                           openViewer({
@@ -401,7 +405,7 @@ export function MapsScreen(_props: Props) {
                       >
                         <Text
                           style={[
-                            styles.tierBadge,
+                            staticStyles.tierBadge,
                             drop.tier === 'primary'
                               ? styles.tierPrimary
                               : drop.tier === 'secondary'
@@ -417,7 +421,7 @@ export function MapsScreen(_props: Props) {
                         </Text>
                         <Image
                           source={{ uri: drop.imageUrl }}
-                          style={styles.dropImage}
+                          style={staticStyles.dropImage}
                           resizeMode="cover"
                         />
                         <Text style={styles.dropName}>{drop.name}</Text>
@@ -425,7 +429,7 @@ export function MapsScreen(_props: Props) {
                       </SoftPressable>
                       {canReplaceSlot ? (
                         <SoftPressable
-                          style={styles.uploadChipCompact}
+                          style={staticStyles.uploadChipCompact}
                           disabled={busy}
                           onPress={() =>
                             void uploadSlot(map.id, drop.tier, drop.name)
@@ -473,17 +477,17 @@ export function MapsScreen(_props: Props) {
         presentationStyle="fullScreen"
         onRequestClose={() => setViewer(null)}
       >
-        <View style={styles.modalRoot}>
+        <View style={staticStyles.modalRoot}>
           <View style={[styles.modalBar, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
             <Pressable
-              style={styles.navBtn}
+              style={staticStyles.navBtn}
               onPress={() => setViewer(null)}
               accessibilityLabel="Back"
               hitSlop={10}
             >
               <Ionicons name="chevron-back" size={26} color={colors.text} />
             </Pressable>
-            <View style={styles.modalTitleCol}>
+            <View style={staticStyles.modalTitleCol}>
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {viewerTitle}
               </Text>
@@ -504,11 +508,11 @@ export function MapsScreen(_props: Props) {
           </View>
 
           {viewer ? (
-            <View style={styles.modalBody}>
-              <View style={styles.rail}>
+            <View style={staticStyles.modalBody}>
+              <View style={staticStyles.rail}>
                 <SoftPressable
                   style={[
-                    styles.railItem,
+                    staticStyles.railItem,
                     viewer.kind === 'overview' && styles.railItemActive,
                   ]}
                   onPress={() =>
@@ -531,7 +535,7 @@ export function MapsScreen(_props: Props) {
                   return (
                     <SoftPressable
                       key={drop.id}
-                      style={[styles.railItem, active && styles.railItemActive]}
+                      style={[staticStyles.railItem, active && styles.railItemActive]}
                       onPress={() =>
                         openViewer({
                           kind: 'poi',
@@ -555,14 +559,14 @@ export function MapsScreen(_props: Props) {
               </View>
 
               {viewer.kind === 'overview' ? (
-                <View style={styles.filterRow}>
+                <View style={staticStyles.filterRow}>
                   {PIN_FILTERS.map((filter) => {
                     const active = pinFilter === filter.key;
                     return (
                       <SoftPressable
                         key={filter.key}
                         style={[
-                          styles.filterChip,
+                          staticStyles.filterChip,
                           active && styles.filterChipActive,
                         ]}
                         onPress={() => setPinFilter(filter.key)}
@@ -582,10 +586,10 @@ export function MapsScreen(_props: Props) {
                 </View>
               ) : null}
 
-              <View style={styles.imageWrap}>
+              <View style={staticStyles.imageWrap}>
                 {viewer.kind === 'overview' ? (
                   <View
-                    style={styles.overviewBox}
+                    style={staticStyles.overviewBox}
                     onLayout={onOverviewLayout}
                   >
                     {overviewBoxSize > 0 ? (
@@ -597,7 +601,7 @@ export function MapsScreen(_props: Props) {
                       >
                         <Image
                           source={{ uri: viewer.map.imageUrl }}
-                          style={styles.viewerImage}
+                          style={staticStyles.viewerImage}
                           resizeMode="cover"
                           accessibilityLabel={viewerTitle}
                         />
@@ -607,10 +611,10 @@ export function MapsScreen(_props: Props) {
                             style={[
                               styles.pin,
                               pin.category === 'vending_machine' &&
-                                styles.pinVending,
+                                staticStyles.pinVending,
                               pin.category === 'drop' &&
                                 pin.tier === 'secondary' &&
-                                styles.pinSecondary,
+                                staticStyles.pinSecondary,
                               {
                                 left: pin.x * overviewBoxSize - PIN_SIZE / 2,
                                 top: pin.y * overviewBoxSize - PIN_SIZE / 2,
@@ -635,7 +639,7 @@ export function MapsScreen(_props: Props) {
                 ) : (
                   <Image
                     source={{ uri: viewerSrc }}
-                    style={[styles.viewerImage, styles.viewerImageWide]}
+                    style={[staticStyles.viewerImage, staticStyles.viewerImageWide]}
                     resizeMode="contain"
                     accessibilityLabel={viewerTitle}
                   />
@@ -652,7 +656,7 @@ export function MapsScreen(_props: Props) {
         animationType="fade"
         onRequestClose={() => setAddMapOpen(false)}
       >
-        <Pressable style={styles.formBackdrop} onPress={() => setAddMapOpen(false)}>
+        <Pressable style={staticStyles.formBackdrop} onPress={() => setAddMapOpen(false)}>
           <Pressable style={styles.formSheet} onPress={() => undefined}>
             <Text style={styles.formTitle}>Add map</Text>
             <TextInput
@@ -680,7 +684,7 @@ export function MapsScreen(_props: Props) {
               </Text>
             </SoftPressable>
             <SoftPressable
-              style={[styles.uploadChip, styles.formSubmit]}
+              style={[styles.uploadChip, staticStyles.formSubmit]}
               disabled={savingForm}
               onPress={() => void submitNewMap()}
               pressScale={0.96}
@@ -701,7 +705,7 @@ export function MapsScreen(_props: Props) {
         animationType="fade"
         onRequestClose={() => setAddDropFor(null)}
       >
-        <Pressable style={styles.formBackdrop} onPress={() => setAddDropFor(null)}>
+        <Pressable style={staticStyles.formBackdrop} onPress={() => setAddDropFor(null)}>
           <Pressable style={styles.formSheet} onPress={() => undefined}>
             <Text style={styles.formTitle}>
               Add drop · {addDropFor?.name ?? ''}
@@ -720,7 +724,7 @@ export function MapsScreen(_props: Props) {
               value={dropNote}
               onChangeText={setDropNote}
             />
-            <View style={styles.tierPickRow}>
+            <View style={staticStyles.tierPickRow}>
               {(['primary', 'secondary', 'extra'] as DropTier[]).map((tier) => {
                 const active = dropTier === tier;
                 return (
@@ -753,7 +757,7 @@ export function MapsScreen(_props: Props) {
               </Text>
             </SoftPressable>
             <SoftPressable
-              style={[styles.uploadChip, styles.formSubmit]}
+              style={[styles.uploadChip, staticStyles.formSubmit]}
               disabled={savingForm}
               onPress={() => void submitNewDrop()}
               pressScale={0.96}
@@ -771,19 +775,11 @@ export function MapsScreen(_props: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   list: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  hint: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: -8,
-    marginBottom: 16,
-  },
-  error: { color: colors.danger, marginBottom: 12 },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: 24 },
   block: {
     marginBottom: 22,
     padding: 14,
@@ -798,20 +794,7 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 12,
   },
-  sno: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    textAlign: 'center',
-    overflow: 'hidden',
-    color: colors.chromeInk,
-    backgroundColor: colors.chrome,
-    fontWeight: '800',
-    lineHeight: 28,
-  },
   blockText: { flex: 1 },
-  mapName: { color: colors.text, fontWeight: '800', fontSize: 17 },
-  mapMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   overviewWrap: { marginBottom: 14, gap: 8 },
   overviewBtn: { borderRadius: 12, overflow: 'hidden' },
   overviewImage: {
@@ -820,39 +803,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0c',
   },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  uploadChip: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: colors.chrome,
-    marginBottom: 12,
-  },
-  uploadChipText: {
-    color: colors.chromeInk,
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  secondaryChip: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  secondaryChipText: {
-    color: colors.link,
-    fontWeight: '700',
-    fontSize: 13,
-  },
   uploadChipCompact: {
     marginTop: 8,
     alignSelf: 'flex-start',
@@ -862,70 +812,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
-  uploadChipCompactText: {
-    color: colors.link,
-    fontWeight: '700',
-    fontSize: 12,
-  },
   formBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'center',
     padding: 20,
   },
-  formSheet: {
-    borderRadius: 16,
-    padding: 16,
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 10,
-  },
-  formTitle: {
-    color: colors.text,
-    fontWeight: '800',
-    fontSize: 18,
-    marginBottom: 4,
-  },
-  formInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    color: colors.text,
-    fontSize: 15,
-  },
   formSubmit: { marginBottom: 0, alignSelf: 'stretch', justifyContent: 'center' },
   tierPickRow: { flexDirection: 'row', gap: 8 },
-  tierPick: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  tierPickActive: {
-    backgroundColor: colors.chrome,
-    borderColor: colors.chrome,
-  },
-  tierPickText: {
-    color: colors.textMuted,
-    fontWeight: '700',
-    fontSize: 12,
-    textTransform: 'capitalize',
-  },
-  tierPickTextActive: { color: colors.chromeInk },
-  dropEyebrow: {
-    color: colors.textDim,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
   dropRow: { flexDirection: 'row', gap: 10 },
   dropCard: {
     flex: 1,
@@ -945,55 +839,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 6,
   },
-  tierPrimary: { backgroundColor: colors.chrome, color: colors.chromeInk },
-  tierSecondary: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    color: colors.text,
-  },
-  tierExtra: {
-    backgroundColor: 'rgba(168,176,255,0.2)',
-    color: colors.link,
-  },
   dropImage: {
     width: '100%',
     aspectRatio: 2,
     borderRadius: 8,
     backgroundColor: '#0a0a0c',
   },
-  dropName: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 13,
-    marginTop: 8,
-  },
-  dropNote: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   modalRoot: { flex: 1, backgroundColor: '#050507' },
-  modalBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    zIndex: 5,
-  },
   modalTitleCol: { flex: 1, minWidth: 0 },
-  modalTitle: { color: colors.text, fontWeight: '800', fontSize: 17 },
-  modalNote: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   navBtn: {
     width: 42,
     height: 42,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  closeBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.chrome,
   },
   modalBody: { flex: 1 },
   rail: {
@@ -1009,9 +867,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  railItemActive: { backgroundColor: colors.chrome },
-  railLabel: { color: colors.text, fontWeight: '700', fontSize: 12 },
-  railItemActiveLabel: { color: colors.chromeInk },
   filterRow: {
     flexDirection: 'row',
     gap: 8,
@@ -1026,12 +881,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
     backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  filterChipActive: {
-    backgroundColor: colors.chrome,
-    borderColor: colors.chrome,
-  },
-  filterLabel: { color: colors.textMuted, fontWeight: '700', fontSize: 12 },
-  filterLabelActive: { color: colors.chromeInk },
   imageWrap: {
     flex: 1,
     alignItems: 'center',
@@ -1046,17 +895,179 @@ const styles = StyleSheet.create({
   viewerImageWide: {
     maxHeight: '70%',
   },
-  pin: {
-    position: 'absolute',
-    width: PIN_SIZE,
-    height: PIN_SIZE,
-    borderRadius: PIN_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.chrome,
-    borderWidth: 2,
-    borderColor: '#050507',
-  },
   pinSecondary: { backgroundColor: 'rgba(255,255,255,0.85)' },
   pinVending: { backgroundColor: '#3ddc84' },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function mapsStyles(c: ThemeColors) {
+  return {
+    hint: {
+      color: c.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+      marginTop: -8,
+      marginBottom: 16,
+    },
+    error: { color: c.danger, marginBottom: 12 },
+    empty: { color: c.textMuted, textAlign: 'center' as const, marginTop: 24 },
+    sno: {
+      width: 28,
+      height: 28,
+      borderRadius: 8,
+      textAlign: 'center' as const,
+      overflow: 'hidden' as const,
+      color: c.chromeInk,
+      backgroundColor: c.chrome,
+      fontWeight: '800' as const,
+      lineHeight: 28,
+    },
+    mapName: { color: c.text, fontWeight: '800' as const, fontSize: 17 },
+    mapMeta: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+    uploadChip: {
+      alignSelf: 'flex-start' as const,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+      backgroundColor: c.chrome,
+      marginBottom: 12,
+    },
+    uploadChipText: {
+      color: c.chromeInk,
+      fontWeight: '700' as const,
+      fontSize: 13,
+    },
+    secondaryChip: {
+      alignSelf: 'flex-start' as const,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    secondaryChipText: {
+      color: c.link,
+      fontWeight: '700' as const,
+      fontSize: 13,
+    },
+    uploadChipCompactText: {
+      color: c.link,
+      fontWeight: '700' as const,
+      fontSize: 12,
+    },
+    formSheet: {
+      borderRadius: 16,
+      padding: 16,
+      backgroundColor: c.bg,
+      borderWidth: 1,
+      borderColor: c.border,
+      gap: 10,
+    },
+    formTitle: {
+      color: c.text,
+      fontWeight: '800' as const,
+      fontSize: 18,
+      marginBottom: 4,
+    },
+    formInput: {
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      color: c.text,
+      fontSize: 15,
+    },
+    tierPick: {
+      flex: 1,
+      alignItems: 'center' as const,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    tierPickActive: {
+      backgroundColor: c.chrome,
+      borderColor: c.chrome,
+    },
+    tierPickText: {
+      color: c.textMuted,
+      fontWeight: '700' as const,
+      fontSize: 12,
+      textTransform: 'capitalize' as const,
+    },
+    tierPickTextActive: { color: c.chromeInk },
+    dropEyebrow: {
+      color: c.textDim,
+      fontSize: 11,
+      fontWeight: '700' as const,
+      letterSpacing: 1,
+      textTransform: 'uppercase' as const,
+      marginBottom: 8,
+    },
+    tierPrimary: { backgroundColor: c.chrome, color: c.chromeInk },
+    tierSecondary: {
+      backgroundColor: 'rgba(255,255,255,0.12)',
+      color: c.text,
+    },
+    tierExtra: {
+      backgroundColor: 'rgba(168,176,255,0.2)',
+      color: c.link,
+    },
+    dropName: {
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 13,
+      marginTop: 8,
+    },
+    dropNote: { color: c.textMuted, fontSize: 11, marginTop: 2 },
+    modalBar: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+      zIndex: 5,
+    },
+    modalTitle: { color: c.text, fontWeight: '800' as const, fontSize: 17 },
+    modalNote: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+    closeBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      backgroundColor: c.chrome,
+    },
+    railItemActive: { backgroundColor: c.chrome },
+    railLabel: { color: c.text, fontWeight: '700' as const, fontSize: 12 },
+    railItemActiveLabel: { color: c.chromeInk },
+    filterChipActive: {
+      backgroundColor: c.chrome,
+      borderColor: c.chrome,
+    },
+    filterLabel: { color: c.textMuted, fontWeight: '700' as const, fontSize: 12 },
+    filterLabelActive: { color: c.chromeInk },
+    pin: {
+      position: 'absolute' as const,
+      width: PIN_SIZE,
+      height: PIN_SIZE,
+      borderRadius: PIN_SIZE / 2,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      backgroundColor: c.chrome,
+      borderWidth: 2,
+      borderColor: '#050507',
+    },
+  };
+}

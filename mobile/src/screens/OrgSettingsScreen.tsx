@@ -14,7 +14,9 @@ import { useAuth } from '../auth/AuthContext';
 import { MembershipRole, OrgDetail, OrgMember } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { RoleSelector } from './RoleSelector';
 import { Toast, useToast } from '../ui/Toast';
 import { confirmAsync } from '../ui/confirmAsync';
@@ -26,6 +28,8 @@ type Props = NativeStackScreenProps<MainStackParamList, 'OrgSettings'>;
 // stays a plain roster viewer for everyone else.
 export function OrgSettingsScreen({ navigation }: Props) {
   const { refreshOrg } = useAuth();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(orgSettingsStyles);
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { message: toastMessage, showToast } = useToast();
@@ -113,7 +117,7 @@ export function OrgSettingsScreen({ navigation }: Props) {
   return (
     <Screen>
       <FlatList
-        style={styles.list}
+        style={staticStyles.list}
         data={detail?.members ?? []}
         keyExtractor={(item) => item.userId}
         refreshControl={
@@ -126,8 +130,8 @@ export function OrgSettingsScreen({ navigation }: Props) {
         ListHeaderComponent={
           <>
             {detail && (
-              <View style={styles.settingRow}>
-                <View style={styles.settingTextCol}>
+              <View style={staticStyles.settingRow}>
+                <View style={staticStyles.settingTextCol}>
                   <Text style={styles.settingLabel}>Chat history for new members</Text>
                   <Text style={styles.settingHint}>
                     Let a new member see Team Chat messages from before they joined.
@@ -143,9 +147,9 @@ export function OrgSettingsScreen({ navigation }: Props) {
             <Text style={styles.sectionHeader}>Members</Text>
           </>
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={staticStyles.listContent}
         renderItem={({ item }) => (
-          <View style={styles.memberCard}>
+          <View style={staticStyles.memberCard}>
             <Text style={styles.memberName}>
               {item.name}
               {item.isOwner ? ' (Owner)' : ''}
@@ -154,7 +158,7 @@ export function OrgSettingsScreen({ navigation }: Props) {
               value={item.role}
               onChange={(role) => onChangeRole(item, role)}
             />
-            <View style={styles.actionsRow}>
+            <View style={staticStyles.actionsRow}>
               {!item.isOwner && (
                 <Pressable onPress={() => onMakeOwner(item)}>
                   <Text style={styles.actionLink}>Make Owner</Text>
@@ -174,7 +178,8 @@ export function OrgSettingsScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   list: { flex: 1, backgroundColor: 'transparent' },
   listContent: { padding: 24 },
   settingRow: {
@@ -190,15 +195,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
   },
   settingTextCol: { flex: 1 },
-  settingLabel: { fontSize: 15, fontWeight: '600', color: colors.text },
-  settingHint: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  sectionHeader: {
-    marginTop: 16,
-    marginBottom: 8,
-    fontWeight: '700',
-    fontSize: 16,
-    color: colors.text,
-  },
   memberCard: {
     paddingVertical: 14,
     paddingHorizontal: 14,
@@ -209,8 +205,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
   },
-  memberName: { fontSize: 16, fontWeight: '700', color: colors.text },
   actionsRow: { flexDirection: 'row', gap: 20 },
-  actionLink: { color: colors.link, fontWeight: '600' },
-  removeLink: { color: colors.danger, fontWeight: '600' },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function orgSettingsStyles(c: ThemeColors) {
+  return {
+    settingLabel: { fontSize: 15, fontWeight: '600' as const, color: c.text },
+    settingHint: { fontSize: 12, color: c.textMuted, marginTop: 2 },
+    sectionHeader: {
+      marginTop: 16,
+      marginBottom: 8,
+      fontWeight: '700' as const,
+      fontSize: 16,
+      color: c.text,
+    },
+    memberName: { fontSize: 16, fontWeight: '700' as const, color: c.text },
+    actionLink: { color: c.link, fontWeight: '600' as const },
+    removeLink: { color: c.danger, fontWeight: '600' as const },
+  };
+}

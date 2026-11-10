@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { GoogleSignInButton } from '../auth/GoogleSignInButton';
 import { BrandMark } from '../brand/BrandMark';
 import { AuthStackParamList } from '../navigation/types';
-import { authStyles } from './shared';
+import { useSharedStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { PasswordField } from '../ui/PasswordField';
@@ -14,6 +14,7 @@ import { SoftPressable } from '../ui/SoftPressable';
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
+  const shared = useSharedStyles();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,9 +39,9 @@ export function LoginScreen({ navigation }: Props) {
   return (
     <FormScreen>
       <BrandMark />
-      <Text style={authStyles.title}>Log in</Text>
+      <Text style={shared.title}>Log in</Text>
       <TextInput
-        style={authStyles.input}
+        style={shared.input}
         placeholder="Email"
         placeholderTextColor="#8b8f97"
         autoCapitalize="none"
@@ -50,15 +51,15 @@ export function LoginScreen({ navigation }: Props) {
       />
       <PasswordField value={password} onChangeText={setPassword} />
       <Text
-        style={[authStyles.link, { marginTop: 0, marginBottom: 12 }]}
+        style={[shared.link, { marginTop: 0, marginBottom: 12 }]}
         onPress={() => navigation.navigate('ForgotPassword')}
       >
         Forgot password?
       </Text>
       <SoftPressable
         style={[
-          authStyles.button,
-          (isSubmitting || !email || !password) && authStyles.buttonDisabled,
+          shared.button,
+          (isSubmitting || !email || !password) && shared.buttonDisabled,
         ]}
         disabled={isSubmitting || !email || !password}
         onPress={onSubmit}
@@ -67,7 +68,7 @@ export function LoginScreen({ navigation }: Props) {
         <ButtonLabel icon="log-in">Log In</ButtonLabel>
       </SoftPressable>
       <GoogleSignInButton />
-      <Text style={authStyles.link} onPress={() => navigation.navigate('Signup')}>
+      <Text style={shared.link} onPress={() => navigation.navigate('Signup')}>
         New here? Create an account
       </Text>
     </FormScreen>

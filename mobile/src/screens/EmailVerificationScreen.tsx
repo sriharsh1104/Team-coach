@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
 import { BrandMark } from '../brand/BrandMark';
 import { AuthStackParamList } from '../navigation/types';
-import { authStyles } from './shared';
+import { useSharedStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { AuthBackButton } from '../ui/AuthBackButton';
 import { ButtonLabel } from '../ui/ButtonLabel';
@@ -15,6 +15,7 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'EmailVerification'>;
 const RESEND_COOLDOWN_SECONDS = 60;
 
 export function EmailVerificationScreen({ navigation, route }: Props) {
+  const shared = useSharedStyles();
   const { challengeToken } = route.params;
   const { completeEmailVerification, resendEmailVerification } = useAuth();
   const [code, setCode] = useState('');
@@ -64,7 +65,7 @@ export function EmailVerificationScreen({ navigation, route }: Props) {
         label="Back"
       />
       <BrandMark />
-      <Text style={authStyles.title}>Verify Your Email</Text>
+      <Text style={shared.title}>Verify Your Email</Text>
       <Text style={{ color: '#9aa0a6', textAlign: 'center', marginBottom: 16 }}>
         Enter the 6-digit code we emailed you.
       </Text>
@@ -75,8 +76,8 @@ export function EmailVerificationScreen({ navigation, route }: Props) {
       />
       <Pressable
         style={[
-          authStyles.button,
-          (isSubmitting || !otpReady) && authStyles.buttonDisabled,
+          shared.button,
+          (isSubmitting || !otpReady) && shared.buttonDisabled,
         ]}
         disabled={isSubmitting || !otpReady}
         onPress={onSubmit}
@@ -87,7 +88,7 @@ export function EmailVerificationScreen({ navigation, route }: Props) {
       </Pressable>
       <Text
         style={[
-          authStyles.link,
+          shared.link,
           (isResending || cooldown > 0) && { opacity: 0.5 },
         ]}
         onPress={isResending || cooldown > 0 ? undefined : onResend}

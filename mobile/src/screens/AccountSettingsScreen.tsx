@@ -22,7 +22,9 @@ import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
 import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { emitToast } from '../ui/toastBus';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'AccountSettings'>;
 type Tab = 'password' | 'twoFactor' | 'biometric';
@@ -31,6 +33,8 @@ const ACCOUNT_TAB_IDS: Tab[] = ['password', 'twoFactor', 'biometric'];
 
 export function AccountSettingsScreen({ navigation }: Props) {
   const { user, applyAuthResponse, refreshUser } = useAuth();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(accountStyles);
   const { tab, openTab, turn } = useBookTabs(ACCOUNT_TAB_IDS, 'password');
   const accountTab = tab as Tab;
 
@@ -116,7 +120,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
     <Screen>
       <ScrollView
         style={{ flex: 1, backgroundColor: 'transparent' }}
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={staticStyles.scroll}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -130,8 +134,8 @@ export function AccountSettingsScreen({ navigation }: Props) {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabTrack}
-          style={styles.tabTrackScroll}
+          contentContainerStyle={staticStyles.tabTrack}
+          style={staticStyles.tabTrackScroll}
         >
           {(
             [
@@ -144,7 +148,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
             return (
               <SoftPressable
                 key={value}
-                style={[styles.tab, active && styles.tabActive]}
+                style={[staticStyles.tab, active && styles.tabActive]}
                 onPress={() => openTab(value)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
@@ -165,7 +169,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
         <BookStage tab={tab} turn={turn}>
           {(active) =>
             active === 'password' ? (
-              <View style={styles.card}>
+              <View style={staticStyles.card}>
                 <Text style={styles.cardTitle}>Change Password</Text>
                 {!user.hasPassword ? (
                   <Text style={styles.hint}>
@@ -206,7 +210,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
                       style={[
                         styles.primaryBtn,
                         (isSavingPassword || !canChangePassword) &&
-                          styles.btnDisabled,
+                          staticStyles.btnDisabled,
                       ]}
                       disabled={isSavingPassword || !canChangePassword}
                       onPress={onChangePassword}
@@ -220,22 +224,22 @@ export function AccountSettingsScreen({ navigation }: Props) {
                 )}
               </View>
             ) : active === 'twoFactor' ? (
-              <View style={styles.card}>
+              <View style={staticStyles.card}>
                 <Text style={styles.cardTitle}>Two-Factor Authentication</Text>
                 <Text style={styles.hint}>
                   Uses Google Authenticator (or any TOTP-compatible app).
                 </Text>
                 <View
                   style={[
-                    styles.statusPill,
+                    staticStyles.statusPill,
                     user.twoFactorEnabled
-                      ? styles.statusOn
+                      ? staticStyles.statusOn
                       : styles.statusOff,
                   ]}
                 >
                   <View
                     style={[
-                      styles.statusDot,
+                      staticStyles.statusDot,
                       {
                         backgroundColor: user.twoFactorEnabled
                           ? '#86efac'
@@ -264,7 +268,8 @@ export function AccountSettingsScreen({ navigation }: Props) {
                       <SoftPressable
                         style={[
                           styles.primaryBtn,
-                          (isDisabling || !disablePassword) && styles.btnDisabled,
+                          (isDisabling || !disablePassword) &&
+                            staticStyles.btnDisabled,
                         ]}
                         disabled={isDisabling || !disablePassword}
                         onPress={onDisableTwoFactor}
@@ -297,7 +302,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
                 )}
               </View>
             ) : (
-              <View style={styles.card}>
+              <View style={staticStyles.card}>
                 <Text style={styles.cardTitle}>Biometric Login</Text>
                 {!biometricAvailable ? (
                   <Text style={styles.hint}>
@@ -306,8 +311,8 @@ export function AccountSettingsScreen({ navigation }: Props) {
                       : "Biometric login isn't available on this device (no Face ID/Touch ID/fingerprint set up)."}
                   </Text>
                 ) : (
-                  <View style={styles.settingRow}>
-                    <View style={styles.settingTextCol}>
+                  <View style={staticStyles.settingRow}>
+                    <View style={staticStyles.settingTextCol}>
                       <Text style={styles.settingLead}>
                         Unlock with Face ID / Touch ID
                       </Text>
@@ -340,29 +345,9 @@ export function AccountSettingsScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
-  eyebrow: {
-    color: colors.textDim,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  sectionLabel: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -0.4,
-  },
-  lead: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
-    marginBottom: 20,
-  },
   tabTrackScroll: {
     marginBottom: 18,
     borderRadius: 14,
@@ -382,70 +367,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabActive: {
-    backgroundColor: colors.chrome,
-  },
-  tabText: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
-  tabTextActive: {
-    color: colors.chromeInk,
-    fontWeight: '700',
-    fontSize: 13,
-  },
   card: {
     borderRadius: 16,
     padding: 16,
     backgroundColor: 'rgba(255,255,255,0.045)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-  },
-  cardTitle: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 17,
-    marginBottom: 8,
-  },
-  hint: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginBottom: 12,
-    lineHeight: 19,
-  },
-  settingLead: {
-    color: colors.text,
-    fontWeight: '600',
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: 'rgba(0,0,0,0.28)',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    marginBottom: 10,
-    fontSize: 16,
-    color: colors.text,
-  },
-  primaryBtn: {
-    backgroundColor: colors.chrome,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
-  },
-  dangerBtn: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.danger,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
   },
   btnDisabled: { opacity: 0.45 },
   statusPill: {
@@ -463,12 +390,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(134,239,172,0.08)',
     borderColor: 'rgba(134,239,172,0.28)',
   },
-  statusOff: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderColor: colors.border,
-  },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { color: colors.text, fontSize: 12, fontWeight: '600' },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -477,3 +399,93 @@ const styles = StyleSheet.create({
   },
   settingTextCol: { flex: 1, minWidth: 180 },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function accountStyles(c: ThemeColors) {
+  return {
+    eyebrow: {
+      color: c.textDim,
+      fontSize: 12,
+      fontWeight: '700' as const,
+      letterSpacing: 1.2,
+      textTransform: 'uppercase' as const,
+      marginBottom: 6,
+    },
+    sectionLabel: {
+      fontSize: 28,
+      fontWeight: '700' as const,
+      color: c.text,
+      letterSpacing: -0.4,
+    },
+    lead: {
+      color: c.textMuted,
+      fontSize: 14,
+      lineHeight: 20,
+      marginTop: 8,
+      marginBottom: 20,
+    },
+    tabActive: {
+      backgroundColor: c.chrome,
+    },
+    tabText: { color: c.textMuted, fontWeight: '600' as const, fontSize: 13 },
+    tabTextActive: {
+      color: c.chromeInk,
+      fontWeight: '700' as const,
+      fontSize: 13,
+    },
+    cardTitle: {
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 17,
+      marginBottom: 8,
+    },
+    hint: {
+      color: c.textMuted,
+      fontSize: 13,
+      marginBottom: 12,
+      lineHeight: 19,
+    },
+    settingLead: {
+      color: c.text,
+      fontWeight: '600' as const,
+      fontSize: 14,
+      marginBottom: 4,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: 'rgba(0,0,0,0.28)',
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+      marginBottom: 10,
+      fontSize: 16,
+      color: c.text,
+    },
+    primaryBtn: {
+      backgroundColor: c.chrome,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      marginTop: 6,
+    },
+    dangerBtn: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: c.danger,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      marginTop: 6,
+    },
+    statusOff: {
+      backgroundColor: 'rgba(255,255,255,0.04)',
+      borderColor: c.border,
+    },
+    statusText: { color: c.text, fontSize: 12, fontWeight: '600' as const },
+  };
+}

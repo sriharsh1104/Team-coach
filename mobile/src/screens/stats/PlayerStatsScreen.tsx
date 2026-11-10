@@ -5,12 +5,13 @@ import * as statsApi from '../../api/stats';
 import { PlayerStatsResponse, STAT_MODES } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
-import { sharedStyles } from '../shared';
+import { useSharedStyles } from '../shared';
 import { groupEntriesByDay } from './dayGroups';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'PlayerStats'>;
 
 export function PlayerStatsScreen({ route }: Props) {
+  const shared = useSharedStyles();
   const { userId, name, mode } = route.params;
   const [data, setData] = useState<PlayerStatsResponse | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -44,7 +45,7 @@ export function PlayerStatsScreen({ route }: Props) {
   if (!data) {
     return (
       <Screen>
-        <View style={sharedStyles.container}>
+        <View style={shared.container}>
           <ActivityIndicator color="#c9ccd1" />
         </View>
       </Screen>
@@ -53,8 +54,8 @@ export function PlayerStatsScreen({ route }: Props) {
 
   return (
     <Screen>
-      <View style={sharedStyles.container}>
-        <Text style={sharedStyles.title}>{name}</Text>
+      <View style={shared.container}>
+        <Text style={shared.title}>{name}</Text>
         <Text style={styles.modeLabel}>{modeLabel} · Day History</Text>
         <View style={styles.totalsRow}>
           <View style={styles.totalCard}>

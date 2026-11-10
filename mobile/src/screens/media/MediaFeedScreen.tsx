@@ -15,7 +15,9 @@ import { MediaPost, OrgMember } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { SoftPressable } from '../../ui/SoftPressable';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import {
   cacheGet,
   cacheSet,
@@ -29,6 +31,8 @@ type Props = NativeStackScreenProps<MainStackParamList, 'MediaFeed'>;
 
 export function MediaFeedScreen({ navigation }: Props) {
   const realtime = useOrgRealtimeOptional();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(mediaFeedStyles);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [selectedUploaderId, setSelectedUploaderId] = useState<string | null>(
     null,
@@ -100,20 +104,20 @@ export function MediaFeedScreen({ navigation }: Props) {
 
   return (
     <Screen>
-      <View style={styles.root}>
+      <View style={staticStyles.root}>
         <View style={styles.filterBar}>
           <FlatList
             horizontal
             data={[{ userId: null, name: 'All' } as const, ...members]}
             keyExtractor={(item) => item.userId ?? 'all'}
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipRow}
+            contentContainerStyle={staticStyles.chipRow}
             renderItem={({ item }) => {
               const isActive = selectedUploaderId === item.userId;
               return (
                 <SoftPressable
                   onPress={() => setSelectedUploaderId(item.userId)}
-                  style={[styles.chip, isActive && styles.chipActive]}
+                  style={[staticStyles.chip, isActive && styles.chipActive]}
                   pressScale={0.96}
                 >
                   <Text
@@ -128,10 +132,10 @@ export function MediaFeedScreen({ navigation }: Props) {
         </View>
 
         <FlatList
-          style={styles.list}
+          style={staticStyles.list}
           data={posts}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={staticStyles.listContent}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
           }
@@ -142,7 +146,7 @@ export function MediaFeedScreen({ navigation }: Props) {
             const uri = resolveMediaUrl(item.url) ?? '';
             return (
               <SoftPressable
-                style={styles.postRow}
+                style={staticStyles.postRow}
                 onPress={() => setViewer({ type: item.type, uri })}
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -151,13 +155,13 @@ export function MediaFeedScreen({ navigation }: Props) {
                 pressScale={0.985}
               >
                 {item.type === 'IMAGE' ? (
-                  <Image source={{ uri }} style={styles.thumb} />
+                  <Image source={{ uri }} style={staticStyles.thumb} />
                 ) : (
-                  <View style={[styles.thumb, styles.videoThumb]}>
+                  <View style={[staticStyles.thumb, staticStyles.videoThumb]}>
                     <Text style={{ color: colors.text }}>▶</Text>
                   </View>
                 )}
-                <View style={styles.postMeta}>
+                <View style={staticStyles.postMeta}>
                   <SoftPressable
                     onPress={() =>
                       navigation.push('MemberProfile', {
@@ -195,17 +199,9 @@ export function MediaFeedScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   root: { flex: 1 },
-  filterBar: {
-    zIndex: 2,
-    elevation: 4,
-    backgroundColor: colors.bg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-    paddingTop: 8,
-    paddingBottom: 10,
-  },
   chipRow: {
     paddingHorizontal: 16,
     gap: 8,
@@ -219,19 +215,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
-  chipActive: {
-    backgroundColor: colors.chrome,
-    borderColor: colors.chrome,
-  },
-  chipText: { color: colors.textMuted, fontWeight: '600' },
-  chipTextActive: { color: colors.chromeInk, fontWeight: '700' },
   list: { flex: 1, zIndex: 1 },
   listContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
-  empty: {
-    textAlign: 'center',
-    color: colors.textMuted,
-    marginTop: 24,
-  },
   postRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -251,20 +236,46 @@ const styles = StyleSheet.create({
   },
   videoThumb: { alignItems: 'center', justifyContent: 'center' },
   postMeta: { flex: 1, marginLeft: 12, minWidth: 0 },
-  uploader: {
-    fontWeight: '700',
-    color: colors.text,
-    fontSize: 15,
-  },
-  caption: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginTop: 2,
-    lineHeight: 18,
-  },
-  time: {
-    color: colors.textDim,
-    fontSize: 11,
-    marginTop: 4,
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function mediaFeedStyles(c: ThemeColors) {
+  return {
+    filterBar: {
+      zIndex: 2,
+      elevation: 4,
+      backgroundColor: c.bg,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: 'rgba(255,255,255,0.08)',
+      paddingTop: 8,
+      paddingBottom: 10,
+    },
+    chipActive: {
+      backgroundColor: c.chrome,
+      borderColor: c.chrome,
+    },
+    chipText: { color: c.textMuted, fontWeight: '600' as const },
+    chipTextActive: { color: c.chromeInk, fontWeight: '700' as const },
+    empty: {
+      textAlign: 'center' as const,
+      color: c.textMuted,
+      marginTop: 24,
+    },
+    uploader: {
+      fontWeight: '700' as const,
+      color: c.text,
+      fontSize: 15,
+    },
+    caption: {
+      color: c.textMuted,
+      fontSize: 13,
+      marginTop: 2,
+      lineHeight: 18,
+    },
+    time: {
+      color: c.textDim,
+      fontSize: 11,
+      marginTop: 4,
+    },
+  };
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { SoftPressable } from './SoftPressable';
 
 export type SegmentTab<T extends string> = {
@@ -19,14 +20,15 @@ export function SegmentedTabs<T extends string>({
   value: T;
   onChange: (next: T) => void;
 }) {
+  const styles = useThemedStyles(segmentedStyles);
   return (
-    <View style={styles.track}>
+    <View style={staticStyles.track}>
       {tabs.map((tab) => {
         const active = value === tab.value;
         return (
           <SoftPressable
             key={tab.value}
-            style={[styles.tab, active && styles.tabActive]}
+            style={[staticStyles.tab, active && styles.tabActive]}
             onPress={() => onChange(tab.value)}
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
@@ -48,7 +50,8 @@ export function SegmentedTabs<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   track: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
@@ -69,11 +72,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabActive: { backgroundColor: colors.chrome },
-  tabText: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
-  tabTextActive: {
-    color: colors.chromeInk,
-    fontWeight: '700',
-    fontSize: 13,
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function segmentedStyles(c: ThemeColors) {
+  return {
+    tabActive: { backgroundColor: c.chrome },
+    tabText: { color: c.textMuted, fontWeight: '600' as const, fontSize: 13 },
+    tabTextActive: {
+      color: c.chromeInk,
+      fontWeight: '700' as const,
+      fontSize: 13,
+    },
+  };
+}

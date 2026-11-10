@@ -5,13 +5,14 @@ import * as orgApi from '../api/org';
 import { OrgDetail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { OrgSetupStackParamList } from '../navigation/types';
-import { authStyles } from './shared';
+import { useSharedStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
 import { AuthBackButton } from '../ui/AuthBackButton';
 import { CopyButton } from './profile/CopyButton';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'CreateOrg'>;
 
@@ -24,7 +25,9 @@ type CreatedOrg = {
 };
 
 export function CreateOrgScreen({ navigation }: Props) {
+  const shared = useSharedStyles();
   const { setOrg } = useAuth();
+  const styles = useThemedStyles(createOrgStyles);
   const [name, setName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedOrg | null>(null);
@@ -60,12 +63,12 @@ export function CreateOrgScreen({ navigation }: Props) {
   return (
     <FormScreen>
       <AuthBackButton onPress={() => navigation.navigate('OrgChoice')} />
-      <Text style={authStyles.title}>Create a Org</Text>
+      <Text style={shared.title}>Create a Org</Text>
       <Text style={{ color: '#9aa0a6', textAlign: 'center', marginBottom: 16 }}>
         You become the owner. A coach can be you or someone else.
       </Text>
       <TextInput
-        style={authStyles.input}
+        style={shared.input}
         placeholder="Org / team name"
         placeholderTextColor="#8b8f97"
         value={name}
@@ -73,8 +76,8 @@ export function CreateOrgScreen({ navigation }: Props) {
       />
       <SoftPressable
         style={[
-          authStyles.button,
-          (isSubmitting || !name) && authStyles.buttonDisabled,
+          shared.button,
+          (isSubmitting || !name) && shared.buttonDisabled,
         ]}
         disabled={isSubmitting || !name}
         onPress={onSubmit}
@@ -84,13 +87,13 @@ export function CreateOrgScreen({ navigation }: Props) {
       </SoftPressable>
 
       <Modal visible={!!created} transparent animationType="fade">
-        <View style={styles.backdrop}>
-          <View style={styles.card}>
+        <View style={staticStyles.backdrop}>
+          <View style={staticStyles.card}>
             <Text style={styles.cardTitle}>Org created 🎉</Text>
             <Text style={styles.cardHint}>
               Share this code with your team so they can join {created?.name}.
             </Text>
-            <View style={styles.codeRow}>
+            <View style={staticStyles.codeRow}>
               <Text style={styles.codeValue}>{created?.orgCode}</Text>
               <CopyButton value={created?.orgCode ?? ''} />
             </View>
@@ -108,7 +111,8 @@ export function CreateOrgScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -125,20 +129,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  cardHint: {
-    color: colors.textMuted,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 18,
-  },
   codeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -152,16 +142,36 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  codeValue: {
-    color: colors.chrome,
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 2,
-  },
-  continueBtn: {
-    backgroundColor: colors.chrome,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function createOrgStyles(c: ThemeColors) {
+  return {
+    cardTitle: {
+      color: c.text,
+      fontSize: 20,
+      fontWeight: '800' as const,
+      textAlign: 'center' as const,
+      marginBottom: 8,
+    },
+    cardHint: {
+      color: c.textMuted,
+      fontSize: 13,
+      textAlign: 'center' as const,
+      lineHeight: 18,
+      marginBottom: 18,
+    },
+    codeValue: {
+      color: c.chrome,
+      fontSize: 20,
+      fontWeight: '800' as const,
+      letterSpacing: 2,
+    },
+    continueBtn: {
+      backgroundColor: c.chrome,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center' as const,
+    },
+  };
+}

@@ -1,9 +1,32 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
+
+/**
+ * Function-component shell so the fallback can subscribe to the live theme —
+ * a class component can't call hooks itself.
+ */
+function ErrorFallback({ error }: { error: Error }) {
+  const styles = useThemedStyles(boundaryStyles);
+
+  return (
+    <View style={styles.root}>
+      <Text style={styles.title}>Something went wrong</Text>
+      <Text style={styles.hint}>
+        Restart the app. If this keeps happening, send this message:
+      </Text>
+      <ScrollView style={staticStyles.box} contentContainerStyle={staticStyles.boxInner}>
+        <Text style={styles.message} selectable>
+          {error.message}
+        </Text>
+      </ScrollView>
+    </View>
+  );
+}
 
 /**
  * Release APKs hide the redbox — a throw during first paint looks like a
@@ -25,49 +48,44 @@ export class AppErrorBoundary extends Component<Props, State> {
     const { error } = this.state;
     if (!error) return this.props.children;
 
-    return (
-      <View style={styles.root}>
-        <Text style={styles.title}>Something went wrong</Text>
-        <Text style={styles.hint}>
-          Restart the app. If this keeps happening, send this message:
-        </Text>
-        <ScrollView style={styles.box} contentContainerStyle={styles.boxInner}>
-          <Text style={styles.message} selectable>
-            {error.message}
-          </Text>
-        </ScrollView>
-      </View>
-    );
+    return <ErrorFallback error={error} />;
   }
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    padding: 24,
-    justifyContent: 'center',
-  },
-  title: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  hint: {
-    color: colors.textMuted,
-    fontSize: 14,
-    marginBottom: 16,
-  },
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   box: {
     maxHeight: 280,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: 12,
   },
   boxInner: { padding: 14 },
-  message: {
-    color: colors.chrome,
-    fontSize: 13,
-    fontFamily: 'monospace',
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function boundaryStyles(c: ThemeColors) {
+  return {
+    root: {
+      flex: 1,
+      backgroundColor: c.bg,
+      padding: 24,
+      justifyContent: 'center' as const,
+    },
+    title: {
+      color: c.text,
+      fontSize: 20,
+      fontWeight: '700' as const,
+      marginBottom: 8,
+    },
+    hint: {
+      color: c.textMuted,
+      fontSize: 14,
+      marginBottom: 16,
+    },
+    message: {
+      color: c.chrome,
+      fontSize: 13,
+      fontFamily: 'monospace',
+    },
+  };
+}

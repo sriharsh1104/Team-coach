@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as authApi from '../api/auth';
 import { BrandMark } from '../brand/BrandMark';
 import { AuthStackParamList } from '../navigation/types';
-import { authStyles } from './shared';
+import { useSharedStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { AuthBackButton } from '../ui/AuthBackButton';
 import { ButtonLabel } from '../ui/ButtonLabel';
@@ -22,6 +22,7 @@ const RESEND_COOLDOWN_SECONDS = 30;
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 export function ResetPasswordScreen({ navigation, route }: Props) {
+  const shared = useSharedStyles();
   const { email } = route.params;
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -70,7 +71,7 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
     <FormScreen>
       <AuthBackButton onPress={() => navigation.navigate('ForgotPassword')} />
       <BrandMark />
-      <Text style={authStyles.title}>Reset password</Text>
+      <Text style={shared.title}>Reset password</Text>
       <Text style={{ color: '#9aa0a6', textAlign: 'center', marginBottom: 16 }}>
         Enter the 6-digit code we emailed to {email} and choose a new password.
       </Text>
@@ -90,8 +91,8 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
       </Text>
       <SoftPressable
         style={[
-          authStyles.button,
-          (isSubmitting || !canSubmit) && authStyles.buttonDisabled,
+          shared.button,
+          (isSubmitting || !canSubmit) && shared.buttonDisabled,
         ]}
         disabled={isSubmitting || !canSubmit}
         onPress={onSubmit}
@@ -103,7 +104,7 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
       </SoftPressable>
       <Text
         style={[
-          authStyles.link,
+          shared.link,
           (isResending || cooldown > 0) && { opacity: 0.5 },
         ]}
         onPress={isResending || cooldown > 0 ? undefined : onResend}

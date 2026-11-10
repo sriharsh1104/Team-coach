@@ -6,7 +6,8 @@ import {
   TextInputKeyPressEventData,
   View,
 } from 'react-native';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 export const OTP_LENGTH = 6;
 
@@ -24,6 +25,7 @@ function digitsOf(value: string): string[] {
 /** Six separate OTP cells — paste + backspace + auto-advance. */
 export function OtpBoxes({ value, onChange, disabled }: Props) {
   const refs = useRef<Array<TextInput | null>>([]);
+  const styles = useThemedStyles(otpStyles);
   const digits = digitsOf(value);
 
   function commit(next: string[]) {
@@ -65,7 +67,7 @@ export function OtpBoxes({ value, onChange, disabled }: Props) {
   }
 
   return (
-    <View style={styles.row} accessibilityRole="none">
+    <View style={staticStyles.row} accessibilityRole="none">
       {digits.map((digit, index) => (
         <TextInput
           key={index}
@@ -98,24 +100,31 @@ export function OtpBoxes({ value, onChange, disabled }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 8,
     marginBottom: 14,
   },
-  box: {
-    flex: 1,
-    minWidth: 42,
-    height: 52,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function otpStyles(c: ThemeColors) {
+  return {
+    box: {
+      flex: 1,
+      minWidth: 42,
+      height: 52,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      color: c.text,
+      fontSize: 22,
+      fontWeight: '700' as const,
+      textAlign: 'center' as const,
+    },
+  };
+}

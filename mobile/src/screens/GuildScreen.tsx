@@ -14,8 +14,10 @@ import {
 import { MainStackParamList } from '../navigation/types';
 import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
 import { Screen } from '../brand/Screen';
-import { colors } from '../theme';
-import { sharedStyles } from './shared';
+import { ThemeColors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
+import { useSharedStyles } from './shared';
 import { CopyButton } from './profile/CopyButton';
 import { InviteQr } from '../ui/InviteQr';
 import { MarqueeText } from '../ui/MarqueeText';
@@ -60,7 +62,10 @@ const GUILD_TABS = [
  * (BookStage page-turn was remounting lists and killing scroll height).
  */
 export function GuildScreen({ navigation }: Props) {
+  const shared = useSharedStyles();
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(guildStyles);
   const [detail, setDetail] = useState<GuildDetail | null>(null);
   const [guildTab, setGuildTab] = useState<GuildTab>('members');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -144,7 +149,7 @@ export function GuildScreen({ navigation }: Props) {
   return (
     <Screen>
       <FlatList<GuildMemberRow | GuildRosterMember>
-        style={styles.list}
+        style={staticStyles.list}
         data={listData}
         keyExtractor={(item) => item.userId}
         refreshControl={
@@ -154,10 +159,10 @@ export function GuildScreen({ navigation }: Props) {
             tintColor={colors.chrome}
           />
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={staticStyles.listContent}
         ListHeaderComponent={
           <View>
-            <Text style={sharedStyles.title}>{detail?.name ?? 'Guild'}</Text>
+            <Text style={shared.title}>{detail?.name ?? 'Guild'}</Text>
             {detail ? (
               <Text style={styles.summary}>
                 {GUILD_ROLE_LABEL[detail.myGuildRole]} · {members.length} member
@@ -165,7 +170,7 @@ export function GuildScreen({ navigation }: Props) {
               </Text>
             ) : null}
             {detail?.referralLink ? (
-              <View style={styles.inviteCard}>
+              <View style={staticStyles.inviteCard}>
                 <Text style={styles.inviteTitle}>Invite & Referral</Text>
                 <Text style={styles.inviteHint}>
                   Share your link (or guild code). People join the guild only.
@@ -179,7 +184,7 @@ export function GuildScreen({ navigation }: Props) {
                 <InviteQr value={detail.referralLink} label="Scan to join guild" />
                 {detail.orgCode ? (
                   <View style={styles.inviteRow}>
-                    <View style={styles.inviteTextCol}>
+                    <View style={staticStyles.inviteTextCol}>
                       <Text style={styles.inviteLabel}>Guild Code</Text>
                       <Text style={styles.inviteValue}>{detail.orgCode}</Text>
                     </View>
@@ -187,7 +192,7 @@ export function GuildScreen({ navigation }: Props) {
                   </View>
                 ) : null}
                 <View style={styles.inviteRow}>
-                  <View style={styles.inviteTextCol}>
+                  <View style={staticStyles.inviteTextCol}>
                     <Text style={styles.inviteLabel}>Invite Link</Text>
                     <MarqueeText
                       autoPlay
@@ -294,16 +299,23 @@ function RosterActionIcons({
   onRemove: () => void;
   name: string;
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(guildStyles);
+
   // Only render actions that apply — a permanently-disabled twin (e.g. "+"
   // on the Roster tab) used to sit next to the real control at 0.35 opacity
   // and looked like both icons were "missing" to the naked eye.
   if (!canAdd && !canRemove) return null;
 
   return (
-    <View style={styles.iconActions}>
+    <View style={staticStyles.iconActions}>
       {canAdd ? (
         <SoftPressable
-          style={[styles.iconBtn, styles.iconBtnAdd, busy && styles.iconBtnDisabled]}
+          style={[
+            staticStyles.iconBtn,
+            styles.iconBtnAdd,
+            busy && staticStyles.iconBtnDisabled,
+          ]}
           disabled={busy}
           onPress={onAdd}
           pressScale={0.92}
@@ -317,9 +329,9 @@ function RosterActionIcons({
       {canRemove ? (
         <SoftPressable
           style={[
-            styles.iconBtn,
+            staticStyles.iconBtn,
             styles.iconBtnRemove,
-            busy && styles.iconBtnDisabled,
+            busy && staticStyles.iconBtnDisabled,
           ]}
           disabled={busy}
           onPress={onRemove}
@@ -352,14 +364,15 @@ function MemberRow({
   onRemove: () => void;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(guildStyles);
   const canAdd = canManage && !member.onRoster;
   const canRemove =
     canManage && member.onRoster && !member.isOwner && member.userId !== selfId;
   return (
-    <View style={styles.row}>
-      <View style={styles.rosterMain}>
+    <View style={staticStyles.row}>
+      <View style={staticStyles.rosterMain}>
         <SoftPressable
-          style={styles.rosterTextCol}
+          style={staticStyles.rosterTextCol}
           onPress={onPress}
           pressScale={0.99}
           accessibilityRole="button"
@@ -405,12 +418,13 @@ function RosterRow({
   onRemove: () => void;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(guildStyles);
   const canRemove = canManage && !member.isOwner && member.userId !== selfId;
   return (
-    <View style={styles.row}>
-      <View style={styles.rosterMain}>
+    <View style={staticStyles.row}>
+      <View style={staticStyles.rosterMain}>
         <SoftPressable
-          style={styles.rosterTextCol}
+          style={staticStyles.rosterTextCol}
           onPress={onPress}
           pressScale={0.99}
           accessibilityRole="button"
@@ -438,23 +452,10 @@ function RosterRow({
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   list: { flex: 1, minWidth: 0, backgroundColor: 'transparent' },
   listContent: { paddingHorizontal: 16, paddingBottom: 40 },
-  summary: {
-    color: colors.textMuted,
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: -12,
-    marginBottom: 20,
-  },
-  manageHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: 12,
-    marginTop: -4,
-  },
   inviteCard: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -463,25 +464,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: 'rgba(255,255,255,0.045)',
   },
-  inviteTitle: { color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 4 },
-  inviteHint: { color: colors.textMuted, fontSize: 12, marginBottom: 8, lineHeight: 16 },
-  inviteCount: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  inviteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
   inviteTextCol: { flex: 1 },
-  inviteLabel: { color: colors.textMuted, fontSize: 12 },
-  inviteValue: { color: colors.text, fontWeight: '600', marginTop: 2 },
   row: {
     paddingVertical: 13,
     paddingHorizontal: 14,
@@ -493,8 +476,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
     maxWidth: '100%',
   },
-  rowName: { fontSize: 16, color: colors.text, fontWeight: '700' },
-  rowMeta: { fontSize: 12, color: colors.textMuted },
   rosterMain: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -511,14 +492,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Chrome / danger fills so the glyph reads clearly on the dark card —
-  // the old translucent chip + dim glyph was nearly invisible.
-  iconBtnAdd: {
-    backgroundColor: colors.chrome,
-  },
-  iconBtnRemove: {
-    backgroundColor: colors.danger,
-  },
   iconBtnDisabled: { opacity: 0.55 },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: 16 },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function guildStyles(c: ThemeColors) {
+  return {
+    summary: {
+      color: c.textMuted,
+      fontSize: 13,
+      textAlign: 'center' as const,
+      marginTop: -12,
+      marginBottom: 20,
+    },
+    manageHint: {
+      color: c.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+      marginBottom: 12,
+      marginTop: -4,
+    },
+    inviteTitle: { color: c.text, fontWeight: '700' as const, fontSize: 16, marginBottom: 4 },
+    inviteHint: { color: c.textMuted, fontSize: 12, marginBottom: 8, lineHeight: 16 },
+    inviteCount: {
+      color: c.text,
+      fontSize: 13,
+      fontWeight: '700' as const,
+      marginBottom: 12,
+    },
+    inviteRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingVertical: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+    },
+    inviteLabel: { color: c.textMuted, fontSize: 12 },
+    inviteValue: { color: c.text, fontWeight: '600' as const, marginTop: 2 },
+    rowName: { fontSize: 16, color: c.text, fontWeight: '700' as const },
+    rowMeta: { fontSize: 12, color: c.textMuted },
+    // Chrome / danger fills so the glyph reads clearly on the dark card —
+    // the old translucent chip + dim glyph was nearly invisible.
+    iconBtnAdd: {
+      backgroundColor: c.chrome,
+    },
+    iconBtnRemove: {
+      backgroundColor: c.danger,
+    },
+    empty: { color: c.textMuted, textAlign: 'center' as const, marginTop: 16 },
+  };
+}

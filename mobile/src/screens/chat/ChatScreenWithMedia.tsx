@@ -5,7 +5,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
 import { SoftPressable } from '../../ui/SoftPressable';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import { MainStackParamList } from '../../navigation/types';
 
 interface Props {
@@ -24,6 +25,7 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList, 'Chat'>>();
   const [mediaOpen, setMediaOpen] = useState(false);
+  const styles = useThemedStyles(mediaBtnStyles);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -39,10 +41,10 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
         </SoftPressable>
       ),
     });
-  }, [navigation]);
+  }, [navigation, styles]);
 
   return (
-    <View style={styles.root}>
+    <View style={staticStyles.root}>
       {/* Remount when the channel changes so socket + list layout stay clean. */}
       <ChatScreen key={channelKey} channelKey={channelKey} />
       <ChatMediaModal
@@ -55,12 +57,19 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   root: { flex: 1, minWidth: 0 },
-  mediaBtnText: {
-    color: colors.chrome,
-    fontWeight: '700',
-    fontSize: 14,
-    paddingHorizontal: 12,
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function mediaBtnStyles(c: ThemeColors) {
+  return {
+    mediaBtnText: {
+      color: c.chrome,
+      fontWeight: '700' as const,
+      fontSize: 14,
+      paddingHorizontal: 12,
+    },
+  };
+}

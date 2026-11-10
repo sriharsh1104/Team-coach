@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { resolveMediaUrl } from '../../api/client';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SoftPressable } from '../../ui/SoftPressable';
 
 type Props = {
@@ -21,13 +22,14 @@ export function ChannelAvatar({
   previewable = true,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const styles = useThemedStyles(avatarStyles);
   const resolved = resolveMediaUrl(uri);
   const radius = size / 2;
 
   const body = (
     <View
       style={[
-        styles.circle,
+        staticStyles.circle,
         {
           width: size,
           height: size,
@@ -38,7 +40,7 @@ export function ChannelAvatar({
       {resolved ? (
         <Image
           source={{ uri: resolved }}
-          style={styles.img}
+          style={staticStyles.img}
           contentFit="cover"
         />
       ) : (
@@ -70,18 +72,18 @@ export function ChannelAvatar({
         animationType="fade"
         onRequestClose={() => setOpen(false)}
       >
-        <View style={styles.backdrop}>
+        <View style={staticStyles.backdrop}>
           <Pressable
-            style={styles.closeBtn}
+            style={staticStyles.closeBtn}
             onPress={() => setOpen(false)}
             accessibilityLabel="Close"
             hitSlop={12}
           >
-            <Text style={styles.closeIcon}>✕</Text>
+            <Text style={staticStyles.closeIcon}>✕</Text>
           </Pressable>
           <Image
             source={{ uri: resolved }}
-            style={styles.full}
+            style={staticStyles.full}
             contentFit="contain"
           />
         </View>
@@ -90,7 +92,8 @@ export function ChannelAvatar({
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   circle: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -100,7 +103,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
   },
   img: { width: '100%', height: '100%' },
-  fallback: { color: colors.chrome, fontWeight: '700' },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.92)',
@@ -122,3 +124,10 @@ const styles = StyleSheet.create({
   closeIcon: { color: '#fff', fontSize: 18, fontWeight: '700' },
   full: { width: '100%', height: '80%' },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function avatarStyles(c: ThemeColors) {
+  return {
+    fallback: { color: c.chrome, fontWeight: '700' as const },
+  };
+}

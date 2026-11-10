@@ -14,7 +14,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as chatApi from '../../api/chat';
 import { ChatChannelMeta } from '../../api/types';
 import { resolveMediaUrl } from '../../api/client';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useTheme } from '../../theme/ThemeContext';
 import { emitToast } from '../../ui/toastBus';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
 
@@ -44,6 +46,8 @@ export function ChatSettingsSheet({
   onStarredFilter,
   onMetaChanged,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(chatSettingsStyles);
   const [meta, setMeta] = useState<ChatChannelMeta | null>(null);
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
@@ -163,25 +167,25 @@ export function ChatSettingsSheet({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => undefined}>
+      <Pressable style={staticStyles.backdrop} onPress={onClose}>
+        <Pressable style={staticStyles.sheet} onPress={() => undefined}>
           <Text style={styles.title}>Chat settings</Text>
           {busy ? (
             <ActivityIndicator color={colors.chrome} style={{ marginVertical: 8 }} />
           ) : null}
 
-          <Pressable style={styles.row} onPress={onStarredFilter}>
-            <Text style={styles.rowIcon}>★</Text>
+          <Pressable style={staticStyles.row} onPress={onStarredFilter}>
+            <Text style={staticStyles.rowIcon}>★</Text>
             <Text style={styles.rowLabel}>Starred messages</Text>
           </Pressable>
 
-          <Pressable style={styles.row} onPress={clearChat}>
-            <Text style={styles.rowIcon}>⌫</Text>
-            <Text style={[styles.rowLabel, styles.danger]}>Clear chat</Text>
+          <Pressable style={staticStyles.row} onPress={clearChat}>
+            <Text style={staticStyles.rowIcon}>⌫</Text>
+            <Text style={[styles.rowLabel, staticStyles.danger]}>Clear chat</Text>
           </Pressable>
 
           <Text style={styles.section}>Disappearing messages</Text>
-          <View style={styles.chips}>
+          <View style={staticStyles.chips}>
             {DISAPPEAR_OPTIONS.map((opt) => {
               const active =
                 (opt.sec == null && !meta?.disappearAfterSec) ||
@@ -189,7 +193,7 @@ export function ChatSettingsSheet({
               return (
                 <Pressable
                   key={opt.label}
-                  style={[styles.chip, active && styles.chipOn]}
+                  style={[staticStyles.chip, active && styles.chipOn]}
                   onPress={() => void setDisappear(opt.sec)}
                 >
                   <Text style={[styles.chipText, active && styles.chipTextOn]}>
@@ -212,17 +216,17 @@ export function ChatSettingsSheet({
                 maxLength={500}
                 multiline
               />
-              <Pressable style={styles.saveBtn} onPress={() => void saveDescription()}>
+              <Pressable style={staticStyles.saveBtn} onPress={() => void saveDescription()}>
                 <Text style={styles.saveText}>Save description</Text>
               </Pressable>
 
               <Text style={styles.section}>Group photo</Text>
-              <Pressable style={styles.avatarRow} onPress={() => void pickGroupAvatar()}>
-                <View style={styles.avatar}>
+              <Pressable style={staticStyles.avatarRow} onPress={() => void pickGroupAvatar()}>
+                <View style={staticStyles.avatar}>
                   {avatarUri ? (
-                    <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+                    <Image source={{ uri: avatarUri }} style={staticStyles.avatarImg} />
                   ) : (
-                    <Text style={styles.avatarPlaceholder}>📷</Text>
+                    <Text style={staticStyles.avatarPlaceholder}>📷</Text>
                   )}
                 </View>
                 <Text style={styles.rowLabel}>Change group photo</Text>
@@ -230,7 +234,7 @@ export function ChatSettingsSheet({
             </>
           ) : null}
 
-          <Pressable style={styles.closeBtn} onPress={onClose}>
+          <Pressable style={staticStyles.closeBtn} onPress={onClose}>
             <Text style={styles.closeText}>Close</Text>
           </Pressable>
         </Pressable>
@@ -239,7 +243,8 @@ export function ChatSettingsSheet({
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -254,21 +259,6 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     maxHeight: '85%',
   },
-  title: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 16,
-    marginBottom: 12,
-  },
-  section: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginTop: 16,
-    marginBottom: 8,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -278,7 +268,6 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   rowIcon: { fontSize: 18, width: 24, textAlign: 'center' },
-  rowLabel: { color: colors.text, fontSize: 15, fontWeight: '600' },
   danger: { color: '#e57373' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
@@ -289,24 +278,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
-  chipOn: {
-    backgroundColor: colors.chrome,
-    borderColor: colors.chrome,
-  },
-  chipText: { color: colors.text, fontSize: 13, fontWeight: '600' },
-  chipTextOn: { color: colors.chromeInk },
-  input: {
-    minHeight: 72,
-    borderRadius: 10,
-    padding: 12,
-    color: colors.text,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    textAlignVertical: 'top',
-  },
   saveBtn: { marginTop: 8, alignSelf: 'flex-start', paddingVertical: 8 },
-  saveText: { color: colors.link, fontWeight: '700' },
   avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: {
     width: 56,
@@ -320,5 +292,44 @@ const styles = StyleSheet.create({
   avatarImg: { width: '100%', height: '100%' },
   avatarPlaceholder: { fontSize: 22 },
   closeBtn: { alignItems: 'center', paddingTop: 18 },
-  closeText: { color: colors.link, fontWeight: '700' },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function chatSettingsStyles(c: ThemeColors) {
+  return {
+    title: {
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 16,
+      marginBottom: 12,
+    },
+    section: {
+      color: c.textMuted,
+      fontSize: 11,
+      fontWeight: '700' as const,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.6,
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    rowLabel: { color: c.text, fontSize: 15, fontWeight: '600' as const },
+    chipOn: {
+      backgroundColor: c.chrome,
+      borderColor: c.chrome,
+    },
+    chipText: { color: c.text, fontSize: 13, fontWeight: '600' as const },
+    chipTextOn: { color: c.chromeInk },
+    input: {
+      minHeight: 72,
+      borderRadius: 10,
+      padding: 12,
+      color: c.text,
+      backgroundColor: 'rgba(255,255,255,0.06)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+      textAlignVertical: 'top' as const,
+    },
+    saveText: { color: c.link, fontWeight: '700' as const },
+    closeText: { color: c.link, fontWeight: '700' as const },
+  };
+}

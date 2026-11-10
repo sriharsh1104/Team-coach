@@ -14,7 +14,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { VoiceChannelController } from '../../voice/types';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
-import { sharedStyles } from '../shared';
+import { useSharedStyles } from '../shared';
 
 type VoiceHooks = {
   useHostedVoiceChannel: typeof import('../../voice/useHostedVoiceChannel').useHostedVoiceChannel;
@@ -66,6 +66,33 @@ function loadVoiceHooks(mode: VoiceConfig['mode']): VoiceHooks {
   };
 }
 
+/**
+ * Function-component shell so the fallback can subscribe to the live theme —
+ * VoiceErrorBoundary is a class component and can't call hooks itself.
+ */
+function VoiceErrorFallback({
+  error,
+  onRetry,
+}: {
+  error: string;
+  onRetry: () => void;
+}) {
+  const shared = useSharedStyles();
+
+  return (
+    <Screen>
+      <View style={shared.container}>
+        <Text style={shared.error}>{error}</Text>
+        <Pressable style={styles.joinButton} onPress={onRetry}>
+          <ButtonLabel icon="refresh" color="#fff">
+            Try Again
+          </ButtonLabel>
+        </Pressable>
+      </View>
+    </Screen>
+  );
+}
+
 class VoiceErrorBoundary extends Component<
   { children: ReactNode; onRetry: () => void },
   { error: string | null }
@@ -83,22 +110,13 @@ class VoiceErrorBoundary extends Component<
   render() {
     if (this.state.error) {
       return (
-        <Screen>
-          <View style={sharedStyles.container}>
-            <Text style={sharedStyles.error}>{this.state.error}</Text>
-            <Pressable
-              style={styles.joinButton}
-              onPress={() => {
-                this.setState({ error: null });
-                this.props.onRetry();
-              }}
-            >
-              <ButtonLabel icon="refresh" color="#fff">
-                Try Again
-              </ButtonLabel>
-            </Pressable>
-          </View>
-        </Screen>
+        <VoiceErrorFallback
+          error={this.state.error}
+          onRetry={() => {
+            this.setState({ error: null });
+            this.props.onRetry();
+          }}
+        />
       );
     }
     return this.props.children;
@@ -252,6 +270,7 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
 }
 
 function VoiceChannelScreenInner() {
+  const shared = useSharedStyles();
   const [config, setConfig] = useState<VoiceConfig | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -296,8 +315,8 @@ function VoiceChannelScreenInner() {
   if (nativeError || error) {
     return (
       <Screen>
-        <View style={sharedStyles.container}>
-          <Text style={sharedStyles.error}>{nativeError || error}</Text>
+        <View style={shared.container}>
+          <Text style={shared.error}>{nativeError || error}</Text>
         </View>
       </Screen>
     );
@@ -306,7 +325,7 @@ function VoiceChannelScreenInner() {
   if (!config || !authToken || !hooks) {
     return (
       <Screen>
-        <View style={sharedStyles.container}>
+        <View style={shared.container}>
           <ActivityIndicator color="#c9ccd1" />
         </View>
       </Screen>

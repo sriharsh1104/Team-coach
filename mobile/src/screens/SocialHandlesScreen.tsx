@@ -15,7 +15,8 @@ import { Screen } from '../brand/Screen';
 import { SoftPressable } from '../ui/SoftPressable';
 import { MarqueeText } from '../ui/MarqueeText';
 import { CopyButton } from './profile/CopyButton';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import {
   openSocialUrl,
   SocialOpenPlatform,
@@ -108,22 +109,23 @@ type FullscreenQr = {
 };
 
 export function SocialHandlesScreen(_props: Props) {
+  const styles = useThemedStyles(socialHandlesStyles);
   const [fullscreenQr, setFullscreenQr] = useState<FullscreenQr | null>(null);
 
   return (
     <Screen>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
+        style={staticStyles.scroll}
+        contentContainerStyle={staticStyles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.contactList}>
+        <View style={staticStyles.contactList}>
           {SOCIAL_CONTACTS.map((contact) => {
             const filled = !!contact.value.trim();
             return (
-              <View key={contact.key} style={styles.contactRow}>
-                <View style={styles.contactMain}>
+              <View key={contact.key} style={staticStyles.contactRow}>
+                <View style={staticStyles.contactMain}>
                   <SoftPressable
                     onPress={() => openContact(contact)}
                     disabled={!filled}
@@ -158,17 +160,17 @@ export function SocialHandlesScreen(_props: Props) {
                     accessibilityRole="button"
                     accessibilityLabel={`View ${contact.label} QR full screen`}
                     pressScale={0.94}
-                    style={styles.qrChip}
+                    style={staticStyles.qrChip}
                   >
                     <Image
                       source={contact.qr.source}
-                      style={styles.qrChipImage}
+                      style={staticStyles.qrChipImage}
                       resizeMode="cover"
                       accessibilityLabel={`${contact.label} QR preview`}
                     />
                   </SoftPressable>
                 ) : null}
-                <View style={styles.copySlot}>
+                <View style={staticStyles.copySlot}>
                   <CopyButton value={contact.value} />
                 </View>
               </View>
@@ -184,20 +186,20 @@ export function SocialHandlesScreen(_props: Props) {
         onRequestClose={() => setFullscreenQr(null)}
       >
         <Pressable
-          style={styles.qrModalBackdrop}
+          style={staticStyles.qrModalBackdrop}
           onPress={() => setFullscreenQr(null)}
           accessibilityRole="button"
           accessibilityLabel="Close QR"
         >
-          <Pressable style={styles.qrModalSheet} onPress={() => undefined}>
+          <Pressable style={staticStyles.qrModalSheet} onPress={() => undefined}>
             {fullscreenQr ? (
               <>
                 <Text style={styles.qrModalLabel}>{fullscreenQr.label}</Text>
                 <Text style={styles.qrModalTitle}>{fullscreenQr.title}</Text>
-                <View style={styles.qrModalFrame}>
+                <View style={staticStyles.qrModalFrame}>
                   <Image
                     source={fullscreenQr.source}
-                    style={styles.qrModalImage}
+                    style={staticStyles.qrModalImage}
                     resizeMode="contain"
                     accessibilityLabel={`${fullscreenQr.label} QR full screen`}
                   />
@@ -214,7 +216,7 @@ export function SocialHandlesScreen(_props: Props) {
                 </SoftPressable>
                 <SoftPressable
                   onPress={() => setFullscreenQr(null)}
-                  style={styles.qrModalClose}
+                  style={staticStyles.qrModalClose}
                   accessibilityRole="button"
                   accessibilityLabel="Close"
                   pressScale={0.97}
@@ -230,7 +232,8 @@ export function SocialHandlesScreen(_props: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 48 },
   contactList: { gap: 10 },
@@ -271,24 +274,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  contactLabel: {
-    color: colors.textDim,
-    fontWeight: '700',
-    fontSize: 11,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  contactValue: {
-    color: colors.text,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  contactEmpty: {
-    color: colors.textDim,
-    fontStyle: 'italic',
-    fontSize: 13,
-  },
   qrModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.88)',
@@ -301,21 +286,6 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     alignItems: 'center',
   },
-  qrModalLabel: {
-    color: colors.textDim,
-    fontWeight: '700',
-    fontSize: 12,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  qrModalTitle: {
-    color: colors.text,
-    fontWeight: '800',
-    fontSize: 20,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
   qrModalFrame: {
     width: '100%',
     aspectRatio: 1,
@@ -326,21 +296,60 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   qrModalImage: { width: '100%', height: '100%' },
-  qrModalLink: {
-    marginTop: 14,
-    color: colors.link,
-    fontWeight: '600',
-    fontSize: 13,
-    textAlign: 'center',
-  },
   qrModalClose: {
     marginTop: 12,
     paddingHorizontal: 24,
     paddingVertical: 12,
   },
-  qrModalCloseText: {
-    color: colors.link,
-    fontWeight: '700',
-    fontSize: 16,
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function socialHandlesStyles(c: ThemeColors) {
+  return {
+    contactLabel: {
+      color: c.textDim,
+      fontWeight: '700' as const,
+      fontSize: 11,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase' as const,
+      marginBottom: 4,
+    },
+    contactValue: {
+      color: c.text,
+      fontWeight: '600' as const,
+      fontSize: 14,
+    },
+    contactEmpty: {
+      color: c.textDim,
+      fontStyle: 'italic' as const,
+      fontSize: 13,
+    },
+    qrModalLabel: {
+      color: c.textDim,
+      fontWeight: '700' as const,
+      fontSize: 12,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase' as const,
+      marginBottom: 4,
+    },
+    qrModalTitle: {
+      color: c.text,
+      fontWeight: '800' as const,
+      fontSize: 20,
+      marginBottom: 16,
+      textAlign: 'center' as const,
+    },
+    qrModalLink: {
+      marginTop: 14,
+      color: c.link,
+      fontWeight: '600' as const,
+      fontSize: 13,
+      textAlign: 'center' as const,
+    },
+    qrModalCloseText: {
+      color: c.link,
+      fontWeight: '700' as const,
+      fontSize: 16,
+    },
+  };
+}

@@ -5,7 +5,8 @@ import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { BookStage, useBookTabs } from '../ui/BookTabs';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'RuleBook'>;
 
@@ -217,13 +218,15 @@ function SectionHeader({
   title: string;
   countLabel: string;
 }) {
+  const styles = useThemedStyles(ruleBookStyles);
+
   return (
-    <View style={styles.sectionHeader}>
-      <View style={styles.sectionHeaderText}>
+    <View style={staticStyles.sectionHeader}>
+      <View style={staticStyles.sectionHeaderText}>
         <Text style={styles.partLabel}>{eyebrow}</Text>
         <Text style={styles.partTitle}>{title}</Text>
       </View>
-      <View style={styles.countPill}>
+      <View style={staticStyles.countPill}>
         <Text style={styles.countPillText}>{countLabel}</Text>
       </View>
     </View>
@@ -231,19 +234,21 @@ function SectionHeader({
 }
 
 function RuleList({ rules }: { rules: Rule[] }) {
+  const styles = useThemedStyles(ruleBookStyles);
+
   return (
-    <View style={styles.ruleList}>
+    <View style={staticStyles.ruleList}>
       {rules.map((rule) => (
-        <View key={rule.number} style={styles.ruleCard}>
-          <View style={styles.ruleHeader}>
-            <View style={styles.ruleNum}>
+        <View key={rule.number} style={staticStyles.ruleCard}>
+          <View style={staticStyles.ruleHeader}>
+            <View style={staticStyles.ruleNum}>
               <Text style={styles.ruleNumText}>{rule.number}</Text>
             </View>
             <Text style={styles.ruleTitle}>{rule.title}</Text>
           </View>
           <Text style={styles.ruleBody}>{rule.body}</Text>
           {rule.bullets?.map((item) => (
-            <View key={item} style={styles.bulletRow}>
+            <View key={item} style={staticStyles.bulletRow}>
               <Text style={styles.bullet}>•</Text>
               <Text style={styles.bulletText}>{item}</Text>
             </View>
@@ -256,13 +261,14 @@ function RuleList({ rules }: { rules: Rule[] }) {
 }
 
 export function RuleBookScreen(_props: Props) {
+  const styles = useThemedStyles(ruleBookStyles);
   const { tab, openTab, turn } = useBookTabs(RULE_TAB_IDS, 'mindset');
 
   return (
     <Screen>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
+        style={staticStyles.scroll}
+        contentContainerStyle={staticStyles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -309,14 +315,14 @@ export function RuleBookScreen(_props: Props) {
                   title="Final Team Principle"
                   countLabel="1 focus"
                 />
-                <View style={styles.principleCard}>
+                <View style={staticStyles.principleCard}>
                   {FINAL_PRINCIPLE_LINES.map((line, index) => (
                     <View
                       key={line}
                       style={[
-                        styles.principleRow,
+                        staticStyles.principleRow,
                         index === FINAL_PRINCIPLE_LINES.length - 1 &&
-                          styles.principleRowLast,
+                          staticStyles.principleRowLast,
                       ]}
                     >
                       <Text style={styles.principleLine}>{line}</Text>
@@ -332,15 +338,10 @@ export function RuleBookScreen(_props: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 48 },
-  subtitle: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -349,20 +350,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionHeaderText: { flex: 1, minWidth: 0 },
-  partLabel: {
-    color: colors.chrome,
-    fontWeight: '700',
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  partTitle: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 20,
-    letterSpacing: -0.3,
-  },
   countPill: {
     paddingVertical: 6,
     paddingHorizontal: 10,
@@ -370,11 +357,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(201,204,209,0.14)',
     borderWidth: 1,
     borderColor: 'rgba(201,204,209,0.22)',
-  },
-  countPillText: {
-    color: colors.chrome,
-    fontWeight: '700',
-    fontSize: 11,
   },
   ruleList: { gap: 10 },
   ruleCard: {
@@ -398,43 +380,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(201,204,209,0.16)',
   },
-  ruleNumText: {
-    color: colors.chrome,
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  ruleTitle: {
-    flex: 1,
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 15,
-    lineHeight: 22,
-    paddingTop: 4,
-  },
-  ruleBody: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 22,
-  },
   bulletRow: {
     flexDirection: 'row',
     gap: 8,
     marginTop: 8,
     paddingRight: 4,
-  },
-  bullet: { color: colors.chrome, fontSize: 14, lineHeight: 21 },
-  bulletText: {
-    flex: 1,
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 21,
-  },
-  note: {
-    marginTop: 10,
-    color: colors.textDim,
-    fontSize: 12,
-    lineHeight: 18,
-    fontStyle: 'italic',
   },
   principleCard: {
     borderRadius: 16,
@@ -450,10 +400,73 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   principleRowLast: { borderBottomWidth: 0 },
-  principleLine: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 23,
-    fontWeight: '600',
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function ruleBookStyles(c: ThemeColors) {
+  return {
+    subtitle: {
+      color: c.textMuted,
+      fontSize: 14,
+      lineHeight: 20,
+      marginBottom: 12,
+    },
+    partLabel: {
+      color: c.chrome,
+      fontWeight: '700' as const,
+      fontSize: 11,
+      letterSpacing: 1,
+      textTransform: 'uppercase' as const,
+      marginBottom: 4,
+    },
+    partTitle: {
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 20,
+      letterSpacing: -0.3,
+    },
+    countPillText: {
+      color: c.chrome,
+      fontWeight: '700' as const,
+      fontSize: 11,
+    },
+    ruleNumText: {
+      color: c.chrome,
+      fontWeight: '800' as const,
+      fontSize: 13,
+    },
+    ruleTitle: {
+      flex: 1,
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 15,
+      lineHeight: 22,
+      paddingTop: 4,
+    },
+    ruleBody: {
+      color: c.textMuted,
+      fontSize: 14,
+      lineHeight: 22,
+    },
+    bullet: { color: c.chrome, fontSize: 14, lineHeight: 21 },
+    bulletText: {
+      flex: 1,
+      color: c.textMuted,
+      fontSize: 13,
+      lineHeight: 21,
+    },
+    note: {
+      marginTop: 10,
+      color: c.textDim,
+      fontSize: 12,
+      lineHeight: 18,
+      fontStyle: 'italic' as const,
+    },
+    principleLine: {
+      color: c.text,
+      fontSize: 15,
+      lineHeight: 23,
+      fontWeight: '600' as const,
+    },
+  };
+}

@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { GoogleSignInButton } from '../auth/GoogleSignInButton';
 import { BrandMark } from '../brand/BrandMark';
 import { AuthStackParamList } from '../navigation/types';
-import { authStyles } from './shared';
+import { useSharedStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { AuthBackButton } from '../ui/AuthBackButton';
 import { ButtonLabel } from '../ui/ButtonLabel';
@@ -20,6 +20,7 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Signup'>;
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 export function SignupScreen({ navigation }: Props) {
+  const shared = useSharedStyles();
   const { signup } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -64,16 +65,16 @@ export function SignupScreen({ navigation }: Props) {
     <FormScreen>
       <AuthBackButton onPress={() => navigation.navigate('Login')} />
       <BrandMark />
-      <Text style={authStyles.title}>Sign up</Text>
+      <Text style={shared.title}>Sign up</Text>
       <TextInput
-        style={authStyles.input}
+        style={shared.input}
         placeholder="Full name"
         placeholderTextColor="#8b8f97"
         value={name}
         onChangeText={setName}
       />
       <TextInput
-        style={authStyles.input}
+        style={shared.input}
         placeholder="Email"
         placeholderTextColor="#8b8f97"
         autoCapitalize="none"
@@ -98,8 +99,8 @@ export function SignupScreen({ navigation }: Props) {
       ) : null}
       <SoftPressable
         style={[
-          authStyles.button,
-          (isSubmitting || !canSubmit) && authStyles.buttonDisabled,
+          shared.button,
+          (isSubmitting || !canSubmit) && shared.buttonDisabled,
         ]}
         disabled={isSubmitting || !canSubmit}
         onPress={onSubmit}
@@ -108,7 +109,7 @@ export function SignupScreen({ navigation }: Props) {
         <ButtonLabel icon="person-add">Sign Up</ButtonLabel>
       </SoftPressable>
       <GoogleSignInButton />
-      <Text style={authStyles.link} onPress={() => navigation.navigate('Login')}>
+      <Text style={shared.link} onPress={() => navigation.navigate('Login')}>
         Already have an account? Log in
       </Text>
     </FormScreen>

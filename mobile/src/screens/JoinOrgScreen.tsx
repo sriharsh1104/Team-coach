@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
 import { OrgSetupStackParamList } from '../navigation/types';
-import { authStyles } from './shared';
+import { useSharedStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
@@ -24,6 +24,7 @@ function isRosterInvite(raw: string): boolean {
 }
 
 export function JoinOrgScreen({ navigation }: Props) {
+  const shared = useSharedStyles();
   const { setGuild, setOrg, refreshOrg } = useAuth();
   const [orgCode, setOrgCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,13 +100,13 @@ export function JoinOrgScreen({ navigation }: Props) {
   return (
     <FormScreen>
       <AuthBackButton onPress={() => navigation.navigate('OrgChoice')} />
-      <Text style={authStyles.title}>Join with invite</Text>
+      <Text style={shared.title}>Join with invite</Text>
       <Text style={{ textAlign: 'center', color: '#9aa0a6', marginBottom: 16 }}>
         Paste a guild or roster invite link, or enter the matching code.
         Already registered users can join without signing up again.
       </Text>
       <TextInput
-        style={authStyles.input}
+        style={shared.input}
         placeholder="Code or invite link"
         placeholderTextColor="#8b8f97"
         autoCapitalize="none"
@@ -114,8 +115,8 @@ export function JoinOrgScreen({ navigation }: Props) {
       />
       <SoftPressable
         style={[
-          authStyles.button,
-          (isSubmitting || !orgCode) && authStyles.buttonDisabled,
+          shared.button,
+          (isSubmitting || !orgCode) && shared.buttonDisabled,
         ]}
         disabled={isSubmitting || !orgCode}
         onPress={onSubmit}

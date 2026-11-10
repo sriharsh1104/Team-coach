@@ -9,7 +9,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { ScheduleDateTimeField } from '../../ui/ScheduleDateTimeField';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useTheme } from '../../theme/ThemeContext';
 import * as chatApi from '../../api/chat';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
 import { emitToast } from '../../ui/toastBus';
@@ -23,6 +25,8 @@ type Props = {
 };
 
 export function ReminderComposer({ visible, channelKey, onClose }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(reminderComposerStyles);
   const [message, setMessage] = useState('');
   const [fireAt, setFireAt] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
@@ -56,8 +60,8 @@ export function ReminderComposer({ visible, channelKey, onClose }: Props) {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => undefined}>
+      <Pressable style={staticStyles.backdrop} onPress={onClose}>
+        <Pressable style={staticStyles.sheet} onPress={() => undefined}>
           <Text style={styles.title}>Set reminder</Text>
           <Text style={styles.hint}>
             You&apos;ll get a notification with this note (max {MAX_LEN} characters).
@@ -82,7 +86,7 @@ export function ReminderComposer({ visible, channelKey, onClose }: Props) {
           {busy ? (
             <ActivityIndicator color={colors.chrome} style={{ marginVertical: 12 }} />
           ) : (
-            <View style={styles.actions}>
+            <View style={staticStyles.actions}>
               <Pressable onPress={onClose} hitSlop={8}>
                 <Text style={styles.cancel}>Cancel</Text>
               </Pressable>
@@ -97,7 +101,8 @@ export function ReminderComposer({ visible, channelKey, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -110,34 +115,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 32,
   },
-  title: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 17,
-    marginBottom: 6,
-  },
-  hint: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-  input: {
-    borderRadius: 10,
-    padding: 12,
-    color: colors.text,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    fontSize: 15,
-  },
-  counter: {
-    color: colors.textDim,
-    fontSize: 11,
-    textAlign: 'right',
-    marginTop: 4,
-    marginBottom: 8,
-  },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -145,12 +122,46 @@ const styles = StyleSheet.create({
     gap: 16,
     marginTop: 16,
   },
-  cancel: { color: colors.textMuted, fontWeight: '600', fontSize: 15 },
-  saveBtn: {
-    backgroundColor: colors.chrome,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  saveText: { color: colors.chromeInk, fontWeight: '700', fontSize: 14 },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function reminderComposerStyles(c: ThemeColors) {
+  return {
+    title: {
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 17,
+      marginBottom: 6,
+    },
+    hint: {
+      color: c.textMuted,
+      fontSize: 13,
+      marginBottom: 12,
+      lineHeight: 18,
+    },
+    input: {
+      borderRadius: 10,
+      padding: 12,
+      color: c.text,
+      backgroundColor: 'rgba(255,255,255,0.06)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+      fontSize: 15,
+    },
+    counter: {
+      color: c.textDim,
+      fontSize: 11,
+      textAlign: 'right' as const,
+      marginTop: 4,
+      marginBottom: 8,
+    },
+    cancel: { color: c.textMuted, fontWeight: '600' as const, fontSize: 15 },
+    saveBtn: {
+      backgroundColor: c.chrome,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 10,
+    },
+    saveText: { color: c.chromeInk, fontWeight: '700' as const, fontSize: 14 },
+  };
+}

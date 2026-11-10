@@ -14,7 +14,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { SoftPressable } from './SoftPressable';
-import { colors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
+import { ThemeColors } from '../theme';
 
 const sacredLogo = require('../../assets/sacred-logo-transparent.png');
 
@@ -33,10 +35,10 @@ function QrPlate({
   const logoSize = Math.round(size * 0.34);
 
   return (
-    <View style={[styles.plate, { width: plate, height: plate }]}>
+    <View style={[staticStyles.plate, { width: plate, height: plate }]}>
       <Image
         source={sacredLogo}
-        style={styles.shadowLogo}
+        style={staticStyles.shadowLogo}
         resizeMode="contain"
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
@@ -70,6 +72,8 @@ export function InviteQr({
   size?: number;
 }) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(qrStyles);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const qrRef = useRef<QrSvgRef | null>(null);
@@ -103,7 +107,7 @@ export function InviteQr({
   }
 
   return (
-    <View style={styles.wrap}>
+    <View style={staticStyles.wrap}>
       <SoftPressable
         style={styles.card}
         onPress={() => setOpen(true)}
@@ -119,15 +123,15 @@ export function InviteQr({
         />
       </SoftPressable>
 
-      <View style={styles.meta}>
+      <View style={staticStyles.meta}>
         <Text style={styles.label}>{label}</Text>
         <SoftPressable
-          style={styles.iconBtn}
+          style={[staticStyles.iconBtn, { backgroundColor: colors.surface }]}
           onPress={() => void onDownload()}
           accessibilityLabel="Download QR"
           pressScale={0.94}
         >
-          <Ionicons name="download-outline" size={18} color={colors.text} />
+          <Ionicons name="download-outline" size={18} color={colors.icon} />
         </SoftPressable>
       </View>
 
@@ -143,16 +147,16 @@ export function InviteQr({
               onPress={() => setOpen(false)}
               hitSlop={12}
               accessibilityLabel="Back"
-              style={styles.modalIconBtn}
+              style={staticStyles.modalIconBtn}
             >
               <Ionicons name="chevron-back" size={26} color={colors.text} />
             </Pressable>
             <Text style={styles.modalTitle} numberOfLines={1}>
               {label}
             </Text>
-            <View style={styles.modalActions}>
+            <View style={staticStyles.modalActions}>
               <Pressable
-                style={styles.modalIconBtn}
+                style={staticStyles.modalIconBtn}
                 onPress={() => void onDownload()}
                 accessibilityLabel="Download QR"
               >
@@ -169,7 +173,7 @@ export function InviteQr({
             </View>
           </View>
 
-          <View style={styles.modalBody}>
+          <View style={staticStyles.modalBody}>
             <View style={styles.modalCard}>
               <QrPlate
                 value={value}
@@ -187,19 +191,15 @@ export function InviteQr({
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   wrap: { alignItems: 'center', gap: 10, marginBottom: 14 },
-  card: {
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: 'rgba(12,12,16,0.95)',
-  },
   plate: {
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
+    // Always white, regardless of app theme — the QR needs a guaranteed
+    // light backdrop behind its dark modules to stay scannable.
     backgroundColor: '#ffffff',
     overflow: 'hidden',
   },
@@ -215,37 +215,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  label: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
   iconBtn: {
     width: 32,
     height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  modalRoot: {
-    flex: 1,
-    backgroundColor: '#050507',
-  },
-  modalBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    zIndex: 5,
-  },
-  modalTitle: {
-    flex: 1,
-    color: colors.text,
-    fontWeight: '800',
-    fontSize: 17,
   },
   modalActions: {
     flexDirection: 'row',
@@ -258,14 +233,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalCloseBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.chrome,
-  },
   modalBody: {
     flex: 1,
     alignItems: 'center',
@@ -273,16 +240,73 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 16,
   },
-  modalCard: {
-    padding: 18,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: 'rgba(12,12,16,0.95)',
-  },
-  modalHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function qrStyles(c: ThemeColors) {
+  return {
+    card: {
+      padding: 16,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      shadowColor: '#000',
+      shadowOpacity: 0.16,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 4,
+    },
+    label: {
+      color: c.textMuted,
+      fontSize: 12,
+      fontWeight: '600' as const,
+      letterSpacing: 0.3,
+    },
+    modalRoot: {
+      flex: 1,
+      backgroundColor: c.bg,
+    },
+    modalBar: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+      zIndex: 5,
+    },
+    modalTitle: {
+      flex: 1,
+      color: c.text,
+      fontWeight: '800' as const,
+      fontSize: 17,
+    },
+    modalCloseBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      backgroundColor: c.chrome,
+    },
+    modalCard: {
+      padding: 20,
+      borderRadius: 26,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      shadowColor: '#000',
+      shadowOpacity: 0.16,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 6,
+    },
+    modalHint: {
+      color: c.textMuted,
+      fontSize: 12,
+      fontWeight: '600' as const,
+    },
+  };
+}

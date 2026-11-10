@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, Pressable, FlatList, StyleSheet } from 'react-native';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 
 export interface ReceiptEntry {
   userId: string;
@@ -17,6 +18,7 @@ interface Props {
 /** WhatsApp-style "Message info" sheet — two sections, opened via a
  * long-press on the tick row rather than a plain tap on a visible count. */
 export function MessageInfoModal({ visible, deliveredTo, readBy, onClose }: Props) {
+  const styles = useThemedStyles(messageInfoStyles);
   const readIds = new Set(readBy.map((r) => r.userId));
   // Everyone who's read it has also, by definition, received it — but a
   // member can be delivered-only if they haven't opened the chat yet.
@@ -24,8 +26,8 @@ export function MessageInfoModal({ visible, deliveredTo, readBy, onClose }: Prop
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => undefined}>
+      <Pressable style={staticStyles.backdrop} onPress={onClose}>
+        <Pressable style={staticStyles.sheet} onPress={() => undefined}>
           <Text style={styles.title}>Message Info</Text>
 
           <Text style={styles.sectionLabel}>Read by</Text>
@@ -60,7 +62,7 @@ export function MessageInfoModal({ visible, deliveredTo, readBy, onClose }: Prop
             />
           )}
 
-          <Pressable style={styles.closeBtn} onPress={onClose}>
+          <Pressable style={staticStyles.closeBtn} onPress={onClose}>
             <Text style={styles.closeText}>Close</Text>
           </Pressable>
         </Pressable>
@@ -69,7 +71,8 @@ export function MessageInfoModal({ visible, deliveredTo, readBy, onClose }: Prop
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -84,32 +87,38 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     maxHeight: '70%',
   },
-  title: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 16,
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  name: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  checkRead: { color: colors.link, fontSize: 14 },
-  checkDelivered: { color: colors.textMuted, fontSize: 14 },
-  empty: { color: colors.textMuted, paddingVertical: 6 },
   closeBtn: { alignItems: 'center', paddingTop: 16 },
-  closeText: { color: colors.link, fontWeight: '700' },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function messageInfoStyles(c: ThemeColors) {
+  return {
+    title: {
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 16,
+      marginBottom: 12,
+    },
+    sectionLabel: {
+      color: c.textMuted,
+      fontSize: 12,
+      fontWeight: '700' as const,
+      textTransform: 'uppercase' as const,
+      marginTop: 12,
+      marginBottom: 4,
+    },
+    row: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    name: { color: c.text, fontSize: 15, fontWeight: '600' as const },
+    checkRead: { color: c.link, fontSize: 14 },
+    checkDelivered: { color: c.textMuted, fontSize: 14 },
+    empty: { color: c.textMuted, paddingVertical: 6 },
+    closeText: { color: c.link, fontWeight: '700' as const },
+  };
+}

@@ -10,7 +10,9 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useTheme } from '../../theme/ThemeContext';
 import {
   BUILTIN_STICKERS,
   CustomSticker,
@@ -25,6 +27,8 @@ type Props = {
 };
 
 export function StickerPicker({ onPickBuiltin, onPickCustom }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(stickerPickerStyles);
   const [custom, setCustom] = useState<CustomSticker[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -77,25 +81,25 @@ export function StickerPicker({ onPickBuiltin, onPickCustom }: Props) {
 
   return (
     <ScrollView
-      style={styles.root}
-      contentContainerStyle={styles.content}
+      style={staticStyles.root}
+      contentContainerStyle={staticStyles.content}
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.section}>Pack</Text>
-      <View style={styles.grid}>
+      <View style={staticStyles.grid}>
         {BUILTIN_STICKERS.map((emoji) => (
           <Pressable
             key={emoji}
             onPress={() => onPickBuiltin(emoji)}
-            style={styles.cell}
+            style={staticStyles.cell}
             accessibilityLabel={`Sticker ${emoji}`}
           >
-            <Text style={styles.emoji}>{emoji}</Text>
+            <Text style={staticStyles.emoji}>{emoji}</Text>
           </Pressable>
         ))}
       </View>
 
-      <View style={styles.mineHeader}>
+      <View style={staticStyles.mineHeader}>
         <Text style={styles.section}>My stickers</Text>
         <Pressable
           onPress={() => void onAdd()}
@@ -113,19 +117,19 @@ export function StickerPicker({ onPickBuiltin, onPickCustom }: Props) {
           Tap + Add to save images from your gallery as stickers.
         </Text>
       ) : (
-        <View style={styles.grid}>
+        <View style={staticStyles.grid}>
           {custom.map((stk) => (
             <Pressable
               key={stk.id}
               onPress={() => onPickCustom(stk)}
               onLongPress={() => onLongPressCustom(stk)}
               delayLongPress={400}
-              style={styles.cell}
+              style={staticStyles.cell}
               accessibilityLabel="Custom sticker"
             >
               <Image
                 source={{ uri: stk.uri }}
-                style={styles.thumb}
+                style={staticStyles.thumb}
                 contentFit="contain"
               />
             </Pressable>
@@ -136,25 +140,16 @@ export function StickerPicker({ onPickBuiltin, onPickCustom }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   root: { maxHeight: 220 },
   content: { paddingHorizontal: 12, paddingBottom: 8 },
-  section: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 8,
-    marginTop: 4,
-  },
   mineHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 10,
   },
-  addBtn: { color: colors.link, fontWeight: '700', fontSize: 13 },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -171,10 +166,26 @@ const styles = StyleSheet.create({
   },
   emoji: { fontSize: 32 },
   thumb: { width: 48, height: 48 },
-  empty: {
-    color: colors.textDim,
-    fontSize: 12,
-    marginBottom: 8,
-    lineHeight: 18,
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function stickerPickerStyles(c: ThemeColors) {
+  return {
+    section: {
+      color: c.textMuted,
+      fontSize: 11,
+      fontWeight: '700' as const,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.6,
+      marginBottom: 8,
+      marginTop: 4,
+    },
+    addBtn: { color: c.link, fontWeight: '700' as const, fontSize: 13 },
+    empty: {
+      color: c.textDim,
+      fontSize: 12,
+      marginBottom: 8,
+      lineHeight: 18,
+    },
+  };
+}

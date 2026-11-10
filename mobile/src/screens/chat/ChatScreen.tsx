@@ -22,7 +22,7 @@ import { ReadReceipt, DeliveryReceipt } from '../../api/chat';
 import { ChatMessage, ChatTeammate } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { Screen } from '../../brand/Screen';
-import { sharedStyles, formatRoleBadge } from '../shared';
+import { useSharedStyles, formatRoleBadge } from '../shared';
 import { AttachMenu, AttachOption } from './AttachMenu';
 import { ReminderComposer } from './ReminderComposer';
 import { MediaViewerModal } from './MediaViewerModal';
@@ -103,6 +103,7 @@ export function ChatScreen({
   /** When true, only starred / favourite messages are loaded. */
   starredOnly?: boolean;
 } = {}) {
+  const shared = useSharedStyles();
   const { user } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(chatStyles);
@@ -1530,7 +1531,7 @@ export function ChatScreen({
         </Pressable>
         <TextInput
           style={[
-            sharedStyles.input,
+            shared.input,
             styles.composeInput,
             { flex: 1, marginBottom: 0 },
           ]}

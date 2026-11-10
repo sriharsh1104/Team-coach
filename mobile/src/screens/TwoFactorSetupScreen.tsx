@@ -17,13 +17,18 @@ import { CopyableField } from './profile/CopyableField';
 import { CopyButton } from './profile/CopyButton';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { PasswordField } from '../ui/PasswordField';
-import { colors } from '../theme';
-import { sharedStyles } from './shared';
+import { ThemeColors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
+import { useSharedStyles } from './shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'TwoFactorSetup'>;
 
 export function TwoFactorSetupScreen({ navigation }: Props) {
+  const shared = useSharedStyles();
   const { refreshUser } = useAuth();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(twoFactorSetupStyles);
   const [password, setPassword] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [secret, setSecret] = useState('');
@@ -80,8 +85,8 @@ export function TwoFactorSetupScreen({ navigation }: Props) {
           <PasswordField value={password} onChangeText={setPassword} />
           <Pressable
             style={[
-              sharedStyles.button,
-              (isStarting || !password) && sharedStyles.buttonDisabled,
+              shared.button,
+              (isStarting || !password) && shared.buttonDisabled,
             ]}
             disabled={isStarting || !password}
             onPress={onStart}
@@ -115,7 +120,7 @@ export function TwoFactorSetupScreen({ navigation }: Props) {
             </View>
           ))}
           <Pressable
-            style={sharedStyles.button}
+            style={shared.button}
             onPress={() => navigation.navigate('AccountSettings')}
           >
             <ButtonLabel icon="check">I've saved these codes</ButtonLabel>
@@ -134,7 +139,7 @@ export function TwoFactorSetupScreen({ navigation }: Props) {
       >
         <Text style={styles.title}>Scan with your authenticator app</Text>
         {qrCodeDataUrl ? (
-          <Image source={{ uri: qrCodeDataUrl }} style={styles.qr} />
+          <Image source={{ uri: qrCodeDataUrl }} style={staticStyles.qr} />
         ) : null}
         <Text style={styles.hint}>Can't scan? Enter this code manually:</Text>
         <CopyableField label="Secret key" value={secret} />
@@ -143,7 +148,7 @@ export function TwoFactorSetupScreen({ navigation }: Props) {
           Then enter the 6-digit code it shows:
         </Text>
         <TextInput
-          style={sharedStyles.input}
+          style={shared.input}
           placeholder="6-digit code"
           placeholderTextColor={colors.textDim}
           keyboardType="number-pad"
@@ -152,8 +157,8 @@ export function TwoFactorSetupScreen({ navigation }: Props) {
         />
         <Pressable
           style={[
-            sharedStyles.button,
-            (isEnabling || code.trim().length !== 6) && sharedStyles.buttonDisabled,
+            shared.button,
+            (isEnabling || code.trim().length !== 6) && shared.buttonDisabled,
           ]}
           disabled={isEnabling || code.trim().length !== 6}
           onPress={onEnable}
@@ -167,14 +172,8 @@ export function TwoFactorSetupScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   qr: {
     width: 220,
     height: 220,
@@ -182,19 +181,32 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     backgroundColor: '#fff',
   },
-  hint: { color: colors.textMuted, marginBottom: 8 },
-  warning: { color: colors.textMuted, marginBottom: 16, lineHeight: 20 },
-  backupRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backupCode: {
-    fontSize: 16,
-    fontFamily: 'monospace',
-    color: colors.text,
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function twoFactorSetupStyles(c: ThemeColors) {
+  return {
+    title: {
+      fontSize: 20,
+      fontWeight: '700' as const,
+      color: c.text,
+      marginBottom: 16,
+      textAlign: 'center' as const,
+    },
+    hint: { color: c.textMuted, marginBottom: 8 },
+    warning: { color: c.textMuted, marginBottom: 16, lineHeight: 20 },
+    backupRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    backupCode: {
+      fontSize: 16,
+      fontFamily: 'monospace',
+      color: c.text,
+    },
+  };
+}

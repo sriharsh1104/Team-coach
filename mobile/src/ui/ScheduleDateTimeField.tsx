@@ -8,7 +8,8 @@ import {
   TextInput,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 function formatSchedule(date: Date) {
   return date.toLocaleString(undefined, {
@@ -59,6 +60,7 @@ export function ScheduleDateTimeField({
   value: Date;
   onChange: (next: Date) => void;
 }) {
+  const styles = useThemedStyles(scheduleFieldStyles);
   const [showDate, setShowDate] = useState(false);
   const [hourText, setHourText] = useState(String(hour12Of(value)));
   const [minuteText, setMinuteText] = useState(String(value.getMinutes()).padStart(2, '0'));
@@ -127,13 +129,13 @@ export function ScheduleDateTimeField({
         onPress={() => setShowDate(true)}
         accessibilityLabel={`${label} Date`}
       >
-        <Text style={styles.chipIcon}>📅</Text>
+        <Text style={staticStyles.chipIcon}>📅</Text>
         <Text style={styles.chipText}>{value.toLocaleDateString()}</Text>
       </Pressable>
     );
 
   return (
-    <View style={styles.block}>
+    <View style={staticStyles.block}>
       <Text style={styles.label}>{label}</Text>
 
       <Text style={styles.subLabel}>Date</Text>
@@ -154,7 +156,7 @@ export function ScheduleDateTimeField({
       )}
 
       <Text style={styles.subLabel}>Time</Text>
-      <View style={styles.timeRow}>
+      <View style={staticStyles.timeRow}>
         <TextInput
           style={styles.timeInput}
           keyboardType="number-pad"
@@ -199,64 +201,71 @@ export function ScheduleDateTimeField({
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   block: { marginBottom: 12 },
-  label: {
-    color: colors.text,
-    fontWeight: '600',
-    marginBottom: 8,
-    textTransform: 'capitalize',
-  },
-  subLabel: { color: colors.textMuted, fontSize: 12, marginBottom: 4 },
-  hint: { color: colors.textMuted, fontSize: 12, marginTop: 8 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    marginBottom: 10,
-  },
-  webDateInput: { color: colors.text, fontSize: 15 },
   chipIcon: { fontSize: 14 },
-  chipText: { color: colors.text, fontWeight: '600' },
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  timeInput: {
-    width: 48,
-    textAlign: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    paddingVertical: 10,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  timeColon: { color: colors.text, fontWeight: '700', fontSize: 16 },
-  periodToggle: {
-    flexDirection: 'row',
-    marginLeft: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  periodOption: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    backgroundColor: colors.surface,
-  },
-  periodOptionActive: { backgroundColor: colors.chrome },
-  periodText: { color: colors.text, fontWeight: '700', fontSize: 13 },
-  periodTextActive: { color: colors.chromeInk, fontWeight: '700', fontSize: 13 },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function scheduleFieldStyles(c: ThemeColors) {
+  return {
+    label: {
+      color: c.text,
+      fontWeight: '600' as const,
+      marginBottom: 8,
+      textTransform: 'capitalize' as const,
+    },
+    subLabel: { color: c.textMuted, fontSize: 12, marginBottom: 4 },
+    hint: { color: c.textMuted, fontSize: 12, marginTop: 8 },
+    chip: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: 8,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      borderRadius: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 10,
+      marginBottom: 10,
+    },
+    webDateInput: { color: c.text, fontSize: 15 },
+    chipText: { color: c.text, fontWeight: '600' as const },
+    timeInput: {
+      width: 48,
+      textAlign: 'center' as const,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      borderRadius: 8,
+      paddingVertical: 10,
+      fontSize: 16,
+      fontWeight: '700' as const,
+      color: c.text,
+    },
+    timeColon: { color: c.text, fontWeight: '700' as const, fontSize: 16 },
+    periodToggle: {
+      flexDirection: 'row' as const,
+      marginLeft: 8,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 8,
+      overflow: 'hidden' as const,
+    },
+    periodOption: {
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      backgroundColor: c.surface,
+    },
+    periodOptionActive: { backgroundColor: c.chrome },
+    periodText: { color: c.text, fontWeight: '700' as const, fontSize: 13 },
+    periodTextActive: { color: c.chromeInk, fontWeight: '700' as const, fontSize: 13 },
+  };
+}

@@ -20,7 +20,7 @@ import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { confirmAsync } from '../../ui/confirmAsync';
-import { sharedStyles } from '../shared';
+import { useSharedStyles } from '../shared';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -46,6 +46,7 @@ function matchMemberId(rawName: string, members: OrgMember[]): string | null {
 }
 
 export function ExtractionReviewScreen({ navigation, route }: Props) {
+  const shared = useSharedStyles();
   const [extraction, setExtraction] = useState<StatExtraction>(route.params.extraction);
   const [rows, setRows] = useState<ExtractionRow[]>(extraction.rows);
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -248,7 +249,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
       )}
       {willSave && <Text style={styles.saveBadge}>Teammate · Will Save</Text>}
       <TextInput
-        style={sharedStyles.input}
+        style={shared.input}
         value={row.rawName}
         onChangeText={(text) => updateRow(index, { rawName: text })}
         placeholder="Name as read from screenshot"
@@ -285,7 +286,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Kills (K)</Text>
           <TextInput
-            style={sharedStyles.input}
+            style={shared.input}
             keyboardType="number-pad"
             value={String(row.kills)}
             onChangeText={(text) =>
@@ -296,7 +297,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Assists (A)</Text>
           <TextInput
-            style={sharedStyles.input}
+            style={shared.input}
             keyboardType="number-pad"
             value={String(row.assists)}
             onChangeText={(text) =>
@@ -307,7 +308,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Damage</Text>
           <TextInput
-            style={sharedStyles.input}
+            style={shared.input}
             keyboardType="number-pad"
             value={String(row.damage)}
             onChangeText={(text) =>
@@ -322,7 +323,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
   if (stillProcessing) {
     return (
       <Screen>
-        <View style={sharedStyles.container}>
+        <View style={shared.container}>
           <ActivityIndicator color="#c9ccd1" />
           <Text style={[styles.hint, { marginTop: 16 }]}>
             Still processing this screenshot — this updates automatically
@@ -336,20 +337,20 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
   if (extraction.status === 'FAILED') {
     return (
       <Screen>
-        <View style={sharedStyles.container}>
-          <Text style={sharedStyles.title}>Couldn't Read This Screenshot</Text>
+        <View style={shared.container}>
+          <Text style={shared.title}>Couldn't Read This Screenshot</Text>
           <Text style={styles.hint}>
             {extraction.failureReason ?? 'Something went wrong reading this screenshot.'}
           </Text>
           <Pressable
-            style={[sharedStyles.button, isRetrying && sharedStyles.buttonDisabled]}
+            style={[shared.button, isRetrying && shared.buttonDisabled]}
             disabled={isRetrying}
             onPress={onRetry}
           >
             <ButtonLabel icon="check">{isRetrying ? 'Retrying…' : 'Retry'}</ButtonLabel>
           </Pressable>
-          <Pressable style={sharedStyles.link} onPress={onDiscardFailed}>
-            <Text style={[sharedStyles.link, { color: '#dc2626' }]}>Discard</Text>
+          <Pressable style={shared.link} onPress={onDiscardFailed}>
+            <Text style={[shared.link, { color: '#dc2626' }]}>Discard</Text>
           </Pressable>
         </View>
       </Screen>
@@ -362,7 +363,7 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
         style={{ flex: 1, backgroundColor: 'transparent' }}
         contentContainerStyle={{ padding: 24 }}
       >
-        <Text style={sharedStyles.title}>Review Stats</Text>
+        <Text style={shared.title}>Review Stats</Text>
         <Text style={styles.hint}>
           Sirf apne org ke teammates save honge. Apna Free Fire IGN Profile pe
           set karo (e.g. SES-SRI) — auto-match ho jayega. Baaki names skip.
@@ -396,8 +397,8 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
 
         <Pressable
           style={[
-            sharedStyles.button,
-            (isSaving || teammateRows.length === 0) && sharedStyles.buttonDisabled,
+            shared.button,
+            (isSaving || teammateRows.length === 0) && shared.buttonDisabled,
           ]}
           disabled={isSaving || teammateRows.length === 0}
           onPress={onConfirm}
@@ -408,8 +409,8 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
               : `Confirm & Save ${teammateRows.length} Teammate(s)`}
           </ButtonLabel>
         </Pressable>
-        <Pressable style={sharedStyles.link} onPress={onReject}>
-          <Text style={[sharedStyles.link, { color: '#dc2626' }]}>
+        <Pressable style={shared.link} onPress={onReject}>
+          <Text style={[shared.link, { color: '#dc2626' }]}>
             Discard This Extraction
           </Text>
         </Pressable>

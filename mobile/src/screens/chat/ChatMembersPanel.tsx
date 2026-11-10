@@ -9,7 +9,9 @@ import {
 import * as orgApi from '../../api/org';
 import { OrgMember } from '../../api/types';
 import { roleLabel } from '../../api/roles';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { ChatFlowHeader } from './ChatFlowHeader';
 
@@ -28,6 +30,8 @@ export function ChatMembersPanel({
   onBack: () => void;
   onSelectMember: (member: { userId: string; name: string }) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(membersPanelStyles);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,23 +58,23 @@ export function ChatMembersPanel({
       />
 
       {isLoading ? (
-        <View style={styles.center}>
+        <View style={staticStyles.center}>
           <ActivityIndicator color={colors.chrome} />
         </View>
       ) : error ? (
-        <View style={styles.center}>
+        <View style={staticStyles.center}>
           <Text style={styles.error}>{error}</Text>
         </View>
       ) : (
         <FlatList
           data={members}
           keyExtractor={(item) => item.userId}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={staticStyles.list}
           renderItem={({ item, index }) => {
             const inGameRoles = formatInGameRoles(item.inGameRoles);
             return (
               <SoftPressable
-                style={styles.row}
+                style={staticStyles.row}
                 onPress={() =>
                   onSelectMember({ userId: item.userId, name: item.name })
                 }
@@ -78,7 +82,7 @@ export function ChatMembersPanel({
                 accessibilityLabel={item.name}
                 pressScale={0.985}
               >
-                <View style={styles.rowMain}>
+                <View style={staticStyles.rowMain}>
                   <Text style={styles.name}>
                     {index + 1}. {item.name}
                     {item.isOwner ? ' (Owner)' : ''}
@@ -97,10 +101,9 @@ export function ChatMembersPanel({
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  error: { color: colors.danger, textAlign: 'center' },
   list: { padding: 16, paddingBottom: 32 },
   row: {
     flexDirection: 'row',
@@ -116,7 +119,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
   },
   rowMain: { flex: 1, minWidth: 0 },
-  name: { color: colors.text, fontWeight: '600', fontSize: 16 },
-  meta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  role: { color: colors.textMuted, fontWeight: '600', fontSize: 12 },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function membersPanelStyles(c: ThemeColors) {
+  return {
+    root: { flex: 1, backgroundColor: c.bg },
+    error: { color: c.danger, textAlign: 'center' as const },
+    name: { color: c.text, fontWeight: '600' as const, fontSize: 16 },
+    meta: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+    role: { color: c.textMuted, fontWeight: '600' as const, fontSize: 12 },
+  };
+}

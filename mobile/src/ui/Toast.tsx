@@ -8,7 +8,8 @@ import React, {
 } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { setToastListener } from './toastBus';
 
 interface Props {
@@ -22,12 +23,13 @@ interface Props {
  */
 export function Toast({ message }: Props) {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(toastStyles);
   if (!message) return null;
 
   return (
     <View
       style={[
-        styles.anchor,
+        staticStyles.anchor,
         {
           paddingTop: insets.top + 12,
           paddingLeft: Math.max(insets.left, 16),
@@ -96,11 +98,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastContext.Provider value={{ showToast }}>
-      <View style={styles.host}>
+      <View style={staticStyles.host}>
         {children}
         {/* Full-screen overlay so the banner is always pinned to the top of
             the window — not the bottom of a nested Screen / scroll sibling. */}
-        <View style={styles.overlay} pointerEvents="box-none">
+        <View style={staticStyles.overlay} pointerEvents="box-none">
           <Toast message={message} />
         </View>
       </View>
@@ -116,7 +118,8 @@ export function useAppToast() {
   return ctx;
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   host: { flex: 1 },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -128,25 +131,31 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
-  banner: {
-    maxWidth: '100%',
-    width: '100%',
-    backgroundColor: '#1c1c20',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  text: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '600',
-    flexShrink: 1,
-    textAlign: 'center',
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function toastStyles(c: ThemeColors) {
+  return {
+    banner: {
+      maxWidth: '100%' as const,
+      width: '100%' as const,
+      backgroundColor: '#1c1c20',
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      shadowColor: '#000',
+      shadowOpacity: 0.35,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+    },
+    text: {
+      color: c.text,
+      fontSize: 13,
+      fontWeight: '600' as const,
+      flexShrink: 1,
+      textAlign: 'center' as const,
+    },
+  };
+}

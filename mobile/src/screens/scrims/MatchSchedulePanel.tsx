@@ -33,7 +33,9 @@ import {
 import { MainStackParamList } from '../../navigation/types';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import { resolveMediaUrl } from '../../api/client';
 import {
   cacheGet,
@@ -65,6 +67,8 @@ export function MatchSchedulePanel({
 }) {
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(matchScheduleStyles);
   const insets = useSafeAreaInsets();
   const { user, org } = useAuth();
   const realtime = useOrgRealtimeOptional();
@@ -231,7 +235,7 @@ export function MatchSchedulePanel({
       ? resolveMediaUrl(linked.mediaUrl)
       : null;
     return (
-      <View style={styles.card}>
+      <View style={staticStyles.card}>
         <Text style={styles.cardTitle}>{item.title}</Text>
         <Text style={styles.meta}>
           {new Date(item.scheduledAt).toLocaleString()} · by{' '}
@@ -245,7 +249,7 @@ export function MatchSchedulePanel({
         ) : null}
         {item.notes ? <Text style={styles.notes}>{item.notes}</Text> : null}
 
-        <View style={styles.actionsRow}>
+        <View style={staticStyles.actionsRow}>
           <SoftPressable
             style={styles.primaryAction}
             onPress={() => uploadResultForEvent(item)}
@@ -302,13 +306,13 @@ export function MatchSchedulePanel({
   };
 
   return (
-    <View style={styles.root}>
-      <Text style={styles.hint}>
+    <View style={staticStyles.root}>
+      <Text style={staticStyles.hint}>
         Add {typeLabel.toLowerCase()} date/time, then upload that match&apos;s
         scoreboard to update each player&apos;s {typeLabel.toLowerCase()} stats.
       </Text>
 
-      <View style={styles.tabPad}>
+      <View style={staticStyles.tabPad}>
         <SegmentedTabs
           value={scheduleTab}
           onChange={setScheduleTab}
@@ -324,10 +328,10 @@ export function MatchSchedulePanel({
 
       {scheduleTab !== 'results' ? (
         <FlatList
-          style={styles.list}
+          style={staticStyles.list}
           data={scheduleTab === 'upcoming' ? upcoming : past}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={staticStyles.listContent}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
           }
@@ -342,10 +346,10 @@ export function MatchSchedulePanel({
         />
       ) : (
         <FlatList
-          style={styles.list}
+          style={staticStyles.list}
           data={resultDays}
           keyExtractor={(item: { dayKey: string }) => item.dayKey}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={staticStyles.listContent}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
           }
@@ -356,7 +360,7 @@ export function MatchSchedulePanel({
             </Text>
           }
           renderItem={({ item: group }: { item: any }) => (
-            <View style={styles.dayCard}>
+            <View style={staticStyles.dayCard}>
               <View style={styles.dayHeader}>
                 <Text style={styles.dayTitle}>{group.label}</Text>
                 <Text style={styles.dayTotals}>
@@ -366,7 +370,7 @@ export function MatchSchedulePanel({
               {group.entries.map((entry: ModeHistoryEntry) => (
                 <SoftPressable
                   key={entry.id}
-                  style={styles.dayRow}
+                  style={staticStyles.dayRow}
                   onPress={() =>
                     navigation.navigate('PlayerStats', {
                       userId: entry.userId,
@@ -376,7 +380,7 @@ export function MatchSchedulePanel({
                   }
                   pressScale={0.985}
                 >
-                  <Text style={styles.dayName}>{entry.name}</Text>
+                  <Text style={staticStyles.dayName}>{entry.name}</Text>
                   <Text style={styles.dayStats}>
                     {entry.kills}K / {entry.assists}A
                   </Text>
@@ -387,7 +391,7 @@ export function MatchSchedulePanel({
         />
       )}
 
-      <View style={styles.bottomBar}>
+      <View style={staticStyles.bottomBar}>
         <SoftPressable
           style={styles.addBtn}
           onPress={() =>
@@ -407,7 +411,7 @@ export function MatchSchedulePanel({
         presentationStyle="fullScreen"
         onRequestClose={() => setViewingUrl(null)}
       >
-        <View style={styles.viewerRoot}>
+        <View style={staticStyles.viewerRoot}>
           <View style={[styles.viewerBar, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
             <Text style={styles.viewerTitle}>Uploaded Result</Text>
             <Pressable
@@ -421,7 +425,7 @@ export function MatchSchedulePanel({
           {viewingUrl ? (
             <Image
               source={{ uri: viewingUrl }}
-              style={styles.viewerImage}
+              style={staticStyles.viewerImage}
               resizeMode="contain"
             />
           ) : null}
@@ -431,7 +435,8 @@ export function MatchSchedulePanel({
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   root: { flex: 1 },
   hint: {
     color: '#9aa0a6',
@@ -443,7 +448,6 @@ const styles = StyleSheet.create({
   tabPad: { paddingHorizontal: 16 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
-  empty: { textAlign: 'center', color: colors.textMuted, marginTop: 28 },
   card: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -452,10 +456,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
-  meta: { color: colors.textMuted, fontSize: 12, marginTop: 6 },
-  link: { color: colors.link, marginTop: 4 },
-  notes: { color: colors.textMuted, marginTop: 4 },
   actionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -463,39 +463,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 12,
   },
-  primaryAction: {
-    backgroundColor: colors.chrome,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    minWidth: 110,
-    alignItems: 'center',
-  },
-  primaryActionText: {
-    color: colors.chromeInk,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  viewAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.chrome,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  viewActionText: {
-    color: colors.chromeInk,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  uploadHint: {
-    marginTop: 8,
-    color: colors.textMuted,
-    fontSize: 12,
-  },
-  action: { color: colors.link, fontWeight: '600' },
   dayCard: {
     marginTop: 10,
     borderWidth: 1,
@@ -505,23 +472,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  dayTitle: { color: colors.text, fontWeight: '700' },
-  dayTotals: { color: colors.chrome, fontWeight: '600', fontSize: 12 },
   dayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 8,
   },
   dayName: { color: '#e8eaed' },
-  dayStats: { color: colors.textMuted, fontWeight: '600' },
   bottomBar: {
     alignItems: 'center',
     paddingVertical: 12,
@@ -529,38 +485,93 @@ const styles = StyleSheet.create({
     borderTopColor: '#2a2d33',
     backgroundColor: 'rgba(10,10,12,0.94)',
   },
-  addBtn: {
-    backgroundColor: colors.chrome,
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minWidth: 140,
-    alignItems: 'center',
-  },
-  addBtnText: { color: colors.chromeInk, fontWeight: '700', fontSize: 14 },
   viewerRoot: { flex: 1, backgroundColor: '#050507' },
-  viewerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  viewerTitle: {
-    flex: 1,
-    color: colors.text,
-    fontWeight: '800',
-    fontSize: 17,
-  },
-  viewerClose: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.chrome,
-  },
   viewerImage: { flex: 1, width: '100%' },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function matchScheduleStyles(c: ThemeColors) {
+  return {
+    empty: { textAlign: 'center' as const, color: c.textMuted, marginTop: 28 },
+    cardTitle: { fontSize: 16, fontWeight: '600' as const, color: c.text },
+    meta: { color: c.textMuted, fontSize: 12, marginTop: 6 },
+    link: { color: c.link, marginTop: 4 },
+    notes: { color: c.textMuted, marginTop: 4 },
+    primaryAction: {
+      backgroundColor: c.chrome,
+      borderRadius: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      minWidth: 110,
+      alignItems: 'center' as const,
+    },
+    primaryActionText: {
+      color: c.chromeInk,
+      fontWeight: '700' as const,
+      fontSize: 12,
+    },
+    viewAction: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 6,
+      backgroundColor: c.chrome,
+      borderRadius: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    viewActionText: {
+      color: c.chromeInk,
+      fontWeight: '700' as const,
+      fontSize: 12,
+    },
+    uploadHint: {
+      marginTop: 8,
+      color: c.textMuted,
+      fontSize: 12,
+    },
+    action: { color: c.link, fontWeight: '600' as const },
+    dayHeader: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      marginBottom: 8,
+      paddingBottom: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    dayTitle: { color: c.text, fontWeight: '700' as const },
+    dayTotals: { color: c.chrome, fontWeight: '600' as const, fontSize: 12 },
+    dayStats: { color: c.textMuted, fontWeight: '600' as const },
+    addBtn: {
+      backgroundColor: c.chrome,
+      borderRadius: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      minWidth: 140,
+      alignItems: 'center' as const,
+    },
+    addBtnText: { color: c.chromeInk, fontWeight: '700' as const, fontSize: 14 },
+    viewerBar: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 12,
+      paddingHorizontal: 14,
+      paddingBottom: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    viewerTitle: {
+      flex: 1,
+      color: c.text,
+      fontWeight: '800' as const,
+      fontSize: 17,
+    },
+    viewerClose: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      backgroundColor: c.chrome,
+    },
+  };
+}

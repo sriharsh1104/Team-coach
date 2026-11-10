@@ -9,7 +9,9 @@ import { roleLabel } from '../api/roles';
 import { MainStackParamList } from '../navigation/types';
 import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
 import { Screen } from '../brand/Screen';
-import { colors } from '../theme';
+import { ThemeColors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { SoftPressable } from '../ui/SoftPressable';
 import { InviteQr } from '../ui/InviteQr';
 import { CopyButton } from './profile/CopyButton';
@@ -28,6 +30,8 @@ type Props = NativeStackScreenProps<MainStackParamList, 'Members'>;
 /** Esports roster list. Owner/coach see invite + add/remove controls. */
 export function MembersScreen({ navigation }: Props) {
   const { user, refreshOrg } = useAuth();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(membersStyles);
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -110,7 +114,7 @@ export function MembersScreen({ navigation }: Props) {
   return (
     <Screen>
       <FlatList
-        style={styles.list}
+        style={staticStyles.list}
         data={detail?.members ?? []}
         keyExtractor={(item) => item.userId}
         refreshControl={
@@ -124,7 +128,7 @@ export function MembersScreen({ navigation }: Props) {
           detail ? (
             <View>
               {canInviteRoster ? (
-                <View style={styles.inviteCard}>
+                <View style={staticStyles.inviteCard}>
                   <Text style={styles.inviteTitle}>Esports Roster Invite</Text>
                   <Text style={styles.inviteHint}>
                     Owner/coach only. Share this to add someone to the roster.
@@ -133,14 +137,14 @@ export function MembersScreen({ navigation }: Props) {
                   </Text>
                   <InviteQr value={detail.rosterReferralLink!} label="Scan to join roster" />
                   <View style={styles.inviteRow}>
-                    <View style={styles.inviteTextCol}>
+                    <View style={staticStyles.inviteTextCol}>
                       <Text style={styles.inviteLabel}>Roster Code</Text>
                       <Text style={styles.inviteValue}>{detail.rosterCode}</Text>
                     </View>
                     <CopyButton value={detail.rosterCode!} />
                   </View>
                   <View style={styles.inviteRow}>
-                    <View style={styles.inviteTextCol}>
+                    <View style={staticStyles.inviteTextCol}>
                       <Text style={styles.inviteLabel}>Roster Invite Link</Text>
                       <Text style={styles.inviteValue} numberOfLines={1}>
                         {detail.rosterReferralLink}
@@ -165,7 +169,7 @@ export function MembersScreen({ navigation }: Props) {
             </View>
           ) : null
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={staticStyles.listContent}
         renderItem={({ item, index }) => {
           const inGameRoles = formatInGameRoles(item.inGameRoles);
           const showRemove =
@@ -178,9 +182,9 @@ export function MembersScreen({ navigation }: Props) {
               item.role === 'COACH'
             );
           return (
-            <View style={styles.memberCard}>
+            <View style={staticStyles.memberCard}>
               <SoftPressable
-                style={styles.memberRow}
+                style={staticStyles.memberRow}
                 onPress={() =>
                   navigation.push('MemberProfile', {
                     userId: item.userId,
@@ -189,7 +193,7 @@ export function MembersScreen({ navigation }: Props) {
                 }
                 pressScale={0.985}
               >
-                <View style={styles.memberInfo}>
+                <View style={staticStyles.memberInfo}>
                   <Text style={styles.memberName}>
                     {index + 1}. {item.name}
                     {item.isOwner ? ' (Owner)' : ''}
@@ -208,7 +212,7 @@ export function MembersScreen({ navigation }: Props) {
               ) : null}
               {showRemove ? (
                 <SoftPressable
-                  style={styles.removeBtn}
+                  style={staticStyles.removeBtn}
                   disabled={busyId === item.userId}
                   onPress={() => void onRemove(item)}
                   accessibilityRole="button"
@@ -227,21 +231,10 @@ export function MembersScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   list: { flex: 1, backgroundColor: 'transparent' },
   listContent: { padding: 24, paddingBottom: 40 },
-  rosterHint: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  manageHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginBottom: 12,
-    lineHeight: 16,
-  },
   inviteCard: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -250,29 +243,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: 'rgba(255,255,255,0.045)',
   },
-  inviteTitle: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  inviteHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginBottom: 12,
-    lineHeight: 16,
-  },
-  inviteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
   inviteTextCol: { flex: 1 },
-  inviteLabel: { color: colors.textMuted, fontSize: 12 },
-  inviteValue: { color: colors.text, fontWeight: '600', marginTop: 2 },
   memberCard: {
     marginBottom: 8,
     borderRadius: 12,
@@ -290,9 +261,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   memberInfo: { flex: 1 },
-  memberName: { fontSize: 16, color: colors.text, fontWeight: '600' },
-  memberInGameRoles: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  memberRole: { color: colors.textMuted, fontWeight: '600', fontSize: 12 },
   removeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -307,5 +275,48 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
-  removeLabel: { color: colors.text, fontWeight: '600', fontSize: 13 },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function membersStyles(c: ThemeColors) {
+  return {
+    rosterHint: {
+      color: c.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+      marginBottom: 16,
+    },
+    manageHint: {
+      color: c.textMuted,
+      fontSize: 12,
+      marginBottom: 12,
+      lineHeight: 16,
+    },
+    inviteTitle: {
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 16,
+      marginBottom: 4,
+    },
+    inviteHint: {
+      color: c.textMuted,
+      fontSize: 12,
+      marginBottom: 12,
+      lineHeight: 16,
+    },
+    inviteRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingVertical: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+    },
+    inviteLabel: { color: c.textMuted, fontSize: 12 },
+    inviteValue: { color: c.text, fontWeight: '600' as const, marginTop: 2 },
+    memberName: { fontSize: 16, color: c.text, fontWeight: '600' as const },
+    memberInGameRoles: { fontSize: 12, color: c.textMuted, marginTop: 2 },
+    memberRole: { color: c.textMuted, fontWeight: '600' as const, fontSize: 12 },
+    removeLabel: { color: c.text, fontWeight: '600' as const, fontSize: 13 },
+  };
+}

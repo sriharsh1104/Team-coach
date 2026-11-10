@@ -7,7 +7,7 @@ import { RoleChips } from './RoleChips';
 import { CopyableField } from './CopyableField';
 import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
-import { sharedStyles, formatRoleBadge } from '../shared';
+import { useSharedStyles, formatRoleBadge } from '../shared';
 import { MainStackParamList } from '../../navigation/types';
 import {
   openSocialUrl,
@@ -28,6 +28,7 @@ const SOCIAL_LINKS: Array<{
 ];
 
 export function MemberProfileScreen({ route }: Props) {
+  const shared = useSharedStyles();
   const { userId, name } = route.params;
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,7 +47,7 @@ export function MemberProfileScreen({ route }: Props) {
   if (isLoading) {
     return (
       <Screen>
-        <View style={sharedStyles.container}>
+        <View style={shared.container}>
           <ActivityIndicator color="#c9ccd1" />
         </View>
       </Screen>
@@ -56,8 +57,8 @@ export function MemberProfileScreen({ route }: Props) {
   if (error || !profile) {
     return (
       <Screen>
-        <View style={sharedStyles.container}>
-          <Text style={sharedStyles.error}>{error}</Text>
+        <View style={shared.container}>
+          <Text style={shared.error}>{error}</Text>
         </View>
       </Screen>
     );
@@ -71,7 +72,7 @@ export function MemberProfileScreen({ route }: Props) {
       style={{ flex: 1, backgroundColor: 'transparent' }}
       contentContainerStyle={{ padding: 24 }}
     >
-      <Text style={sharedStyles.title}>{name}</Text>
+      <Text style={shared.title}>{name}</Text>
       {roleBadge && (
         <Text
           style={{

@@ -9,7 +9,9 @@ import {
 } from 'react-native';
 import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useTheme } from '../../theme/ThemeContext';
 import { RoleChips } from '../profile/RoleChips';
 import { CopyableField } from '../profile/CopyableField';
 import { CopyButton } from '../profile/CopyButton';
@@ -41,6 +43,8 @@ export function ChatMemberProfilePanel({
   name: string;
   onBack: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(memberProfileStyles);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,17 +70,17 @@ export function ChatMemberProfilePanel({
       <ChatFlowHeader title={name} onBack={onBack} />
 
       {isLoading ? (
-        <View style={styles.center}>
+        <View style={staticStyles.center}>
           <ActivityIndicator color={colors.chrome} />
         </View>
       ) : error || !profile ? (
-        <View style={styles.center}>
+        <View style={staticStyles.center}>
           <Text style={styles.error}>{error ?? 'Profile unavailable'}</Text>
         </View>
       ) : (
         <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          style={staticStyles.scroll}
+          contentContainerStyle={staticStyles.scrollContent}
         >
           <Text style={styles.name}>{name}</Text>
           {roleBadge ? <Text style={styles.badge}>{roleBadge}</Text> : null}
@@ -99,7 +103,7 @@ export function ChatMemberProfilePanel({
             const url = profile[key] as string | null;
             if (!url) return null;
             return (
-              <View key={key} style={styles.linkRow}>
+              <View key={key} style={staticStyles.linkRow}>
                 <Pressable
                   style={{ flex: 1 }}
                   onPress={() => openSocialUrl(url, platform)}
@@ -117,7 +121,7 @@ export function ChatMemberProfilePanel({
             <>
               <Text style={styles.section}>Devices</Text>
               {profile.devices.map((device) => (
-                <View key={device.id} style={styles.linkRow}>
+                <View key={device.id} style={staticStyles.linkRow}>
                   <Text style={styles.deviceText}>
                     {device.name} — {device.model}
                   </Text>
@@ -132,38 +136,45 @@ export function ChatMemberProfilePanel({
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  error: { color: colors.danger, textAlign: 'center' },
   scroll: { flex: 1 },
   scrollContent: { padding: 24, paddingBottom: 40 },
-  name: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 6,
-  },
-  badge: {
-    color: colors.link,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  muted: { color: colors.textMuted, marginBottom: 12 },
-  section: {
-    marginTop: 20,
-    marginBottom: 8,
-    fontWeight: '600',
-    color: colors.text,
-  },
   linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 8,
   },
-  link: { color: colors.link },
-  deviceText: { flex: 1, color: colors.text },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function memberProfileStyles(c: ThemeColors) {
+  return {
+    root: { flex: 1, backgroundColor: c.bg },
+    error: { color: c.danger, textAlign: 'center' as const },
+    name: {
+      color: c.text,
+      fontSize: 22,
+      fontWeight: '700' as const,
+      textAlign: 'center' as const,
+      marginBottom: 6,
+    },
+    badge: {
+      color: c.link,
+      fontWeight: '600' as const,
+      textAlign: 'center' as const,
+      marginBottom: 16,
+    },
+    muted: { color: c.textMuted, marginBottom: 12 },
+    section: {
+      marginTop: 20,
+      marginBottom: 8,
+      fontWeight: '600' as const,
+      color: c.text,
+    },
+    link: { color: c.link },
+    deviceText: { flex: 1, color: c.text },
+  };
+}

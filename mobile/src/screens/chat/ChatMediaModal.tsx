@@ -14,7 +14,9 @@ import {
 import { Image } from 'expo-image';
 import * as chatApi from '../../api/chat';
 import { ChatMessage } from '../../api/types';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useTheme } from '../../theme/ThemeContext';
 import { MediaViewerModal } from './MediaViewerModal';
 
 type GalleryTab = 'media' | 'docs' | 'links';
@@ -37,6 +39,8 @@ interface Props {
  * channel only, opened from the conversation header. Docs always shows the
  * empty state: chat only ever attaches images/videos, no document uploads. */
 export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(mediaModalStyles);
   const [tab, setTab] = useState<GalleryTab>('media');
   const [media, setMedia] = useState<ChatMessage[]>([]);
   const [links, setLinks] = useState<ChatMessage[]>([]);
@@ -78,17 +82,17 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
       <Animated.View
         style={[styles.root, { transform: [{ translateX: slide }] }]}
       >
-        <View style={styles.header}>
+        <View style={staticStyles.header}>
           <Pressable onPress={onClose} hitSlop={8}>
             <Text style={styles.closeText}>Close</Text>
           </Pressable>
           <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
-          <View style={styles.headerSpacer} />
+          <View style={staticStyles.headerSpacer} />
         </View>
 
-        <View style={styles.tabRow}>
+        <View style={staticStyles.tabRow}>
           {(
             [
               ['media', 'Media'],
@@ -116,7 +120,7 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
             numColumns={3}
             key="media-grid"
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.grid}
+            contentContainerStyle={staticStyles.grid}
             ListEmptyComponent={<Text style={styles.empty}>No media shared yet.</Text>}
             renderItem={({ item }) => {
               const uri = chatApi.resolveChatMediaUrl(item.mediaUrl);
@@ -124,17 +128,17 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
               const isVideo = item.mediaType === 'VIDEO';
               return (
                 <Pressable
-                  style={styles.thumbWrap}
+                  style={staticStyles.thumbWrap}
                   onPress={() => setViewerMedia({ type: isVideo ? 'VIDEO' : 'IMAGE', uri })}
                 >
                   {isVideo ? (
-                    <View style={[styles.thumb, styles.videoThumb]}>
+                    <View style={[staticStyles.thumb, staticStyles.videoThumb]}>
                       <Text style={styles.playIcon}>▶</Text>
                     </View>
                   ) : (
                     <Image
                       source={{ uri }}
-                      style={styles.thumb}
+                      style={staticStyles.thumb}
                       contentFit="cover"
                       cachePolicy="memory-disk"
                       recyclingKey={item.id}
@@ -151,7 +155,7 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
             data={links}
             key="links-list"
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.linkList}
+            contentContainerStyle={staticStyles.linkList}
             ListEmptyComponent={<Text style={styles.empty}>No links shared yet.</Text>}
             renderItem={({ item }) => {
               const url = item.text?.match(URL_REGEX)?.[0];
@@ -184,8 +188,8 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -194,8 +198,6 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 12,
   },
-  closeText: { color: colors.link, fontWeight: '700' },
-  title: { flex: 1, color: colors.text, fontWeight: '700', fontSize: 16, textAlign: 'center' },
   headerSpacer: { width: 44 },
   tabRow: {
     flexDirection: 'row',
@@ -203,29 +205,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
   },
-  tab: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 20,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  tabActive: { backgroundColor: colors.chrome, borderColor: colors.chrome },
-  tabText: { color: colors.text, fontWeight: '600', fontSize: 13 },
-  tabTextActive: { color: colors.chromeInk, fontWeight: '700', fontSize: 13 },
   grid: { padding: 4 },
   thumbWrap: { width: '33.33%', aspectRatio: 1, padding: 2 },
   thumb: { width: '100%', height: '100%', borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.06)' },
   videoThumb: { alignItems: 'center', justifyContent: 'center' },
-  playIcon: { color: colors.text, fontSize: 24 },
   linkList: { padding: 16 },
-  linkRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  linkUrl: { color: colors.link, fontWeight: '600', fontSize: 14 },
-  linkMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  empty: { textAlign: 'center', color: colors.textMuted, marginTop: 24 },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function mediaModalStyles(c: ThemeColors) {
+  return {
+    root: { flex: 1, backgroundColor: c.bg },
+    closeText: { color: c.link, fontWeight: '700' as const },
+    title: {
+      flex: 1,
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 16,
+      textAlign: 'center' as const,
+    },
+    tab: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 20,
+      paddingVertical: 8,
+      alignItems: 'center' as const,
+    },
+    tabActive: { backgroundColor: c.chrome, borderColor: c.chrome },
+    tabText: { color: c.text, fontWeight: '600' as const, fontSize: 13 },
+    tabTextActive: { color: c.chromeInk, fontWeight: '700' as const, fontSize: 13 },
+    playIcon: { color: c.text, fontSize: 24 },
+    linkRow: {
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    linkUrl: { color: c.link, fontWeight: '600' as const, fontSize: 14 },
+    linkMeta: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+    empty: { textAlign: 'center' as const, color: c.textMuted, marginTop: 24 },
+  };
+}

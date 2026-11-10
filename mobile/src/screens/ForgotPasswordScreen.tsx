@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as authApi from '../api/auth';
 import { BrandMark } from '../brand/BrandMark';
 import { AuthStackParamList } from '../navigation/types';
-import { authStyles } from './shared';
+import { useSharedStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { AuthBackButton } from '../ui/AuthBackButton';
 import { ButtonLabel } from '../ui/ButtonLabel';
@@ -13,6 +13,7 @@ import { SoftPressable } from '../ui/SoftPressable';
 type Props = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
 
 export function ForgotPasswordScreen({ navigation }: Props) {
+  const shared = useSharedStyles();
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -33,13 +34,13 @@ export function ForgotPasswordScreen({ navigation }: Props) {
     <FormScreen>
       <AuthBackButton onPress={() => navigation.navigate('Login')} />
       <BrandMark />
-      <Text style={authStyles.title}>Forgot password</Text>
+      <Text style={shared.title}>Forgot password</Text>
       <Text style={{ color: '#9aa0a6', textAlign: 'center', marginBottom: 16 }}>
         Enter your account email and we&apos;ll send you a code to reset your
         password.
       </Text>
       <TextInput
-        style={authStyles.input}
+        style={shared.input}
         placeholder="Email"
         placeholderTextColor="#8b8f97"
         autoCapitalize="none"
@@ -49,8 +50,8 @@ export function ForgotPasswordScreen({ navigation }: Props) {
       />
       <SoftPressable
         style={[
-          authStyles.button,
-          (isSubmitting || !email.trim()) && authStyles.buttonDisabled,
+          shared.button,
+          (isSubmitting || !email.trim()) && shared.buttonDisabled,
         ]}
         disabled={isSubmitting || !email.trim()}
         onPress={onSubmit}
@@ -60,7 +61,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
           {isSubmitting ? 'Sending…' : 'Send code'}
         </ButtonLabel>
       </SoftPressable>
-      <Text style={authStyles.link} onPress={() => navigation.navigate('Login')}>
+      <Text style={shared.link} onPress={() => navigation.navigate('Login')}>
         Back to log in
       </Text>
     </FormScreen>

@@ -23,14 +23,16 @@ import { useBookTabs } from '../../ui/BookTabs';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { PhoneField } from '../../ui/PhoneField';
 import { Toast, useToast } from '../../ui/Toast';
-import { sharedStyles, formatRoleBadge } from '../shared';
+import { useSharedStyles, formatRoleBadge } from '../shared';
 import { useAuth } from '../../auth/AuthContext';
 import { coercePhoneToE164 } from '../../lib/phone';
 import {
   SOCIAL_PLACEHOLDERS,
   validateAllSocialUrls,
 } from '../../lib/socialUrls';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import { resolveMediaUrl } from '../../api/client';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
 
@@ -49,7 +51,9 @@ function isFormComplete(inGameName: string, inGameUid: string, phone: string) {
 }
 
 export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean } = {}) {
+  const shared = useSharedStyles();
   const { refreshUser } = useAuth();
+  const styles = useThemedStyles(profileStyles);
   const { message: toastMessage, showToast } = useToast();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -119,7 +123,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
   if (isLoading || !profile) {
     return (
       <Screen>
-        <View style={sharedStyles.container}>
+        <View style={shared.container}>
           <ActivityIndicator color="#c9ccd1" />
         </View>
       </Screen>
@@ -165,19 +169,19 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
         contentContainerStyle={{ padding: 24 }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.headerRow}>
+        <View style={staticStyles.headerRow}>
           <SoftPressable
             onPress={() => void onPickAvatar()}
             accessibilityRole="button"
             accessibilityLabel="Change profile photo"
             pressScale={0.96}
-            style={styles.avatarBtn}
+            style={staticStyles.avatarBtn}
           >
-            <View style={styles.avatar}>
+            <View style={staticStyles.avatar}>
               {avatarUri ? (
                 <Image
                   source={{ uri: avatarUri }}
-                  style={styles.avatarImg}
+                  style={staticStyles.avatarImg}
                   contentFit="cover"
                 />
               ) : (
@@ -188,12 +192,12 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
             </View>
             <Text style={styles.avatarHint}>Change photo</Text>
           </SoftPressable>
-          <View style={styles.headerText}>
+          <View style={staticStyles.headerText}>
             <Text style={styles.displayName} numberOfLines={2}>
               {profile.name}
             </Text>
             {roleBadge ? (
-              <View style={styles.rolePill}>
+              <View style={staticStyles.rolePill}>
                 <Text style={styles.roleBadge}>{roleBadge}</Text>
               </View>
             ) : null}
@@ -219,7 +223,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
           }
         />
 
-        <View style={styles.panelCard}>
+        <View style={staticStyles.panelCard}>
           {profileTab === 'user' ? (
             <UserProfileSection
               profile={profile}
@@ -275,7 +279,10 @@ function UserProfileSection({
   onAdvance?: () => void;
   showToast: (message: string) => void;
 }) {
+  const shared = useSharedStyles();
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(profileStyles);
   const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState(profile.name);
@@ -333,24 +340,24 @@ function UserProfileSection({
 
   return (
     <View>
-      <Text style={styles.sectionLabel}>Name *</Text>
+      <Text style={staticStyles.sectionLabel}>Name *</Text>
       <CopyableInput placeholder="Your name" value={name} onChangeText={setName} />
 
       {user?.email && (
         <>
-          <Text style={styles.sectionLabel}>Email</Text>
+          <Text style={staticStyles.sectionLabel}>Email</Text>
           <CopyableField label="Signed up with" value={user.email} />
         </>
       )}
 
-      <Text style={styles.sectionLabel}>Phone {mustComplete ? '*' : ''}</Text>
+      <Text style={staticStyles.sectionLabel}>Phone {mustComplete ? '*' : ''}</Text>
       <PhoneField value={phone} onChange={setPhone} />
       {mustComplete && <Text style={styles.requiredHint}>* Required</Text>}
 
       <SoftPressable
         style={[
-          sharedStyles.button,
-          (isSaving || !canSave) && sharedStyles.buttonDisabled,
+          shared.button,
+          (isSaving || !canSave) && shared.buttonDisabled,
         ]}
         disabled={isSaving || !canSave}
         onPress={onSave}
@@ -382,6 +389,9 @@ function GameProfileSection({
   onAdvance?: () => void;
   showToast: (message: string) => void;
 }) {
+  const shared = useSharedStyles();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(profileStyles);
   const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
   const [roles, setRoles] = useState<string[]>(() => knownRolesOnly(profile.roles));
@@ -453,17 +463,17 @@ function GameProfileSection({
 
   return (
     <View>
-      <Text style={styles.sectionLabel}>Role(s)</Text>
+      <Text style={staticStyles.sectionLabel}>Role(s)</Text>
       <RoleChips selected={roles} onToggle={toggleRole} />
 
-      <Text style={styles.sectionLabel}>In-Game Name (IGN) {mustComplete ? '*' : ''}</Text>
+      <Text style={staticStyles.sectionLabel}>In-Game Name (IGN) {mustComplete ? '*' : ''}</Text>
       <CopyableInput
         placeholder="Your in-game name"
         value={inGameName}
         onChangeText={setInGameName}
       />
 
-      <Text style={styles.sectionLabel}>UID {mustComplete ? '*' : ''}</Text>
+      <Text style={staticStyles.sectionLabel}>UID {mustComplete ? '*' : ''}</Text>
       <CopyableInput
         placeholder="Your in-game UID"
         value={inGameUid}
@@ -473,8 +483,8 @@ function GameProfileSection({
 
       <SoftPressable
         style={[
-          sharedStyles.button,
-          (isSaving || !canSave) && sharedStyles.buttonDisabled,
+          shared.button,
+          (isSaving || !canSave) && shared.buttonDisabled,
         ]}
         disabled={isSaving || !canSave}
         onPress={onSave}
@@ -501,6 +511,8 @@ function DevicesProfileSection({
   onAdvance?: () => void;
   showToast: (message: string) => void;
 }) {
+  const shared = useSharedStyles();
+  const styles = useThemedStyles(profileStyles);
   const [deviceName, setDeviceName] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
   const [isAddingDevice, setIsAddingDevice] = useState(false);
@@ -535,7 +547,7 @@ function DevicesProfileSection({
 
   return (
     <View>
-      <Text style={styles.sectionLabel}>My Devices</Text>
+      <Text style={staticStyles.sectionLabel}>My Devices</Text>
       {profile.devices.length === 0 ? (
         <Text style={styles.emptyHint}>No devices yet — add your first below.</Text>
       ) : (
@@ -558,7 +570,7 @@ function DevicesProfileSection({
         ))
       )}
 
-      <Text style={styles.sectionLabel}>Add device</Text>
+      <Text style={staticStyles.sectionLabel}>Add device</Text>
       <CopyableInput
         placeholder="Device name (e.g. Main rig)"
         value={deviceName}
@@ -571,9 +583,9 @@ function DevicesProfileSection({
       />
       <SoftPressable
         style={[
-          sharedStyles.button,
+          shared.button,
           (!deviceName || !deviceModel || isAddingDevice) &&
-            sharedStyles.buttonDisabled,
+            shared.buttonDisabled,
         ]}
         disabled={!deviceName || !deviceModel || isAddingDevice}
         onPress={onAddDevice}
@@ -585,7 +597,7 @@ function DevicesProfileSection({
       </SoftPressable>
       {mustComplete ? (
         <SoftPressable
-          style={[sharedStyles.button, { marginTop: 12 }]}
+          style={[shared.button, { marginTop: 12 }]}
           onPress={() => onAdvance?.()}
           pressScale={0.98}
         >
@@ -609,6 +621,9 @@ function SocialProfileSection({
   onAdvance?: () => void | Promise<void>;
   showToast: (message: string) => void;
 }) {
+  const shared = useSharedStyles();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(profileStyles);
   const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState(profile.whatsappUrl ?? '');
@@ -673,7 +688,7 @@ function SocialProfileSection({
         </SoftPressable>
         {mustComplete ? (
           <SoftPressable
-            style={[sharedStyles.button, { marginTop: 12 }]}
+            style={[shared.button, { marginTop: 12 }]}
             onPress={() => void onAdvance?.()}
             pressScale={0.98}
           >
@@ -686,28 +701,28 @@ function SocialProfileSection({
 
   return (
     <View>
-      <Text style={styles.sectionLabel}>WhatsApp</Text>
+      <Text style={staticStyles.sectionLabel}>WhatsApp</Text>
       <CopyableInput
         placeholder={SOCIAL_PLACEHOLDERS.whatsapp}
         autoCapitalize="none"
         value={whatsappUrl}
         onChangeText={setWhatsappUrl}
       />
-      <Text style={styles.sectionLabel}>Instagram</Text>
+      <Text style={staticStyles.sectionLabel}>Instagram</Text>
       <CopyableInput
         placeholder={SOCIAL_PLACEHOLDERS.instagram}
         autoCapitalize="none"
         value={instagramUrl}
         onChangeText={setInstagramUrl}
       />
-      <Text style={styles.sectionLabel}>Discord</Text>
+      <Text style={staticStyles.sectionLabel}>Discord</Text>
       <CopyableInput
         placeholder={SOCIAL_PLACEHOLDERS.discord}
         autoCapitalize="none"
         value={discordUrl}
         onChangeText={setDiscordUrl}
       />
-      <Text style={styles.sectionLabel}>YouTube</Text>
+      <Text style={staticStyles.sectionLabel}>YouTube</Text>
       <CopyableInput
         placeholder={SOCIAL_PLACEHOLDERS.youtube}
         autoCapitalize="none"
@@ -716,7 +731,7 @@ function SocialProfileSection({
       />
 
       <SoftPressable
-        style={[sharedStyles.button, isSaving && sharedStyles.buttonDisabled]}
+        style={[shared.button, isSaving && shared.buttonDisabled]}
         disabled={isSaving}
         onPress={onSave}
         pressScale={0.98}
@@ -729,7 +744,8 @@ function SocialProfileSection({
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -741,12 +757,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     justifyContent: 'center',
     gap: 8,
-  },
-  displayName: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: -0.3,
   },
   avatarBtn: {
     alignItems: 'center',
@@ -765,17 +775,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarInitial: {
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  avatarHint: {
-    color: colors.link,
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
   rolePill: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
@@ -784,11 +783,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(168,176,255,0.14)',
     borderWidth: 1,
     borderColor: 'rgba(168,176,255,0.28)',
-  },
-  roleBadge: {
-    color: colors.link,
-    fontWeight: '700',
-    fontSize: 12,
   },
   panelCard: {
     borderRadius: 16,
@@ -804,48 +798,76 @@ const styles = StyleSheet.create({
     color: '#e8eaed',
     textTransform: 'capitalize',
   },
-  deviceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  deviceText: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 15,
-  },
-  removeText: {
-    color: colors.danger,
-    fontWeight: '600',
-  },
-  emptyHint: {
-    color: colors.textMuted,
-    marginBottom: 8,
-    fontSize: 13,
-  },
-  introText: {
-    color: colors.textMuted,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  requiredHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: -8,
-    marginBottom: 4,
-  },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: colors.link,
-    backgroundColor: 'rgba(168,176,255,0.12)',
-    paddingVertical: 12,
-    marginTop: 20,
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function profileStyles(c: ThemeColors) {
+  return {
+    displayName: {
+      color: c.text,
+      fontSize: 22,
+      fontWeight: '700' as const,
+      letterSpacing: -0.3,
+    },
+    avatarInitial: {
+      color: c.text,
+      fontSize: 28,
+      fontWeight: '700' as const,
+    },
+    avatarHint: {
+      color: c.link,
+      fontSize: 11,
+      fontWeight: '700' as const,
+      textAlign: 'center' as const,
+    },
+    roleBadge: {
+      color: c.link,
+      fontWeight: '700' as const,
+      fontSize: 12,
+    },
+    deviceRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    deviceText: {
+      flex: 1,
+      color: c.text,
+      fontSize: 15,
+    },
+    removeText: {
+      color: c.danger,
+      fontWeight: '600' as const,
+    },
+    emptyHint: {
+      color: c.textMuted,
+      marginBottom: 8,
+      fontSize: 13,
+    },
+    introText: {
+      color: c.textMuted,
+      marginBottom: 8,
+      textAlign: 'center' as const,
+    },
+    requiredHint: {
+      color: c.textMuted,
+      fontSize: 12,
+      marginTop: -8,
+      marginBottom: 4,
+    },
+    editButton: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: c.link,
+      backgroundColor: 'rgba(168,176,255,0.12)',
+      paddingVertical: 12,
+      marginTop: 20,
+    },
+  };
+}

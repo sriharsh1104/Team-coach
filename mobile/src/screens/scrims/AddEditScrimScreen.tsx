@@ -16,8 +16,10 @@ import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { ScheduleDateTimeField, defaultEventTimeToPM } from '../../ui/ScheduleDateTimeField';
 import { confirmAsync } from '../../ui/confirmAsync';
-import { colors } from '../../theme';
-import { sharedStyles } from '../shared';
+import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useSharedStyles } from '../shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'AddEditScrim'>;
 
@@ -28,6 +30,9 @@ type RoundDraft = {
 };
 
 export function AddEditScrimScreen({ navigation, route }: Props) {
+  const shared = useSharedStyles();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(addEditScrimStyles);
   const existing = route.params?.scrim;
   const isEditing = Boolean(existing);
 
@@ -160,17 +165,17 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
   return (
     <Screen>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
+        style={staticStyles.scroll}
+        contentContainerStyle={staticStyles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={sharedStyles.title}>
+        <Text style={shared.title}>
           {isEditing ? 'Edit Entry' : 'Add Scrim / Tournament'}
         </Text>
 
-        <View style={styles.row}>
+        <View style={staticStyles.row}>
           <Pressable
-            style={[styles.pill, type === 'SCRIM' && styles.pillActive]}
+            style={[staticStyles.pill, type === 'SCRIM' && staticStyles.pillActive]}
             onPress={() => {
               setType('SCRIM');
               // Scrims don't have a qualification/rounds concept — collapse
@@ -178,16 +183,16 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
               setRounds((prev) => [{ ...prev[0], result: 'PENDING' }]);
             }}
           >
-            <Text style={type === 'SCRIM' ? styles.pillTextActive : styles.pillText}>
+            <Text style={type === 'SCRIM' ? staticStyles.pillTextActive : staticStyles.pillText}>
               Scrim
             </Text>
           </Pressable>
           <Pressable
-            style={[styles.pill, type === 'TOURNAMENT' && styles.pillActive]}
+            style={[staticStyles.pill, type === 'TOURNAMENT' && staticStyles.pillActive]}
             onPress={() => setType('TOURNAMENT')}
           >
             <Text
-              style={type === 'TOURNAMENT' ? styles.pillTextActive : styles.pillText}
+              style={type === 'TOURNAMENT' ? staticStyles.pillTextActive : staticStyles.pillText}
             >
               Tournament
             </Text>
@@ -195,7 +200,7 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
         </View>
 
         <TextInput
-          style={sharedStyles.input}
+          style={shared.input}
           placeholder="Title (e.g. Practice vs Team Beta)"
           placeholderTextColor={colors.textDim}
           value={title}
@@ -240,7 +245,7 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
 
             {rounds.map((round, index) => (
               <View key={`round-${round.roundNumber}-${index}`} style={styles.roundCard}>
-                <View style={styles.roundHeader}>
+                <View style={staticStyles.roundHeader}>
                   <Text style={styles.roundTitle}>Round {round.roundNumber}</Text>
                   {rounds.length > 1 && (
                     <Pressable onPress={() => removeRound(index)}>
@@ -255,7 +260,7 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
                   onChange={(date) => updateRound(index, { scheduledAt: date })}
                 />
 
-                <View style={styles.row}>
+                <View style={staticStyles.row}>
                   {(
                     [
                       ['PENDING', 'Pending'],
@@ -266,8 +271,8 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
                     <Pressable
                       key={value}
                       style={[
-                        styles.pill,
-                        round.result === value && styles.pillActive,
+                        staticStyles.pill,
+                        round.result === value && staticStyles.pillActive,
                       ]}
                       onPress={() => {
                         updateRound(index, { result: value });
@@ -282,8 +287,8 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
                       <Text
                         style={
                           round.result === value
-                            ? styles.pillTextActive
-                            : styles.pillText
+                            ? staticStyles.pillTextActive
+                            : staticStyles.pillText
                         }
                       >
                         {label}
@@ -303,7 +308,7 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
         )}
 
         <TextInput
-          style={sharedStyles.input}
+          style={shared.input}
           placeholder="Platform / link (e.g. Discord invite)"
           placeholderTextColor={colors.textDim}
           autoCapitalize="none"
@@ -311,7 +316,7 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
           onChangeText={setPlatform}
         />
         <TextInput
-          style={[sharedStyles.input, { height: 80 }]}
+          style={[shared.input, { height: 80 }]}
           placeholder="Notes (optional)"
           placeholderTextColor={colors.textDim}
           multiline
@@ -321,8 +326,8 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
 
         <Pressable
           style={[
-            sharedStyles.button,
-            (!title.trim() || isSaving) && sharedStyles.buttonDisabled,
+            shared.button,
+            (!title.trim() || isSaving) && shared.buttonDisabled,
           ]}
           disabled={!title.trim() || isSaving}
           onPress={onSave}
@@ -331,8 +336,8 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
         </Pressable>
 
         {isEditing && (
-          <Pressable style={sharedStyles.link} onPress={onDelete}>
-            <Text style={[sharedStyles.link, { color: '#dc2626' }]}>
+          <Pressable style={shared.link} onPress={onDelete}>
+            <Text style={[shared.link, { color: '#dc2626' }]}>
               Delete Entry
             </Text>
           </Pressable>
@@ -342,7 +347,8 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: 24, paddingBottom: 40 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
@@ -356,56 +362,62 @@ const styles = StyleSheet.create({
   pillActive: { backgroundColor: '#c9ccd1', borderColor: '#c9ccd1' },
   pillText: { color: '#f2f3f5' },
   pillTextActive: { color: '#0a0a0c' },
-  sectionLabel: {
-    marginTop: 8,
-    marginBottom: 4,
-    fontWeight: '700',
-    color: colors.text,
-    textTransform: 'capitalize',
-  },
-  sectionHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginBottom: 10,
-  },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    backgroundColor: colors.surface,
-  },
-  checkRowOn: { borderColor: colors.chrome },
-  checkMark: { color: colors.chrome, fontWeight: '700', width: 18 },
-  checkText: { color: colors.text, fontWeight: '600' },
-  roundCard: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
   roundHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  roundTitle: { color: colors.text, fontWeight: '700' },
-  remove: { color: colors.danger, fontWeight: '600' },
-  addRoundBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderStyle: 'dashed',
-  },
-  addRoundText: { color: colors.link, fontWeight: '700' },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function addEditScrimStyles(c: ThemeColors) {
+  return {
+    sectionLabel: {
+      marginTop: 8,
+      marginBottom: 4,
+      fontWeight: '700' as const,
+      color: c.text,
+      textTransform: 'capitalize' as const,
+    },
+    sectionHint: {
+      color: c.textMuted,
+      fontSize: 12,
+      marginBottom: 10,
+    },
+    checkRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      marginBottom: 8,
+      backgroundColor: c.surface,
+    },
+    checkRowOn: { borderColor: c.chrome },
+    checkMark: { color: c.chrome, fontWeight: '700' as const, width: 18 },
+    checkText: { color: c.text, fontWeight: '600' as const },
+    roundCard: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      padding: 12,
+      marginBottom: 12,
+      backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    roundTitle: { color: c.text, fontWeight: '700' as const },
+    remove: { color: c.danger, fontWeight: '600' as const },
+    addRoundBtn: {
+      alignItems: 'center' as const,
+      paddingVertical: 12,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 8,
+      borderStyle: 'dashed' as const,
+    },
+    addRoundText: { color: c.link, fontWeight: '700' as const },
+  };
+}

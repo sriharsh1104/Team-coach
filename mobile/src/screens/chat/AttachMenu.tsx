@@ -4,7 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { EmojiBar } from './EmojiBar';
 import { StickerPicker } from './StickerPicker';
 import { CustomSticker } from './stickerStorage';
-import { colors } from '../../theme';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useTheme } from '../../theme/ThemeContext';
 
 export type AttachOption = 'photo' | 'video' | 'camera' | 'reminder';
 
@@ -26,12 +28,14 @@ export function AttachMenu({
   onPickStickerEmoji,
   onPickCustomSticker,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(attachMenuStyles);
   const [panel, setPanel] = useState<'root' | 'emoji' | 'stickers'>('root');
 
   if (panel === 'emoji') {
     return (
       <View style={styles.panel}>
-        <View style={styles.emojiHeader}>
+        <View style={staticStyles.emojiHeader}>
           <Pressable
             onPress={() => setPanel('root')}
             hitSlop={8}
@@ -49,7 +53,7 @@ export function AttachMenu({
   if (panel === 'stickers') {
     return (
       <View style={styles.panel}>
-        <View style={styles.emojiHeader}>
+        <View style={staticStyles.emojiHeader}>
           <Pressable
             onPress={() => setPanel('root')}
             hitSlop={8}
@@ -120,16 +124,16 @@ export function AttachMenu({
 
   return (
     <View style={styles.panel}>
-      <View style={styles.grid}>
+      <View style={staticStyles.grid}>
         {options.map((opt) => (
           <Pressable
             key={opt.key}
-            style={styles.gridItem}
+            style={staticStyles.gridItem}
             onPress={opt.onPress}
             accessibilityLabel={opt.label}
           >
-            <View style={[styles.gridIcon, { backgroundColor: `${opt.tint}22` }]}>
-              <View style={[styles.gridIconInner, { backgroundColor: opt.tint }]}>
+            <View style={[staticStyles.gridIcon, { backgroundColor: `${opt.tint}22` }]}>
+              <View style={[staticStyles.gridIconInner, { backgroundColor: opt.tint }]}>
                 <Ionicons name={opt.icon} size={22} color="#fff" />
               </View>
             </View>
@@ -141,13 +145,8 @@ export function AttachMenu({
   );
 }
 
-const styles = StyleSheet.create({
-  panel: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    paddingVertical: 14,
-  },
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -171,7 +170,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gridLabel: { color: colors.text, fontSize: 12, fontWeight: '600' },
   emojiHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -179,10 +177,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 6,
   },
-  emojiHeaderLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function attachMenuStyles(c: ThemeColors) {
+  return {
+    panel: {
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+      backgroundColor: 'rgba(255,255,255,0.03)',
+      paddingVertical: 14,
+    },
+    gridLabel: { color: c.text, fontSize: 12, fontWeight: '600' as const },
+    emojiHeaderLabel: {
+      color: c.textMuted,
+      fontSize: 12,
+      fontWeight: '700' as const,
+      textTransform: 'uppercase' as const,
+    },
+  };
+}

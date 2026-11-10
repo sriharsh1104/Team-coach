@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { authStyles } from '../screens/shared';
+import { useSharedStyles } from '../screens/shared';
 import { colors } from '../theme';
 
 type Props = {
@@ -15,12 +15,13 @@ export function PasswordField({
   onChangeText,
   placeholder = 'Password',
 }: Props) {
+  const shared = useSharedStyles();
   const [visible, setVisible] = useState(false);
 
   return (
     <View style={styles.wrap}>
       <TextInput
-        style={[authStyles.input, styles.input]}
+        style={[shared.input, styles.input]}
         placeholder={placeholder}
         placeholderTextColor={colors.textDim}
         secureTextEntry={!visible}

@@ -23,8 +23,9 @@ import {
 } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
-import { sharedStyles } from '../shared';
-import { colors } from '../../theme';
+import { useSharedStyles } from '../shared';
+import { ThemeColors } from '../../theme';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import {
@@ -77,6 +78,8 @@ function applyBundle(
 }
 
 export function StatsHomeScreen({ navigation, route }: Props) {
+  const shared = useSharedStyles();
+  const styles = useThemedStyles(statsStyles);
   const { org } = useAuth();
   const realtime = useOrgRealtimeOptional();
   const isReviewer = org?.role === 'COACH' || org?.isOwner === true;
@@ -250,14 +253,14 @@ export function StatsHomeScreen({ navigation, route }: Props) {
   const dayGroups = useMemo(() => groupEntriesByDay(history), [history]);
 
   const modeChips = (
-    <View style={styles.modeTrack}>
+    <View style={staticStyles.modeTrack}>
       {STAT_MODES.map((item) => {
         const active = mode === item.mode;
         return (
           <SoftPressable
             key={item.mode}
             onPress={() => onSelectMode(item.mode)}
-            style={[styles.modeChip, active && styles.modeChipActive]}
+            style={[staticStyles.modeChip, active && styles.modeChipActive]}
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             accessibilityLabel={item.label}
@@ -275,9 +278,9 @@ export function StatsHomeScreen({ navigation, route }: Props) {
   if (!grind) {
     return (
       <Screen>
-        <View style={styles.root}>
-          <View style={styles.header}>
-            <Text style={sharedStyles.title}>Stats</Text>
+        <View style={staticStyles.root}>
+          <View style={staticStyles.header}>
+            <Text style={shared.title}>Stats</Text>
             <Text style={styles.hint}>
               {mode === 'SCRIM'
                 ? 'Scrims — schedule match date/time, then upload that match result. BR/CS grind is a separate tab.'
@@ -296,7 +299,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
 
   const listHeader = (
     <>
-      <Text style={sharedStyles.title}>Stats</Text>
+      <Text style={shared.title}>Stats</Text>
       <Text style={styles.hint}>
         {modeLabel} grind — upload one or more scoreboards. Only matched
         teammates update. Scrims / Tournament are separate tabs.
@@ -316,7 +319,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
 
       {pending.length > 0 && (
         <>
-          <Text style={styles.sectionHeader}>Pending Review</Text>
+          <Text style={staticStyles.sectionHeader}>Pending Review</Text>
           {pending.map((extraction) => (
             <View key={extraction.id} style={styles.pendingRow}>
               <Pressable
@@ -358,7 +361,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
         </>
       )}
 
-      <Text style={styles.sectionHeader}>
+      <Text style={staticStyles.sectionHeader}>
         {viewTab === 'board' ? `${modeLabel} Leaderboard` : `${modeLabel} By Day`}
       </Text>
     </>
@@ -366,14 +369,14 @@ export function StatsHomeScreen({ navigation, route }: Props) {
 
   return (
     <Screen>
-      <View style={styles.root}>
+      <View style={staticStyles.root}>
         {viewTab === 'board' ? (
           <FlatList
-            style={styles.list}
+            style={staticStyles.list}
             data={leaderboard}
             keyExtractor={(item) => item.userId}
             ListHeaderComponent={listHeader}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={staticStyles.listContent}
             refreshControl={
               <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
             }
@@ -384,7 +387,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
             }
             renderItem={({ item, index }) => (
               <SoftPressable
-                style={[styles.row, index === 0 && styles.rowLead]}
+                style={[staticStyles.row, index === 0 && staticStyles.rowLead]}
                 onPress={() =>
                   navigation.navigate('PlayerStats', {
                     userId: item.userId,
@@ -409,11 +412,11 @@ export function StatsHomeScreen({ navigation, route }: Props) {
           />
         ) : (
           <FlatList
-            style={styles.list}
+            style={staticStyles.list}
             data={dayGroups}
             keyExtractor={(item) => item.dayKey}
             ListHeaderComponent={listHeader}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={staticStyles.listContent}
             refreshControl={
               <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
             }
@@ -428,7 +431,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
               <Text style={styles.empty}>No {modeLabel} day history yet.</Text>
             }
             renderItem={({ item: group }) => (
-              <View style={styles.dayCard}>
+              <View style={staticStyles.dayCard}>
                 <View style={styles.dayHeader}>
                   <Text style={styles.dayTitle}>{group.label}</Text>
                   <Text style={styles.dayTotals}>
@@ -438,7 +441,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                 {group.entries.map((entry) => (
                   <SoftPressable
                     key={entry.id}
-                    style={styles.dayRow}
+                    style={staticStyles.dayRow}
                     onPress={() =>
                       navigation.navigate('PlayerStats', {
                         userId: entry.userId,
@@ -448,7 +451,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                     }
                     pressScale={0.985}
                   >
-                    <Text style={styles.dayName}>{entry.name}</Text>
+                    <Text style={staticStyles.dayName}>{entry.name}</Text>
                     <Text style={styles.stats}>
                       {entry.kills}K / {entry.assists}A / {entry.damage} DMG
                     </Text>
@@ -459,9 +462,9 @@ export function StatsHomeScreen({ navigation, route }: Props) {
           />
         )}
 
-        <View style={styles.bottomBar}>
+        <View style={staticStyles.bottomBar}>
           <SoftPressable
-            style={[styles.uploadBtn, uploading && styles.uploadDisabled]}
+            style={[styles.uploadBtn, uploading && staticStyles.uploadDisabled]}
             onPress={onUploadScoreboards}
             disabled={uploading}
             accessibilityRole="button"
@@ -480,18 +483,12 @@ export function StatsHomeScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+/** Layout-only — identical across every theme, safe as a static StyleSheet. */
+const staticStyles = StyleSheet.create({
   root: { flex: 1 },
   header: { paddingHorizontal: 16, paddingTop: 8 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
-  hint: {
-    color: colors.textMuted,
-    fontSize: 13,
-    marginTop: 4,
-    marginBottom: 12,
-    lineHeight: 18,
-  },
   modeTrack: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -508,9 +505,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
   },
-  modeChipActive: { backgroundColor: colors.chrome },
-  modeText: { color: colors.textMuted, fontWeight: '600' },
-  modeTextActive: { color: colors.chromeInk, fontWeight: '700' },
   sectionHeader: {
     fontWeight: '700',
     fontSize: 16,
@@ -518,16 +512,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: '#e8eaed',
   },
-  pendingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  reviewLink: { color: colors.link, fontWeight: '600' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -543,12 +527,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(201,204,209,0.1)',
     borderColor: 'rgba(201,204,209,0.28)',
   },
-  rank: { width: 36, fontWeight: '700', color: colors.textMuted },
-  rankLead: { color: colors.chrome },
-  name: { fontWeight: '600', color: colors.text },
-  meta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  stats: { color: colors.textMuted, fontWeight: '600' },
-  empty: { textAlign: 'center', color: colors.textMuted, marginTop: 28 },
   dayCard: {
     marginBottom: 12,
     borderWidth: 1,
@@ -558,16 +536,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  dayTitle: { color: colors.text, fontWeight: '700' },
-  dayTotals: { color: colors.chrome, fontWeight: '600', fontSize: 12 },
   dayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -582,14 +550,56 @@ const styles = StyleSheet.create({
     borderTopColor: '#2a2d33',
     backgroundColor: 'rgba(10,10,12,0.94)',
   },
-  uploadBtn: {
-    backgroundColor: colors.chrome,
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    minWidth: 160,
-    alignItems: 'center',
-  },
   uploadDisabled: { opacity: 0.6 },
-  uploadText: { color: colors.chromeInk, fontWeight: '700', fontSize: 14 },
 });
+
+/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
+function statsStyles(c: ThemeColors) {
+  return {
+    hint: {
+      color: c.textMuted,
+      fontSize: 13,
+      marginTop: 4,
+      marginBottom: 12,
+      lineHeight: 18,
+    },
+    modeChipActive: { backgroundColor: c.chrome },
+    modeText: { color: c.textMuted, fontWeight: '600' as const },
+    modeTextActive: { color: c.chromeInk, fontWeight: '700' as const },
+    pendingRow: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    reviewLink: { color: c.link, fontWeight: '600' as const },
+    rank: { width: 36, fontWeight: '700' as const, color: c.textMuted },
+    rankLead: { color: c.chrome },
+    name: { fontWeight: '600' as const, color: c.text },
+    meta: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+    stats: { color: c.textMuted, fontWeight: '600' as const },
+    empty: { textAlign: 'center' as const, color: c.textMuted, marginTop: 28 },
+    dayHeader: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      marginBottom: 8,
+      paddingBottom: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    dayTitle: { color: c.text, fontWeight: '700' as const },
+    dayTotals: { color: c.chrome, fontWeight: '600' as const, fontSize: 12 },
+    uploadBtn: {
+      backgroundColor: c.chrome,
+      borderRadius: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 28,
+      minWidth: 160,
+      alignItems: 'center' as const,
+    },
+    uploadText: { color: c.chromeInk, fontWeight: '700' as const, fontSize: 14 },
+  };
+}
