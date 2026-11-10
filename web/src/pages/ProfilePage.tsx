@@ -539,20 +539,19 @@ function GameSection({
   const [editing, setEditing] = useState(mustComplete);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [roles, setRoles] = useState(() => knownRolesOnly(profile.roles));
+  const [roles, setRoles] = useState(() => knownRolesOnly(profile.roles).slice(0, 1));
   const [ign, setIgn] = useState(profile.inGameName ?? '');
   const [uid, setUid] = useState(profile.inGameUid ?? '');
 
   useEffect(() => {
-    setRoles(knownRolesOnly(profile.roles));
+    setRoles(knownRolesOnly(profile.roles).slice(0, 1));
     setIgn(profile.inGameName ?? '');
     setUid(profile.inGameUid ?? '');
   }, [profile]);
 
   function toggleRole(role: RoleOption) {
-    setRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
-    );
+    // One game role at a time: IGL, primary, secondary, or any other option.
+    setRoles((prev) => (prev.length === 1 && prev[0] === role ? [] : [role]));
   }
 
   async function onSave(e: FormEvent) {
@@ -565,7 +564,7 @@ function GameSection({
     setError(null);
     try {
       const updated = await usersApi.updateMyProfile({
-        roles: knownRolesOnly(roles),
+        roles: knownRolesOnly(roles).slice(0, 1),
         inGameName: ign.trim(),
         inGameUid: uid.trim(),
       });
@@ -583,9 +582,12 @@ function GameSection({
       <div>
         <div className="profile-fields-grid">
           <div className="profile-field profile-field-span">
-            <span className="profile-field-label">Role(s)</span>
+            <span className="profile-field-label">Role</span>
             {knownRolesOnly(profile.roles).length > 0 ? (
-              <RoleChips selected={profile.roles} editable={false} />
+              <RoleChips
+                selected={knownRolesOnly(profile.roles).slice(0, 1)}
+                editable={false}
+              />
             ) : (
               <p className="muted" style={{ margin: '8px 0 0' }}>
                 No role set yet
@@ -612,7 +614,7 @@ function GameSection({
   return (
     <form className="profile-form-grid" onSubmit={onSave}>
       <div className="field field-span">
-        <label>Role(s)</label>
+        <label>Role</label>
         <RoleChips selected={roles} onToggle={toggleRole} />
       </div>
       <div className="field">
@@ -645,7 +647,7 @@ function GameSection({
             type="button"
             className="btn btn-ghost"
             onClick={() => {
-              setRoles(knownRolesOnly(profile.roles));
+              setRoles(knownRolesOnly(profile.roles).slice(0, 1));
               setIgn(profile.inGameName ?? '');
               setUid(profile.inGameUid ?? '');
               setEditing(false);

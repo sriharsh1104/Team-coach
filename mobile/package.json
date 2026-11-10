@@ -39,6 +39,7 @@
     "expo-image-manipulator": "~13.0.6",
     "expo-image-picker": "~16.0.6",
     "expo-local-authentication": "~15.0.2",
+    "expo-media-library": "~17.0.6",
     "expo-notifications": "~0.29.14",
     "expo-secure-store": "~14.0.1",
     "expo-status-bar": "~2.0.0",
@@ -57,6 +58,7 @@
     "react-native-svg": "15.8.0",
     "react-native-web": "~0.19.13",
     "rn-international-phone-number": "^0.15.1",
+    "screen-recorder": "file:modules/screen-recorder",
     "socket.io-client": "^4.8.4"
   },
   "devDependencies": {

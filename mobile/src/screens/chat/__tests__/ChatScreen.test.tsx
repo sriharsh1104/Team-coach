@@ -1,9 +1,14 @@
 import React from 'react';
-import { FlatList } from 'react-native';
+import { FlatList, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
+import {
+  isScreenRecording,
+  startScreenRecording,
+} from '../../../media/screenRecorder';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { ChatScreen } from '../ChatScreen';
+import { emitToast } from '../../../ui/toastBus';
 import * as chatApi from '../../../api/chat';
 import { useAuth } from '../../../auth/AuthContext';
 import { TOKEN_STORAGE_KEY } from '../../../api/client';
@@ -12,6 +17,12 @@ jest.mock('../../../api/chat');
 jest.mock('../../../auth/AuthContext');
 jest.mock('../../../ui/toastBus', () => ({
   emitToast: jest.fn(),
+}));
+jest.mock('../../../media/screenRecorder', () => ({
+  startScreenRecording: jest.fn(),
+  stopScreenRecording: jest.fn(),
+  isScreenRecording: jest.fn(() => false),
+  addScreenRecordingStoppedListener: jest.fn(() => () => {}),
 }));
 jest.mock('expo-image-picker', () => ({
   MediaTypeOptions: { All: 'All', Videos: 'Videos', Images: 'Images' },
@@ -24,6 +35,8 @@ jest.mock('expo-image-picker', () => ({
 const mockedChatApi = chatApi as jest.Mocked<typeof chatApi>;
 const mockedUseAuth = useAuth as jest.Mock;
 const mockedImagePicker = ImagePicker as jest.Mocked<typeof ImagePicker>;
+const mockedStartRecording = startScreenRecording as jest.Mock;
+const mockedIsRecording = isScreenRecording as jest.Mock;
 
 function createFakeSocket() {
   const handlers: Record<string, Array<(...args: any[]) => void>> = {};
@@ -371,6 +384,27 @@ describe('ChatScreen', () => {
       expect(mockedImagePicker.launchCameraAsync).toHaveBeenCalledWith(
         expect.objectContaining({ mediaTypes: 'Images' }),
       );
+    });
+
+    it('starts a background game recording and does not upload it', async () => {
+      const previous = Platform.OS;
+      Platform.OS = 'android';
+      await connectAndSettle();
+      mockedIsRecording.mockReturnValue(false);
+      mockedStartRecording.mockResolvedValue('started');
+
+      fireEvent.press(screen.getByLabelText('Attach'));
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText('Record'));
+      });
+
+      expect(mockedStartRecording).toHaveBeenCalled();
+      expect(mockedImagePicker.launchCameraAsync).not.toHaveBeenCalled();
+      expect(mockedChatApi.uploadChatMedia).not.toHaveBeenCalled();
+      expect(emitToast).toHaveBeenCalledWith(
+        expect.stringContaining('Open your game'),
+      );
+      Platform.OS = previous;
     });
   });
 

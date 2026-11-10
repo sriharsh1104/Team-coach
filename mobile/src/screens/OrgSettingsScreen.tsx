@@ -11,7 +11,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
-import { MembershipRole, OrgDetail, OrgMember } from '../api/types';
+import { GuildMemberRow, MembershipRole, OrgDetail, OrgMember } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { ThemeColors } from '../theme';
@@ -23,20 +23,43 @@ import { confirmAsync } from '../ui/confirmAsync';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgSettings'>;
 
-// Owner-only screen — everything the owner can do to the roster lives here:
-// change a member's role, remove them, or hand off ownership. MembersScreen
-// stays a plain roster viewer for everyone else.
+function toOrgMember(member: GuildMemberRow): OrgMember {
+  return {
+    userId: member.userId,
+    name: member.name,
+    avatarUrl: null,
+    role: member.rosterRole,
+    isOwner: member.isOwner,
+    inGameName: member.inGameName,
+    inGameRoles: [],
+  };
+}
+
+// Owner-only screen — guild members listed with a serial number, one roster
+// role, and add / remove-from-roster. MembersScreen stays the roster viewer.
 export function OrgSettingsScreen({ navigation }: Props) {
-  const { refreshOrg } = useAuth();
+  const { refreshOrg, user } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(orgSettingsStyles);
   const [detail, setDetail] = useState<OrgDetail | null>(null);
+  const [guildMembers, setGuildMembers] = useState<GuildMemberRow[] | null>(null);
+  const [draftRole, setDraftRole] = useState<Record<string, MembershipRole>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { message: toastMessage, showToast } = useToast();
 
   const load = useCallback(async () => {
-    const data = await orgApi.getMyOrg();
+    const [data, guild] = await Promise.all([
+      orgApi.getMyOrg(),
+      (async () => {
+        try {
+          return await orgApi.getMyGuild();
+        } catch {
+          return null;
+        }
+      })(),
+    ]);
     setDetail(data);
+    setGuildMembers(guild?.members ?? null);
   }, []);
 
   useEffect(() => {
@@ -98,27 +121,54 @@ export function OrgSettingsScreen({ navigation }: Props) {
     }
   };
 
-  const onRemove = async (member: OrgMember) => {
-    const confirmed = await confirmAsync(
-      'Remove Member',
-      `Remove ${member.name} from the org? They will need a new invite to rejoin.`,
-      'Remove',
-    );
-    if (!confirmed) return;
+  const onAddToRoster = async (member: GuildMemberRow) => {
+    const role = draftRole[member.userId] ?? 'PLAYER';
     try {
-      await orgApi.removeMember(member.userId);
-      showToast(`${member.name} removed`);
+      await orgApi.addGuildMemberToRoster(member.userId, role);
+      showToast(`${member.name} added to roster`);
+      await refreshOrg();
       await load();
     } catch (err: any) {
       /* API error toasted by axios interceptor */
     }
   };
 
+  const onRemoveFromRoster = async (member: GuildMemberRow) => {
+    const confirmed = await confirmAsync(
+      'Remove from Roster',
+      `Remove ${member.name} from the roster? They stay in the guild and can be added again.`,
+      'Remove',
+    );
+    if (!confirmed) return;
+    try {
+      await orgApi.removeFromGuildRoster(member.userId);
+      showToast(`${member.name} removed from roster`);
+      await refreshOrg();
+      await load();
+    } catch (err: any) {
+      /* API error toasted by axios interceptor */
+    }
+  };
+
+  const rows: GuildMemberRow[] =
+    guildMembers ??
+    (detail?.members ?? []).map((member) => ({
+      userId: member.userId,
+      name: member.name,
+      inGameName: member.inGameName ?? null,
+      guildRole: 'MEMBER' as const,
+      onRoster: true,
+      rosterRole: member.role,
+      isOwner: member.isOwner,
+    }));
+
+  const orgById = new Map((detail?.members ?? []).map((member) => [member.userId, member]));
+
   return (
     <Screen>
       <FlatList
         style={staticStyles.list}
-        data={detail?.members ?? []}
+        data={rows}
         keyExtractor={(item) => item.userId}
         refreshControl={
           <RefreshControl
@@ -148,30 +198,61 @@ export function OrgSettingsScreen({ navigation }: Props) {
           </>
         }
         contentContainerStyle={staticStyles.listContent}
-        renderItem={({ item }) => (
-          <View style={staticStyles.memberCard}>
-            <Text style={styles.memberName}>
-              {item.name}
-              {item.isOwner ? ' (Owner)' : ''}
-            </Text>
-            <RoleSelector
-              value={item.role}
-              onChange={(role) => onChangeRole(item, role)}
-            />
-            <View style={staticStyles.actionsRow}>
-              {!item.isOwner && (
-                <Pressable onPress={() => onMakeOwner(item)}>
-                  <Text style={styles.actionLink}>Make Owner</Text>
-                </Pressable>
-              )}
-              {!item.isOwner && (
-                <Pressable onPress={() => onRemove(item)}>
-                  <Text style={styles.removeLink}>Remove</Text>
-                </Pressable>
-              )}
+        renderItem={({ item, index }) => {
+          const orgMember = orgById.get(item.userId);
+          const seatRole = orgMember?.role ?? item.rosterRole;
+          const selectedRole = item.onRoster
+            ? seatRole
+            : (draftRole[item.userId] ?? 'PLAYER');
+          const canRemove =
+            item.onRoster && !item.isOwner && item.userId !== user?.id;
+          return (
+            <View style={staticStyles.memberCard}>
+              <View style={staticStyles.nameRow}>
+                <Text style={styles.serial}>{index + 1}</Text>
+                <Text style={styles.memberName}>
+                  {item.name}
+                  {item.isOwner ? ' (Owner)' : ''}
+                </Text>
+              </View>
+              <RoleSelector
+                value={selectedRole}
+                onChange={(role) => {
+                  if (item.onRoster && orgMember) {
+                    void onChangeRole(orgMember, role);
+                    return;
+                  }
+                  setDraftRole((prev) => ({ ...prev, [item.userId]: role }));
+                }}
+              />
+              <View style={staticStyles.actionsRow}>
+                {!item.onRoster ? (
+                  <Pressable
+                    onPress={() => void onAddToRoster(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add ${item.name} to roster`}
+                  >
+                    <Text style={styles.actionLink}>Add to Roster</Text>
+                  </Pressable>
+                ) : null}
+                {canRemove ? (
+                  <Pressable
+                    onPress={() => void onRemoveFromRoster(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${item.name} from roster`}
+                  >
+                    <Text style={styles.removeLink}>Remove from Roster</Text>
+                  </Pressable>
+                ) : null}
+                {item.onRoster && !item.isOwner ? (
+                  <Pressable onPress={() => onMakeOwner(orgMember ?? toOrgMember(item))}>
+                    <Text style={styles.actionLink}>Make Owner</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
-          </View>
-        )}
+          );
+        }}
       />
       <Toast message={toastMessage} />
     </Screen>
@@ -205,7 +286,8 @@ const staticStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
   },
-  actionsRow: { flexDirection: 'row', gap: 20 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
@@ -220,7 +302,13 @@ function orgSettingsStyles(c: ThemeColors) {
       fontSize: 16,
       color: c.text,
     },
-    memberName: { fontSize: 16, fontWeight: '700' as const, color: c.text },
+    serial: {
+      width: 28,
+      fontSize: 15,
+      fontWeight: '800' as const,
+      color: c.textMuted,
+    },
+    memberName: { flex: 1, fontSize: 16, fontWeight: '700' as const, color: c.text },
     actionLink: { color: c.link, fontWeight: '600' as const },
     removeLink: { color: c.danger, fontWeight: '600' as const },
   };

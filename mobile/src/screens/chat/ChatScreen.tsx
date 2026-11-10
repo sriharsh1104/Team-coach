@@ -15,6 +15,12 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import {
+  addScreenRecordingStoppedListener,
+  isScreenRecording,
+  startScreenRecording,
+  stopScreenRecording,
+} from '../../media/screenRecorder';
 import { Socket } from 'socket.io-client';
 import { getToken } from '../../storage/tokenStorage';
 import * as chatApi from '../../api/chat';
@@ -195,6 +201,14 @@ export function ChatScreen({
     if (!mentionState) return [];
     return filterMentionables(mentionables, mentionState.query);
   }, [mentionState, mentionables]);
+
+  useEffect(() => {
+    return addScreenRecordingStoppedListener((uri) => {
+      emitToast(
+        uri ? 'Video saved on your phone' : 'Recording stopped',
+      );
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -981,10 +995,52 @@ export function ChatScreen({
     [emitMessage],
   );
 
+  const recordVideoOnPhone = async () => {
+    if (Platform.OS !== 'android') {
+      emitToast(
+        'Game recording runs in the background on the Android app, with game sound, and stays on your phone.',
+      );
+      return;
+    }
+    if (isScreenRecording()) {
+      try {
+        await stopScreenRecording();
+      } catch (err: unknown) {
+        emitToast(apiErrorMessage(err, 'Could not stop the recording'));
+      }
+      return;
+    }
+    try {
+      const started = await startScreenRecording();
+      if (started === 'unavailable') {
+        Alert.alert(
+          'App Build Needed',
+          'Background game recording is in the Sacred Android app, not Expo Go. The video stays on your phone.',
+        );
+        return;
+      }
+      if (started === 'unsupported') {
+        emitToast('Game recording with in-game sound works on the Android app.');
+        return;
+      }
+      emitToast(
+        'Recording. Open your game. Stop from the notification or press Record again. Saved on your phone.',
+      );
+    } catch (err: unknown) {
+      const message = apiErrorMessage(err, 'Could not start recording');
+      if (/cancel/i.test(message)) return;
+      emitToast(message);
+    }
+  };
+
   const onPickMedia = async (option: AttachOption) => {
     setShowAttach(false);
     if (option === 'reminder') {
       setReminderOpen(true);
+      return;
+    }
+    if (option === 'record') {
+      await recordVideoOnPhone();
       return;
     }
     const fromCamera = option === 'camera';

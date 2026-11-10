@@ -170,7 +170,7 @@ describe('ProfileScreen', () => {
       await act(async () => {
         fireEvent.press(screen.getByText('Edit'));
       });
-      await screen.findByText('Role(s)');
+      await screen.findByText('Role');
     }
 
     it('shows a read-only view with IGN/UID and its own Edit button (devices live on Devices tab)', async () => {
@@ -182,7 +182,7 @@ describe('ProfileScreen', () => {
       expect(screen.getByText('UID-0001')).toBeTruthy();
       expect(screen.queryByText('Main rig — ROG Phone 8')).toBeNull();
       expect(screen.getByText('Edit')).toBeTruthy();
-      expect(screen.queryByText('Role(s)')).toBeNull();
+      expect(screen.queryByText('Role')).toBeNull();
     });
 
     it('pressing Edit reveals the editable form, pre-filled from the current profile', async () => {
@@ -213,18 +213,18 @@ describe('ProfileScreen', () => {
       render(<ProfileScreen />);
       await enterGameEditMode();
 
-      fireEvent.press(screen.getByText('Sniper')); // add a second role
+      fireEvent.press(screen.getByText('Sniper')); // replaces IGL — one role only
       await act(async () => {
         fireEvent.press(screen.getByText('Save'));
       });
 
       expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
-        roles: ['IGL', 'SNIPER'],
+        roles: ['SNIPER'],
         inGameName: 'ShadowStrike',
         inGameUid: 'UID-0001',
       });
       await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
-      expect(screen.queryByText('Role(s)')).toBeNull();
+      expect(screen.queryByText('Role')).toBeNull();
     });
 
     it('shows an error alert when save fails', async () => {
@@ -410,7 +410,7 @@ describe('ProfileScreen', () => {
       expect(screen.getByText('Continue')).toBeTruthy();
 
       goToGameTab();
-      await screen.findByText('Role(s)');
+      await screen.findByText('Role');
       expect(screen.queryByText('Edit')).toBeNull();
       expect(screen.getByText('Continue')).toBeTruthy();
       expect(screen.queryByText('My Devices')).toBeNull();
@@ -443,7 +443,7 @@ describe('ProfileScreen', () => {
       });
       expect(mockRefreshUser).not.toHaveBeenCalled();
       // Auto-advance to Game profile after User Continue.
-      await screen.findByText('Role(s)');
+      await screen.findByText('Role');
 
       // Completing the Game tab (IGN + UID) on top of the now-saved phone
       // satisfies isProfileComplete and triggers refreshUser.

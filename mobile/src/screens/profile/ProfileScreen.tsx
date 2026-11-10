@@ -395,14 +395,15 @@ function GameProfileSection({
   const styles = useThemedStyles(profileStyles);
   const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
-  const [roles, setRoles] = useState<string[]>(() => knownRolesOnly(profile.roles));
+  const [roles, setRoles] = useState<string[]>(() =>
+    knownRolesOnly(profile.roles).slice(0, 1),
+  );
   const [inGameName, setInGameName] = useState(profile.inGameName ?? '');
   const [inGameUid, setInGameUid] = useState(profile.inGameUid ?? '');
 
   const toggleRole = (role: RoleOption) => {
-    setRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
-    );
+    // One game role at a time: IGL, primary, secondary, or any other option.
+    setRoles((prev) => (prev.length === 1 && prev[0] === role ? [] : [role]));
   };
 
   const canSave = !mustComplete || !!(inGameName.trim() && inGameUid.trim());
@@ -412,7 +413,7 @@ function GameProfileSection({
     setIsSaving(true);
     try {
       const updated = await usersApi.updateMyProfile({
-        roles: knownRolesOnly(roles),
+        roles: knownRolesOnly(roles).slice(0, 1),
         inGameName: inGameName || undefined,
         inGameUid: inGameUid || undefined,
       });
@@ -437,7 +438,10 @@ function GameProfileSection({
     return (
       <View>
         {knownRolesOnly(profile.roles).length > 0 ? (
-          <RoleChips selected={profile.roles} editable={false} />
+          <RoleChips
+            selected={knownRolesOnly(profile.roles).slice(0, 1)}
+            editable={false}
+          />
         ) : (
           <Text style={{ color: colors.textMuted, marginTop: 12, marginBottom: 12 }}>
             No role set yet
@@ -464,7 +468,7 @@ function GameProfileSection({
 
   return (
     <View>
-      <Text style={staticStyles.sectionLabel}>Role(s)</Text>
+      <Text style={staticStyles.sectionLabel}>Role</Text>
       <RoleChips selected={roles} onToggle={toggleRole} />
 
       <Text style={staticStyles.sectionLabel}>In-Game Name (IGN) {mustComplete ? '*' : ''}</Text>

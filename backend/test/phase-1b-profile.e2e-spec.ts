@@ -76,13 +76,13 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .patch('/users/me')
         .set('Authorization', `Bearer ${user.accessToken}`)
         .send({
-          roles: ['IGL', 'SNIPER'],
+          roles: ['IGL'],
           inGameName: 'ShadowStrike',
           inGameUid: 'UID-42',
           discordUrl: 'https://discord.gg/example',
         })
         .expect(200);
-      expect(res.body.roles).toEqual(['IGL', 'SNIPER']);
+      expect(res.body.roles).toEqual(['IGL']);
       expect(res.body.inGameName).toBe('ShadowStrike');
       expect(res.body.discordUrl).toBe('https://discord.gg/example');
     });
@@ -162,6 +162,15 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .send({ inGameUid: 'uid-unique-1' })
         .expect(409);
       expect(uidDupCase.body.message).toMatch(/UID/i);
+    });
+
+    it('rejects more than one game role', async () => {
+      const user = await signup(server);
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ roles: ['IGL', 'SNIPER'] })
+        .expect(400);
     });
 
     it('rejects a role outside the fixed role list', async () => {

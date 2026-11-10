@@ -41,13 +41,15 @@ describe('OrgSettingsScreen', () => {
 
     await screen.findByText('Owner Coach (Owner)');
     expect(screen.getByText('Teammate')).toBeTruthy();
-    // RoleSelector pills render for every row.
+    expect(screen.getByText('1')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
+    // RoleSelector pills render for every row. One role is active at a time.
     expect(screen.getAllByText('Player')).toHaveLength(2);
     expect(screen.getAllByText('Coach')).toHaveLength(2);
     expect(screen.getAllByText('Analyst')).toHaveLength(2);
-    // Only the non-owner row gets Make Owner / Remove.
+    // Only the non-owner row gets Make Owner / Remove from Roster.
     expect(screen.getAllByText('Make Owner')).toHaveLength(1);
-    expect(screen.getAllByText('Remove')).toHaveLength(1);
+    expect(screen.getAllByText('Remove from Roster')).toHaveLength(1);
   });
 
   it('shows the chat-history switch reflecting the current setting, and flips it on toggle', async () => {
@@ -165,7 +167,7 @@ describe('OrgSettingsScreen', () => {
       const confirm = buttons?.find((b) => b.text === 'Remove');
       confirm?.onPress?.(undefined as any);
     });
-    mockedOrgApi.removeMember.mockResolvedValue(undefined);
+    mockedOrgApi.removeFromGuildRoster.mockResolvedValue(undefined);
     mockedOrgApi.getMyOrg
       .mockResolvedValueOnce(detail as any)
       .mockResolvedValueOnce({ ...detail, members: [detail.members[0]] } as any);
@@ -173,11 +175,11 @@ describe('OrgSettingsScreen', () => {
     await screen.findByText('Teammate');
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Remove'));
+      fireEvent.press(screen.getByText('Remove from Roster'));
     });
 
-    expect(mockedOrgApi.removeMember).toHaveBeenCalledWith('user-2');
-    await screen.findByText('Teammate removed');
+    expect(mockedOrgApi.removeFromGuildRoster).toHaveBeenCalledWith('user-2');
+    await screen.findByText('Teammate removed from roster');
     await waitFor(() => expect(screen.queryByText('Teammate')).toBeNull());
   });
 
@@ -186,16 +188,60 @@ describe('OrgSettingsScreen', () => {
       const confirm = buttons?.find((b) => b.text === 'Remove');
       confirm?.onPress?.(undefined as any);
     });
-    mockedOrgApi.removeMember.mockRejectedValue({
+    mockedOrgApi.removeFromGuildRoster.mockRejectedValue({
       response: { data: { message: 'Please try again.' } },
     });
     render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Teammate');
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Remove'));
+      fireEvent.press(screen.getByText('Remove from Roster'));
     });
 
-    expect(mockedOrgApi.removeMember).toHaveBeenCalledWith('user-2');
+    expect(mockedOrgApi.removeFromGuildRoster).toHaveBeenCalledWith('user-2');
+  });
+
+  it('adds a guild member who is not on the roster, using the one selected role', async () => {
+    mockedOrgApi.getMyGuild.mockResolvedValue({
+      members: [
+        {
+          userId: 'user-1',
+          name: 'Owner Coach',
+          inGameName: null,
+          guildRole: 'LEADER',
+          onRoster: true,
+          rosterRole: 'COACH',
+          isOwner: true,
+        },
+        {
+          userId: 'user-3',
+          name: 'Waiting Member',
+          inGameName: null,
+          guildRole: 'MEMBER',
+          onRoster: false,
+          rosterRole: null,
+          isOwner: false,
+        },
+      ],
+    } as any);
+    mockedOrgApi.addGuildMemberToRoster.mockResolvedValue({
+      userId: 'user-3',
+      role: 'ANALYST',
+    });
+    render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Waiting Member');
+
+    await act(async () => {
+      fireEvent.press(screen.getAllByText('Analyst').at(-1)!);
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Add to Roster'));
+    });
+
+    expect(mockedOrgApi.addGuildMemberToRoster).toHaveBeenCalledWith(
+      'user-3',
+      'ANALYST',
+    );
+    await screen.findByText('Waiting Member added to roster');
   });
 });

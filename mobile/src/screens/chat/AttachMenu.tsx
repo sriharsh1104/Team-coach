@@ -8,7 +8,7 @@ import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { useTheme } from '../../theme/ThemeContext';
 
-export type AttachOption = 'photo' | 'video' | 'camera' | 'reminder';
+export type AttachOption = 'photo' | 'video' | 'camera' | 'record' | 'reminder';
 
 interface Props {
   onPickMedia: (option: AttachOption) => void;
@@ -112,6 +112,13 @@ export function AttachMenu({
       icon: 'camera-outline',
       tint: '#3498db',
       onPress: () => onPickMedia('camera'),
+    },
+    {
+      key: 'record',
+      label: 'Record',
+      icon: 'radio-button-on',
+      tint: '#e74c3c',
+      onPress: () => onPickMedia('record'),
     },
     {
       key: 'reminder',

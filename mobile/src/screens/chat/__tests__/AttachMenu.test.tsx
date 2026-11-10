@@ -20,6 +20,7 @@ describe('AttachMenu', () => {
     expect(screen.getByLabelText('Photo')).toBeTruthy();
     expect(screen.getByLabelText('Video')).toBeTruthy();
     expect(screen.getByLabelText('Camera')).toBeTruthy();
+    expect(screen.getByLabelText('Record')).toBeTruthy();
   });
 
   it('calls onPickMedia with the right option for Photo/Video/Camera', () => {
@@ -41,6 +42,9 @@ describe('AttachMenu', () => {
 
     fireEvent.press(screen.getByLabelText('Camera'));
     expect(onPickMedia).toHaveBeenCalledWith('camera');
+
+    fireEvent.press(screen.getByLabelText('Record'));
+    expect(onPickMedia).toHaveBeenCalledWith('record');
   });
 
   it('switches to the emoji picker when Emoji is pressed, and back via the arrow', () => {

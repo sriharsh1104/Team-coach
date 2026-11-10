@@ -36,7 +36,7 @@ export class UpdateProfileDto {
 
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(ROLE_OPTIONS.length)
+  @ArrayMaxSize(1)
   @IsIn(ROLE_OPTIONS, { each: true })
   roles?: string[];
 

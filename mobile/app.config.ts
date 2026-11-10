@@ -70,6 +70,8 @@ const expoConfig: ExpoConfig = {
       'RECORD_AUDIO',
       'MODIFY_AUDIO_SETTINGS',
       'POST_NOTIFICATIONS',
+      'FOREGROUND_SERVICE',
+      'FOREGROUND_SERVICE_MEDIA_PROJECTION',
       'CAMERA',
       'READ_MEDIA_IMAGES',
       'READ_MEDIA_VIDEO',
@@ -103,10 +105,20 @@ const expoConfig: ExpoConfig = {
       },
     ],
     [
+      'expo-media-library',
+      {
+        photosPermission:
+          'Sacred Team Coach saves recorded videos into your phone gallery.',
+        savePhotosPermission:
+          'Sacred Team Coach saves recorded videos into your phone gallery.',
+        isAccessMediaLocationEnabled: false,
+      },
+    ],
+    [
       'expo-image-picker',
       {
         cameraPermission:
-          'Sacred Team Coach needs camera access to take chat photos.',
+          'Sacred Team Coach needs camera access to take chat photos and record video.',
         photosPermission:
           'Sacred Team Coach needs photo library access to share media in chat.',
         microphonePermission:
