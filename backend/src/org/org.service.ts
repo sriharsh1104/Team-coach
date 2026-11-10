@@ -160,7 +160,9 @@ export class OrgService {
           data: {
             userId,
             orgId: createdOrg.id,
-            role: dto.role ?? null,
+            // The person creating the org is almost always the team's coach —
+            // default them there instead of leaving the role unset.
+            role: dto.role ?? MembershipRole.COACH,
             isOwner: true,
           },
         });
