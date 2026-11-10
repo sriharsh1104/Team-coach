@@ -27,7 +27,7 @@
       "env": {
         "APP_ENV": "development",
         "API_BASE_URL": "https://api.sacredesports.com",
-        "GOOGLE_WEB_CLIENT_ID": "336205731590-146um1oq33n50t5179dp03855792nsgn.apps.googleusercontent.com",
+        "GOOGLE_WEB_CLIENT_ID": "558723565836-hk0dhqr2guv4pttleuc7qa3io04itpp6.apps.googleusercontent.com",
         "GOOGLE_ANDROID_CLIENT_ID": "336205731590-0o85tdoqaeormsr53alprugchlvggr3i.apps.googleusercontent.com",
         "EAS_PROJECT_ID": "b1dbbf92-a882-487d-9927-1bba7fd2da03",
         "EAS_OWNER": "antier1s-team"
@@ -40,7 +40,7 @@
       "env": {
         "APP_ENV": "production",
         "API_BASE_URL": "https://api.sacredesports.com",
-        "GOOGLE_WEB_CLIENT_ID": "336205731590-146um1oq33n50t5179dp03855792nsgn.apps.googleusercontent.com",
+        "GOOGLE_WEB_CLIENT_ID": "558723565836-hk0dhqr2guv4pttleuc7qa3io04itpp6.apps.googleusercontent.com",
         "GOOGLE_ANDROID_CLIENT_ID": "336205731590-0o85tdoqaeormsr53alprugchlvggr3i.apps.googleusercontent.com",
         "EAS_PROJECT_ID": "b1dbbf92-a882-487d-9927-1bba7fd2da03",
         "EAS_OWNER": "antier1s-team"
