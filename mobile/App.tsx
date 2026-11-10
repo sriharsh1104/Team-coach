@@ -2,6 +2,8 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts } from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider } from './src/auth/AuthContext';
 import { BrandWatermark } from './src/brand/BrandWatermark';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -37,6 +39,13 @@ function AppShell() {
 }
 
 export default function App() {
+  // Load Ionicons font before rendering — prevents invisible icon glyphs in
+  // EAS/production builds where the font file isn't yet cached by the runtime.
+  const [fontsLoaded] = useFonts({ ...Ionicons.font });
+
+  // Keep showing nothing (splash is still visible) until fonts are ready.
+  if (!fontsLoaded) return null;
+
   return (
     <SafeAreaProvider>
       <AppErrorBoundary>

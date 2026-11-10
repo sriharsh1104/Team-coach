@@ -92,7 +92,14 @@ const expoConfig: ExpoConfig = {
     '@config-plugins/react-native-webrtc',
     'expo-secure-store',
     'react-native-compressor',
-    'expo-font',
+    [
+      'expo-font',
+      {
+        fonts: [
+          'node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf',
+        ],
+      },
+    ],
     '@react-native-google-signin/google-signin',
     [
       'expo-notifications',
