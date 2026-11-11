@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import {
   addScreenRecordingStoppedListener,
   isScreenRecording,
@@ -43,6 +43,23 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
       if (uri) emitToast('Recording saved to gallery 🎬');
     });
     return unsub;
+  }, []);
+
+  // Re-sync state when app comes back to foreground (covers the case where
+  // Android stopped the projection while the app was in the background).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        const native = isScreenRecording();
+        setRecording((prev) => {
+          if (prev !== native) {
+            if (!native) setElapsedSec(0);
+          }
+          return native;
+        });
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // Drive the elapsed-second counter

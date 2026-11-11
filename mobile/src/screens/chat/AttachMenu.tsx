@@ -8,7 +8,7 @@ import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { useTheme } from '../../theme/ThemeContext';
 
-export type AttachOption = 'photo' | 'video' | 'camera' | 'reminder';
+export type AttachOption = 'photo' | 'video' | 'camera' | 'reminder' | 'screenShare';
 
 interface Props {
   onPickMedia: (option: AttachOption) => void;
@@ -112,6 +112,13 @@ export function AttachMenu({
       icon: 'camera-outline',
       tint: '#3498db',
       onPress: () => onPickMedia('camera'),
+    },
+    {
+      key: 'screenShare',
+      label: 'Screen',
+      icon: 'phone-portrait-outline',
+      tint: '#e74c3c',
+      onPress: () => onPickMedia('screenShare'),
     },
     {
       key: 'reminder',

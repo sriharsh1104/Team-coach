@@ -39,6 +39,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { emitToast } from '../../ui/toastBus';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
+import { useRecording } from '../../recording/RecordingContext';
 import { setActiveChatChannel } from '../../notifications/activeChatChannel';
 
 /** Single / short emoji-only body → render as a sticker-sized glyph. */
@@ -107,6 +108,7 @@ export function ChatScreen({
   const { user } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(chatStyles);
+  const { startRecording } = useRecording();
   const isGroup = channelKey === 'org' || channelKey === 'guild';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
@@ -986,6 +988,12 @@ export function ChatScreen({
     setShowAttach(false);
     if (option === 'reminder') {
       setReminderOpen(true);
+      return;
+    }
+    if (option === 'screenShare') {
+      // Start background screen recording — recording widget appears at top,
+      // user switches to their game. Stop from the widget or notification.
+      await startRecording();
       return;
     }
     const fromCamera = option === 'camera';

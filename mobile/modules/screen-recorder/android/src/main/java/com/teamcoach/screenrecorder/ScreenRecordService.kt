@@ -26,6 +26,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.MediaStore
 import android.util.DisplayMetrics
 import android.util.Log
@@ -53,6 +54,8 @@ class ScreenRecordService : Service() {
   private var audioFile: File? = null
   private val stopping = AtomicBoolean(false)
   private var limitRunnable: Runnable? = null
+  /** Prevents CPU from sleeping while recording runs in background. */
+  private var wakeLock: PowerManager.WakeLock? = null
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -153,6 +156,14 @@ class ScreenRecordService : Service() {
       null
     }
 
+    // Acquire a partial wake lock so the CPU keeps running while the game
+    // plays in the foreground and our service is in the background.
+    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+    @Suppress("WakelockTimeout")
+    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SacredRecorder:WakeLock").also {
+      it.acquire(MAX_MS)
+    }
+
     RecordBridge.recording.set(true)
     stopping.set(false)
     RecordBridge.resolveStart()
@@ -165,6 +176,8 @@ class ScreenRecordService : Service() {
   private fun stopAndSave() {
     if (!stopping.compareAndSet(false, true)) return
     limitRunnable?.let { main.removeCallbacks(it) }
+    wakeLock?.let { if (it.isHeld) it.release() }
+    wakeLock = null
     Thread {
       val video = videoFile
       val audioOut = audioFile
@@ -245,6 +258,8 @@ class ScreenRecordService : Service() {
 
   private fun fail(message: String) {
     stopping.set(true)
+    wakeLock?.let { if (it.isHeld) it.release() }
+    wakeLock = null
     try {
       audio?.stop()
     } catch (_: Exception) {
