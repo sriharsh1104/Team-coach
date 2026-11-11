@@ -2,8 +2,6 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useFonts } from 'expo-font';
-import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider } from './src/auth/AuthContext';
 import { BrandWatermark } from './src/brand/BrandWatermark';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -45,12 +43,9 @@ function AppShell() {
 }
 
 export default function App() {
-  // Kick off Ionicons font load — the expo-font plugin pre-bundles the .ttf
-  // in the native layer so it's usually already available. We do NOT block
-  // rendering on this: returning null on failure/delay causes a permanent
-  // black screen. Icons will simply appear one frame later if needed.
-  useFonts({ ...Ionicons.font });
-
+  // No JS font loading needed — Ionicons.ttf is pre-bundled natively by the
+  // expo-font plugin in app.config.ts, so it is available synchronously from
+  // first render without any useFonts / async wait.
   return (
     <SafeAreaProvider>
       <AppErrorBoundary>
