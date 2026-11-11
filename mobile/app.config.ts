@@ -134,9 +134,10 @@ const expoConfig: ExpoConfig = {
     ],
     ['./plugins/withApkFileName', { name: 'SacredTeamCoach' }],
     './plugins/withSocialPackageQueries',
-    // Pin AGP to 8.6.1 — expo-modules-core ≤2.2.3 is incompatible with
-    // AGP 8.7+ (components.release was removed; 8.6.1 + Gradle 8.10.2 works).
-    './plugins/withAndroidAgpVersion',
+    // Patch ExpoModulesCorePlugin.gradle: double-afterEvaluate to fix
+    // "Could not get unknown property 'release' for SoftwareComponent container"
+    // with Gradle 8.x + expo-modules-core <=2.2.3 (Expo SDK 52).
+    './plugins/withPatchExpoModulesCore',
   ],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
