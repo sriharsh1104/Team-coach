@@ -1,5 +1,6 @@
-import React, { Component, ErrorInfo, ReactNode, useEffect, useState } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   View,
   Text,
   Pressable,
@@ -11,8 +12,9 @@ import { getToken } from '../../storage/tokenStorage';
 import * as voiceApi from '../../api/voice';
 import { VoiceConfig } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
-import { VoiceChannelController } from '../../voice/types';
+import { VoiceChannelController, VoiceParticipant } from '../../voice/types';
 import { Screen } from '../../brand/Screen';
+import { AppIcon } from '../../ui/AppIcon';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { useSharedStyles } from '../shared';
 import { ThemeColors } from '../../theme';
@@ -47,8 +49,6 @@ function ensureLiveKitGlobals() {
 
 function loadVoiceHooks(mode: VoiceConfig['mode']): VoiceHooks {
   ensureLiveKitGlobals();
-  // Self-hosted only needs mediasoup + WebRTC — skip livekit-client Room
-  // import so Hermes WeakRef paths in LiveKit never run in that mode.
   if (mode === 'self') {
     return {
       useHostedVoiceChannel: () => {
@@ -69,10 +69,6 @@ function loadVoiceHooks(mode: VoiceConfig['mode']): VoiceHooks {
   };
 }
 
-/**
- * Function-component shell so the fallback can subscribe to the live theme —
- * VoiceErrorBoundary is a class component and can't call hooks itself.
- */
 function VoiceErrorFallback({
   error,
   onRetry,
@@ -81,7 +77,6 @@ function VoiceErrorFallback({
   onRetry: () => void;
 }) {
   const shared = useSharedStyles();
-
   return (
     <Screen>
       <View style={shared.container}>
@@ -126,6 +121,60 @@ class VoiceErrorBoundary extends Component<
   }
 }
 
+/** Pulsing green ring shown around a speaking participant's avatar. */
+function SpeakingRing() {
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(scale, {
+            toValue: 1.18,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scale, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(opacity, {
+            toValue: 0.4,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0.9,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [scale, opacity]);
+
+  return (
+    <Animated.View
+      style={[styles.speakingRing, { transform: [{ scale }], opacity }]}
+      pointerEvents="none"
+    />
+  );
+}
+
+type ListItem = (VoiceParticipant & { isSelf: false }) | {
+  id: string;
+  name: string;
+  isLocallyMuted: boolean;
+  isSpeaking: boolean;
+  isSelf: true;
+};
+
 function HostedVoiceChannel({
   config,
   hooks,
@@ -153,6 +202,19 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
   const { colors } = useTheme();
   const themed = useThemedStyles(voiceStyles);
   const inChannel = voice.status === 'connected';
+
+  const listData: ListItem[] = inChannel
+    ? [
+        {
+          id: user?.id ?? 'me',
+          name: `${user?.name ?? 'You'} (You)`,
+          isLocallyMuted: false,
+          isSpeaking: false,
+          isSelf: true,
+        },
+        ...voice.participants.map((p) => ({ ...p, isSelf: false as const })),
+      ]
+    : [];
 
   return (
     <Screen>
@@ -198,24 +260,25 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
           <>
             <Text style={themed.sectionTitle}>In Channel</Text>
             <FlatList
-              data={[
-                {
-                  id: user?.id ?? 'me',
-                  name: `${user?.name ?? 'You'} (You)`,
-                  isLocallyMuted: false,
-                  isSelf: true,
-                },
-                ...voice.participants.map((p) => ({ ...p, isSelf: false })),
-              ]}
+              data={listData}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContent}
               renderItem={({ item }) => (
                 <View style={themed.participantRow}>
                   <View style={styles.participantInfo}>
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarText}>
-                        {(item.name[0] ?? '?').toUpperCase()}
-                      </Text>
+                    {/* Avatar with optional speaking ring */}
+                    <View style={styles.avatarWrapper}>
+                      {item.isSpeaking && <SpeakingRing />}
+                      <View
+                        style={[
+                          styles.avatar,
+                          item.isSpeaking && styles.avatarSpeaking,
+                        ]}
+                      >
+                        <Text style={styles.avatarText}>
+                          {(item.name[0] ?? '?').toUpperCase()}
+                        </Text>
+                      </View>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={themed.participantName}>{item.name}</Text>
@@ -226,45 +289,49 @@ function VoiceChannelBody({ voice }: { voice: VoiceChannelController }) {
                   </View>
                   {!item.isSelf && (
                     <Pressable
+                      hitSlop={8}
                       style={[
-                        styles.smallButton,
-                        item.isLocallyMuted && themed.smallButtonActive,
+                        styles.participantMuteBtn,
+                        item.isLocallyMuted && styles.participantMuteBtnActive,
                       ]}
                       onPress={() => voice.toggleParticipantMute(item.id)}
+                      accessibilityLabel={
+                        item.isLocallyMuted ? 'Unmute for you' : 'Mute for you'
+                      }
                     >
-                      <Text
-                        style={[
-                          themed.smallButtonText,
-                          item.isLocallyMuted && themed.smallButtonTextActive,
-                        ]}
-                      >
-                        {item.isLocallyMuted ? 'Unmute' : 'Mute'}
-                      </Text>
+                      <AppIcon
+                        name={item.isLocallyMuted ? 'mic-off' : 'mic'}
+                        size={16}
+                        color={item.isLocallyMuted ? '#fff' : colors.icon}
+                      />
                     </Pressable>
                   )}
                 </View>
               )}
             />
 
+            {/* Compact icon-only bottom bar — Discord style */}
             <View style={themed.bottomBar}>
               <Pressable
-                style={[themed.barButton, voice.isMuted && styles.barButtonDanger]}
+                style={[
+                  styles.iconBtn,
+                  voice.isMuted ? styles.iconBtnDanger : themed.iconBtnDefault,
+                ]}
                 onPress={voice.toggleMute}
+                accessibilityLabel={voice.isMuted ? 'Unmute mic' : 'Mute mic'}
               >
-                <ButtonLabel
-                  icon={voice.isMuted ? 'mic-off' : 'mic'}
-                  color={voice.isMuted ? '#fff' : colors.chromeInk}
-                >
-                  {voice.isMuted ? 'Unmute Mic' : 'Mute Mic'}
-                </ButtonLabel>
+                <AppIcon
+                  name={voice.isMuted ? 'mic-off' : 'mic'}
+                  size={22}
+                  color="#fff"
+                />
               </Pressable>
               <Pressable
-                style={[themed.barButton, styles.barButtonDanger]}
+                style={[styles.iconBtn, styles.iconBtnDanger]}
                 onPress={voice.leave}
+                accessibilityLabel="Disconnect"
               >
-                <ButtonLabel icon="call" color="#fff">
-                  Disconnect
-                </ButtonLabel>
+                <AppIcon name="phone-down" size={22} color="#fff" />
               </Pressable>
             </View>
           </>
@@ -387,6 +454,12 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 12,
   },
+  avatarWrapper: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatar: {
     width: 36,
     height: 36,
@@ -394,23 +467,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#5865f2',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  avatarSpeaking: {
+    borderColor: '#23a559',
   },
   avatarText: { color: '#fff', fontWeight: '700' },
-  smallButton: {
+  speakingRing: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2.5,
+    borderColor: '#23a559',
+  },
+  participantMuteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#5f6368',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
   },
-  barButtonDanger: { backgroundColor: '#dc2626' },
+  participantMuteBtnActive: {
+    backgroundColor: '#dc2626',
+    borderColor: '#dc2626',
+  },
+  // Compact icon-only action buttons
+  iconBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBtnDanger: { backgroundColor: '#dc2626' },
 });
 
-/**
- * Theme-dependent — everything here sits directly on the themed <Screen>
- * background, so it must follow the palette. The `channelCard` block above
- * stays a deliberate fixed-dark panel (Discord-style) and is self-consistent.
- */
 function voiceStyles(c: ThemeColors) {
   return {
     sectionTitle: {
@@ -430,22 +525,15 @@ function voiceStyles(c: ThemeColors) {
     },
     participantName: { fontSize: 16, color: c.text },
     mutedHint: { fontSize: 12, color: c.textMuted, marginTop: 2 },
-    smallButtonActive: { backgroundColor: c.chrome, borderColor: c.chrome },
-    smallButtonText: { fontWeight: '600' as const, color: c.text },
-    smallButtonTextActive: { color: c.chromeInk },
+    iconBtnDefault: { backgroundColor: c.surface },
     bottomBar: {
       flexDirection: 'row' as const,
-      gap: 10,
-      padding: 16,
+      gap: 16,
+      paddingVertical: 16,
+      paddingHorizontal: 24,
       borderTopWidth: 1,
       borderTopColor: c.border,
-    },
-    barButton: {
-      flex: 1,
-      backgroundColor: c.chrome,
-      borderRadius: 8,
-      paddingVertical: 14,
-      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
     },
   };
 }

@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
-import { Room, RoomEvent, RemoteParticipant } from 'livekit-client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
+import { Room, RoomEvent, RemoteParticipant, Participant } from 'livekit-client';
 import { VoiceChannelController, VoiceChannelStatus, VoiceParticipant } from './types';
 
 export function useHostedVoiceChannel(
@@ -12,6 +13,7 @@ export function useHostedVoiceChannel(
   const [isMuted, setIsMuted] = useState(false);
   const roomRef = useRef<Room | null>(null);
   const localMutesRef = useRef<Set<string>>(new Set());
+  const speakingIdsRef = useRef<Set<string>>(new Set());
 
   const syncParticipants = useCallback((room: Room) => {
     setParticipants(
@@ -19,6 +21,7 @@ export function useHostedVoiceChannel(
         id: p.identity,
         name: p.name || p.identity,
         isLocallyMuted: localMutesRef.current.has(p.identity),
+        isSpeaking: speakingIdsRef.current.has(p.identity),
       })),
     );
   }, []);
@@ -31,6 +34,7 @@ export function useHostedVoiceChannel(
   const join = useCallback(async () => {
     setStatus('connecting');
     localMutesRef.current.clear();
+    speakingIdsRef.current.clear();
     try {
       const room = new Room();
       roomRef.current = room;
@@ -41,6 +45,15 @@ export function useHostedVoiceChannel(
         setStatus('idle');
         setParticipants([]);
         setIsMuted(false);
+        speakingIdsRef.current.clear();
+      });
+      room.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
+        speakingIdsRef.current = new Set(
+          speakers
+            .filter((s) => !s.isLocal)
+            .map((s) => s.identity),
+        );
+        syncParticipants(room);
       });
 
       await room.connect(url, token);
@@ -58,6 +71,7 @@ export function useHostedVoiceChannel(
     roomRef.current?.disconnect();
     roomRef.current = null;
     localMutesRef.current.clear();
+    speakingIdsRef.current.clear();
     setStatus('idle');
     setParticipants([]);
     setIsMuted(false);
@@ -87,6 +101,18 @@ export function useHostedVoiceChannel(
     },
     [applyLocalMute, syncParticipants],
   );
+
+  // Keep voice alive in background — WebRTC audio runs natively, we just
+  // prevent any JS-side auto-disconnect logic from firing.
+  useEffect(() => {
+    const handleAppState = (_nextState: AppStateStatus) => {
+      // Intentionally no-op: do not disconnect when backgrounded.
+      // On iOS, UIBackgroundModes audio+voip (in app.config.ts) keeps the
+      // process alive. On Android, the native WebRTC module keeps audio running.
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
+  }, []);
 
   return {
     status,

@@ -38,6 +38,7 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
         id: owner.id,
         name: owner.name,
         isLocallyMuted: localMutesRef.current.has(owner.id),
+        isSpeaking: false,
       });
     }
     setParticipants([...byUser.values()]);

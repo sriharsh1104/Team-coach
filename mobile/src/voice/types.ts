@@ -5,6 +5,8 @@ export interface VoiceParticipant {
   name: string;
   /** True when this client has locally muted (deafened) that participant. */
   isLocallyMuted: boolean;
+  /** True when LiveKit detects this participant is actively speaking. */
+  isSpeaking: boolean;
 }
 
 // Both the self-hosted (mediasoup) and hosted (LiveKit) implementations

@@ -12,8 +12,12 @@ import { ToastProvider } from './src/ui/Toast';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { RecordingProvider } from './src/recording/RecordingContext';
 import { RecordingWidget } from './src/recording/RecordingWidget';
+import { useAppPermissions } from './src/hooks/useAppPermissions';
 
 function AppShell() {
+  // Request notification + microphone permissions once on app start,
+  // before the user reaches any screen that needs them.
+  useAppPermissions();
   const { colors } = useTheme();
   return (
     <View style={[styles.shell, { backgroundColor: colors.bg }]}>

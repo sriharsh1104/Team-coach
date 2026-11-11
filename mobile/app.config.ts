@@ -37,6 +37,8 @@ const expoConfig: ExpoConfig = {
     infoPlist: {
       NSMicrophoneUsageDescription:
         'Sacred Team Coach needs microphone access for team voice channels.',
+      // Keep voice alive when the app is backgrounded (gaming sessions).
+      UIBackgroundModes: ['audio', 'voip'],
       // Needed so Linking can prefer Instagram / Discord / YouTube / etc. apps
       // over the browser when a social handle is tapped.
       LSApplicationQueriesSchemes: [
@@ -92,14 +94,6 @@ const expoConfig: ExpoConfig = {
     '@config-plugins/react-native-webrtc',
     'expo-secure-store',
     'react-native-compressor',
-    [
-      'expo-font',
-      {
-        fonts: [
-          'node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf',
-        ],
-      },
-    ],
     '@react-native-google-signin/google-signin',
     [
       'expo-notifications',

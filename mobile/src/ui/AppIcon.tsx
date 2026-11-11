@@ -22,11 +22,14 @@ export type AppIconName =
   | 'happy-outline'
   | 'image-outline'
   | 'images-outline'
+  | 'mic'
+  | 'mic-off'
   | 'notifications'
   | 'notifications-off'
   | 'person-add'
   | 'person-remove'
   | 'person-remove-outline'
+  | 'phone-down'
   | 'phone-portrait-outline'
   | 'pin'
   | 'pin-outline'
@@ -253,6 +256,26 @@ const ICONS: Record<AppIconName, Renderer> = {
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="13" r="8" stroke={c} strokeWidth={2} />
       <Path d="M12 9v4l2.5 2.5M5 3L2.5 5.5M19 3l2.5 2.5" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'mic': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Rect x="9" y="2" width="6" height="12" rx="3" stroke={c} strokeWidth={2} />
+      <Path d="M5 10a7 7 0 0014 0M12 19v3M9 22h6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'mic-off': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V5a3 3 0 00-5.94-.6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M17 16.95A7 7 0 015 10M12 19v3M9 22h6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Line x1="1" y1="1" x2="23" y2="23" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'phone-down': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.13 19.13 0 015 11.6a19.79 19.79 0 01-3.07-8.67A2 2 0 013.11 1h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L7.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.92z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Line x1="23" y1="1" x2="17" y2="7" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="17" y1="1" x2="23" y2="7" stroke={c} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   ),
 };
