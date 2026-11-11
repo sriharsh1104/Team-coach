@@ -134,9 +134,9 @@ const expoConfig: ExpoConfig = {
     ],
     ['./plugins/withApkFileName', { name: 'SacredTeamCoach' }],
     './plugins/withSocialPackageQueries',
-    // Pin Gradle wrapper to 8.8.0 — expo-modules-core ≤2.2.3 is incompatible
-    // with Gradle 8.9+ (components.release was removed in newer AGP).
-    './plugins/withGradleWrapperVersion',
+    // Pin AGP to 8.6.1 — expo-modules-core ≤2.2.3 is incompatible with
+    // AGP 8.7+ (components.release was removed; 8.6.1 + Gradle 8.10.2 works).
+    './plugins/withAndroidAgpVersion',
   ],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
