@@ -92,7 +92,7 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
     if (result === 'started') {
       setRecording(true);
       setElapsedSec(0);
-      emitToast('Recording started — go play your game! Stop from widget or notification.');
+      emitToast('Recording started — Open your game! Stop from widget or notification.');
     } else if (result === 'unsupported') {
       emitToast('Screen recording not supported on this device');
     } else {

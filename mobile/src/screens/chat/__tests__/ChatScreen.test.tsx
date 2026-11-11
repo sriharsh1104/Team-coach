@@ -8,6 +8,7 @@ import {
 } from '../../../media/screenRecorder';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { ChatScreen } from '../ChatScreen';
+import { RecordingProvider } from '../../../recording/RecordingContext';
 import { emitToast } from '../../../ui/toastBus';
 import * as chatApi from '../../../api/chat';
 import { useAuth } from '../../../auth/AuthContext';
@@ -80,7 +81,7 @@ async function connectAndSettle() {
   await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
   const fakeSocket = createFakeSocket();
   mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
-  render(<ChatScreen />);
+  render(<RecordingProvider><ChatScreen /></RecordingProvider>);
   await waitFor(() => expect(mockedChatApi.connectChatSocket).toHaveBeenCalled());
   return fakeSocket;
 }
