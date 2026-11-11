@@ -44,7 +44,14 @@ export type AppIconName =
   | 'headset'
   | 'headset-off'
   | 'zap'
-  | 'refresh';
+  | 'refresh'
+  | 'people-outline'
+  | 'mic-outline'
+  | 'bar-chart-outline'
+  | 'map-outline'
+  | 'book-outline'
+  | 'trophy-outline'
+  | 'settings-outline';
 
 type Props = {
   name: AppIconName;
@@ -313,6 +320,50 @@ const ICONS: Record<AppIconName, Renderer> = {
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Path d="M23 4v6h-6M1 20v-6h6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'people-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Circle cx="9" cy="7" r="4" stroke={c} strokeWidth={2} />
+      <Path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'mic-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Rect x="9" y="2" width="6" height="12" rx="3" stroke={c} strokeWidth={2} />
+      <Path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'bar-chart-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M18 20V10M12 20V4M6 20v-6" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'map-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M1 6l7-4 8 4 7-4v16l-7 4-8-4-7 4V6z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M8 2v18M16 6v18" stroke={c} strokeWidth={2} />
+    </Svg>
+  ),
+  'book-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M4 19.5A2.5 2.5 0 016.5 17H20" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" stroke={c} strokeWidth={2} />
+    </Svg>
+  ),
+  'trophy-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M8 21h8M12 17v4" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M7 4H4a2 2 0 000 4c0 2 1.5 4 3 5" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M17 4h3a2 2 0 010 4c0 2-1.5 4-3 5" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M12 17c-3.87 0-7-3.13-7-7V4h14v6c0 3.87-3.13 7-7 7z" stroke={c} strokeWidth={2} />
+    </Svg>
+  ),
+  'settings-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="3" stroke={c} strokeWidth={2} />
+      <Path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke={c} strokeWidth={2} />
     </Svg>
   ),
 };

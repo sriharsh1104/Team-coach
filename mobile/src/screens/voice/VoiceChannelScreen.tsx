@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode, useEffect, useRef, useState } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -10,10 +10,12 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { getToken } from '../../storage/tokenStorage';
 import * as voiceApi from '../../api/voice';
 import { VoiceConfig, VoiceRoom } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
+import { useVoiceContext } from '../../voice/VoiceContext';
 import { VoiceChannelController, VoiceParticipant, ConnectionQualityLevel } from '../../voice/types';
 import { Screen } from '../../brand/Screen';
 import { AppIcon } from '../../ui/AppIcon';
@@ -523,11 +525,13 @@ function VoiceChannelBody({
 
 function HostedVoiceChannel({
   config,
-  hooks,
 }: {
   config: Extract<VoiceConfig, { mode: 'hosted' }>;
-  hooks: VoiceHooks;
 }) {
+  const { activate, deactivate, controller, setScreenFocused } = useVoiceContext();
+  const { colors } = useTheme();
+  const shared = useSharedStyles();
+
   const hasMultipleRooms = config.rooms && config.rooms.length > 1;
   const [selectedRoom, setSelectedRoom] = useState<VoiceRoom | null>(() => {
     if (config.rooms && config.rooms.length === 1) return config.rooms[0];
@@ -538,15 +542,46 @@ function HostedVoiceChannel({
   const effectiveToken = selectedRoom ? selectedRoom.token : config.token;
   const channelName = selectedRoom ? selectedRoom.name : 'Team Voice';
 
-  const voice = hooks.useHostedVoiceChannel(effectiveUrl, effectiveToken);
+  // Activate (or reactivate) in the global VoiceContext whenever url/token change.
+  // This is what mounts HostedVoiceHolder above the navigator, keeping the
+  // LiveKit Room alive when the user navigates away.
+  useEffect(() => {
+    activate({ mode: 'hosted', url: effectiveUrl, token: effectiveToken });
+  }, [effectiveUrl, effectiveToken, activate]);
+
+  // Track screen focus so VoiceFloatingWidget only shows when user has
+  // navigated away from this screen.
+  useFocusEffect(
+    useCallback(() => {
+      setScreenFocused(true);
+      // Re-activate if the user left via the floating widget then came back
+      activate({ mode: 'hosted', url: effectiveUrl, token: effectiveToken });
+      return () => {
+        setScreenFocused(false);
+      };
+    }, [effectiveUrl, effectiveToken, activate, setScreenFocused]),
+  );
+
+  if (!controller) {
+    return (
+      <Screen>
+        <View style={shared.container}>
+          <ActivityIndicator color={colors.chrome} />
+        </View>
+      </Screen>
+    );
+  }
 
   const handleSelectRoom = (room: VoiceRoom) => {
+    // deactivate cleans up the current HostedVoiceHolder; the useEffect above
+    // will re-activate with the new room's url/token after selectedRoom changes.
+    deactivate();
     setSelectedRoom(room);
   };
 
   return (
     <VoiceChannelBody
-      voice={voice}
+      voice={controller}
       channelName={channelName}
       rooms={hasMultipleRooms ? config.rooms : undefined}
       selectedRoom={selectedRoom}
@@ -639,7 +674,7 @@ function VoiceChannelScreenInner() {
   }
 
   return config.mode === 'hosted' ? (
-    <HostedVoiceChannel config={config} hooks={hooks} />
+    <HostedVoiceChannel config={config} />
   ) : (
     <SelfHostedVoiceChannel authToken={authToken} hooks={hooks} />
   );

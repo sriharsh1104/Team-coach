@@ -15,6 +15,8 @@ export type ThemeColors = {
   danger: string;
   bubbleMine: string;
   bubbleTheirs: string;
+  /** Text color INSIDE sent (mine) bubbles — separate from chromeInk so dark-theme bubbles get light text. */
+  bubbleTextMine: string;
   /** High-contrast icon/action color on bg (always readable). */
   icon: string;
   watermarkOpacity: number;
@@ -43,8 +45,11 @@ const PALETTES: Record<ThemeId, ThemeColors> = {
     chromeInk: '#0a0a0c',
     link: '#a8b0ff',
     danger: '#f87171',
-    bubbleMine: '#c9ccd1',
-    bubbleTheirs: 'rgba(255,255,255,0.08)',
+    // Dark-theme chat: sent = dark navy, received = dark charcoal — both
+    // clearly visible on the near-black bg with near-white text on each side.
+    bubbleMine: '#1b3050',
+    bubbleTheirs: '#1e2124',
+    bubbleTextMine: '#e8ecf0',
     icon: '#f2f3f5',
     watermarkOpacity: 0.18,
     statusBar: 'light',
@@ -62,6 +67,7 @@ const PALETTES: Record<ThemeId, ThemeColors> = {
     danger: '#dc2626',
     bubbleMine: '#2a2d36',
     bubbleTheirs: 'rgba(0,0,0,0.07)',
+    bubbleTextMine: '#f4f4f7',
     icon: '#16171c',
     watermarkOpacity: 0.22,
     statusBar: 'dark',
@@ -79,6 +85,7 @@ const PALETTES: Record<ThemeId, ThemeColors> = {
     danger: '#c0392b',
     bubbleMine: '#5b4a82',
     bubbleTheirs: 'rgba(70,40,120,0.12)',
+    bubbleTextMine: '#f6f1fc',
     icon: '#1f1830',
     watermarkOpacity: 0.2,
     statusBar: 'dark',

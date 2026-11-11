@@ -10,9 +10,9 @@ function msColor(ms: number): string {
 }
 
 /**
- * Tiny floating badge (bottom-right) that shows how long the last screen
- * navigation took to complete, measured from route change to all interactions
- * finishing (InteractionManager.runAfterInteractions).
+ * Tiny floating badge (top-right, below the navigation header) that shows
+ * how long the last screen navigation took to complete, measured from route
+ * change to all interactions finishing (InteractionManager.runAfterInteractions).
  */
 export function LatencyBadge() {
   const { entry } = useLatency();
@@ -24,7 +24,7 @@ export function LatencyBadge() {
 
   return (
     <View
-      style={[styles.wrapper, { bottom: insets.bottom + 6 }]}
+      style={[styles.wrapper, { top: insets.top + 52 }]}
       pointerEvents="none"
     >
       <View style={styles.pill}>

@@ -52,16 +52,19 @@ export function useOrgDrawer() {
       {
         key: 'members',
         label: 'Roster',
+        icon: 'people-outline' as const,
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Members' }),
       },
       {
         key: 'media',
         label: 'Media',
+        icon: 'images-outline' as const,
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'MediaFeed' }),
       },
       {
         key: 'stats',
         label: 'Stats & Schedule',
+        icon: 'bar-chart-outline' as const,
         onPress: () =>
           goToSection(navigation, 'OrgHome', {
             screen: 'Stats',
@@ -71,21 +74,25 @@ export function useOrgDrawer() {
       {
         key: 'voice',
         label: 'Team Voice',
+        icon: 'mic-outline' as const,
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Voice' }),
       },
       {
         key: 'maps',
         label: 'Maps',
+        icon: 'map-outline' as const,
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Maps' }),
       },
       {
         key: 'ruleBook',
         label: 'Rule Book',
+        icon: 'book-outline' as const,
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'RuleBook' }),
       },
       {
         key: 'pointsTable',
         label: 'Points Table',
+        icon: 'trophy-outline' as const,
         onPress: () =>
           goToSection(navigation, 'OrgHome', { screen: 'PointsTable' }),
       },
@@ -94,6 +101,7 @@ export function useOrgDrawer() {
             {
               key: 'orgSettings',
               label: 'Org Settings',
+              icon: 'settings-outline' as const,
               onPress: () =>
                 goToSection(navigation, 'OrgHome', { screen: 'OrgSettings' }),
             },

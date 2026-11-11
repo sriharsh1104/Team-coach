@@ -113,7 +113,7 @@ export function ChatSettingsSheet({
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
+      quality: 0.8,
       allowsEditing: true,
       aspect: [1, 1],
     });
@@ -121,7 +121,7 @@ export function ChatSettingsSheet({
     const asset = result.assets[0];
     setBusy(true);
     try {
-      emitToast('Uploading group photo…');
+      emitToast('Uploading group photo…', 10000);
       const next = await chatApi.uploadChannelAvatar(channelKey, {
         uri: asset.uri,
         fileName: asset.fileName ?? `group-${Date.now()}.jpg`,
@@ -129,9 +129,10 @@ export function ChatSettingsSheet({
       });
       setMeta(next);
       onMetaChanged?.(next);
-      emitToast('Group photo updated');
+      emitToast('Group photo updated ✓', 2500);
     } catch (err) {
-      emitToast(apiErrorMessage(err, 'Could not upload group photo'));
+      const msg = apiErrorMessage(err, 'Could not upload group photo');
+      Alert.alert('Upload failed', msg);
     } finally {
       setBusy(false);
     }

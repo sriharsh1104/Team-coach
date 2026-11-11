@@ -244,7 +244,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // while the session tears down (was causing stacked Join/Create buttons).
     setIsLoading(true);
     try {
-      await authApi.logout();
+      // 5-second timeout — if the server is sleeping or unreachable the
+      // local session is cleared anyway; this prevents the loader from
+      // hanging indefinitely on a network error.
+      await Promise.race([
+        authApi.logout(),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('logout timeout')), 5000),
+        ),
+      ]);
     } catch {
       // Best-effort server-side revocation — if we're offline or the call
       // otherwise fails, still clear the local token so the user isn't

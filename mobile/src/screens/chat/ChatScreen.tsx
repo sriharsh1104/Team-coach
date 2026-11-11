@@ -1017,13 +1017,13 @@ export function ChatScreen({
     const result = fromCamera
       ? await ImagePicker.launchCameraAsync({
           mediaTypes,
-          quality: 1,
+          quality: 0.7,
           allowsEditing: false,
           exif: false,
         })
       : await ImagePicker.launchImageLibraryAsync({
           mediaTypes,
-          quality: 1,
+          quality: 0.7,
           videoMaxDuration: 180,
         });
     if (result.canceled || !result.assets[0]) return;
@@ -1031,7 +1031,12 @@ export function ChatScreen({
     const looksVideo =
       (asset.mimeType?.startsWith('video/') ?? false) ||
       option === 'video';
-    emitToast('Uploading…', 2500);
+    // Show file size in the uploading toast so users can see how large the file is
+    const fileSizeMB = asset.fileSize ? (asset.fileSize / (1024 * 1024)).toFixed(1) : null;
+    const uploadLabel = fileSizeMB
+      ? `Uploading${looksVideo ? ' video' : ''}… (${fileSizeMB} MB)`
+      : `Uploading${looksVideo ? ' video' : ''}…`;
+    emitToast(uploadLabel, 15000);
     try {
       const uploaded = await chatApi.uploadChatMedia({
         uri: asset.uri,
@@ -1045,6 +1050,7 @@ export function ChatScreen({
         width: asset.width,
         height: asset.height,
       });
+      emitToast('Sent!', 1500);
       stickToBottomRef.current = true;
       const sent = await emitMessage({
         mediaUrl: uploaded.mediaUrl,
@@ -1060,7 +1066,7 @@ export function ChatScreen({
         }, 600);
       }
     } catch (err: unknown) {
-      emitToast(apiErrorMessage(err, 'Could not upload media'));
+      emitToast(apiErrorMessage(err, 'Upload failed — file may be too large'), 4000);
     }
   };
 
@@ -1532,9 +1538,9 @@ export function ChatScreen({
           disabled={!!editingId}
         >
           <AppIcon
-            name={showAttach ? 'close' : 'add-circle'}
+            name={showAttach ? 'close' : 'add-circle-outline'}
             size={28}
-            color={colors.icon}
+            color={colors.textMuted}
             style={editingId ? { opacity: 0.35 } : undefined}
           />
         </Pressable>
@@ -1785,10 +1791,10 @@ const chatStyles = (c: ThemeColors) => ({
   },
   sender: { fontSize: 11, color: c.textMuted, marginBottom: 2 },
   text: { color: c.text, flexShrink: 1 },
-  textMine: { color: c.chromeInk, flexShrink: 1 },
+  textMine: { color: c.bubbleTextMine, flexShrink: 1 },
   stickerEmoji: { fontSize: 56, lineHeight: 64 },
   mention: { color: c.link, fontWeight: '700' as const },
-  mentionMine: { color: c.chromeInk, fontWeight: '700' as const, opacity: 0.9 },
+  mentionMine: { color: c.bubbleTextMine, fontWeight: '700' as const, opacity: 0.9 },
   mentionMenu: {
     marginHorizontal: 12,
     marginBottom: 4,

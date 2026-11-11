@@ -13,13 +13,19 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { RecordingProvider } from './src/recording/RecordingContext';
 import { RecordingWidget } from './src/recording/RecordingWidget';
 import { useAppPermissions } from './src/hooks/useAppPermissions';
+import { useServerWakePing } from './src/hooks/useServerWakePing';
 import { LatencyProvider } from './src/perf/LatencyContext';
 import { LatencyBadge } from './src/ui/LatencyBadge';
+import { VoiceProvider } from './src/voice/VoiceContext';
+import { VoiceFloatingWidget } from './src/voice/VoiceFloatingWidget';
 
 function AppShell() {
   // Request notification + microphone permissions once on app start,
   // before the user reaches any screen that needs them.
   useAppPermissions();
+  // Keep the Render.com backend alive — pings /health every 10 minutes while
+  // the user is logged in so the free-tier server doesn't spin down.
+  useServerWakePing();
   const { colors } = useTheme();
   return (
     <View style={[styles.shell, { backgroundColor: colors.bg }]}>
@@ -30,10 +36,13 @@ function AppShell() {
             <AuthProvider>
               <OrgRealtimeProvider>
                 <RecordingProvider>
-                  <LatencyProvider>
-                    <RootNavigator />
-                    <LatencyBadge />
-                  </LatencyProvider>
+                  <VoiceProvider>
+                    <LatencyProvider>
+                      <RootNavigator />
+                      <LatencyBadge />
+                      <VoiceFloatingWidget />
+                    </LatencyProvider>
+                  </VoiceProvider>
                   <RecordingWidget />
                 </RecordingProvider>
               </OrgRealtimeProvider>

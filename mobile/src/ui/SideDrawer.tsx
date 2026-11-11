@@ -30,6 +30,8 @@ export type SideDrawerItem = {
   danger?: boolean;
   /** Currently open section — gold rail, tint, and label. */
   active?: boolean;
+  /** Optional icon name from AppIcon to show before the label. */
+  icon?: import('./AppIcon').AppIconName;
 };
 
 /**
@@ -183,6 +185,15 @@ export function SideDrawer({
           pointerEvents="none"
           style={[styles.activeRail, { backgroundColor: gold.rail }]}
         />
+      ) : null}
+      {item.icon ? (
+        <View style={styles.itemIcon}>
+          <AppIcon
+            name={item.icon}
+            size={16}
+            color={item.active ? gold.text : item.danger ? theme.danger : theme.textMuted}
+          />
+        </View>
       ) : null}
       <Text
         style={[
@@ -392,6 +403,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     borderWidth: 1,
     overflow: 'hidden',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  itemIcon: {
+    marginTop: 2,
+    flexShrink: 0,
   },
   activeRail: {
     position: 'absolute',
