@@ -1,5 +1,5 @@
-import React from 'react';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import React, { useCallback, useRef } from 'react';
+import { ActivityIndicator, InteractionManager, Platform, StyleSheet, View } from 'react-native';
 import { DarkTheme, DefaultTheme, NavigationContainer, NavigationState } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
@@ -51,6 +51,7 @@ import {
 } from './types';
 import { titleCase } from '../utils/titleCase';
 import { colors } from '../theme';
+import { useLatency } from '../perf/LatencyContext';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
@@ -199,6 +200,15 @@ export function RootNavigator() {
   const orgDrawer = useOrgDrawer();
   const guildDrawer = useGuildDrawer();
   const phase = computeNavPhase(user, org, guild);
+  const { record: recordLatency } = useLatency();
+  const navStartRef = useRef<number>(0);
+  const measureRoute = useCallback((name: string | undefined) => {
+    if (!name) return;
+    navStartRef.current = performance.now();
+    InteractionManager.runAfterInteractions(() => {
+      recordLatency(name, Math.round(performance.now() - navStartRef.current));
+    });
+  }, [recordLatency]);
   // Deliberately NOT memoized with useState: RootNavigator itself mounts
   // immediately (while isLoading is still true, before `phase` can possibly
   // be 'main' yet), and a useState initializer only runs on THAT first
@@ -246,6 +256,7 @@ export function RootNavigator() {
         if (name) {
           orgDrawer.setRouteName(name);
           guildDrawer.setRouteName(name);
+          measureRoute(name);
         }
       }}
       onStateChange={(state) => {
@@ -255,6 +266,7 @@ export function RootNavigator() {
           null;
         orgDrawer.setRouteName(name);
         guildDrawer.setRouteName(name);
+        measureRoute(name ?? undefined);
       }}
     >
       {!user ? (

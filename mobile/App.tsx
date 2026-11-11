@@ -13,6 +13,8 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { RecordingProvider } from './src/recording/RecordingContext';
 import { RecordingWidget } from './src/recording/RecordingWidget';
 import { useAppPermissions } from './src/hooks/useAppPermissions';
+import { LatencyProvider } from './src/perf/LatencyContext';
+import { LatencyBadge } from './src/ui/LatencyBadge';
 
 function AppShell() {
   // Request notification + microphone permissions once on app start,
@@ -28,7 +30,10 @@ function AppShell() {
             <AuthProvider>
               <OrgRealtimeProvider>
                 <RecordingProvider>
-                  <RootNavigator />
+                  <LatencyProvider>
+                    <RootNavigator />
+                    <LatencyBadge />
+                  </LatencyProvider>
                   <RecordingWidget />
                 </RecordingProvider>
               </OrgRealtimeProvider>
