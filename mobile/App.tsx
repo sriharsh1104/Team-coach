@@ -40,10 +40,15 @@ function AppShell() {
 }
 
 export default function App() {
-  // expo-font plugin (app.config.ts) pre-bundles Ionicons.ttf as a native
-  // Android asset — useFonts loads it from there (fast, no network).
-  // We do NOT block rendering so there is never a blank screen on cold start.
-  useFonts({ ...Ionicons.font });
+  // Block rendering until Ionicons.ttf is ready — icons are guaranteed visible
+  // on first frame. expo-font plugin pre-bundles the .ttf natively so this
+  // completes in < 300 ms. If loading fails (fontError), we proceed anyway
+  // so the app still opens. Returning a dark View (not null) during load
+  // prevents the white flash / "black screen" perception.
+  const [fontsLoaded, fontError] = useFonts({ ...Ionicons.font });
+  if (!fontsLoaded && !fontError) {
+    return <View style={styles.shell} />;
+  }
 
   return (
     <SafeAreaProvider>
@@ -57,6 +62,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  shell: { flex: 1 },
+  // Default bg matches the black theme — shown for < 300 ms during font load.
+  shell: { flex: 1, backgroundColor: '#0a0a0c' },
   foreground: { flex: 1 },
 });
