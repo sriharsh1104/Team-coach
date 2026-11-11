@@ -100,6 +100,9 @@ export class MailerService implements OnModuleInit {
       .trim()
       .replace(/\/$/, '');
     if (!base) return null;
+    // Email clients cannot reach localhost — return null so the text wordmark
+    // renders instead of a broken image placeholder.
+    if (/localhost|127\.0\.0\.1|\[::1\]/.test(base)) return null;
     return `${base}/sacred-logo-transparent.png`;
   }
 
