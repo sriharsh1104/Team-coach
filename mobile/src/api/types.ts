@@ -284,9 +284,16 @@ export interface ScrimEventInput {
   }>;
 }
 
+export interface VoiceRoom {
+  id: string;
+  name: string;
+  url: string;
+  token: string;
+}
+
 export type VoiceConfig =
   | { mode: 'self' }
-  | { mode: 'hosted'; url: string; token: string };
+  | { mode: 'hosted'; url: string; token: string; rooms?: VoiceRoom[] };
 
 export type ExtractionStatus =
   | 'QUEUED'

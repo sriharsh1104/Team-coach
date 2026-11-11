@@ -39,6 +39,9 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
         name: owner.name,
         isLocallyMuted: localMutesRef.current.has(owner.id),
         isSpeaking: false,
+        isHandRaised: false,
+        localVolume: localMutesRef.current.has(owner.id) ? 0 : 1,
+        connectionQuality: 'unknown' as const,
       });
     }
     setParticipants([...byUser.values()]);
@@ -257,9 +260,19 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
     errorMessage,
     participants,
     isMuted,
+    isLocalHandRaised: false,
+    isDeafened: false,
+    isPushToTalk: false,
     join,
     leave,
     toggleMute,
     toggleParticipantMute,
+    toggleHandRaise: () => {},
+    setParticipantVolume: () => {},
+    kickParticipant: () => {},
+    toggleDeafen: () => {},
+    togglePushToTalk: () => {},
+    pttStart: () => {},
+    pttStop: () => {},
   };
 }

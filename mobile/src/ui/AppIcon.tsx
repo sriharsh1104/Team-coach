@@ -39,7 +39,12 @@ export type AppIconName =
   | 'star'
   | 'star-outline'
   | 'stop-circle'
-  | 'videocam-outline';
+  | 'videocam-outline'
+  | 'hand-raised'
+  | 'headset'
+  | 'headset-off'
+  | 'zap'
+  | 'refresh';
 
 type Props = {
   name: AppIconName;
@@ -276,6 +281,38 @@ const ICONS: Record<AppIconName, Renderer> = {
       <Path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.13 19.13 0 015 11.6a19.79 19.79 0 01-3.07-8.67A2 2 0 013.11 1h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L7.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.92z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Line x1="23" y1="1" x2="17" y2="7" stroke={c} strokeWidth={2} strokeLinecap="round" />
       <Line x1="17" y1="1" x2="23" y2="7" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'hand-raised': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M18 11V6a2 2 0 00-2-2 2 2 0 00-2 2" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M14 10.5V4a2 2 0 00-2-2 2 2 0 00-2 2v.5" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M10 10.5V6a2 2 0 00-2-2 2 2 0 00-2 2v4" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M18 11a2 2 0 114 0v3a8 8 0 01-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 012.83-2.82L7 15" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'headset': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 18v-6a9 9 0 0118 0v6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'headset-off': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 18v-6a9 9 0 0118 0v6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Line x1="1" y1="1" x2="23" y2="23" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'zap': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'refresh': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M23 4v6h-6M1 20v-6h6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   ),
 };
