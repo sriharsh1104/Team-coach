@@ -45,12 +45,11 @@ function AppShell() {
 }
 
 export default function App() {
-  // Load Ionicons font before rendering — prevents invisible icon glyphs in
-  // EAS/production builds where the font file isn't yet cached by the runtime.
-  const [fontsLoaded] = useFonts({ ...Ionicons.font });
-
-  // Keep showing nothing (splash is still visible) until fonts are ready.
-  if (!fontsLoaded) return null;
+  // Kick off Ionicons font load — the expo-font plugin pre-bundles the .ttf
+  // in the native layer so it's usually already available. We do NOT block
+  // rendering on this: returning null on failure/delay causes a permanent
+  // black screen. Icons will simply appear one frame later if needed.
+  useFonts({ ...Ionicons.font });
 
   return (
     <SafeAreaProvider>
