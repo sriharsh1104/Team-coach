@@ -68,6 +68,11 @@ describe('ExtractionReviewScreen', () => {
       confirmedRows: 1,
       skippedRows: 1,
     });
+    // Auto-press OK so the onPress handler (which calls goBack) fires
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
+      const ok = (buttons as any[])?.find((b: any) => b.text === 'OK');
+      ok?.onPress?.();
+    });
     render(<ExtractionReviewScreen navigation={navigation} route={route} />);
     await screen.findByText('Confirm & Save 1 Teammate(s)');
 
@@ -85,6 +90,7 @@ describe('ExtractionReviewScreen', () => {
     expect(Alert.alert).toHaveBeenCalledWith(
       'Teammate Stats Saved',
       expect.stringContaining('1 teammate(s) updated'),
+      expect.anything(),
     );
     expect(navigation.goBack).toHaveBeenCalled();
   });

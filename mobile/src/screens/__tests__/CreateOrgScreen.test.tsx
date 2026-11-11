@@ -13,7 +13,9 @@ const navigation = { navigate: jest.fn() } as any;
 
 async function pressAndSettle(text: string) {
   await act(async () => {
-    fireEvent.press(screen.getByText(text));
+    fireEvent.press(
+      screen.queryByText(text) ?? screen.getByLabelText(text),
+    );
   });
 }
 
