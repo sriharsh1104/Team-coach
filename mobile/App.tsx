@@ -19,13 +19,16 @@ import { LatencyBadge } from './src/ui/LatencyBadge';
 import { VoiceProvider } from './src/voice/VoiceContext';
 import { VoiceFloatingWidget } from './src/voice/VoiceFloatingWidget';
 
+/** Runs hooks that need AuthContext — must be rendered inside AuthProvider. */
+function AuthenticatedEffects() {
+  useServerWakePing();
+  return null;
+}
+
 function AppShell() {
   // Request notification + microphone permissions once on app start,
   // before the user reaches any screen that needs them.
   useAppPermissions();
-  // Keep the Render.com backend alive — pings /health every 10 minutes while
-  // the user is logged in so the free-tier server doesn't spin down.
-  useServerWakePing();
   const { colors } = useTheme();
   return (
     <View style={[styles.shell, { backgroundColor: colors.bg }]}>
@@ -34,6 +37,7 @@ function AppShell() {
         <ToastProvider>
           <LoaderProvider>
             <AuthProvider>
+              <AuthenticatedEffects />
               <OrgRealtimeProvider>
                 <RecordingProvider>
                   <VoiceProvider>
