@@ -16,7 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '../../ui/AppIcon';
 import * as ImagePicker from 'expo-image-picker';
 import * as mediaApi from '../../api/media';
 import * as scrimsApi from '../../api/scrims';
@@ -271,7 +271,7 @@ export function MatchSchedulePanel({
               accessibilityLabel="View uploaded result"
               pressScale={0.96}
             >
-              <Ionicons name="eye-outline" size={18} color={colors.chromeInk} />
+              <AppIcon name="eye-outline" size={18} color={colors.chromeInk} />
               <Text style={styles.viewActionText}>View</Text>
             </SoftPressable>
           ) : null}
@@ -419,7 +419,7 @@ export function MatchSchedulePanel({
               onPress={() => setViewingUrl(null)}
               accessibilityLabel="Close"
             >
-              <Ionicons name="close" size={26} color={colors.chromeInk} />
+              <AppIcon name="close" size={26} color={colors.chromeInk} />
             </Pressable>
           </View>
           {viewingUrl ? (

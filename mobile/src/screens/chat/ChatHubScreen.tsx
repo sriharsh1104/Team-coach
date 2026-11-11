@@ -6,7 +6,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '../../ui/AppIcon';
 import * as chatApi from '../../api/chat';
 import { ChatChannel, ChatTeammate } from '../../api/types';
 import { useTheme } from '../../theme/ThemeContext';
@@ -244,7 +244,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
                 hitSlop={10}
                 pressScale={0.92}
               >
-                <Ionicons
+                <AppIcon
                   name={active.muted ? 'notifications-off' : 'notifications'}
                   size={22}
                   color={active.muted ? theme.textMuted : theme.icon}
@@ -259,7 +259,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
                 hitSlop={10}
                 pressScale={0.92}
               >
-                <Ionicons name="search" size={22} color={theme.icon} />
+                <AppIcon name="search" size={22} color={theme.icon} />
               </SoftPressable>
 
               <SoftPressable
@@ -270,7 +270,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
                 hitSlop={10}
                 pressScale={0.92}
               >
-                <Ionicons name="ellipsis-vertical" size={20} color={theme.icon} />
+                <AppIcon name="ellipsis-vertical" size={20} color={theme.icon} />
               </SoftPressable>
             </>
           }

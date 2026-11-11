@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from './AppIcon';
 import { colors } from '../theme';
 import { SoftPressable } from './SoftPressable';
 
@@ -19,7 +19,7 @@ export function HeaderBackButton({ onPress }: { onPress: () => void }) {
       hitSlop={8}
       pressScale={0.92}
     >
-      <Ionicons name="chevron-back" size={22} color={colors.text} />
+      <AppIcon name="chevron-back" size={22} color={colors.text} />
     </SoftPressable>
   );
 }

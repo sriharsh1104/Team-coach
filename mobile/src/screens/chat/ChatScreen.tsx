@@ -13,7 +13,7 @@ import {
   AppState,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '../../ui/AppIcon';
 import * as ImagePicker from 'expo-image-picker';
 import { Socket } from 'socket.io-client';
 import { getToken } from '../../storage/tokenStorage';
@@ -1097,7 +1097,7 @@ export function ChatScreen({
               }
               style={[styles.selectBarBtn, !canPinStar && styles.selectBarDisabled]}
             >
-              <Ionicons
+              <AppIcon
                 name={selectedList[0]?.pinned ? 'pin' : 'pin-outline'}
                 size={20}
                 color={colors.link}
@@ -1113,7 +1113,7 @@ export function ChatScreen({
               }
               style={[styles.selectBarBtn, !canPinStar && styles.selectBarDisabled]}
             >
-              <Ionicons
+              <AppIcon
                 name={selectedList[0]?.starred ? 'star' : 'star-outline'}
                 size={20}
                 color={colors.link}
@@ -1411,14 +1411,14 @@ export function ChatScreen({
                   ) : null}
                   <View style={styles.metaRow}>
                     {item.pinned ? (
-                      <Ionicons
+                      <AppIcon
                         name="pin"
                         size={12}
                         color={isMine ? colors.chromeInk : colors.textDim}
                       />
                     ) : null}
                     {item.starred ? (
-                      <Ionicons
+                      <AppIcon
                         name="star"
                         size={12}
                         color={isMine ? colors.chromeInk : colors.textDim}
@@ -1531,7 +1531,7 @@ export function ChatScreen({
           style={styles.attachBtn}
           disabled={!!editingId}
         >
-          <Ionicons
+          <AppIcon
             name={showAttach ? 'close' : 'add-circle'}
             size={28}
             color={colors.icon}
@@ -1570,7 +1570,7 @@ export function ChatScreen({
           accessibilityLabel={editingId ? 'Save edit' : 'Send'}
           hitSlop={8}
         >
-          <Ionicons
+          <AppIcon
             name={editingId ? 'checkmark-circle' : 'send'}
             size={24}
             color={colors.icon}

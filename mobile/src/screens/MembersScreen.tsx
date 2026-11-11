@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Text, View, FlatList, RefreshControl, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '../ui/AppIcon';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
@@ -219,7 +219,7 @@ export function MembersScreen({ navigation }: Props) {
                   accessibilityLabel={`Remove ${item.name}`}
                   pressScale={0.94}
                 >
-                  <Ionicons name="person-remove-outline" size={18} color={colors.text} />
+                  <AppIcon name="person-remove-outline" size={18} color={colors.text} />
                   <Text style={styles.removeLabel}>Remove</Text>
                 </SoftPressable>
               ) : null}

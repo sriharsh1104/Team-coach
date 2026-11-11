@@ -23,7 +23,7 @@ function digitsOf(value: string): string[] {
 }
 
 /** Six separate OTP cells — paste + backspace + auto-advance. */
-export function OtpBoxes({ value, onChange, disabled }: Props) {
+export const OtpBoxes = React.memo(function OtpBoxes({ value, onChange, disabled }: Props) {
   const refs = useRef<Array<TextInput | null>>([]);
   const styles = useThemedStyles(otpStyles);
   const digits = digitsOf(value);
@@ -98,7 +98,7 @@ export function OtpBoxes({ value, onChange, disabled }: Props) {
       ))}
     </View>
   );
-}
+});
 
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({

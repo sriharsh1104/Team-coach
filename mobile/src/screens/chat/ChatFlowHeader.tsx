@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '../../ui/AppIcon';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { useTheme } from '../../theme/ThemeContext';
 
@@ -44,7 +44,7 @@ export function ChatFlowHeader({
         hitSlop={10}
         pressScale={0.92}
       >
-        <Ionicons name="chevron-back" size={26} color={colors.icon} />
+        <AppIcon name="chevron-back" size={26} color={colors.icon} />
       </SoftPressable>
 
       {leading}

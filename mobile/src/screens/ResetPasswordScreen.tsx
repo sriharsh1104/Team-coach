@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Text } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as authApi from '../api/auth';
@@ -21,12 +21,14 @@ const RESEND_COOLDOWN_SECONDS = 30;
 // client-side feedback — the server is still the source of truth.
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
-export function ResetPasswordScreen({ navigation, route }: Props) {
+// Isolated so its 1-per-second setState never re-renders the parent screen
+// (and therefore never re-renders the OTP boxes or password field mid-input).
+function ResendLink({
+  onResend,
+}: {
+  onResend: () => Promise<void>;
+}) {
   const shared = useSharedStyles();
-  const { email } = route.params;
-  const [code, setCode] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
 
@@ -35,6 +37,36 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
     const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
+
+  const handlePress = async () => {
+    if (isResending || cooldown > 0) return;
+    setIsResending(true);
+    try {
+      await onResend();
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch {
+      // API message is shown by the global axios → toaster interceptor.
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  return (
+    <Text
+      style={[shared.link, (isResending || cooldown > 0) && { opacity: 0.5 }]}
+      onPress={isResending || cooldown > 0 ? undefined : handlePress}
+    >
+      {cooldown > 0 ? `Resend code (${cooldown}s)` : 'Resend code'}
+    </Text>
+  );
+}
+
+export function ResetPasswordScreen({ navigation, route }: Props) {
+  const shared = useSharedStyles();
+  const { email } = route.params;
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const otpReady = code.replace(/\D/g, '').length === OTP_LENGTH;
   const canSubmit = otpReady && PASSWORD_REGEX.test(newPassword);
@@ -53,19 +85,11 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
     }
   };
 
-  const onResend = async () => {
-    if (isResending || cooldown > 0) return;
-    setIsResending(true);
-    try {
-      await authApi.forgotPassword(email);
-      setCode('');
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-    } catch {
-      // API message is shown by the global axios → toaster interceptor.
-    } finally {
-      setIsResending(false);
-    }
-  };
+  // Stable reference so ResendLink doesn't re-render on every keystroke.
+  const handleResend = useCallback(async () => {
+    await authApi.forgotPassword(email);
+    setCode('');
+  }, [email]);
 
   return (
     <FormScreen>
@@ -78,7 +102,7 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
       <OtpBoxes
         value={code}
         onChange={setCode}
-        disabled={isSubmitting || isResending}
+        disabled={isSubmitting}
       />
       <PasswordField
         value={newPassword}
@@ -102,15 +126,7 @@ export function ResetPasswordScreen({ navigation, route }: Props) {
           {isSubmitting ? 'Resetting…' : 'Reset password'}
         </ButtonLabel>
       </SoftPressable>
-      <Text
-        style={[
-          shared.link,
-          (isResending || cooldown > 0) && { opacity: 0.5 },
-        ]}
-        onPress={isResending || cooldown > 0 ? undefined : onResend}
-      >
-        {cooldown > 0 ? `Resend code (${cooldown}s)` : 'Resend code'}
-      </Text>
+      <ResendLink onResend={handleResend} />
     </FormScreen>
   );
 }

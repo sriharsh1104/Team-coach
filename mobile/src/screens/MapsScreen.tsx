@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon, AppIconName } from '../ui/AppIcon';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -58,7 +58,7 @@ function pinLabel(pin: MapPin): string {
   return 'Vending machine';
 }
 
-function pinIcon(pin: MapPin): keyof typeof Ionicons.glyphMap {
+function pinIcon(pin: MapPin): AppIconName {
   return pin.category === 'drop' ? 'flag' : 'cart';
 }
 
@@ -289,7 +289,7 @@ export function MapsScreen(_props: Props) {
                 accessibilityLabel="Add new map"
                 pressScale={0.96}
               >
-                <Ionicons name="add-circle-outline" size={16} color={colors.chromeInk} />
+                <AppIcon name="add-circle-outline" size={16} color={colors.chromeInk} />
                 <Text style={styles.uploadChipText}>Add map</Text>
               </SoftPressable>
             ) : null}
@@ -350,7 +350,7 @@ export function MapsScreen(_props: Props) {
                         />
                       ) : (
                         <>
-                          <Ionicons
+                          <AppIcon
                             name="cloud-upload-outline"
                             size={16}
                             color={colors.chromeInk}
@@ -374,7 +374,7 @@ export function MapsScreen(_props: Props) {
                       accessibilityLabel={`Add drop point on ${map.name}`}
                       pressScale={0.96}
                     >
-                      <Ionicons name="flag-outline" size={16} color={colors.link} />
+                      <AppIcon name="flag-outline" size={16} color={colors.link} />
                       <Text style={styles.secondaryChipText}>Add drop</Text>
                     </SoftPressable>
                   </View>
@@ -445,7 +445,7 @@ export function MapsScreen(_props: Props) {
                             />
                           ) : (
                             <>
-                              <Ionicons
+                              <AppIcon
                                 name="cloud-upload-outline"
                                 size={14}
                                 color={colors.link}
@@ -485,7 +485,7 @@ export function MapsScreen(_props: Props) {
               accessibilityLabel="Back"
               hitSlop={10}
             >
-              <Ionicons name="chevron-back" size={26} color={colors.text} />
+              <AppIcon name="chevron-back" size={26} color={colors.text} />
             </Pressable>
             <View style={staticStyles.modalTitleCol}>
               <Text style={styles.modalTitle} numberOfLines={1}>
@@ -503,7 +503,7 @@ export function MapsScreen(_props: Props) {
               accessibilityLabel="Close"
               hitSlop={10}
             >
-              <Ionicons name="close" size={26} color={colors.chromeInk} />
+              <AppIcon name="close" size={26} color={colors.chromeInk} />
             </Pressable>
           </View>
 
@@ -626,7 +626,7 @@ export function MapsScreen(_props: Props) {
                             accessibilityLabel={`Open ${pin.name}`}
                             pressScale={0.9}
                           >
-                            <Ionicons
+                            <AppIcon
                               name={pinIcon(pin)}
                               size={14}
                               color={colors.chromeInk}
@@ -678,7 +678,7 @@ export function MapsScreen(_props: Props) {
               onPress={() => void pickImage().then((f) => f && setMapFile(f))}
               pressScale={0.96}
             >
-              <Ionicons name="image-outline" size={16} color={colors.link} />
+              <AppIcon name="image-outline" size={16} color={colors.link} />
               <Text style={styles.secondaryChipText}>
                 {mapFile ? 'Overview photo selected' : 'Pick overview photo'}
               </Text>
@@ -751,7 +751,7 @@ export function MapsScreen(_props: Props) {
               onPress={() => void pickImage().then((f) => f && setDropFile(f))}
               pressScale={0.96}
             >
-              <Ionicons name="image-outline" size={16} color={colors.link} />
+              <AppIcon name="image-outline" size={16} color={colors.link} />
               <Text style={styles.secondaryChipText}>
                 {dropFile ? 'Drop photo selected' : 'Pick drop photo (optional)'}
               </Text>

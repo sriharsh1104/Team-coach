@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from './AppIcon';
 import { ThemeId } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { SoftPressable } from './SoftPressable';
@@ -249,7 +249,7 @@ export function SideDrawer({
               accessibilityLabel="Close Menu"
               style={styles.closeBtn}
             >
-              <Ionicons name="close" size={26} color={theme.icon} />
+              <AppIcon name="close" size={26} color={theme.icon} />
             </Pressable>
           </View>
 

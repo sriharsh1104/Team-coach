@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   View,
@@ -26,7 +25,7 @@ export function FormScreen({ children }: { children: React.ReactNode }) {
       <BrandWatermark variant="auth" />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
       >
         <ScrollView
           contentContainerStyle={styles.content}

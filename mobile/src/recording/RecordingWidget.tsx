@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '../ui/AppIcon';
 import { useTheme } from '../theme/ThemeContext';
 import { useRecording } from './RecordingContext';
 
@@ -86,7 +86,7 @@ export function RecordingWidget() {
           accessibilityLabel="Stop recording"
           style={({ pressed }) => [styles.stopBtn, pressed && styles.stopBtnPressed]}
         >
-          <Ionicons name="stop-circle" size={16} color="#e74c3c" />
+          <AppIcon name="stop-circle" size={16} color="#e74c3c" />
           <Text style={styles.stopLabel}>Stop</Text>
         </Pressable>
       </View>

@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from './AppIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
@@ -131,7 +131,7 @@ export function InviteQr({
           accessibilityLabel="Download QR"
           pressScale={0.94}
         >
-          <Ionicons name="download-outline" size={18} color={colors.icon} />
+          <AppIcon name="download-outline" size={18} color={colors.icon} />
         </SoftPressable>
       </View>
 
@@ -149,7 +149,7 @@ export function InviteQr({
               accessibilityLabel="Back"
               style={staticStyles.modalIconBtn}
             >
-              <Ionicons name="chevron-back" size={26} color={colors.text} />
+              <AppIcon name="chevron-back" size={26} color={colors.text} />
             </Pressable>
             <Text style={styles.modalTitle} numberOfLines={1}>
               {label}
@@ -160,7 +160,7 @@ export function InviteQr({
                 onPress={() => void onDownload()}
                 accessibilityLabel="Download QR"
               >
-                <Ionicons name="download-outline" size={22} color={colors.text} />
+                <AppIcon name="download-outline" size={22} color={colors.text} />
               </Pressable>
               <Pressable
                 style={styles.modalCloseBtn}
@@ -168,7 +168,7 @@ export function InviteQr({
                 accessibilityLabel="Close"
                 hitSlop={10}
               >
-                <Ionicons name="close" size={26} color={colors.chromeInk} />
+                <AppIcon name="close" size={26} color={colors.chromeInk} />
               </Pressable>
             </View>
           </View>

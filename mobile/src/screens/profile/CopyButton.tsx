@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '../../ui/AppIcon';
 import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '../../theme/ThemeContext';
 import {
@@ -42,7 +42,7 @@ export function CopyButton({ value }: { value: string }) {
       accessibilityLabel={justCopied ? 'Copied' : 'Copy'}
       hitSlop={8}
     >
-      <Ionicons
+      <AppIcon
         name={justCopied ? 'checkmark' : 'copy-outline'}
         size={18}
         color={justCopied ? checkColor : colors.icon}

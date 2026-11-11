@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Text, View, FlatList, RefreshControl, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '../ui/AppIcon';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
@@ -323,7 +323,7 @@ function RosterActionIcons({
           accessibilityState={{ disabled: busy }}
           accessibilityLabel={`Add ${name} to roster`}
         >
-          <Ionicons name="person-add" size={22} color={colors.chromeInk} />
+          <AppIcon name="person-add" size={22} color={colors.chromeInk} />
         </SoftPressable>
       ) : null}
       {canRemove ? (
@@ -340,7 +340,7 @@ function RosterActionIcons({
           accessibilityState={{ disabled: busy }}
           accessibilityLabel={`Remove ${name} from roster`}
         >
-          <Ionicons name="person-remove" size={22} color={colors.text} />
+          <AppIcon name="person-remove" size={22} color={colors.text} />
         </SoftPressable>
       ) : null}
     </View>

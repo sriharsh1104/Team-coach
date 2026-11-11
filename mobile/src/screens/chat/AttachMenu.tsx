@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon, AppIconName } from '../../ui/AppIcon';
 import { EmojiBar } from './EmojiBar';
 import { StickerPicker } from './StickerPicker';
 import { CustomSticker } from './stickerStorage';
@@ -17,7 +17,6 @@ interface Props {
   onPickCustomSticker: (sticker: CustomSticker) => void;
 }
 
-type IonName = React.ComponentProps<typeof Ionicons>['name'];
 
 /**
  * WhatsApp-style "+" attachment panel with modern glyph icons.
@@ -41,7 +40,7 @@ export function AttachMenu({
             hitSlop={8}
             accessibilityLabel="Back to attach options"
           >
-            <Ionicons name="chevron-back" size={20} color={colors.link} />
+            <AppIcon name="chevron-back" size={20} color={colors.link} />
           </Pressable>
           <Text style={styles.emojiHeaderLabel}>Emoji</Text>
         </View>
@@ -59,7 +58,7 @@ export function AttachMenu({
             hitSlop={8}
             accessibilityLabel="Back to attach options"
           >
-            <Ionicons name="chevron-back" size={20} color={colors.link} />
+            <AppIcon name="chevron-back" size={20} color={colors.link} />
           </Pressable>
           <Text style={styles.emojiHeaderLabel}>Stickers</Text>
         </View>
@@ -74,7 +73,7 @@ export function AttachMenu({
   const options: Array<{
     key: string;
     label: string;
-    icon: IonName;
+    icon: AppIconName;
     tint: string;
     onPress: () => void;
   }> = [
@@ -141,7 +140,7 @@ export function AttachMenu({
           >
             <View style={[staticStyles.gridIcon, { backgroundColor: `${opt.tint}22` }]}>
               <View style={[staticStyles.gridIconInner, { backgroundColor: opt.tint }]}>
-                <Ionicons name={opt.icon} size={22} color="#fff" />
+                <AppIcon name={opt.icon} size={22} color="#fff" />
               </View>
             </View>
             <Text style={styles.gridLabel}>{opt.label}</Text>

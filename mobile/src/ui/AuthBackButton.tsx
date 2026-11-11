@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from './AppIcon';
 import { colors } from '../theme';
 
 type Props = {
@@ -18,7 +18,7 @@ export function AuthBackButton({ onPress, label = 'Back' }: Props) {
       accessibilityLabel={label}
       style={styles.btn}
     >
-      <Ionicons name="chevron-back" size={22} color={colors.text} />
+      <AppIcon name="chevron-back" size={22} color={colors.text} />
     </Pressable>
   );
 }

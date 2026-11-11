@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from './AppIcon';
 import { useSharedStyles } from '../screens/shared';
 import { colors } from '../theme';
 
@@ -37,7 +37,7 @@ export function PasswordField({
         onPress={() => setVisible((open) => !open)}
         hitSlop={8}
       >
-        <Ionicons
+        <AppIcon
           name={visible ? 'eye-off-outline' : 'eye-outline'}
           size={22}
           color={colors.textMuted}
