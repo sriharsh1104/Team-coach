@@ -8,6 +8,7 @@ node_modules/
 dist/
 web-build/
 expo-env.d.ts
+local.properties
 
 # Native
 .kotlin/
@@ -49,3 +50,4 @@ fcm-service-account.json
 # generated native folders
 /ios
 /android
+android/local.properties

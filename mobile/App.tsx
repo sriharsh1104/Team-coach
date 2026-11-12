@@ -17,7 +17,6 @@ import { useServerWakePing } from './src/hooks/useServerWakePing';
 import { LatencyProvider } from './src/perf/LatencyContext';
 import { LatencyBadge } from './src/ui/LatencyBadge';
 import { VoiceProvider } from './src/voice/VoiceContext';
-import { VoiceFloatingWidget } from './src/voice/VoiceFloatingWidget';
 
 /** Runs hooks that need AuthContext — must be rendered inside AuthProvider. */
 function AuthenticatedEffects() {
@@ -44,7 +43,6 @@ function AppShell() {
                     <LatencyProvider>
                       <RootNavigator />
                       <LatencyBadge />
-                      <VoiceFloatingWidget />
                     </LatencyProvider>
                   </VoiceProvider>
                   <RecordingWidget />

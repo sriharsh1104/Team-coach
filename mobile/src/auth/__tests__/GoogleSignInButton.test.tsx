@@ -17,7 +17,7 @@ const mockConfigure = jest.fn();
 const mockIsSuccessResponse = jest.fn(
   (r: { type?: string }) => r?.type === 'success',
 );
-const mockIsErrorWithCode = jest.fn(() => false);
+const mockIsErrorWithCode = jest.fn((_e: unknown) => false);
 const mockStatusCodes = { SIGN_IN_CANCELLED: 'SIGN_IN_CANCELLED' };
 
 jest.mock('@react-native-google-signin/google-signin', () => ({

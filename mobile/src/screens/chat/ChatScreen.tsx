@@ -990,7 +990,7 @@ export function ChatScreen({
       setReminderOpen(true);
       return;
     }
-    if (option === 'screenShare') {
+    if (option === 'screenShare' || option === 'record') {
       // Start background screen recording — recording widget appears at top,
       // user switches to their game. Stop from the widget or notification.
       await startRecording();

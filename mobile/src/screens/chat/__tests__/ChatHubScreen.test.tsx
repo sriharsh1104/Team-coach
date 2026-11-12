@@ -12,7 +12,7 @@ jest.mock('../ChatScreen', () => {
   const React = require('react');
   const { Text } = require('react-native');
   return {
-    ChatScreen: function MockChatScreen(props) {
+    ChatScreen: function MockChatScreen(props: any) {
       return React.createElement(
         React.Fragment,
         null,

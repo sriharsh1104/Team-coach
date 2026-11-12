@@ -6,6 +6,9 @@
     // node10). That is deprecated in TypeScript 6 — Metro is a bundler, so
     // "bundler" is the correct modern setting and silences TS5107.
     "moduleResolution": "bundler",
+    // esnext enables dynamic import() expressions (React.lazy) that Metro
+    // handles at runtime; without this tsc raises TS1323.
+    "module": "esnext",
     "types": ["jest"]
   }
 }

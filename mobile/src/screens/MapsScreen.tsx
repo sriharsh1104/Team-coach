@@ -20,6 +20,7 @@ import * as mapsApi from '../api/maps';
 import {
   DropTier,
   FreeFireMap,
+  MapDrop,
   MapImageSlot,
   MapPin,
   mapPins,
@@ -108,9 +109,13 @@ export function MapsScreen(_props: Props) {
         const dropList = fresh.drops?.length
           ? fresh.drops
           : [fresh.primary, fresh.secondary];
+        // prev.pin is narrowed to MapDrop here (vending_machine was handled
+        // above with an early return) but TypeScript loses that narrowing
+        // inside the setState callback, so we assert the type explicitly.
+        const prevDrop = prev.pin as { category: 'drop' } & MapDrop;
         const drop =
-          dropList.find((d) => d.id === prev.pin.id) ??
-          dropList.find((d) => d.tier === prev.pin.tier) ??
+          dropList.find((d) => d.id === prevDrop.id) ??
+          dropList.find((d) => d.tier === prevDrop.tier) ??
           fresh.primary;
         return {
           kind: 'poi',

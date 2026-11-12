@@ -52,6 +52,7 @@ import {
 import { titleCase } from '../utils/titleCase';
 import { colors } from '../theme';
 import { useLatency } from '../perf/LatencyContext';
+import { VoiceFloatingWidget } from '../voice/VoiceFloatingWidget';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
@@ -514,6 +515,10 @@ export function RootNavigator() {
           />
         </>
       )}
+      {/* VoiceFloatingWidget must be inside NavigationContainer so
+          useNavigation() can find the navigation context. It returns null
+          when no voice session is active, so it is safe in every branch. */}
+      <VoiceFloatingWidget />
     </NavigationContainer>
   );
 }
