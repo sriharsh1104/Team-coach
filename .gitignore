@@ -47,3 +47,6 @@ yarn-error.*
 
 # Prisma generated client
 generated/prisma
+
+# Database backup dumps (bind-mounted into postgres container)
+postgres-backups/*.sql

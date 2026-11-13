@@ -1,0 +1,89 @@
+# ─────────────────────────────────────────────────────────────
+# PRODUCTION  —  Contabo VPS
+# PostgreSQL + NestJS backend (no Nginx — add separately for SSL)
+#
+# Setup steps (first deploy):
+#   1. Copy backend/.env.production.example → backend/.env.production
+#      and fill in every value.
+#   2. docker compose -f docker-compose.prod.yml up -d --build
+#
+# After every deploy that has new migrations:
+#   docker compose -f docker-compose.prod.yml exec backend \
+#     npx prisma migrate deploy
+#
+# Or set RUN_MIGRATIONS=true in .env.production to auto-migrate on startup.
+# ─────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-team_coach}
+      POSTGRES_USER:     ${POSTGRES_USER:-team_coach}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}        # required — set in .env.production
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-backups:/backups                  # bind-mount for pg_dump outputs
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-team_coach} -d ${POSTGRES_DB:-team_coach}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Postgres port is NOT exposed to the host — reachable only within the
+    # Docker internal network. Connect via: docker exec -it <container> psql
+
+  # ── NestJS Backend ───────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    restart: always
+    env_file:
+      - ./backend/.env.production
+    environment:
+      NODE_ENV: production
+      # DATABASE_URL is built from POSTGRES_* so it always points to the
+      # Docker-internal postgres host — overrides any value in .env.production
+      DATABASE_URL: >-
+        postgresql://${POSTGRES_USER:-team_coach}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-team_coach}?schema=public
+    ports:
+      - "3000:3000"       # expose backend; put Nginx in front for SSL/80/443
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    volumes:
+      - uploads:/app/uploads          # media files persist across deploys
+
+  # ── pgAdmin (optional — only with --profile pgadmin) ────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    profiles: ["pgadmin"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-change_me}
+    ports:
+      - "5050:80"                 # protect with firewall; accessible at http://<IP>:5050
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  uploads:
+  pgadmin_data:

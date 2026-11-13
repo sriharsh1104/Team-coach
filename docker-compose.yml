@@ -1,16 +1,48 @@
+# ─────────────────────────────────────────────────────────────
+# LOCAL DEVELOPMENT  —  PostgreSQL only
+# Backend runs hot-reload locally: cd backend && npm run start:dev
+#
+# Usage:
+#   docker compose up -d          # start postgres
+#   docker compose down           # stop (data volume persists)
+#   docker compose down -v        # stop + wipe all data
+# ─────────────────────────────────────────────────────────────
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: team-coach-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: team_coach
-      POSTGRES_PASSWORD: team_coach_local_pw
-      POSTGRES_DB: team_coach
+      POSTGRES_DB:       team_coach
+      POSTGRES_USER:     team_coach
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_change_me}
     ports:
-      - "5432:5432"
+      - "5432:5432"       # accessible from host for prisma studio / local backend
     volumes:
-      - team_coach_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U team_coach -d team_coach"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: pgAdmin for visual DB management
+  # Visit http://localhost:5050  — login: admin@local.dev / admin
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    profiles: ["pgadmin"]          # only starts with: docker compose --profile pgadmin up
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
 
 volumes:
-  team_coach_postgres_data:
+  postgres_data:
+  pgadmin_data:
