@@ -590,17 +590,41 @@ function HostedVoiceChannel({
   );
 }
 
-function SelfHostedVoiceChannel({
-  authToken,
-  hooks,
-}: {
-  authToken: string;
-  hooks: VoiceHooks;
-}) {
-  const voice = hooks.useSelfHostedVoiceChannel(authToken);
+function SelfHostedVoiceChannel({ authToken }: { authToken: string }) {
+  const { activate, controller, setScreenFocused } = useVoiceContext();
+  const { colors } = useTheme();
+  const shared = useSharedStyles();
+
+  // Mount the mediasoup session in the global VoiceContext (above the
+  // navigator) so it keeps running when the user navigates away — same as
+  // the hosted path. See SelfHostedVoiceHolder in VoiceContext.tsx.
+  useEffect(() => {
+    activate({ mode: 'self', token: authToken });
+  }, [authToken, activate]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setScreenFocused(true);
+      activate({ mode: 'self', token: authToken });
+      return () => {
+        setScreenFocused(false);
+      };
+    }, [authToken, activate, setScreenFocused]),
+  );
+
+  if (!controller) {
+    return (
+      <Screen>
+        <View style={shared.container}>
+          <ActivityIndicator color={colors.chrome} />
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <VoiceChannelBody
-      voice={voice}
+      voice={controller}
       channelName="Team Voice"
       rooms={undefined}
       selectedRoom={null}
@@ -615,6 +639,8 @@ function VoiceChannelScreenInner() {
   const [config, setConfig] = useState<VoiceConfig | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Only used as a probe that the native voice modules load (require throws
+  // otherwise) — the actual hooks are mounted by VoiceContext's holders.
   const [hooks, setHooks] = useState<VoiceHooks | null>(null);
   const [nativeError, setNativeError] = useState<string | null>(null);
 
@@ -676,7 +702,7 @@ function VoiceChannelScreenInner() {
   return config.mode === 'hosted' ? (
     <HostedVoiceChannel config={config} />
   ) : (
-    <SelfHostedVoiceChannel authToken={authToken} hooks={hooks} />
+    <SelfHostedVoiceChannel authToken={authToken} />
   );
 }
 

@@ -170,8 +170,31 @@ sudo ufw allow OpenSSH
 sudo ufw allow 'Nginx Full'
 # Allow mediasoup UDP range (voice calls)
 sudo ufw allow 40000:40100/udp
+sudo ufw allow 40000:40100/tcp
 sudo ufw enable
 ```
+
+### Voice (mediasoup) checklist
+
+Voice signaling goes over the normal API port, but the **audio itself** goes
+over WebRTC on ports 40000–40100. All three must be true or you get
+"connected" with no sound:
+
+1. `backend/.env.production` → `MEDIASOUP_ANNOUNCED_IP=<VPS public IP>` (not 127.0.0.1)
+2. `docker-compose.prod.yml` publishes `40000-40100` udp+tcp on the backend service (already done)
+3. Firewall (ufw above, **and** the Contabo panel firewall if enabled) allows the same range
+
+Verify after `docker compose up`:
+
+```bash
+docker compose -f docker-compose.prod.yml logs backend | grep -i mediasoup
+# expect: "mediasoup worker started" — if you see "did not start", the worker
+# binary is missing (image must be Debian/glibc, see backend/Dockerfile)
+```
+
+Render (and most PaaS free tiers) cannot host this: they don't expose UDP
+port ranges. Either run the backend on a VPS like this, or set
+`VOICE_SELF_HOSTED=false` and use hosted LiveKit.
 
 ---
 

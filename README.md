@@ -419,6 +419,8 @@ VOICE_SELF_HOSTED=false  # hosted LiveKit Cloud
 - Verified: with no `LIVEKIT_*` credentials set, `GET /voice/config` returns a clean 503, not a crash; with fake-but-correctly-shaped credentials, decoded the generated JWT and confirmed every claim (room id, user identity, grants) was correct. Actually connecting to a real LiveKit room needs a real account, which this sandbox doesn't have.
 - Confirmed the self-hosted mediasoup worker correctly does **not** start at all when `VOICE_SELF_HOSTED=false` (no wasted resources for the mode you're not using).
 
+> **Update (2026-11-16):** the self-hosted path was reworked before the first device test — session now lives in `VoiceContext` (survives navigation), auto-rejoins after a dropped socket, cleans up on failed joins/unmount, and deafen / push-to-talk / hand raise / per-user volume / kick / speaking highlight all work in mediasoup mode too (kick is enforced server-side, owner/coach only). Deployment prerequisites (Docker port range, Debian image, `MEDIASOUP_ANNOUNCED_IP`) are listed under "Voice (mediasoup) checklist" in `DEPLOY.md`. Still device-untested at the time of writing.
+
 **Mobile (`mobile/src/voice`, `mobile/src/screens/voice`) — written, not device-tested:**
 - `useSelfHostedVoiceChannel` — `mediasoup-client` wired to the backend's signaling protocol, using mediasoup-client's official `ReactNative106` handler
 - `useHostedVoiceChannel` — thin wrapper over LiveKit's `Room` class (`livekit-client`)

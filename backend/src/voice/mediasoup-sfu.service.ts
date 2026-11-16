@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as mediasoup from 'mediasoup';
-import { Router, Worker } from 'mediasoup/node/lib/types';
+import {
+  AudioLevelObserver,
+  Producer,
+  Router,
+  Worker,
+} from 'mediasoup/node/lib/types';
 
 export interface RoomParticipantProducer {
   producerId: string;
@@ -20,7 +25,12 @@ interface RoomState {
   router: Router;
   // Keyed by producerId — lets a newly-joined peer discover who's already talking.
   producers: Map<string, RoomParticipantProducer>;
+  // Drives the "who is speaking" highlight on every client — mediasoup
+  // measures RTP audio levels server-side so clients don't have to.
+  audioLevelObserver: AudioLevelObserver;
 }
+
+export type SpeakingListener = (orgId: string, userIds: string[]) => void;
 
 // Audio-only — this is a voice channel, not a video call.
 const MEDIA_CODECS: mediasoup.types.RouterRtpCodecCapability[] = [
@@ -37,6 +47,7 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MediasoupSfuService.name);
   private worker: Worker;
   private rooms = new Map<string, RoomState>();
+  private speakingListeners = new Set<SpeakingListener>();
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -58,6 +69,12 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
     this.worker.on('died', () => {
       this.logger.error('mediasoup worker died, restart the server');
     });
+    const announcedIp = this.configService.get<string>('MEDIASOUP_ANNOUNCED_IP');
+    if (!announcedIp || announcedIp === '127.0.0.1') {
+      this.logger.warn(
+        'MEDIASOUP_ANNOUNCED_IP is unset/127.0.0.1 — only clients on this same machine will get audio. Set it to the server public IP in production.',
+      );
+    }
     this.logger.log('mediasoup worker started');
   }
 
@@ -69,6 +86,11 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
     return this.configService.get('VOICE_SELF_HOSTED', 'true') === 'true';
   }
 
+  /** Subscribe to "these users are currently speaking in this org" updates. */
+  onSpeaking(listener: SpeakingListener) {
+    this.speakingListeners.add(listener);
+  }
+
   async getOrCreateRoom(orgId: string): Promise<RoomState> {
     if (!this.worker) {
       throw new ServiceUnavailableException('Voice worker is not running');
@@ -76,10 +98,35 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
     let room = this.rooms.get(orgId);
     if (!room) {
       const router = await this.worker.createRouter({ mediaCodecs: MEDIA_CODECS });
-      room = { router, producers: new Map() };
+      const audioLevelObserver = await router.createAudioLevelObserver({
+        maxEntries: 8,
+        threshold: -55,
+        interval: 400,
+      });
+      room = { router, producers: new Map(), audioLevelObserver };
       this.rooms.set(orgId, room);
+
+      const current = room;
+      audioLevelObserver.on('volumes', (volumes) => {
+        const userIds = new Set<string>();
+        for (const { producer } of volumes) {
+          const owner = current.producers.get(producer.id);
+          if (owner) userIds.add(owner.userId);
+        }
+        this.emitSpeaking(orgId, [...userIds]);
+      });
+      audioLevelObserver.on('silence', () => this.emitSpeaking(orgId, []));
     }
     return room;
+  }
+
+  /** Drops the router once nobody is left so a long-running server doesn't accumulate them. */
+  closeRoomIfEmpty(orgId: string, connectedPeers: number) {
+    const room = this.rooms.get(orgId);
+    if (!room || connectedPeers > 0 || room.producers.size > 0) return;
+    room.audioLevelObserver.close();
+    room.router.close();
+    this.rooms.delete(orgId);
   }
 
   async createWebRtcTransport(orgId: string) {
@@ -99,16 +146,44 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
     return transport;
   }
 
-  registerProducer(orgId: string, entry: RoomParticipantProducer) {
+  async registerProducer(
+    orgId: string,
+    producer: Producer,
+    entry: RoomParticipantProducer,
+  ) {
     const room = this.rooms.get(orgId);
-    room?.producers.set(entry.producerId, entry);
+    if (!room) return;
+    room.producers.set(entry.producerId, entry);
+    try {
+      await room.audioLevelObserver.addProducer({ producerId: producer.id });
+    } catch (err) {
+      // Non-fatal: speaking highlight just won't light up for this producer.
+      this.logger.warn(`audioLevelObserver.addProducer failed: ${(err as Error).message}`);
+    }
   }
 
   unregisterProducer(orgId: string, producerId: string) {
-    this.rooms.get(orgId)?.producers.delete(producerId);
+    const room = this.rooms.get(orgId);
+    if (!room) return;
+    room.producers.delete(producerId);
+    try {
+      room.audioLevelObserver.removeProducer({ producerId });
+    } catch {
+      // Producer may already be gone (transport closed first) — fine.
+    }
   }
 
   listProducers(orgId: string): RoomParticipantProducer[] {
     return [...(this.rooms.get(orgId)?.producers.values() ?? [])];
+  }
+
+  private emitSpeaking(orgId: string, userIds: string[]) {
+    for (const listener of this.speakingListeners) {
+      try {
+        listener(orgId, userIds);
+      } catch (err) {
+        this.logger.warn(`speaking listener threw: ${(err as Error).message}`);
+      }
+    }
   }
 }

@@ -84,6 +84,12 @@ jest.mock('@livekit/react-native-webrtc', () => ({
 
 jest.mock('@livekit/react-native', () => ({
   registerGlobals: jest.fn(),
+  AudioSession: {
+    configureAudio: jest.fn().mockResolvedValue(undefined),
+    startAudioSession: jest.fn().mockResolvedValue(undefined),
+    stopAudioSession: jest.fn().mockResolvedValue(undefined),
+  },
+  AndroidAudioTypePresets: { communication: {}, media: {} },
 }));
 
 jest.mock('mediasoup-client', () => ({

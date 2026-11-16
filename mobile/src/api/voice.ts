@@ -10,6 +10,10 @@ export function connectVoiceSocket(token: string): Socket {
   return io(`${apiBaseUrl}/voice`, {
     auth: { token },
     transports: ['websocket'],
+    // No socket.io auto-reconnect: mediasoup transports don't survive a
+    // dropped socket, so useSelfHostedVoiceChannel rebuilds the whole
+    // session itself on 'disconnect' instead.
+    reconnection: false,
   });
 }
 

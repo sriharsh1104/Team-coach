@@ -6,13 +6,13 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { VoiceChannelController, VoiceChannelStatus } from './types';
+import { VoiceChannelController } from './types';
 
-export type VoiceActivation = {
-  mode: 'hosted' | 'self';
-  url: string;
-  token: string;
-};
+export type VoiceActivation =
+  // Hosted (LiveKit): url + room token from GET /voice/config.
+  | { mode: 'hosted'; url: string; token: string }
+  // Self-hosted (mediasoup): our own API JWT for the /voice socket.
+  | { mode: 'self'; token: string };
 
 type VoiceContextValue = {
   /** Currently active controller, or null when not in a voice session. */
@@ -66,11 +66,37 @@ function HostedVoiceHolder({
 }
 
 /**
+ * Same idea for the self-hosted (mediasoup) path. Before this existed the
+ * self-hosted hook lived inside VoiceChannelScreen, so navigating away
+ * unmounted it without closing the socket or the mic — the session leaked
+ * and "Join" on return opened a second one.
+ */
+function SelfHostedVoiceHolder({
+  token,
+  onController,
+}: {
+  token: string;
+  onController: (c: VoiceChannelController) => void;
+}) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { useSelfHostedVoiceChannel } = require('./useSelfHostedVoiceChannel') as {
+    useSelfHostedVoiceChannel: typeof import('./useSelfHostedVoiceChannel').useSelfHostedVoiceChannel;
+  };
+  const controller = useSelfHostedVoiceChannel(token);
+
+  useEffect(() => {
+    onController(controller);
+  });
+
+  return null;
+}
+
+/**
  * Global voice provider — wraps the entire app so the voice connection
  * persists across screen navigation. VoiceChannelScreen sets the activation
- * config; this provider mounts HostedVoiceHolder (which holds the LiveKit
- * Room) in the app root above the navigator so it never unmounts when the
- * user navigates away.
+ * config; this provider mounts the matching holder (which owns the LiveKit
+ * Room / mediasoup session) in the app root above the navigator so it never
+ * unmounts when the user navigates away.
  */
 export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const [activation, setActivation] = useState<VoiceActivation | null>(null);
@@ -84,7 +110,16 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const activate = useCallback((config: VoiceActivation) => {
-    setActivation(config);
+    setActivation((prev) => {
+      // Same session already active → keep it (and its connection) as-is.
+      if (prev && prev.mode === config.mode && prev.token === config.token) {
+        if (prev.mode === 'hosted' && config.mode === 'hosted' && prev.url !== config.url) {
+          return config;
+        }
+        return prev;
+      }
+      return config;
+    });
   }, []);
 
   const deactivate = useCallback(() => {
@@ -101,8 +136,15 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     >
       {activation?.mode === 'hosted' ? (
         <HostedVoiceHolder
-          key={`${activation.url}:${activation.token}`}
+          key={`hosted:${activation.url}:${activation.token}`}
           url={activation.url}
+          token={activation.token}
+          onController={handleController}
+        />
+      ) : null}
+      {activation?.mode === 'self' ? (
+        <SelfHostedVoiceHolder
+          key={`self:${activation.token}`}
           token={activation.token}
           onController={handleController}
         />

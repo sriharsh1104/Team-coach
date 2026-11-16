@@ -150,18 +150,18 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       const socket = await connectSocket(baseUrl, player.accessToken, '/voice');
       openSockets.push(socket);
 
-      // voiceGateway's signalingLimiter allows 50 per 10s per socket — fire
+      // voiceGateway's signalingLimiter allows 150 per 10s per socket — fire
       // one more than that, concurrently, in one burst. A blocked call never
       // gets an ack (the handler throws before responding), so it times out
       // rather than rejecting immediately — this is why the per-call timeout
       // below is short.
-      const calls = Array.from({ length: 51 }, () =>
+      const calls = Array.from({ length: 151 }, () =>
         emitAck(socket, 'getRtpCapabilities', undefined, 2000)
           .then(() => 'ok' as const)
           .catch(() => 'blocked' as const),
       );
       const results = await Promise.all(calls);
-      expect(results.filter((r) => r === 'ok')).toHaveLength(50);
+      expect(results.filter((r) => r === 'ok')).toHaveLength(150);
       expect(results.filter((r) => r === 'blocked')).toHaveLength(1);
     }, 15000);
   });
@@ -190,6 +190,60 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       const bShouldNotHear = assertNoEvent(socketB, 'peerLeft');
       socketA.disconnect();
       await bShouldNotHear;
+    });
+  });
+
+  describe('Hand raise + kick (room-level signaling)', () => {
+    it('broadcasts hand raise (and lowering) to the rest of the org', async () => {
+      const { coach, player } = await setUpOrgWithTwoPlayers();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken, '/voice');
+      const playerSocket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      openSockets.push(coachSocket, playerSocket);
+
+      const raised = waitForEvent<{ userId: string; raised: boolean }>(coachSocket, 'handRaised');
+      const ack = await emitAck<{ raised: boolean }>(playerSocket, 'setHandRaised', { raised: true });
+      expect(ack).toEqual({ raised: true });
+      expect(await raised).toEqual({ userId: player.user.id, raised: true });
+
+      const lowered = waitForEvent<{ userId: string; raised: boolean }>(coachSocket, 'handRaised');
+      await emitAck(playerSocket, 'setHandRaised', { raised: false });
+      expect(await lowered).toEqual({ userId: player.user.id, raised: false });
+    });
+
+    it('SECURITY: a plain player cannot kick anyone', async () => {
+      const { coach, player } = await setUpOrgWithTwoPlayers();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken, '/voice');
+      const playerSocket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      openSockets.push(coachSocket, playerSocket);
+
+      const coachStaysConnected = assertNoEvent(coachSocket, 'kicked');
+      // A rejected handler never acks, so the ack times out (same as the
+      // rate-limit test above).
+      await expect(
+        emitAck(playerSocket, 'kick', { userId: coach.user.id }, 2000),
+      ).rejects.toBeTruthy();
+      await coachStaysConnected;
+      expect(coachSocket.connected).toBe(true);
+    });
+
+    it('the org owner/coach can kick: target gets "kicked", is disconnected, and the room sees peerLeft', async () => {
+      const { coach, player } = await setUpOrgWithTwoPlayers();
+      const coachSocket = await connectSocket(baseUrl, coach.accessToken, '/voice');
+      const playerSocket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      openSockets.push(coachSocket, playerSocket);
+
+      const kicked = waitForEvent<{ by: string }>(playerSocket, 'kicked');
+      const peerLeft = waitForEvent<{ userId: string }>(coachSocket, 'peerLeft');
+      const playerDisconnected = new Promise<void>((resolve) =>
+        playerSocket.once('disconnect', () => resolve()),
+      );
+
+      const ack = await emitAck<{ kicked: number }>(coachSocket, 'kick', { userId: player.user.id });
+      expect(ack).toEqual({ kicked: 1 });
+      expect(await kicked).toEqual({ by: 'Coach' });
+      expect(await peerLeft).toEqual({ userId: player.user.id });
+      await playerDisconnected;
+      expect(playerSocket.connected).toBe(false);
     });
   });
 });

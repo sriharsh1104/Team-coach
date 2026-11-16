@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Device, types as mediasoupTypes } from 'mediasoup-client';
 import { Socket } from 'socket.io-client';
 import { mediaDevices } from '@livekit/react-native-webrtc';
+import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
 import { connectVoiceSocket } from '../api/voice';
 import { VoiceChannelController, VoiceChannelStatus, VoiceParticipant } from './types';
 
@@ -14,38 +15,170 @@ function emitAsync<T = any>(socket: Socket, event: string, payload?: unknown): P
   });
 }
 
+type RemoteProducer = { producerId: string; userId: string; userName: string; handRaised?: boolean };
+type ConsumerEntry = { consumer: mediasoupTypes.Consumer; userId: string };
+
+// How many times we silently try to get back in after the socket drops
+// (WiFi → 4G, backend restart, ...) before giving up and showing an error.
+const MAX_REJOIN_ATTEMPTS = 3;
+
+// react-native-webrtc's MediaStreamTrack exposes a per-track playback volume
+// (the same hook livekit-react-native uses for RemoteAudioTrack.setVolume).
+type VolumeTrack = { _setVolume?: (volume: number) => void };
+
+/**
+ * Self-hosted (mediasoup SFU) voice channel. Mounted once in VoiceContext so
+ * the session survives navigating away from the Voice screen — the hook
+ * itself tears everything down on unmount, which only happens on deactivate.
+ */
 export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelController {
   const [status, setStatus] = useState<VoiceChannelStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string>();
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
   const [isMuted, setIsMuted] = useState(false);
+  const [isLocalHandRaised, setIsLocalHandRaised] = useState(false);
+  const [isDeafened, setIsDeafened] = useState(false);
+  const [isPushToTalk, setIsPushToTalk] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
   const deviceRef = useRef<Device | null>(null);
-  const producerRef = useRef<mediasoupTypes.Producer | null>(null);
+  const sendTransportRef = useRef<mediasoupTypes.Transport | null>(null);
   const recvTransportRef = useRef<mediasoupTypes.Transport | null>(null);
-  const consumersRef = useRef<Map<string, mediasoupTypes.Consumer>>(new Map());
+  const producerRef = useRef<mediasoupTypes.Producer | null>(null);
+  const micStreamRef = useRef<{ getTracks: () => { stop: () => void }[] } | null>(null);
+  // consumerId -> consumer + who it belongs to
+  const consumersRef = useRef<Map<string, ConsumerEntry>>(new Map());
   // producerId -> who it belongs to
   const producerOwnersRef = useRef<Map<string, { id: string; name: string }>>(new Map());
-  // userId -> consumerId for per-user local mute
+  // userId -> consumerId
   const userConsumersRef = useRef<Map<string, string>>(new Map());
-  const localMutesRef = useRef<Set<string>>(new Set());
+  // userId -> local playback volume (0–1); unset = 1
+  const volumesRef = useRef<Map<string, number>>(new Map());
+  const handRaisedIdsRef = useRef<Set<string>>(new Set());
+  const speakingIdsRef = useRef<Set<string>>(new Set());
+
+  const isDeafenedRef = useRef(false);
+  const isPushToTalkRef = useRef(false);
+  const isMutedRef = useRef(false);
+  // True between join() start and leave()/fatal error — lets the socket
+  // 'disconnect' handler tell an intentional leave from a dropped connection.
+  const sessionWantedRef = useRef(false);
+  const joiningRef = useRef(false);
+  const rejoinAttemptsRef = useRef(0);
+  const rejoinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const joinRef = useRef<() => Promise<void>>(async () => {});
 
   const refreshParticipants = useCallback(() => {
     const byUser = new Map<string, VoiceParticipant>();
     for (const owner of producerOwnersRef.current.values()) {
+      const vol = volumesRef.current.get(owner.id) ?? 1;
       byUser.set(owner.id, {
         id: owner.id,
         name: owner.name,
-        isLocallyMuted: localMutesRef.current.has(owner.id),
-        isSpeaking: false,
-        isHandRaised: false,
-        localVolume: localMutesRef.current.has(owner.id) ? 0 : 1,
-        connectionQuality: 'unknown' as const,
+        isLocallyMuted: vol === 0,
+        isSpeaking: speakingIdsRef.current.has(owner.id),
+        isHandRaised: handRaisedIdsRef.current.has(owner.id),
+        localVolume: vol,
+        connectionQuality: 'unknown',
       });
     }
     setParticipants([...byUser.values()]);
   }, []);
+
+  /** Applies deafen + per-user volume to one consumer's playback. */
+  const applyPlayback = useCallback((userId: string) => {
+    const consumerId = userConsumersRef.current.get(userId);
+    const entry = consumerId ? consumersRef.current.get(consumerId) : undefined;
+    if (!entry) return;
+    const vol = isDeafenedRef.current ? 0 : (volumesRef.current.get(userId) ?? 1);
+    if (vol === 0) {
+      if (!entry.consumer.paused) entry.consumer.pause();
+      return;
+    }
+    if (entry.consumer.paused) entry.consumer.resume();
+    try {
+      (entry.consumer.track as unknown as VolumeTrack)._setVolume?.(vol);
+    } catch {
+      // Older react-native-webrtc without per-track volume: on/off still works.
+    }
+  }, []);
+
+  const setMicEnabled = useCallback((enabled: boolean) => {
+    const producer = producerRef.current;
+    if (producer && !producer.closed) {
+      if (enabled) producer.resume();
+      else producer.pause();
+    }
+    isMutedRef.current = !enabled;
+    setIsMuted(!enabled);
+  }, []);
+
+  const dropConsumerForUser = useCallback((userId: string) => {
+    const consumerId = userConsumersRef.current.get(userId);
+    if (!consumerId) return;
+    consumersRef.current.get(consumerId)?.consumer.close();
+    consumersRef.current.delete(consumerId);
+    userConsumersRef.current.delete(userId);
+  }, []);
+
+  /** Closes every WebRTC object + the mic. Leaves the socket alone. */
+  const teardownMedia = useCallback(() => {
+    if (rejoinTimerRef.current) {
+      clearTimeout(rejoinTimerRef.current);
+      rejoinTimerRef.current = null;
+    }
+    producerRef.current?.close();
+    producerRef.current = null;
+    try {
+      micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {
+      // ignore
+    }
+    micStreamRef.current = null;
+    for (const { consumer } of consumersRef.current.values()) consumer.close();
+    consumersRef.current.clear();
+    userConsumersRef.current.clear();
+    producerOwnersRef.current.clear();
+    handRaisedIdsRef.current.clear();
+    speakingIdsRef.current.clear();
+    sendTransportRef.current?.close();
+    recvTransportRef.current?.close();
+    sendTransportRef.current = null;
+    recvTransportRef.current = null;
+    deviceRef.current = null;
+    AudioSession.stopAudioSession().catch(() => {});
+  }, []);
+
+  const closeSocket = useCallback(() => {
+    const socket = socketRef.current;
+    socketRef.current = null;
+    if (socket) {
+      socket.removeAllListeners();
+      socket.disconnect();
+    }
+  }, []);
+
+  const resetUiState = useCallback(() => {
+    setParticipants([]);
+    setIsMuted(false);
+    setIsLocalHandRaised(false);
+    setIsDeafened(false);
+    setIsPushToTalk(false);
+    isMutedRef.current = false;
+    isDeafenedRef.current = false;
+    isPushToTalkRef.current = false;
+    volumesRef.current.clear();
+  }, []);
+
+  const leave = useCallback(() => {
+    sessionWantedRef.current = false;
+    rejoinAttemptsRef.current = 0;
+    teardownMedia();
+    closeSocket();
+    resetUiState();
+    setErrorMessage(undefined);
+    setStatus('idle');
+  }, [teardownMedia, closeSocket, resetUiState]);
 
   const consumeProducer = useCallback(
     async (
@@ -56,6 +189,8 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
     ) => {
       const device = deviceRef.current;
       if (!device) return;
+      // One audio consumer per user is enough; a stale one (reconnect) gets replaced.
+      dropConsumerForUser(ownerUserId);
 
       const params = await emitAsync<{
         id: string;
@@ -74,33 +209,18 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
         kind: params.kind,
         rtpParameters: params.rtpParameters as never,
       });
-      consumersRef.current.set(consumer.id, consumer);
+      consumersRef.current.set(consumer.id, { consumer, userId: ownerUserId });
       userConsumersRef.current.set(ownerUserId, consumer.id);
 
       await emitAsync(socket, 'resumeConsumer', { consumerId: consumer.id });
-
-      // Honour a mute that was already toggled before this track arrived.
-      if (localMutesRef.current.has(ownerUserId)) {
-        consumer.pause();
-      }
+      applyPlayback(ownerUserId);
     },
-    [],
+    [applyPlayback, dropConsumerForUser],
   );
 
-  const join = useCallback(async () => {
-    setStatus('connecting');
-    localMutesRef.current.clear();
-    try {
-      const socket = connectVoiceSocket(authToken);
-      socketRef.current = socket;
-
-      await new Promise<void>((resolve, reject) => {
-        socket.on('connect', () => resolve());
-        socket.on('connect_error', (err) => reject(err));
-        socket.on('error', (err) => reject(new Error(err?.message ?? 'Voice connection rejected')));
-      });
-
-      socket.on('newProducer', (payload: { producerId: string; userId: string; userName: string }) => {
+  const attachSocketEvents = useCallback(
+    (socket: Socket) => {
+      socket.on('newProducer', (payload: RemoteProducer) => {
         producerOwnersRef.current.set(payload.producerId, {
           id: payload.userId,
           name: payload.userName,
@@ -117,162 +237,290 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
       socket.on('producerClosed', (payload: { producerId: string }) => {
         const owner = producerOwnersRef.current.get(payload.producerId);
         producerOwnersRef.current.delete(payload.producerId);
-        if (owner) {
-          const consumerId = userConsumersRef.current.get(owner.id);
-          if (consumerId) {
-            consumersRef.current.get(consumerId)?.close();
-            consumersRef.current.delete(consumerId);
-            userConsumersRef.current.delete(owner.id);
-          }
-        }
+        if (owner) dropConsumerForUser(owner.id);
         refreshParticipants();
       });
 
       socket.on('peerLeft', (payload: { userId: string }) => {
         for (const [producerId, owner] of producerOwnersRef.current) {
-          if (owner.id === payload.userId) {
-            producerOwnersRef.current.delete(producerId);
-          }
+          if (owner.id === payload.userId) producerOwnersRef.current.delete(producerId);
         }
-        const consumerId = userConsumersRef.current.get(payload.userId);
-        if (consumerId) {
-          consumersRef.current.get(consumerId)?.close();
-          consumersRef.current.delete(consumerId);
-          userConsumersRef.current.delete(payload.userId);
-        }
-        localMutesRef.current.delete(payload.userId);
+        dropConsumerForUser(payload.userId);
+        volumesRef.current.delete(payload.userId);
+        handRaisedIdsRef.current.delete(payload.userId);
+        speakingIdsRef.current.delete(payload.userId);
         refreshParticipants();
       });
+
+      socket.on('handRaised', (payload: { userId: string; raised: boolean }) => {
+        if (payload.raised) handRaisedIdsRef.current.add(payload.userId);
+        else handRaisedIdsRef.current.delete(payload.userId);
+        refreshParticipants();
+      });
+
+      socket.on('speaking', (payload: { userIds: string[] }) => {
+        speakingIdsRef.current = new Set(payload.userIds ?? []);
+        refreshParticipants();
+      });
+
+      socket.on('kicked', (payload: { by?: string }) => {
+        sessionWantedRef.current = false;
+        teardownMedia();
+        closeSocket();
+        resetUiState();
+        setErrorMessage(
+          payload?.by
+            ? `You were removed from the voice channel by ${payload.by}.`
+            : 'You were removed from the voice channel.',
+        );
+        setStatus('error');
+      });
+
+      socket.on('disconnect', (reason: string) => {
+        // Our own leave() → nothing to do. Anything else is a dropped
+        // connection: tear down the dead transports and try to get back in.
+        if (!sessionWantedRef.current) return;
+        console.warn('Voice socket disconnected:', reason);
+        teardownMedia();
+        closeSocket();
+        if (rejoinAttemptsRef.current < MAX_REJOIN_ATTEMPTS) {
+          rejoinAttemptsRef.current += 1;
+          setStatus('connecting');
+          const delay = 1500 * rejoinAttemptsRef.current;
+          rejoinTimerRef.current = setTimeout(() => {
+            rejoinTimerRef.current = null;
+            if (sessionWantedRef.current) joinRef.current().catch(() => {});
+          }, delay);
+        } else {
+          sessionWantedRef.current = false;
+          resetUiState();
+          setErrorMessage('Voice connection lost. Check your network and rejoin.');
+          setStatus('error');
+        }
+      });
+    },
+    [consumeProducer, dropConsumerForUser, refreshParticipants, teardownMedia, closeSocket, resetUiState],
+  );
+
+  const join = useCallback(async () => {
+    if (joiningRef.current) return;
+    joiningRef.current = true;
+    sessionWantedRef.current = true;
+    setErrorMessage(undefined);
+    setStatus('connecting');
+    try {
+      // Route audio like a call (speaker/earpiece/bluetooth handling,
+      // VOICE_COMMUNICATION mode on Android) — without this the remote audio
+      // can come out of the earpiece at phone-call volume.
+      try {
+        await AudioSession.configureAudio({
+          android: { audioTypeOptions: AndroidAudioTypePresets.communication },
+        });
+        await AudioSession.startAudioSession();
+      } catch (err) {
+        console.warn('AudioSession setup failed (continuing):', err);
+      }
+
+      // Mic first: a denied permission should fail fast, before we have a
+      // socket + server-side transports to clean up.
+      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+      micStreamRef.current = stream as unknown as typeof micStreamRef.current;
+      const track = stream.getAudioTracks()[0] as unknown as MediaStreamTrack;
+
+      const socket = connectVoiceSocket(authToken);
+      socketRef.current = socket;
+      await new Promise<void>((resolve, reject) => {
+        const onConnect = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = (err: unknown) => {
+          cleanup();
+          reject(err instanceof Error ? err : new Error(String((err as any)?.message ?? err)));
+        };
+        const cleanup = () => {
+          socket.off('connect', onConnect);
+          socket.off('connect_error', onError);
+        };
+        socket.once('connect', onConnect);
+        socket.once('connect_error', onError);
+      });
+      attachSocketEvents(socket);
 
       const routerRtpCapabilities = await emitAsync(socket, 'getRtpCapabilities');
       const device = new Device({ handlerName: 'ReactNative106' });
       await device.load({ routerRtpCapabilities: routerRtpCapabilities as never });
       deviceRef.current = device;
 
-      const sendParams = await emitAsync<mediasoupTypes.TransportOptions>(
-        socket,
-        'createTransport',
-      );
+      const sendParams = await emitAsync<mediasoupTypes.TransportOptions>(socket, 'createTransport');
       const sendTransport = device.createSendTransport(sendParams);
+      sendTransportRef.current = sendTransport;
       sendTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
-        emitAsync(socket, 'connectTransport', {
-          transportId: sendTransport.id,
-          dtlsParameters,
-        })
+        emitAsync(socket, 'connectTransport', { transportId: sendTransport.id, dtlsParameters })
           .then(() => callback())
           .catch(errback);
       });
       sendTransport.on('produce', ({ kind, rtpParameters }, callback, errback) => {
-        emitAsync<{ id: string }>(socket, 'produce', {
-          transportId: sendTransport.id,
-          kind,
-          rtpParameters,
-        })
+        emitAsync<{ id: string }>(socket, 'produce', { transportId: sendTransport.id, kind, rtpParameters })
           .then((res) => callback({ id: res.id }))
           .catch(errback);
       });
 
-      const recvParams = await emitAsync<mediasoupTypes.TransportOptions>(
-        socket,
-        'createTransport',
-      );
+      const recvParams = await emitAsync<mediasoupTypes.TransportOptions>(socket, 'createTransport');
       const recvTransport = device.createRecvTransport(recvParams);
       recvTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
-        emitAsync(socket, 'connectTransport', {
-          transportId: recvTransport.id,
-          dtlsParameters,
-        })
+        emitAsync(socket, 'connectTransport', { transportId: recvTransport.id, dtlsParameters })
           .then(() => callback())
           .catch(errback);
       });
       recvTransportRef.current = recvTransport;
 
-      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
-      const track = stream.getAudioTracks()[0] as unknown as MediaStreamTrack;
       const producer = await sendTransport.produce({ track });
       producerRef.current = producer;
+      // Carry mute / deafen / PTT across a reconnect.
+      if (isMutedRef.current || isDeafenedRef.current || isPushToTalkRef.current) {
+        producer.pause();
+      }
 
-      const existingProducers = await emitAsync<
-        { producerId: string; userId: string; userName: string }[]
-      >(socket, 'getProducers');
+      const existingProducers = await emitAsync<RemoteProducer[]>(socket, 'getProducers');
       for (const p of existingProducers) {
         producerOwnersRef.current.set(p.producerId, { id: p.userId, name: p.userName });
+        if (p.handRaised) handRaisedIdsRef.current.add(p.userId);
       }
       refreshParticipants();
       for (const p of existingProducers) {
-        await consumeProducer(recvTransport, socket, p.producerId, p.userId);
+        try {
+          await consumeProducer(recvTransport, socket, p.producerId, p.userId);
+        } catch (err) {
+          console.warn('Failed to consume existing producer:', err);
+        }
       }
 
-      setIsMuted(false);
+      if (isLocalHandRaised) {
+        emitAsync(socket, 'setHandRaised', { raised: true }).catch(() => {});
+      }
+
+      rejoinAttemptsRef.current = 0;
       setStatus('connected');
     } catch (err: any) {
+      // Never leave half a session behind: close whatever got created so
+      // "Try Again" starts clean and the mic LED goes off.
+      sessionWantedRef.current = false;
+      teardownMedia();
+      closeSocket();
       setErrorMessage(err?.message ?? 'Could not join voice channel');
       setStatus('error');
+    } finally {
+      joiningRef.current = false;
     }
-  }, [authToken, consumeProducer, refreshParticipants]);
+  }, [authToken, attachSocketEvents, consumeProducer, refreshParticipants, teardownMedia, closeSocket, isLocalHandRaised]);
+  joinRef.current = join;
 
-  const leave = useCallback(() => {
-    producerRef.current?.close();
-    for (const consumer of consumersRef.current.values()) consumer.close();
-    consumersRef.current.clear();
-    producerOwnersRef.current.clear();
-    userConsumersRef.current.clear();
-    localMutesRef.current.clear();
-    recvTransportRef.current = null;
-    socketRef.current?.disconnect();
-    socketRef.current = null;
-    setParticipants([]);
-    setIsMuted(false);
-    setStatus('idle');
-  }, []);
+  // The hook lives in VoiceContext; unmount == deactivate. Make sure the mic
+  // and the socket never outlive it.
+  useEffect(() => {
+    return () => {
+      sessionWantedRef.current = false;
+      teardownMedia();
+      closeSocket();
+    };
+  }, [teardownMedia, closeSocket]);
 
   const toggleMute = useCallback(() => {
-    const producer = producerRef.current;
-    if (!producer) return;
-    if (producer.paused) {
-      producer.resume();
-      setIsMuted(false);
-    } else {
-      producer.pause();
-      setIsMuted(true);
-    }
-  }, []);
+    if (isDeafenedRef.current || isPushToTalkRef.current) return;
+    setMicEnabled(isMutedRef.current);
+  }, [setMicEnabled]);
+
+  const setParticipantVolume = useCallback(
+    (participantId: string, volume: number) => {
+      const clamped = Math.max(0, Math.min(1, volume));
+      volumesRef.current.set(participantId, clamped);
+      applyPlayback(participantId);
+      refreshParticipants();
+    },
+    [applyPlayback, refreshParticipants],
+  );
 
   const toggleParticipantMute = useCallback(
     (participantId: string) => {
-      const nextMuted = !localMutesRef.current.has(participantId);
-      if (nextMuted) localMutesRef.current.add(participantId);
-      else localMutesRef.current.delete(participantId);
-
-      const consumerId = userConsumersRef.current.get(participantId);
-      const consumer = consumerId ? consumersRef.current.get(consumerId) : undefined;
-      if (consumer) {
-        if (nextMuted) consumer.pause();
-        else consumer.resume();
-      }
-      refreshParticipants();
+      const current = volumesRef.current.get(participantId) ?? 1;
+      setParticipantVolume(participantId, current === 0 ? 1 : 0);
     },
-    [refreshParticipants],
+    [setParticipantVolume],
   );
+
+  const toggleHandRaise = useCallback(() => {
+    setIsLocalHandRaised((prev) => {
+      const next = !prev;
+      const socket = socketRef.current;
+      if (socket?.connected) {
+        emitAsync(socket, 'setHandRaised', { raised: next }).catch((err) =>
+          console.warn('setHandRaised failed:', err),
+        );
+      }
+      return next;
+    });
+  }, []);
+
+  const kickParticipant = useCallback((participantId: string) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    emitAsync(socket, 'kick', { userId: participantId }).catch((err) =>
+      console.warn('kick failed:', err),
+    );
+  }, []);
+
+  const toggleDeafen = useCallback(() => {
+    const next = !isDeafenedRef.current;
+    isDeafenedRef.current = next;
+    setIsDeafened(next);
+    for (const userId of userConsumersRef.current.keys()) applyPlayback(userId);
+    if (next) {
+      setMicEnabled(false);
+    } else if (!isPushToTalkRef.current) {
+      setMicEnabled(true);
+    }
+  }, [applyPlayback, setMicEnabled]);
+
+  const togglePushToTalk = useCallback(() => {
+    const next = !isPushToTalkRef.current;
+    isPushToTalkRef.current = next;
+    setIsPushToTalk(next);
+    if (next) {
+      setMicEnabled(false);
+    } else if (!isDeafenedRef.current) {
+      setMicEnabled(true);
+    }
+  }, [setMicEnabled]);
+
+  const pttStart = useCallback(() => {
+    if (!isPushToTalkRef.current || isDeafenedRef.current) return;
+    setMicEnabled(true);
+  }, [setMicEnabled]);
+
+  const pttStop = useCallback(() => {
+    if (!isPushToTalkRef.current) return;
+    setMicEnabled(false);
+  }, [setMicEnabled]);
 
   return {
     status,
     errorMessage,
     participants,
     isMuted,
-    isLocalHandRaised: false,
-    isDeafened: false,
-    isPushToTalk: false,
+    isLocalHandRaised,
+    isDeafened,
+    isPushToTalk,
     join,
     leave,
     toggleMute,
     toggleParticipantMute,
-    toggleHandRaise: () => {},
-    setParticipantVolume: () => {},
-    kickParticipant: () => {},
-    toggleDeafen: () => {},
-    togglePushToTalk: () => {},
-    pttStart: () => {},
-    pttStop: () => {},
+    toggleHandRaise,
+    setParticipantVolume,
+    kickParticipant,
+    toggleDeafen,
+    togglePushToTalk,
+    pttStart,
+    pttStop,
   };
 }

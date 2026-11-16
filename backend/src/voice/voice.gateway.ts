@@ -18,8 +18,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatService } from '../chat/chat.service';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
+import { MembershipService } from '../membership/membership.service';
 import { MediasoupSfuService } from './mediasoup-sfu.service';
 import { WsRateLimiter } from '../common/ws-rate-limiter';
+import { corsOrigin } from '../common/cors-origin';
 
 interface VoiceSocketData {
   userId: string;
@@ -32,29 +34,38 @@ interface VoiceSocketData {
 
 @WebSocketGateway({
   namespace: 'voice',
-  cors: { origin: process.env.CORS_ORIGIN ?? '*' },
+  cors: { origin: corsOrigin() },
 })
 export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(VoiceGateway.name);
-  // Shared across every signaling event — joining a busy room legitimately
-  // needs a handful of these per peer (one getRtpCapabilities, a couple of
-  // transports, one consume per other participant, ...); this bounds a
-  // single socket spamming createTransport/produce/consume to exhaust
-  // mediasoup worker resources, without getting in the way of real use.
-  private readonly signalingLimiter = new WsRateLimiter(50, 10_000);
+  // Shared across every signaling event. Joining a room costs roughly
+  // 4 + 2×(other participants) events (caps, two transports, produce, then a
+  // consume+resume per peer), so 150/10s comfortably covers a 50-person room
+  // while still bounding a single socket spamming createTransport/produce/
+  // consume to exhaust mediasoup worker resources.
+  private readonly signalingLimiter = new WsRateLimiter(150, 10_000);
+  // orgId -> userIds with a raised hand. Purely signaling state; cleared when
+  // the user disconnects.
+  private readonly raisedHands = new Map<string, Set<string>>();
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
     // Reused only for its org-lookup helper — chat and voice both scope to "your org".
     private readonly chatService: ChatService,
+    private readonly membershipService: MembershipService,
     private readonly sfu: MediasoupSfuService,
   ) {}
 
   afterInit(server: Server) {
+    // Server-side audio-level detection → "speaking" highlight on every client.
+    this.sfu.onSpeaking((orgId, userIds) => {
+      server.to(this.roomFor(orgId)).emit('speaking', { userIds });
+    });
+
     // Same fix as ChatGateway: auth lives in handshake middleware, not
     // handleConnection. handleConnection's awaits (JWT verify, Prisma
     // queries, room join) ran *after* the client's 'connect' event had
@@ -112,21 +123,42 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     const partial = client.data as Partial<VoiceSocketData>;
     if (!partial?.orgId) return;
     const data = partial as VoiceSocketData;
+    const room = this.roomFor(data.orgId);
 
+    this.closeMedia(data);
+    for (const producerId of data.producers.keys()) {
+      this.server.to(room).emit('producerClosed', { producerId });
+    }
+    data.producers.clear();
+
+    const hands = this.raisedHands.get(data.orgId);
+    if (hands?.delete(data.userId)) {
+      this.server.to(room).emit('handRaised', { userId: data.userId, raised: false });
+      if (hands.size === 0) this.raisedHands.delete(data.orgId);
+    }
+
+    this.server.to(room).emit('peerLeft', { userId: data.userId });
+    this.signalingLimiter.clear(client.id);
+
+    // Tear the router down once the last peer is gone.
+    try {
+      const remaining = await this.server.in(room).fetchSockets();
+      this.sfu.closeRoomIfEmpty(data.orgId, remaining.length);
+    } catch (err) {
+      this.logger.warn(`fetchSockets failed on disconnect: ${(err as Error).message}`);
+    }
+  }
+
+  /** Closes every mediasoup object this socket owns (transports close producers/consumers too). */
+  private closeMedia(data: VoiceSocketData) {
     for (const producer of data.producers.values()) {
       this.sfu.unregisterProducer(data.orgId, producer.id);
-      this.server
-        .to(this.roomFor(data.orgId))
-        .emit('producerClosed', { producerId: producer.id });
     }
     for (const transport of data.transports.values()) {
       transport.close();
     }
-
-    this.server
-      .to(this.roomFor(data.orgId))
-      .emit('peerLeft', { userId: data.userId });
-    this.signalingLimiter.clear(client.id);
+    data.transports.clear();
+    data.consumers.clear();
   }
 
   private assertNotRateLimited(client: Socket) {
@@ -147,9 +179,11 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   onGetProducers(@ConnectedSocket() client: Socket) {
     this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
+    const hands = this.raisedHands.get(data.orgId);
     return this.sfu
       .listProducers(data.orgId)
-      .filter((p) => p.userId !== data.userId);
+      .filter((p) => p.userId !== data.userId)
+      .map((p) => ({ ...p, handRaised: hands?.has(p.userId) ?? false }));
   }
 
   @SubscribeMessage('createTransport')
@@ -197,7 +231,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     });
     data.producers.set(producer.id, producer);
 
-    this.sfu.registerProducer(data.orgId, {
+    await this.sfu.registerProducer(data.orgId, producer, {
       producerId: producer.id,
       userId: data.userId,
       userName: data.userName,
@@ -259,6 +293,60 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     const consumer = data.consumers.get(body.consumerId);
     await consumer?.resume();
     return { resumed: true };
+  }
+
+  @SubscribeMessage('setHandRaised')
+  onSetHandRaised(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { raised: boolean },
+  ) {
+    this.assertNotRateLimited(client);
+    const data = client.data as VoiceSocketData;
+    const raised = !!body?.raised;
+    let hands = this.raisedHands.get(data.orgId);
+    if (!hands) {
+      hands = new Set();
+      this.raisedHands.set(data.orgId, hands);
+    }
+    if (raised) hands.add(data.userId);
+    else hands.delete(data.userId);
+    client
+      .to(this.roomFor(data.orgId))
+      .emit('handRaised', { userId: data.userId, raised });
+    return { raised };
+  }
+
+  /**
+   * Org owner / coach only. Enforced here, not just hidden in the UI: the
+   * target's media is closed and its socket dropped, so a modified client
+   * can neither kick others nor ignore being kicked.
+   */
+  @SubscribeMessage('kick')
+  async onKick(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { userId: string },
+  ) {
+    this.assertNotRateLimited(client);
+    const data = client.data as VoiceSocketData;
+    const targetId = body?.userId;
+    if (!targetId || targetId === data.userId) {
+      throw new Error('Invalid kick target');
+    }
+    const allowed = await this.membershipService.hasEditAccess(
+      data.userId,
+      data.orgId,
+    );
+    if (!allowed) throw new Error('Only the org owner or a coach can kick');
+
+    const sockets = await this.server.in(this.roomFor(data.orgId)).fetchSockets();
+    let kicked = 0;
+    for (const s of sockets) {
+      if ((s.data as Partial<VoiceSocketData>)?.userId !== targetId) continue;
+      s.emit('kicked', { by: data.userName });
+      s.disconnect(true); // handleDisconnect closes its media + notifies the room
+      kicked += 1;
+    }
+    return { kicked };
   }
 
   private roomFor(orgId: string) {

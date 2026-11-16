@@ -53,6 +53,13 @@ services:
         postgresql://${POSTGRES_USER:-team_coach}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-team_coach}?schema=public
     ports:
       - "3000:3000"       # expose backend; put Nginx in front for SSL/80/443
+      # mediasoup voice (WebRTC media). Must match MEDIASOUP_MIN_PORT /
+      # MEDIASOUP_MAX_PORT in backend/.env.production, and the same range
+      # must be open in the VPS firewall (ufw allow 40000:40100/udp — see
+      # DEPLOY.md). Without this mapping signaling "connects" but no audio
+      # ever flows. MEDIASOUP_ANNOUNCED_IP must be the VPS public IP.
+      - "40000-40100:40000-40100/udp"
+      - "40000-40100:40000-40100/tcp"
     depends_on:
       postgres:
         condition: service_healthy

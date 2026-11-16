@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
 import {
   Room,
   RoomEvent,
@@ -91,6 +92,7 @@ export function useHostedVoiceChannel(
   const leave = useCallback(() => {
     roomRef.current?.disconnect();
     roomRef.current = null;
+    AudioSession.stopAudioSession().catch(() => {});
     localVolumesRef.current.clear();
     handRaisedIdsRef.current.clear();
     speakingIdsRef.current.clear();
@@ -181,6 +183,16 @@ export function useHostedVoiceChannel(
         },
       );
 
+      // Call-style audio routing (speaker/earpiece/bluetooth, Android
+      // VOICE_COMMUNICATION mode). LiveKit RN needs this started explicitly.
+      try {
+        await AudioSession.configureAudio({
+          android: { audioTypeOptions: AndroidAudioTypePresets.communication },
+        });
+        await AudioSession.startAudioSession();
+      } catch (err) {
+        console.warn('AudioSession setup failed (continuing):', err);
+      }
       await room.connect(url, token);
       await room.localParticipant.setMicrophoneEnabled(true);
       syncParticipants(room);
