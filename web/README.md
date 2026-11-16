@@ -61,3 +61,8 @@ Login / signup uses the same `/auth/*` endpoints as mobile. Chat uses the same S
 ## APK link
 
 Put the file at `public/downloads/sacred-esports.apk`, or set `VITE_APK_URL` to a hosted URL.
+
+## Desktop app (Linux / Windows)
+
+Yahi site Tauri se native app banti hai — `.deb` / `.AppImage` / Windows `.exe`.
+Poora guide: [DESKTOP.md](./DESKTOP.md). Quick start: `./scripts/install-tauri-linux-deps.sh` → `npm run desktop`.

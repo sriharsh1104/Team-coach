@@ -6,9 +6,17 @@
   "scripts": {
     "dev": "vite --mode development",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "desktop": "tauri dev",
+    "desktop:build": "tauri build",
+    "desktop:build:deb": "tauri build --bundles deb",
+    "desktop:build:appimage": "tauri build --bundles appimage",
+    "desktop:icons": "tauri icon public/sacred-logo-transparent.png --output src-tauri/icons --fit contain"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-opener": "^2.7.3",
     "axios": "^1.21.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
@@ -18,6 +26,7 @@
     "socket.io-client": "^4.8.4"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^24.19.2",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",

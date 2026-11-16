@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { isDesktopApp } from '../lib/platform';
 import { HomeHeroTab } from './home/HomeHeroTab';
 import { HOME_TABS, HomeTabId, TAB_PATHS, pathToTab } from './home/homeTabs';
 import { SocialFooter } from './home/SocialFooter';
@@ -29,7 +30,34 @@ function TabView({ id }: { id: HomeTabId }) {
   }
 }
 
+// The installed desktop app (Tauri) is for members, not marketing: it opens
+// straight on the sign-in / sign-up section and skips the landing tabs.
+function DesktopHome() {
+  const location = useLocation();
+  if (location.pathname !== TAB_PATHS.guild) {
+    return <Navigate to={TAB_PATHS.guild} replace />;
+  }
+  return (
+    <div className="landing landing-desktop">
+      <div className="brand-watermark" aria-hidden="true">
+        <img src="/sacred-logo-transparent.png" alt="" />
+      </div>
+      <main className="landing-main landing-stage">
+        <div className="landing-page">
+          <GuildTab />
+        </div>
+      </main>
+      <SocialFooter />
+    </div>
+  );
+}
+
 export function HomePage() {
+  if (isDesktopApp()) return <DesktopHome />;
+  return <BrowserHome />;
+}
+
+function BrowserHome() {
   const location = useLocation();
   const navigate = useNavigate();
   // The URL path is the source of truth for which tab is open (not local

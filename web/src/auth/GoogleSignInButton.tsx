@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isDesktopApp } from '../lib/platform';
 
 type CredentialResponse = { credential?: string };
 
@@ -71,7 +72,7 @@ export function GoogleSignInButton({ disabled, onCredential, onError }: Props) {
   onErrorRef.current = onError;
 
   useEffect(() => {
-    if (!CLIENT_ID || !slotRef.current) return;
+    if (!CLIENT_ID || !slotRef.current || isDesktopApp()) return;
     let cancelled = false;
     loadGoogleScript()
       .then(() => {
@@ -103,6 +104,28 @@ export function GoogleSignInButton({ disabled, onCredential, onError }: Props) {
       cancelled = true;
     };
   }, []);
+
+  // Google Identity Services only accepts http(s) origins that are listed as
+  // "Authorized JavaScript origins" on the OAuth client. The Tauri desktop app
+  // runs on tauri://localhost (Linux) / http://tauri.localhost (Windows), which
+  // Google rejects — so the GSI button would render and then fail on click.
+  // Show a plain button with a clear message instead.
+  if (isDesktopApp()) {
+    return (
+      <button
+        type="button"
+        className="team-google-fallback"
+        disabled={disabled}
+        onClick={() =>
+          onError(
+            'Google sign-in is not available in the desktop app yet. Use email + password, or sign in on sacredesports.com.',
+          )
+        }
+      >
+        Continue with Google
+      </button>
+    );
+  }
 
   if (!CLIENT_ID) {
     return (
