@@ -3,6 +3,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { corsOrigin } from './common/cors-origin';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -46,7 +47,7 @@ async function bootstrap() {
     throw new Error('WEB_PUBLIC_URL must be set when NODE_ENV=production');
   }
   app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? '*',
+    origin: corsOrigin(),
   });
 
   // Uploaded screenshots/clips are served through a guarded route

@@ -18,6 +18,7 @@ import { DeleteMessagesDto } from './dto/delete-messages.dto';
 import { EditMessageDto } from './dto/edit-message.dto';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { WsRateLimiter } from '../common/ws-rate-limiter';
+import { corsOrigin } from '../common/cors-origin';
 
 interface SocketData {
   userId: string;
@@ -25,7 +26,7 @@ interface SocketData {
   orgId: string;
 }
 
-@WebSocketGateway({ cors: { origin: process.env.CORS_ORIGIN ?? '*' } })
+@WebSocketGateway({ cors: { origin: corsOrigin() } })
 export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;

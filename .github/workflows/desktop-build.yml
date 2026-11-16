@@ -1,0 +1,142 @@
+name: Desktop app (Tauri)
+
+# Builds the Sacred Esports desktop installers and publishes them with STABLE
+# file names, so the website can always link to
+#   https://github.com/sriharsh1104/Team-coach/releases/latest/download/<name>
+#
+#   Linux:   sacred-esports-linux-x64.deb, sacred-esports-linux-x64.AppImage
+#   Windows: sacred-esports-windows-x64-setup.exe
+#
+# Trigger:
+#   - manually from the Actions tab (workflow_dispatch) → artifacts on the run
+#   - pushing a tag like  desktop-v1.0.0  → a published GitHub Release
+#
+# Secrets (Settings → Secrets → Actions):
+#   VITE_API_BASE_URL       e.g. https://api.sacredesports.com   (required)
+#   VITE_GOOGLE_CLIENT_ID   optional — Google sign-in is disabled inside the desktop app
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - 'desktop-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: linux
+            bundles: deb,appimage
+          - os: windows-latest
+            name: windows
+            bundles: nsis
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: web/src-tauri -> target
+
+      - name: Linux system deps (WebKitGTK etc.)
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libgtk-3-dev \
+            pkg-config \
+            file
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Write production env for the Vite build
+        shell: bash
+        run: |
+          cat > .env.production <<EOF
+          VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
+          VITE_APK_URL=/downloads/sacred-esports.apk
+          VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          EOF
+
+      - name: Build installers
+        run: npm run desktop:build -- --bundles ${{ matrix.bundles }}
+
+      - name: Rename installers to stable file names
+        shell: bash
+        run: |
+          set -euo pipefail
+          B=src-tauri/target/release/bundle
+          mkdir -p ../release-assets
+          if [ "${{ matrix.name }}" = "linux" ]; then
+            cp "$B"/deb/*.deb           ../release-assets/sacred-esports-linux-x64.deb
+            cp "$B"/appimage/*.AppImage ../release-assets/sacred-esports-linux-x64.AppImage
+          else
+            cp "$B"/nsis/*-setup.exe    ../release-assets/sacred-esports-windows-x64-setup.exe
+          fi
+          ls -la ../release-assets
+
+      - name: Upload installers as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sacred-esports-${{ matrix.name }}
+          if-no-files-found: error
+          path: release-assets/*
+
+  release:
+    # Only when triggered by a desktop-v* tag: publish (not draft) so that
+    # /releases/latest/download/<name> on the website resolves immediately.
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Sacred Esports Desktop ${{ github.ref_name }}
+          body: |
+            Desktop installers for Sacred Esports.
+
+            - Linux (Ubuntu/Debian): `sacred-esports-linux-x64.deb` — `sudo apt install ./sacred-esports-linux-x64.deb`
+            - Linux (any distro): `sacred-esports-linux-x64.AppImage` — `chmod +x` then run
+            - Windows 10/11: `sacred-esports-windows-x64-setup.exe`
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          make_latest: true
+          draft: false
+          prerelease: false
