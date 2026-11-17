@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
+import { AppIcon } from '../../ui/AppIcon';
 
 export type PendingUploadStatus = 'queued' | 'uploading' | 'sending' | 'failed';
 
@@ -20,8 +21,8 @@ const CIRC = 2 * Math.PI * R;
 /**
  * WhatsApp-style overlay on a media bubble while the file is still on its
  * way: a progress ring + percentage while uploading, a spinner-ish ring while
- * the message itself is being sent, and a red "!" with "Tap to retry" when
- * either step failed.
+ * the message itself is being sent, and a refresh ("try again") icon when
+ * either step failed — tap the bubble to resend.
  */
 export function PendingMediaOverlay({ status, progress, label }: Props) {
   const pct = Math.max(0, Math.min(1, progress));
@@ -29,9 +30,13 @@ export function PendingMediaOverlay({ status, progress, label }: Props) {
   const dash = failed ? CIRC : CIRC * (1 - pct);
 
   return (
-    <View style={styles.overlay} pointerEvents="none" accessibilityLabel={
-      failed ? 'Upload failed, tap to retry' : `Uploading ${Math.round(pct * 100)} percent`
-    }>
+    <View
+      style={styles.overlay}
+      pointerEvents="none"
+      // Parent bubble Pressable owns the a11y label / tap target.
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+    >
       <View style={styles.ringWrap}>
         <Svg width={RING} height={RING} viewBox={`0 0 ${RING} ${RING}`}>
           <Circle
@@ -56,12 +61,20 @@ export function PendingMediaOverlay({ status, progress, label }: Props) {
             transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
           />
         </Svg>
-        <Text style={[styles.ringText, failed && styles.ringTextFailed]}>
-          {failed ? '!' : status === 'sending' ? '…' : `${Math.round(pct * 100)}%`}
-        </Text>
+        <View style={styles.ringCenter}>
+          {failed ? (
+            <AppIcon name="refresh" size={22} color="#ef4444" />
+          ) : (
+            <Text style={styles.ringText}>
+              {status === 'sending' ? '…' : `${Math.round(pct * 100)}%`}
+            </Text>
+          )}
+        </View>
       </View>
       <Text style={styles.caption} numberOfLines={1}>
-        {failed ? 'Tap to retry' : label ?? (status === 'sending' ? 'Sending…' : 'Uploading…')}
+        {failed
+          ? 'Tap to try again'
+          : label ?? (status === 'sending' ? 'Sending…' : 'Uploading…')}
       </Text>
     </View>
   );
@@ -81,14 +94,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  ringCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   ringText: {
-    position: 'absolute',
     color: '#fff',
     fontSize: 11,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
-  ringTextFailed: { color: '#ef4444', fontSize: 18 },
   caption: {
     marginTop: 6,
     color: '#fff',

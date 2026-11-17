@@ -140,6 +140,25 @@ export function ChatScreen({
   const uploadJobsRef = useRef<Map<string, PendingUpload>>(new Map());
   // onPressMessage is declared before the upload helpers; route through a ref.
   const onPressPendingMediaRef = useRef<(clientId: string) => void>(() => {});
+  const clearPendingUpload = useCallback((clientId: string) => {
+    uploadJobsRef.current.delete(clientId);
+    setUploads((prev) => {
+      if (!prev[clientId]) return prev;
+      const next = { ...prev };
+      delete next[clientId];
+      return next;
+    });
+  }, []);
+  const patchPendingUpload = useCallback(
+    (clientId: string, patch: Partial<PendingUpload>) => {
+      const job = uploadJobsRef.current.get(clientId);
+      if (!job) return;
+      const next = { ...job, ...patch };
+      uploadJobsRef.current.set(clientId, next);
+      setUploads((prev) => ({ ...prev, [clientId]: next }));
+    },
+    [],
+  );
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [draft, setDraft] = useState('');
@@ -373,6 +392,11 @@ export function ChatScreen({
           return [...prev, message];
         });
         if (message.clientId) clearPendingUpload(message.clientId);
+        // Warm disk cache so reopen / scroll-back hits local pixels, not the CDN.
+        const warmUri = chatApi.resolveChatMediaUrl(message.mediaUrl);
+        if (message.mediaType === 'IMAGE' && warmUri) {
+          void Image.prefetch(warmUri, 'memory-disk');
+        }
         void chatApi.markChatRead(channelKey);
         socket.emit('channel:read', { channelKey });
       });
@@ -440,6 +464,7 @@ export function ChatScreen({
     };
   }, [
     channelKey,
+    clearPendingUpload,
     mergeHistory,
     pinToBottom,
     refreshHistory,
@@ -738,6 +763,7 @@ export function ChatScreen({
       .filter((m) => !m.id.startsWith('pending:'))
       .map((m) => m.id);
     const removeIds = [...pendingIds, ...realIds];
+    for (const id of pendingIds) clearPendingUpload(id);
     setMessages((prev) => prev.filter((m) => !removeIds.includes(m.id)));
     exitSelectMode();
     if (realIds.length === 0) return;
@@ -754,7 +780,7 @@ export function ChatScreen({
         setHasOlderMessages(history.length === chatApi.CHAT_HISTORY_PAGE_SIZE);
       });
     }
-  }, [allSelectedAreMine, channelKey, exitSelectMode, selectedList]);
+  }, [allSelectedAreMine, channelKey, clearPendingUpload, exitSelectMode, selectedList]);
 
   const onInfoSelected = useCallback(() => {
     if (!canShowInfo) return;
@@ -1017,27 +1043,6 @@ export function ChatScreen({
     [channelKey, emitMessage, user],
   );
 
-  const clearPendingUpload = useCallback((clientId: string) => {
-    uploadJobsRef.current.delete(clientId);
-    setUploads((prev) => {
-      if (!prev[clientId]) return prev;
-      const next = { ...prev };
-      delete next[clientId];
-      return next;
-    });
-  }, []);
-
-  const patchPendingUpload = useCallback(
-    (clientId: string, patch: Partial<PendingUpload>) => {
-      const job = uploadJobsRef.current.get(clientId);
-      if (!job) return;
-      const next = { ...job, ...patch };
-      uploadJobsRef.current.set(clientId, next);
-      setUploads((prev) => ({ ...prev, [clientId]: next }));
-    },
-    [],
-  );
-
   /**
    * Upload the picked file, then send the message — driving the bubble's
    * progress ring the whole way. Safe to call again for a retry.
@@ -1141,25 +1146,16 @@ export function ChatScreen({
     [channelKey, runPendingUpload, user],
   );
 
-  const removePendingUpload = useCallback(
-    (clientId: string) => {
-      clearPendingUpload(clientId);
-      setMessages((prev) => prev.filter((m) => m.id !== clientId));
-    },
-    [clearPendingUpload],
-  );
-
   const onPressPendingMedia = useCallback(
     (clientId: string) => {
       const job = uploadJobsRef.current.get(clientId);
       if (!job) return;
       if (job.status !== 'failed') return; // still in flight — nothing to do
-      Alert.alert('Upload failed', job.error ?? 'Could not send this file.', [
-        { text: 'Remove', style: 'destructive', onPress: () => removePendingUpload(clientId) },
-        { text: 'Retry', onPress: () => void runPendingUpload(clientId) },
-      ]);
+      // Tap the try-again icon → resend immediately (same local file).
+      // Long-press → select → Delete still removes a stuck bubble.
+      void runPendingUpload(clientId);
     },
-    [removePendingUpload, runPendingUpload],
+    [runPendingUpload],
   );
   onPressPendingMediaRef.current = onPressPendingMedia;
 
@@ -1556,18 +1552,28 @@ export function ChatScreen({
                         }
                         setViewerMedia({ type: 'IMAGE', uri: mediaUri });
                       }}
-                      accessibilityLabel={pending ? 'Image upload in progress' : 'View image'}
+                      accessibilityLabel={
+                        pending?.status === 'failed'
+                          ? 'Upload failed, tap to try again'
+                          : pending
+                            ? 'Image upload in progress'
+                            : 'View image'
+                      }
                     >
                       <Image
                         source={{ uri: mediaUri }}
                         style={styles.media}
                         contentFit="cover"
+                        // Disk cache: first open hits the URL; later opens
+                        // (and other chats reusing the same file) read cache.
+                        // Pending bubbles use file:/content: URIs — shown
+                        // straight from the device, never re-downloaded.
                         cachePolicy="memory-disk"
                         recyclingKey={item.id}
                         // Dark placeholder so a failed CDN/proxy load is
                         // obvious instead of looking like a missing bubble.
                         placeholder={{ color: 'rgba(255,255,255,0.08)' }}
-                        transition={200}
+                        transition={pending ? 0 : 200}
                       />
                       {pending ? (
                         <PendingMediaOverlay
@@ -1588,7 +1594,13 @@ export function ChatScreen({
                         }
                         setViewerMedia({ type: 'VIDEO', uri: mediaUri });
                       }}
-                      accessibilityLabel={pending ? 'Video upload in progress' : 'Play video'}
+                      accessibilityLabel={
+                        pending?.status === 'failed'
+                          ? 'Upload failed, tap to try again'
+                          : pending
+                            ? 'Video upload in progress'
+                            : 'Play video'
+                      }
                     >
                       {pending ? (
                         // First frame of the picked video as the thumbnail

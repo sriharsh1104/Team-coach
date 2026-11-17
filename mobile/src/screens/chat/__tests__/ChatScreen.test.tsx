@@ -366,6 +366,43 @@ describe('ChatScreen', () => {
       expect(screen.queryByLabelText('Photo')).toBeNull();
     });
 
+    it('shows the picked image immediately and retries on failed upload tap', async () => {
+      await connectAndSettle();
+      mockedImagePicker.requestMediaLibraryPermissionsAsync.mockResolvedValue({
+        granted: true,
+      } as any);
+      mockedImagePicker.launchImageLibraryAsync.mockResolvedValue({
+        canceled: false,
+        assets: [{ uri: 'file://retry.jpg', fileName: 'retry.jpg', mimeType: 'image/jpeg' }],
+      } as any);
+      mockedChatApi.uploadChatMedia
+        .mockRejectedValueOnce(new Error('network down'))
+        .mockResolvedValueOnce({
+          mediaUrl: '/chat/files/retry.jpg',
+          mediaType: 'IMAGE',
+          fileKey: 'retry.jpg',
+          mediaPostId: 'post-retry',
+        });
+
+      fireEvent.press(screen.getByLabelText('Attach'));
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText('Photo'));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('Upload failed, tap to try again')).toBeTruthy(),
+      );
+      expect(mockedChatApi.uploadChatMedia).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText('Upload failed, tap to try again'));
+      });
+
+      await waitFor(() =>
+        expect(mockedChatApi.uploadChatMedia).toHaveBeenCalledTimes(2),
+      );
+    });
+
     it('picks a video restricted to videos', async () => {
       await connectAndSettle();
       mockedImagePicker.requestMediaLibraryPermissionsAsync.mockResolvedValue({
