@@ -1,0 +1,26 @@
+apply plugin: 'com.android.library'
+
+group = 'com.teamcoach.voicechanger'
+version = '1.0.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
+
+android {
+  namespace "com.teamcoach.voicechanger"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  // WebRTCModuleOptions (com.oney.WebRTCModule) + livekit.org.webrtc.* come
+  // from the LiveKit fork of react-native-webrtc, which the app already links.
+  // `api 'io.github.webrtc-sdk:android-prefixed'` inside it makes the
+  // ExternalAudioProcessingFactory classes visible to us transitively.
+  implementation project(':livekit_react-native-webrtc')
+}

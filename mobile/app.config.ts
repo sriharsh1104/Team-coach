@@ -128,6 +128,9 @@ const expoConfig: ExpoConfig = {
     ],
     ['./plugins/withApkFileName', { name: 'SacredTeamCoach' }],
     './plugins/withSocialPackageQueries',
+    // Voice changer: hooks modules/voice-changer into react-native-webrtc's
+    // capture path from MainApplication.onCreate (see mobile/VOICE-CHANGER.md).
+    './plugins/withVoiceChanger',
     // Patch ExpoModulesCorePlugin.gradle: double-afterEvaluate to fix
     // "Could not get unknown property 'release' for SoftwareComponent container"
     // with Gradle 8.x + expo-modules-core <=2.2.3 (Expo SDK 52).

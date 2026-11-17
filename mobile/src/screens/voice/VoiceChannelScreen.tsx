@@ -24,6 +24,13 @@ import { useSharedStyles } from '../shared';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
+import {
+  VOICE_PRESETS,
+  VoicePreset,
+  getVoicePreset,
+  isVoiceChangerAvailable,
+  setVoicePreset,
+} from '../../voice/voiceChanger';
 
 type VoiceHooks = {
   useHostedVoiceChannel: typeof import('../../voice/useHostedVoiceChannel').useHostedVoiceChannel;
@@ -246,6 +253,51 @@ type ListItem =
       isSelf: true;
     };
 
+/**
+ * Voice changer chips (Android native build only). Works before joining and
+ * mid-call — the effect sits on the mic path below both voice backends.
+ */
+function VoicePresetPicker() {
+  const themed = useThemedStyles(voiceStyles);
+  const [available] = useState(() => isVoiceChangerAvailable());
+  const [preset, setPreset] = useState<VoicePreset>(() => getVoicePreset());
+  if (!available) return null;
+
+  const choose = (id: VoicePreset) => {
+    if (id === preset) return;
+    if (setVoicePreset(id)) setPreset(id);
+  };
+
+  return (
+    <View style={styles.presetBlock}>
+      <Text style={themed.sectionTitle}>Voice</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.presetRow}
+      >
+        {VOICE_PRESETS.map((p) => {
+          const active = p.id === preset;
+          return (
+            <Pressable
+              key={p.id}
+              onPress={() => choose(p.id)}
+              style={[styles.presetChip, active && styles.presetChipActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Voice: ${p.label}`}
+            >
+              <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
+                {p.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 function VoiceChannelBody({
   voice,
   channelName,
@@ -380,6 +432,8 @@ function VoiceChannelBody({
             </>
           )}
         </View>
+
+        <VoicePresetPicker />
 
         {inChannel && (
           <>
@@ -842,6 +896,23 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 2,
   },
+  // Voice changer presets
+  presetBlock: { marginBottom: 8 },
+  presetRow: { paddingHorizontal: 16, gap: 8 },
+  presetChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#2d2f33',
+    borderWidth: 1,
+    borderColor: '#3f4248',
+  },
+  presetChipActive: {
+    backgroundColor: '#23a559',
+    borderColor: '#23a559',
+  },
+  presetChipText: { color: '#b5bac1', fontSize: 13, fontWeight: '600' },
+  presetChipTextActive: { color: '#fff' },
   // Room list
   roomListContainer: {
     paddingVertical: 8,
