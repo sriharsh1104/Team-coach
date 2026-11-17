@@ -120,7 +120,12 @@ export class GamesService {
     const spec = GAME_CATALOG[game];
     if (!spec) throw new Error('Unknown game');
     this.leaveRoom(host.userId); // one room at a time
-    const max = Math.min(spec.maxPlayers, Math.max(spec.minPlayers, maxPlayers ?? spec.maxPlayers));
+    // Socket payloads are untyped at runtime — a non-numeric/garbage
+    // maxPlayers (object, NaN, string that doesn't coerce) must not become
+    // NaN here, or `players.length >= room.maxPlayers` is false forever and
+    // the room never closes to new joiners.
+    const requested = Number.isFinite(maxPlayers) ? (maxPlayers as number) : spec.maxPlayers;
+    const max = Math.min(spec.maxPlayers, Math.max(spec.minPlayers, Math.trunc(requested)));
     const room: Room = {
       id: randomBytes(6).toString('hex'),
       orgId,

@@ -77,6 +77,27 @@ describe('Games (/games namespace) (e2e)', () => {
     await connectAndExpectRejection(baseUrl, 'nope', '/games');
   });
 
+  it('SECURITY: garbage maxPlayers (object/non-numeric) does not make the room infinitely joinable', async () => {
+    const { sockets } = await setUp(4);
+    const [host, p1, p2, p3] = sockets;
+    // A buggy or malicious client could send anything here — must clamp to
+    // the game's real max (2 for rps here), never NaN.
+    const created = await emitAck<Ack>(host, 'room:create', { game: 'rps', maxPlayers: {} });
+    expect(created).toMatchObject({ ok: true });
+    expect(created.room.maxPlayers).toBe(2);
+
+    const joined = await emitAck<Ack>(p1, 'room:join', { roomId: created.room.id });
+    expect(joined).toMatchObject({ ok: true });
+    expect(joined.room.players).toHaveLength(2);
+
+    const overfull = await emitAck<Ack>(p2, 'room:join', { roomId: created.room.id });
+    expect(overfull.ok).toBe(false);
+    expect(overfull.error).toMatch(/full/i);
+
+    const alsoOverfull = await emitAck<Ack>(p3, 'room:join', { roomId: created.room.id });
+    expect(alsoOverfull.ok).toBe(false);
+  });
+
   it('RPS: create → teammate sees it in the lobby → join → start → a full round with hidden picks and a reveal', async () => {
     const { players, sockets } = await setUp(2);
     const [host, guest] = sockets;
@@ -151,8 +172,18 @@ describe('Games (/games namespace) (e2e)', () => {
 
     const rolled = await emitAck<Ack>(host, 'ludo:roll', {});
     expect(rolled).toMatchObject({ ok: true });
-    expect(rolled.room.ludo.dice).toBeGreaterThanOrEqual(1);
-    expect(rolled.room.ludo.dice).toBeLessThanOrEqual(6);
+    // All 4 tokens start in base — only a roll of 6 lets one leave. Any
+    // other roll correctly passes the turn immediately and clears `dice`
+    // (see advanceTurn() in ludo.engine.ts), so both outcomes are valid;
+    // asserting dice is always 1-6 here was flaky (~83% chance of failing).
+    if (rolled.room.ludo.dice !== null) {
+      expect(rolled.room.ludo.dice).toBeGreaterThanOrEqual(1);
+      expect(rolled.room.ludo.dice).toBeLessThanOrEqual(6);
+      expect(rolled.room.ludo.phase).toBe('move');
+    } else {
+      expect(rolled.room.ludo.phase).toBe('roll');
+      expect(rolled.room.ludo.turnIndex).not.toBe(0); // turn passed on
+    }
 
     const othersSee = waitForRoomUpdate(p2, (u) => u.room.players.length === 2);
     const left = await emitAck<Ack>(p1, 'room:leave');
