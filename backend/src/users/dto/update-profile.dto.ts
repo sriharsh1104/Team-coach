@@ -36,6 +36,10 @@ export class UpdateProfileDto {
 
   @IsOptional()
   @IsArray()
+  // Exactly one in-game role tag at a time, by design — mobile
+  // (ProfileScreen) and web (ProfilePage) both clamp their selection to
+  // roles.slice(0, 1) to match. The DB column is String[] for forward
+  // compatibility, not because more than one is currently allowed.
   @ArrayMaxSize(1)
   @IsIn(ROLE_OPTIONS, { each: true })
   roles?: string[];

@@ -768,7 +768,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       expect(playerMember.isOwner).toBe(false);
     });
 
-    it('roster includes each member\'s in-game role tags alongside their org role', async () => {
+    it('roster includes each member\'s in-game role tag alongside their org role', async () => {
       const coach = await signup();
       const org = await createOrgAs(coach.accessToken);
       const player = await signup();
@@ -777,10 +777,13 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .set('Authorization', `Bearer ${player.accessToken}`)
         .send({ rosterCode: org.rosterCode })
         .expect(201);
+      // Only one in-game role tag is allowed at a time (UpdateProfileDto,
+      // mirrored by mobile/web) — sending two is covered by the dedicated
+      // validation test in phase-1b-profile.e2e-spec.ts.
       await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${player.accessToken}`)
-        .send({ roles: ['SNIPER', 'IGL'] })
+        .send({ roles: ['SNIPER'] })
         .expect(200);
 
       const res = await request(server)
@@ -791,7 +794,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const coachMember = res.body.members.find((m: any) => m.userId === coach.user.id);
       const playerMember = res.body.members.find((m: any) => m.userId === player.user.id);
       expect(coachMember.inGameRoles).toEqual([]);
-      expect(playerMember.inGameRoles).toEqual(['SNIPER', 'IGL']);
+      expect(playerMember.inGameRoles).toEqual(['SNIPER']);
     });
   });
 

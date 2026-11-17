@@ -32,7 +32,9 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  // In-game role tags, e.g. ["IGL", "SNIPER"]. A player can hold several.
+  // Exactly one in-game role tag at a time, by design (see UpdateProfileDto
+  // and the mobile/web profile screens, which all clamp to one). String[]
+  // for forward compatibility, not because more than one is allowed today.
   roles String[] @default([])
 
   // Unique when set — incomplete profiles may leave these null (Postgres
@@ -163,8 +165,10 @@ model Org {
 
   // Owner-controlled: whether a member can see Team Chat messages from
   // before they joined. Chat history itself is always kept in full either
-  // way — this only controls what's displayed to a given member.
-  historyVisibleToNewMembers Boolean @default(false)
+  // way — this only controls what's displayed to a given member. Defaults
+  // on for a brand new org — an owner who wants it private can flip it off
+  // in Org Settings.
+  historyVisibleToNewMembers Boolean @default(true)
 
   memberships        Membership[]
   guildMemberships   GuildMembership[]
