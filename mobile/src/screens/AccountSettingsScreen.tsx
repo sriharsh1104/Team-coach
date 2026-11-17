@@ -3,7 +3,6 @@ import {
   Text,
   View,
   ScrollView,
-  TextInput,
   Switch,
   Platform,
   StyleSheet,
@@ -21,6 +20,7 @@ import { Screen } from '../brand/Screen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
 import { BookStage, useBookTabs } from '../ui/BookTabs';
+import { PasswordField } from '../ui/PasswordField';
 import { emitToast } from '../ui/toastBus';
 import { ThemeColors } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
@@ -182,27 +182,18 @@ export function AccountSettingsScreen({ navigation }: Props) {
                       Use at least 8 characters. You&apos;ll stay signed in after
                       updating.
                     </Text>
-                    <TextInput
-                      style={styles.input}
+                    <PasswordField
                       placeholder="Current password"
-                      placeholderTextColor={colors.textDim}
-                      secureTextEntry
                       value={currentPassword}
                       onChangeText={setCurrentPassword}
                     />
-                    <TextInput
-                      style={styles.input}
+                    <PasswordField
                       placeholder="New password"
-                      placeholderTextColor={colors.textDim}
-                      secureTextEntry
                       value={newPassword}
                       onChangeText={setNewPassword}
                     />
-                    <TextInput
-                      style={styles.input}
+                    <PasswordField
                       placeholder="Confirm new password"
-                      placeholderTextColor={colors.textDim}
-                      secureTextEntry
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
                     />
@@ -257,11 +248,8 @@ export function AccountSettingsScreen({ navigation }: Props) {
                 {user.twoFactorEnabled ? (
                   showDisableForm ? (
                     <>
-                      <TextInput
-                        style={styles.input}
+                      <PasswordField
                         placeholder="Your password"
-                        placeholderTextColor={colors.textDim}
-                        secureTextEntry
                         value={disablePassword}
                         onChangeText={setDisablePassword}
                       />
@@ -450,17 +438,6 @@ function accountStyles(c: ThemeColors) {
       fontWeight: '600' as const,
       fontSize: 14,
       marginBottom: 4,
-    },
-    input: {
-      borderWidth: 1,
-      borderColor: c.border,
-      backgroundColor: 'rgba(0,0,0,0.28)',
-      borderRadius: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 13,
-      marginBottom: 10,
-      fontSize: 16,
-      color: c.text,
     },
     primaryBtn: {
       backgroundColor: c.chrome,

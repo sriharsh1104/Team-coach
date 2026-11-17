@@ -69,6 +69,10 @@ export function MembersScreen({ navigation }: Props) {
   const canManage =
     !!detail?.canInviteRoster || !!detail?.isOwner;
   const canChangeRoles = !!detail?.isOwner;
+  // Removal is owner-only — canInviteRoster (shared with the invite-codes
+  // section above) also covers coaches, which used to let a coach's remove
+  // button through too even though the backend now rejects it with 403.
+  const canRemove = !!detail?.isOwner;
 
   const onChangeRole = async (member: OrgMember, role: MembershipRole) => {
     if (role === member.role) return;
@@ -157,10 +161,11 @@ export function MembersScreen({ navigation }: Props) {
                 <Text style={styles.rosterHint}>
                   {detail.members.length} roster member
                   {detail.members.length === 1 ? '' : 's'}. Only the owner or a
-                  coach can share roster invites or remove members.
+                  coach can share roster invites. Only the owner can remove
+                  members.
                 </Text>
               )}
-              {canManage ? (
+              {canRemove ? (
                 <Text style={styles.manageHint}>
                   Tap − to remove someone
                   {canChangeRoles ? ', or change their role below' : ''}.
@@ -173,14 +178,7 @@ export function MembersScreen({ navigation }: Props) {
         renderItem={({ item, index }) => {
           const inGameRoles = formatInGameRoles(item.inGameRoles);
           const showRemove =
-            canManage &&
-            !item.isOwner &&
-            item.userId !== user?.id &&
-            !(
-              !detail?.isOwner &&
-              detail?.myRole === 'COACH' &&
-              item.role === 'COACH'
-            );
+            canRemove && !item.isOwner && item.userId !== user?.id;
           return (
             <View style={staticStyles.memberCard}>
               <SoftPressable
