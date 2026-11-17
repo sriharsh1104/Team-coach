@@ -51,7 +51,8 @@ export type AppIconName =
   | 'map-outline'
   | 'book-outline'
   | 'trophy-outline'
-  | 'settings-outline';
+  | 'settings-outline'
+  | 'trash-outline';
 
 type Props = {
   name: AppIconName;
@@ -186,6 +187,11 @@ const ICONS: Record<AppIconName, Renderer> = {
   'star-outline': (c, s) => (
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke={c} strokeWidth={2} strokeLinejoin="round" />
+    </Svg>
+  ),
+  'trash-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   ),
   'checkmark': (c, s) => (

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MenuButton } from './SideDrawer';
 import { SoftPressable } from './SoftPressable';
 import { useTheme } from '../theme/ThemeContext';
+import { PingLabel } from './PingLabel';
 
 type Props = {
   title: string;
@@ -12,6 +13,8 @@ type Props = {
   onSettings?: () => void;
   /** When embedded under a native stack that already pads the status bar. */
   includeSafeArea?: boolean;
+  /** Show the live server ping "(42ms)" right after the title (org name). */
+  showPing?: boolean;
 };
 
 /**
@@ -24,6 +27,7 @@ export function AppShellHeader({
   onMenu,
   onSettings,
   includeSafeArea = true,
+  showPing = false,
 }: Props) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -40,9 +44,15 @@ export function AppShellHeader({
     >
       <MenuButton onPress={onMenu} />
       <View style={styles.titleBlock}>
-        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text
+            style={[styles.title, { color: colors.text }]}
+            numberOfLines={1}
+          >
+            {title}
+          </Text>
+          {showPing ? <PingLabel style={styles.ping} /> : null}
+        </View>
         {subtitle ? (
           typeof subtitle === 'string' ? (
             <Text
@@ -84,13 +94,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   titleBlock: { flex: 1, minWidth: 0 },
+  titleRow: { flexDirection: 'row', alignItems: 'baseline', minWidth: 0 },
   title: {
+    flexShrink: 1,
     fontSize: 20,
     fontWeight: '700',
     textTransform: 'capitalize',
     letterSpacing: -0.2,
   },
   subtitle: { fontSize: 12, marginTop: 2 },
+  ping: { fontSize: 12, textTransform: 'none' },
   settingsBtn: {
     width: 36,
     height: 36,

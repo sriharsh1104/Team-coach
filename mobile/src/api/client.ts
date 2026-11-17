@@ -81,7 +81,10 @@ export const apiBaseUrl = resolveApiBaseUrl();
 /** Absolute CDN URLs (Cloudinary) stay as-is; relative API paths get the host. */
 export function resolveMediaUrl(url: string | null | undefined): string | null {
   if (!url) return null;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  // Absolute (CDN) and on-device URIs (optimistic chat bubbles show the
+  // picked file while it uploads) are used as-is; only API-relative paths
+  // get the base URL prefixed.
+  if (/^(https?|file|content|ph|assets-library|data|blob):/i.test(url)) return url;
   return `${apiBaseUrl}${url}`;
 }
 

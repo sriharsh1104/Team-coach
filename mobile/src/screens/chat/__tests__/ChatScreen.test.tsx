@@ -59,6 +59,15 @@ function createFakeSocket() {
     }),
     connect: jest.fn(),
     emit: jest.fn(),
+    // message:send goes through socket.timeout(ms).emit(event, payload, ack).
+    // Record it on `emit` (without the ack) so existing assertions keep
+    // working, and ack success immediately like the real server does.
+    timeout: jest.fn(() => ({
+      emit: (event: string, payload: unknown, ack?: (err: unknown, res?: unknown) => void) => {
+        socket.emit(event, payload);
+        ack?.(null, { ok: true, id: 'srv-1' });
+      },
+    })),
     disconnect: jest.fn(),
     trigger: (event: string, ...args: any[]) => {
       act(() => {
@@ -340,13 +349,18 @@ describe('ChatScreen', () => {
       expect(mockedImagePicker.launchImageLibraryAsync).toHaveBeenCalledWith(
         expect.objectContaining({ mediaTypes: 'Images' }),
       );
+      // The bubble is optimistic now: it carries a pending clientId so the
+      // server echo (message:new) can swap it for the stored row.
       await waitFor(() =>
-        expect(fakeSocket.emit).toHaveBeenCalledWith('message:send', {
-          channelKey: 'org',
-          mediaUrl: '/chat/files/a.jpg',
-          mediaType: 'IMAGE',
-          text: undefined,
-        }),
+        expect(fakeSocket.emit).toHaveBeenCalledWith(
+          'message:send',
+          expect.objectContaining({
+            channelKey: 'org',
+            mediaUrl: '/chat/files/a.jpg',
+            mediaType: 'IMAGE',
+            clientId: expect.stringMatching(/^pending:/),
+          }),
+        ),
       );
       // Panel closes once a pick completes. OCR lives under Stats modes, not chat.
       expect(screen.queryByLabelText('Photo')).toBeNull();

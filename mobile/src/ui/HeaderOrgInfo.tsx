@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { SoftPressable } from './SoftPressable';
 import { emitToast } from './toastBus';
+import { PingLabel } from './PingLabel';
 
 type OrgHeaderInfo = { orgCode: string; memberCount: number };
 
@@ -79,6 +80,7 @@ export function HeaderOrgInfo({ sectionTitle }: { sectionTitle: string }) {
             <Text style={[styles.subtitle, { color: colors.textMuted }]}>
               {identity}
             </Text>
+            <PingLabel />
             {org && info ? (
               <>
                 <Text style={[styles.subtitle, { color: colors.textMuted }]}>

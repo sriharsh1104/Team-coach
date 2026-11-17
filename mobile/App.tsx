@@ -14,8 +14,6 @@ import { RecordingProvider } from './src/recording/RecordingContext';
 import { RecordingWidget } from './src/recording/RecordingWidget';
 import { useAppPermissions } from './src/hooks/useAppPermissions';
 import { useServerWakePing } from './src/hooks/useServerWakePing';
-import { LatencyProvider } from './src/perf/LatencyContext';
-import { LatencyBadge } from './src/ui/LatencyBadge';
 import { VoiceProvider } from './src/voice/VoiceContext';
 
 /** Runs hooks that need AuthContext — must be rendered inside AuthProvider. */
@@ -40,10 +38,7 @@ function AppShell() {
               <OrgRealtimeProvider>
                 <RecordingProvider>
                   <VoiceProvider>
-                    <LatencyProvider>
-                      <RootNavigator />
-                      <LatencyBadge />
-                    </LatencyProvider>
+                    <RootNavigator />
                   </VoiceProvider>
                   <RecordingWidget />
                 </RecordingProvider>

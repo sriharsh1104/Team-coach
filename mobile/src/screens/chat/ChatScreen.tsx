@@ -13,6 +13,7 @@ import {
   AppState,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { ResizeMode, Video } from 'expo-av';
 import { AppIcon } from '../../ui/AppIcon';
 import * as ImagePicker from 'expo-image-picker';
 import { Socket } from 'socket.io-client';
@@ -26,6 +27,7 @@ import { useSharedStyles, formatRoleBadge } from '../shared';
 import { AttachMenu, AttachOption } from './AttachMenu';
 import { ReminderComposer } from './ReminderComposer';
 import { MediaViewerModal } from './MediaViewerModal';
+import { PendingMediaOverlay, PendingUploadStatus } from './PendingMediaOverlay';
 import { MessageInfoModal } from './MessageInfoModal';
 import { CustomSticker } from './stickerStorage';
 import {
@@ -89,6 +91,25 @@ function formatSenderLabel(message: ChatMessage): string {
 
 const SEARCH_DEBOUNCE_MS = 300;
 
+type PendingUpload = {
+  asset: {
+    uri: string;
+    fileName: string;
+    mimeType: string;
+    width?: number | null;
+    height?: number | null;
+  };
+  mediaType: 'IMAGE' | 'VIDEO';
+  text?: string;
+  replyToId: string | null;
+  sizeLabel: string | null;
+  status: PendingUploadStatus;
+  /** 0..1 */
+  progress: number;
+  label?: string;
+  error?: string;
+};
+
 export function ChatScreen({
   embedded = false,
   channelKey = 'org',
@@ -111,6 +132,14 @@ export function ChatScreen({
   const { startRecording } = useRecording();
   const isGroup = channelKey === 'org' || channelKey === 'guild';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Media bubbles that are still uploading / sending / failed, keyed by the
+  // optimistic message id (clientId). The bubble shows the picked file from
+  // the device right away with a progress ring (WhatsApp-style) instead of
+  // nothing-then-a-toast; message:new swaps it for the real row.
+  const [uploads, setUploads] = useState<Record<string, PendingUpload>>({});
+  const uploadJobsRef = useRef<Map<string, PendingUpload>>(new Map());
+  // onPressMessage is declared before the upload helpers; route through a ref.
+  const onPressPendingMediaRef = useRef<(clientId: string) => void>(() => {});
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [draft, setDraft] = useState('');
@@ -343,6 +372,7 @@ export function ChatScreen({
           }
           return [...prev, message];
         });
+        if (message.clientId) clearPendingUpload(message.clientId);
         void chatApi.markChatRead(channelKey);
         socket.emit('channel:read', { channelKey });
       });
@@ -689,6 +719,10 @@ export function ChatScreen({
 
   const onPressMessage = useCallback(
     (msg: ChatMessage) => {
+      if (uploadJobsRef.current.has(msg.id)) {
+        onPressPendingMediaRef.current(msg.id);
+        return;
+      }
       if (!selectMode) return;
       toggleSelect(msg.id);
     },
@@ -833,8 +867,30 @@ export function ChatScreen({
         emitToast('Chat disconnected — try again in a moment');
         return false;
       }
-      socket.emit('message:send', { channelKey, ...payload });
-      return true;
+      // Server acks { ok, id } (or { ok: false, error }). A dropped socket or
+      // a server-side rejection used to vanish silently; now the caller can
+      // keep the bubble in a "failed" state with retry.
+      return new Promise<boolean>((resolve) => {
+        socket
+          .timeout(15_000)
+          .emit(
+            'message:send',
+            { channelKey, ...payload },
+            (err: unknown, ack?: { ok?: boolean; error?: string }) => {
+              if (err) {
+                emitToast('Message not confirmed — check your connection');
+                resolve(false);
+                return;
+              }
+              if (ack && ack.ok === false) {
+                emitToast(ack.error || 'Could not send message');
+                resolve(false);
+                return;
+              }
+              resolve(true);
+            },
+          );
+      });
     },
     [channelKey, waitForSocket],
   );
@@ -961,27 +1017,161 @@ export function ChatScreen({
     [channelKey, emitMessage, user],
   );
 
-  const onPickCustomSticker = useCallback(
-    async (sticker: CustomSticker) => {
-      setShowAttach(false);
-      emitToast('Sending sticker…', 2000);
+  const clearPendingUpload = useCallback((clientId: string) => {
+    uploadJobsRef.current.delete(clientId);
+    setUploads((prev) => {
+      if (!prev[clientId]) return prev;
+      const next = { ...prev };
+      delete next[clientId];
+      return next;
+    });
+  }, []);
+
+  const patchPendingUpload = useCallback(
+    (clientId: string, patch: Partial<PendingUpload>) => {
+      const job = uploadJobsRef.current.get(clientId);
+      if (!job) return;
+      const next = { ...job, ...patch };
+      uploadJobsRef.current.set(clientId, next);
+      setUploads((prev) => ({ ...prev, [clientId]: next }));
+    },
+    [],
+  );
+
+  /**
+   * Upload the picked file, then send the message — driving the bubble's
+   * progress ring the whole way. Safe to call again for a retry.
+   */
+  const runPendingUpload = useCallback(
+    async (clientId: string) => {
+      const job = uploadJobsRef.current.get(clientId);
+      // Only a fresh ('queued') or failed job may (re)start — never double-run.
+      if (!job || (job.status !== 'queued' && job.status !== 'failed')) return;
+      patchPendingUpload(clientId, { status: 'uploading', progress: 0, label: 'Preparing…', error: undefined });
       try {
-        const uploaded = await chatApi.uploadChatMedia({
-          uri: sticker.uri,
-          fileName: sticker.fileName,
-          mimeType: sticker.mimeType,
+        const uploaded = await chatApi.uploadChatMedia(job.asset, {
+          onProgress: ({ phase, fraction }) =>
+            patchPendingUpload(clientId, {
+              progress: fraction,
+              label:
+                phase === 'preparing'
+                  ? 'Preparing…'
+                  : phase === 'finalizing'
+                    ? 'Almost done…'
+                    : `${job.sizeLabel ? `${job.sizeLabel} · ` : ''}Uploading…`,
+            }),
         });
+        patchPendingUpload(clientId, { status: 'sending', progress: 1, label: 'Sending…' });
         stickToBottomRef.current = true;
         const sent = await emitMessage({
           mediaUrl: uploaded.mediaUrl,
           mediaType: uploaded.mediaType,
+          text: job.text || undefined,
+          replyToId: job.replyToId ?? undefined,
+          clientId,
         });
-        if (!sent) emitToast('Could not send sticker');
+        if (!sent) {
+          patchPendingUpload(clientId, { status: 'failed', error: 'Could not send' });
+          return;
+        }
+        // message:new (echo with clientId) swaps the bubble and clears the job.
+        setTimeout(() => {
+          void refreshHistory();
+        }, 600);
       } catch (err: unknown) {
-        emitToast(apiErrorMessage(err, 'Could not send sticker'));
+        patchPendingUpload(clientId, {
+          status: 'failed',
+          error: apiErrorMessage(err, 'Upload failed — file may be too large'),
+        });
       }
     },
-    [emitMessage],
+    [emitMessage, patchPendingUpload, refreshHistory],
+  );
+
+  const startMediaSend = useCallback(
+    (
+      asset: PendingUpload['asset'],
+      mediaType: 'IMAGE' | 'VIDEO',
+      extras: { text?: string; replyTo?: ChatMessage | null; sizeLabel?: string | null } = {},
+    ) => {
+      if (!user) return;
+      const clientId = `pending:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+      const parent = extras.replyTo ?? null;
+      const optimistic: ChatMessage = {
+        id: clientId,
+        channelKey,
+        senderId: user.id,
+        senderName: user.name ?? 'You',
+        senderRole: null,
+        senderIsOwner: false,
+        text: extras.text?.trim() || null,
+        // Local on-device URI — resolveMediaUrl passes file:/content: through.
+        mediaUrl: asset.uri,
+        mediaType,
+        createdAt: new Date().toISOString(),
+        clientId,
+        replyToId: parent?.id ?? null,
+        replyTo: parent
+          ? {
+              id: parent.id,
+              text: parent.text,
+              senderName: parent.senderName,
+              mediaType: parent.mediaType,
+            }
+          : null,
+      };
+      const job: PendingUpload = {
+        asset,
+        mediaType,
+        text: extras.text?.trim() || undefined,
+        replyToId: parent?.id ?? null,
+        sizeLabel: extras.sizeLabel ?? null,
+        status: 'queued',
+        progress: 0,
+        label: 'Preparing…',
+      };
+      uploadJobsRef.current.set(clientId, job);
+      setUploads((prev) => ({ ...prev, [clientId]: job }));
+      stickToBottomRef.current = true;
+      setMessages((prev) =>
+        prev.some((m) => m.id === clientId) ? prev : [...prev, optimistic],
+      );
+      void runPendingUpload(clientId);
+    },
+    [channelKey, runPendingUpload, user],
+  );
+
+  const removePendingUpload = useCallback(
+    (clientId: string) => {
+      clearPendingUpload(clientId);
+      setMessages((prev) => prev.filter((m) => m.id !== clientId));
+    },
+    [clearPendingUpload],
+  );
+
+  const onPressPendingMedia = useCallback(
+    (clientId: string) => {
+      const job = uploadJobsRef.current.get(clientId);
+      if (!job) return;
+      if (job.status !== 'failed') return; // still in flight — nothing to do
+      Alert.alert('Upload failed', job.error ?? 'Could not send this file.', [
+        { text: 'Remove', style: 'destructive', onPress: () => removePendingUpload(clientId) },
+        { text: 'Retry', onPress: () => void runPendingUpload(clientId) },
+      ]);
+    },
+    [removePendingUpload, runPendingUpload],
+  );
+  onPressPendingMediaRef.current = onPressPendingMedia;
+
+  const onPickCustomSticker = useCallback(
+    (sticker: CustomSticker) => {
+      setShowAttach(false);
+      startMediaSend(
+        { uri: sticker.uri, fileName: sticker.fileName, mimeType: sticker.mimeType },
+        'IMAGE',
+      );
+    },
+    [startMediaSend],
   );
 
   const onPickMedia = async (option: AttachOption) => {
@@ -1031,43 +1221,29 @@ export function ChatScreen({
     const looksVideo =
       (asset.mimeType?.startsWith('video/') ?? false) ||
       option === 'video';
-    // Show file size in the uploading toast so users can see how large the file is
-    const fileSizeMB = asset.fileSize ? (asset.fileSize / (1024 * 1024)).toFixed(1) : null;
-    const uploadLabel = fileSizeMB
-      ? `Uploading${looksVideo ? ' video' : ''}… (${fileSizeMB} MB)`
-      : `Uploading${looksVideo ? ' video' : ''}…`;
-    emitToast(uploadLabel, 15000);
-    try {
-      const uploaded = await chatApi.uploadChatMedia({
+    const sizeLabel = asset.fileSize
+      ? `${(asset.fileSize / (1024 * 1024)).toFixed(1)} MB`
+      : null;
+    const text = draft.trim();
+    const parent = replyTo;
+    // Bubble appears instantly with the local file + progress ring; the
+    // composer is cleared right away like a text send.
+    setDraft('');
+    setCaret(0);
+    setReplyTo(null);
+    startMediaSend(
+      {
         uri: asset.uri,
         fileName:
           asset.fileName ??
-          (looksVideo
-            ? `chat-${Date.now()}.mp4`
-            : `chat-${Date.now()}.jpg`),
-        mimeType:
-          asset.mimeType ?? (looksVideo ? 'video/mp4' : 'image/jpeg'),
+          (looksVideo ? `chat-${Date.now()}.mp4` : `chat-${Date.now()}.jpg`),
+        mimeType: asset.mimeType ?? (looksVideo ? 'video/mp4' : 'image/jpeg'),
         width: asset.width,
         height: asset.height,
-      });
-      emitToast('Sent!', 1500);
-      stickToBottomRef.current = true;
-      const sent = await emitMessage({
-        mediaUrl: uploaded.mediaUrl,
-        mediaType: uploaded.mediaType,
-        text: draft.trim() || undefined,
-        replyToId: replyTo?.id,
-      });
-      if (sent) {
-        setDraft('');
-        setReplyTo(null);
-        setTimeout(() => {
-          void refreshHistory();
-        }, 600);
-      }
-    } catch (err: unknown) {
-      emitToast(apiErrorMessage(err, 'Upload failed — file may be too large'), 4000);
-    }
+      },
+      looksVideo ? 'VIDEO' : 'IMAGE',
+      { text, replyTo: parent, sizeLabel },
+    );
   };
 
   // Android already resizes the window (app.config softwareKeyboardLayoutMode).
@@ -1287,6 +1463,7 @@ export function ChatScreen({
         renderItem={({ item }) => {
           const isMine = item.senderId === user?.id;
           const mediaUri = chatApi.resolveChatMediaUrl(item.mediaUrl);
+          const pending = uploads[item.id];
           const showSeen = isMine && item.id === lastMineId;
           const isHit = highlightId === item.id;
           const isSelected = selectedIds.has(item.id);
@@ -1373,13 +1550,13 @@ export function ChatScreen({
                   {item.mediaType === 'IMAGE' && mediaUri ? (
                     <Pressable
                       onPress={() => {
-                        if (selectMode) {
+                        if (pending || selectMode) {
                           onPressMessage(item);
                           return;
                         }
                         setViewerMedia({ type: 'IMAGE', uri: mediaUri });
                       }}
-                      accessibilityLabel="View image"
+                      accessibilityLabel={pending ? 'Image upload in progress' : 'View image'}
                     >
                       <Image
                         source={{ uri: mediaUri }}
@@ -1392,20 +1569,48 @@ export function ChatScreen({
                         placeholder={{ color: 'rgba(255,255,255,0.08)' }}
                         transition={200}
                       />
+                      {pending ? (
+                        <PendingMediaOverlay
+                          status={pending.status}
+                          progress={pending.progress}
+                          label={pending.label}
+                        />
+                      ) : null}
                     </Pressable>
                   ) : null}
                   {item.mediaType === 'VIDEO' && mediaUri ? (
                     <Pressable
                       style={styles.videoThumb}
                       onPress={() => {
-                        if (selectMode) {
+                        if (pending || selectMode) {
                           onPressMessage(item);
                           return;
                         }
                         setViewerMedia({ type: 'VIDEO', uri: mediaUri });
                       }}
+                      accessibilityLabel={pending ? 'Video upload in progress' : 'Play video'}
                     >
-                      <Text style={styles.playIcon}>▶</Text>
+                      {pending ? (
+                        // First frame of the picked video as the thumbnail
+                        // while it uploads (paused, muted, no controls).
+                        <Video
+                          source={{ uri: mediaUri }}
+                          style={styles.videoFrame}
+                          resizeMode={ResizeMode.COVER}
+                          shouldPlay={false}
+                          isMuted
+                          useNativeControls={false}
+                        />
+                      ) : (
+                        <Text style={styles.playIcon}>▶</Text>
+                      )}
+                      {pending ? (
+                        <PendingMediaOverlay
+                          status={pending.status}
+                          progress={pending.progress}
+                          label={pending.label}
+                        />
+                      ) : null}
                     </Pressable>
                   ) : null}
                   {item.text ? (
@@ -1824,6 +2029,7 @@ const chatStyles = (c: ThemeColors) => ({
     justifyContent: 'center' as const,
   },
   playIcon: { color: '#fff', fontSize: 32 },
+  videoFrame: { ...StyleSheet.absoluteFillObject, borderRadius: 8 },
   seenRow: { marginTop: 2, paddingHorizontal: 4 },
   tick: { color: c.textMuted, fontSize: 13 },
   tickSeen: { color: c.link },

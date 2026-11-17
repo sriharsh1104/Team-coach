@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import { apiClient, apiBaseUrl, resolveMediaUrl } from './client';
 import { ChatChannelsResponse, ChatMessage } from './types';
@@ -264,17 +265,42 @@ function stripMultipartContentType(data: unknown, headers?: unknown) {
  * 2) Prefer direct Cloudinary upload (CDN holds bytes — API never buffers)
  * 3) Fall back to POST /chat/media through our backend when Cloudinary is off
  */
-export async function uploadChatMedia(file: {
-  uri: string;
-  fileName: string;
-  mimeType: string;
-  width?: number | null;
-  height?: number | null;
-}): Promise<ChatMediaUploadResult> {
+export type UploadProgress = {
+  /** 'preparing' = compressing on device, 'uploading' = bytes in flight, 'finalizing' = registering with the API. */
+  phase: 'preparing' | 'uploading' | 'finalizing';
+  /** 0..1 overall, monotonic. */
+  fraction: number;
+};
+
+type UploadOptions = { onProgress?: (p: UploadProgress) => void };
+
+function uploadFraction(evt: { loaded: number; total?: number }): number {
+  if (!evt.total || evt.total <= 0) return 0;
+  return Math.min(1, evt.loaded / evt.total);
+}
+
+export async function uploadChatMedia(
+  file: {
+    uri: string;
+    fileName: string;
+    mimeType: string;
+    width?: number | null;
+    height?: number | null;
+  },
+  options: UploadOptions = {},
+): Promise<ChatMediaUploadResult> {
+  const report = (phase: UploadProgress['phase'], fraction: number) =>
+    options.onProgress?.({ phase, fraction });
+
+  report('preparing', 0);
   const prepared = await compressForUpload(file);
   const resourceType = prepared.mimeType.startsWith('video/')
     ? ('video' as const)
     : ('image' as const);
+  // Compression done: 5%. Upload bytes map onto 5%..95%, register = 100%.
+  report('uploading', 0.05);
+  const onUploadProgress = (evt: { loaded: number; total?: number }) =>
+    report('uploading', 0.05 + 0.9 * uploadFraction(evt));
 
   try {
     const sign = await apiClient
@@ -298,29 +324,34 @@ export async function uploadChatMedia(file: {
       cloudForm.append('public_id', sign.publicId);
       cloudForm.append('type', sign.type);
 
-      const cloudRes = await fetch(sign.uploadUrl, {
-        method: 'POST',
-        body: cloudForm,
+      // Bare axios (no API interceptors/auth header) straight to the CDN.
+      const cloudRes = await axios.post<{ public_id?: string }>(sign.uploadUrl, cloudForm, {
+        timeout: 180_000,
+        transformRequest: stripMultipartContentType,
+        onUploadProgress,
+        validateStatus: () => true,
       });
-      if (!cloudRes.ok) {
-        const text = await cloudRes.text().catch(() => '');
-        throw new Error(`Cloudinary upload failed (${cloudRes.status}): ${text}`);
+      if (cloudRes.status < 200 || cloudRes.status >= 300) {
+        throw new Error(`Cloudinary upload failed (${cloudRes.status})`);
       }
-      const cloudJson = (await cloudRes.json()) as { public_id?: string };
-      if (!cloudJson.public_id) {
+      if (!cloudRes.data?.public_id) {
         throw new Error('Cloudinary response missing public_id');
       }
 
+      report('finalizing', 0.96);
       const registered = await apiClient
         .post<ChatMediaUploadResult>('/chat/media/register', {
-          publicId: cloudJson.public_id,
+          publicId: cloudRes.data.public_id,
           resourceType,
         })
         .then((res) => res.data);
+      report('finalizing', 1);
       return registered;
     }
-  } catch {
+  } catch (err) {
     // Fall through to backend proxy upload (local disk / Cloudinary via API).
+    console.warn('Direct CDN upload unavailable, using API upload:', (err as Error)?.message);
+    report('uploading', 0.05);
   }
 
   const form = new FormData();
@@ -330,13 +361,14 @@ export async function uploadChatMedia(file: {
     type: prepared.mimeType,
   });
   const res = await apiClient.post<ChatMediaUploadResult>('/chat/media', form, {
-    timeout: 120_000,
+    timeout: 180_000,
     transformRequest: stripMultipartContentType,
+    onUploadProgress,
   });
+  report('finalizing', 1);
   return res.data;
 }
 
-/** Pull the disk file key out of a chat media URL path. */
 export function fileKeyFromChatMediaUrl(mediaUrl: string | null | undefined) {
   if (!mediaUrl) return null;
   const match = mediaUrl.match(/\/chat\/files\/([^?]+)/);

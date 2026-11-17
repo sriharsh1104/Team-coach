@@ -174,6 +174,16 @@ sudo ufw allow 40000:40100/tcp
 sudo ufw enable
 ```
 
+### Media uploads (chat photos / videos / avatars)
+
+Without `CLOUDINARY_*` the API writes uploads to `MEDIA_UPLOAD_DIR` on local disk.
+
+- **Contabo / this compose file:** fine — `uploads` is a named Docker volume, survives deploys.
+- **Render (or any PaaS):** NOT fine — the container disk is wiped on every restart /
+  free-tier spin-down, so chat images and avatars 404 within minutes. Set the four
+  `CLOUDINARY_*` env vars there (free tier at cloudinary.com) or move to the VPS.
+  The backend logs a warning at startup in production when Cloudinary is off.
+
 ### Voice (mediasoup) checklist
 
 Voice signaling goes over the normal API port, but the **audio itself** goes

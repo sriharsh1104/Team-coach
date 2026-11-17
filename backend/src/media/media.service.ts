@@ -120,13 +120,7 @@ export class MediaService {
       throw new NotFoundException('File not found');
     }
 
-    const membership = await this.prisma.membership.findFirst({
-      where: { userId: payload.sub },
-    });
-    const post = membership
-      ? await this.prisma.mediaPost.findUnique({ where: { fileKey } })
-      : null;
-    if (!membership || !post || post.orgId !== membership.orgId) {
+    if (!(await this.viewerMayDownload(payload.sub, fileKey))) {
       throw new NotFoundException('File not found');
     }
 
@@ -137,6 +131,43 @@ export class MediaService {
     }
 
     return { filePath: this.storage.localFilePath(fileKey) };
+  }
+
+  /**
+   * A signed file token proves the viewer was allowed to see `fileKey` when
+   * it was minted; this re-checks that against what the key is *now*:
+   *  - a Media-feed post → viewer must still be in that org
+   *  - a group-chat (org / guild) photo → viewer must still be in that org
+   *  - a member's profile avatar → any signed-in viewer (profile pictures are
+   *    shown org-wide in chat, rosters and member lists)
+   * Avatars are stored by MediaStorageService without a MediaPost row, so the
+   * old post-only check 404'd every locally-stored avatar — the mobile app
+   * then silently fell back to the placeholder after a "successful" upload.
+   */
+  private async viewerMayDownload(viewerId: string, fileKey: string): Promise<boolean> {
+    const [rosterOrgs, guildOrgs] = await Promise.all([
+      this.prisma.membership.findMany({ where: { userId: viewerId }, select: { orgId: true } }),
+      this.prisma.guildMembership.findMany({ where: { userId: viewerId }, select: { orgId: true } }),
+    ]);
+    const viewerOrgIds = new Set([...rosterOrgs, ...guildOrgs].map((m) => m.orgId));
+
+    const post = await this.prisma.mediaPost.findUnique({
+      where: { fileKey },
+      select: { orgId: true },
+    });
+    if (post) return viewerOrgIds.has(post.orgId);
+
+    const channelMeta = await this.prisma.chatChannelMeta.findFirst({
+      where: { avatarFileKey: fileKey },
+      select: { orgId: true },
+    });
+    if (channelMeta) return viewerOrgIds.has(channelMeta.orgId);
+
+    const avatarOwner = await this.prisma.user.findFirst({
+      where: { avatarFileKey: fileKey },
+      select: { id: true },
+    });
+    return !!avatarOwner;
   }
 
   private async toResponse(

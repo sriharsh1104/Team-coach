@@ -174,30 +174,45 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() body: SendMessageDto,
   ) {
+    // Returned value = socket.io ack. The mobile app sends media messages
+    // with an ack callback so a failed/dropped send shows "retry" on the
+    // bubble instead of a bubble that silently never reaches anyone.
     const data = client.data as SocketData;
-    if (!data?.orgId) return;
-    if (!this.messageLimiter.allow(client.id)) return;
+    if (!data?.orgId) return { ok: false as const, error: 'Not connected' };
+    if (!this.messageLimiter.allow(client.id)) {
+      return { ok: false as const, error: 'Too many messages — slow down' };
+    }
 
     const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
     const text = (body?.text ?? '').trim();
-    if (text.length > 2000) return;
-    if (!text && !body?.mediaUrl) return;
+    if (text.length > 2000) return { ok: false as const, error: 'Message too long' };
+    if (!text && !body?.mediaUrl) {
+      return { ok: false as const, error: 'Message text or media is required' };
+    }
+    const clientId = body?.clientId?.trim();
 
-    const { orgId, message } = await this.chatService.createMessage(
-      data.userId,
-      data.userName,
-      {
-        channelKey,
-        text: text || undefined,
-        mediaUrl: body.mediaUrl,
-        mediaType: body.mediaType,
-        replyToId: body.replyToId,
-      },
-    );
+    let orgId: string;
+    let message: Awaited<ReturnType<ChatService['createMessage']>>['message'];
+    try {
+      ({ orgId, message } = await this.chatService.createMessage(
+        data.userId,
+        data.userName,
+        {
+          channelKey,
+          text: text || undefined,
+          mediaUrl: body.mediaUrl,
+          mediaType: body.mediaType,
+          replyToId: body.replyToId,
+        },
+      ));
+    } catch (err) {
+      const error = (err as Error).message || 'Could not send message';
+      this.logger.warn(`message:send failed user=${data.userId}: ${error}`);
+      return { ok: false as const, error };
+    }
 
     // Ensure sender is in the room, then broadcast.
     await client.join(this.roomFor(orgId, channelKey));
-    const clientId = body?.clientId?.trim();
     this.server.to(this.roomFor(orgId, channelKey)).emit('message:new', {
       ...message,
       ...(clientId ? { clientId } : {}),
@@ -213,6 +228,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
         channelKey,
       });
     }
+    return { ok: true as const, id: message.id, ...(clientId ? { clientId } : {}) };
   }
 
   @SubscribeMessage('message:edit')

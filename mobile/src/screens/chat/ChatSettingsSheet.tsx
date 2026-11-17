@@ -19,6 +19,7 @@ import { useThemedStyles } from '../../theme/useThemedStyles';
 import { useTheme } from '../../theme/ThemeContext';
 import { emitToast } from '../../ui/toastBus';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
+import { AppIcon } from '../../ui/AppIcon';
 
 const DISAPPEAR_OPTIONS: Array<{ label: string; sec: number | null }> = [
   { label: 'Off', sec: null },
@@ -175,15 +176,28 @@ export function ChatSettingsSheet({
             <ActivityIndicator color={colors.chrome} style={{ marginVertical: 8 }} />
           ) : null}
 
-          <Pressable style={styles.row} onPress={onStarredFilter}>
-            <Text style={staticStyles.rowIcon}>★</Text>
-            <Text style={styles.rowLabel}>Starred messages</Text>
-          </Pressable>
-
-          <Pressable style={styles.row} onPress={clearChat}>
-            <Text style={staticStyles.rowIcon}>⌫</Text>
-            <Text style={[styles.rowLabel, staticStyles.danger]}>Clear chat</Text>
-          </Pressable>
+          {/* Icon-only quick actions. The old text rows used an unthemed
+              glyph colour, so the ★ / ⌫ vanished on the dark theme. */}
+          <View style={staticStyles.actionRow}>
+            <Pressable
+              style={styles.actionBtn}
+              onPress={onStarredFilter}
+              accessibilityRole="button"
+              accessibilityLabel="Starred messages"
+              hitSlop={6}
+            >
+              <AppIcon name="star" size={22} color={colors.chrome} />
+            </Pressable>
+            <Pressable
+              style={[styles.actionBtn, styles.actionBtnDanger]}
+              onPress={clearChat}
+              accessibilityRole="button"
+              accessibilityLabel="Clear chat"
+              hitSlop={6}
+            >
+              <AppIcon name="trash-outline" size={22} color="#e57373" />
+            </Pressable>
+          </View>
 
           <Text style={styles.section}>Disappearing messages</Text>
           <View style={staticStyles.chips}>
@@ -208,18 +222,27 @@ export function ChatSettingsSheet({
           {isGroup ? (
             <>
               <Text style={styles.section}>Group description</Text>
-              <TextInput
-                style={styles.input}
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Add a group description"
-                placeholderTextColor={colors.textDim}
-                maxLength={500}
-                multiline
-              />
-              <Pressable style={staticStyles.saveBtn} onPress={() => void saveDescription()}>
-                <Text style={styles.saveText}>Save description</Text>
-              </Pressable>
+              <View style={staticStyles.descriptionRow}>
+                <TextInput
+                  style={[styles.input, staticStyles.descriptionInput]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Add a group description"
+                  placeholderTextColor={colors.textDim}
+                  maxLength={500}
+                  multiline
+                />
+                <Pressable
+                  style={[styles.actionBtn, styles.saveBtn]}
+                  onPress={() => void saveDescription()}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save description"
+                  hitSlop={6}
+                >
+                  <AppIcon name="checkmark" size={22} color={colors.chromeInk} />
+                </Pressable>
+              </View>
 
               <Text style={styles.section}>Group photo</Text>
               <Pressable style={staticStyles.avatarRow} onPress={() => void pickGroupAvatar()}>
@@ -251,10 +274,10 @@ const staticStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-  rowIcon: { fontSize: 18, width: 24, textAlign: 'center' },
-  danger: { color: '#e57373' },
+  actionRow: { flexDirection: 'row', gap: 12, paddingVertical: 4 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  saveBtn: { marginTop: 8, alignSelf: 'flex-start', paddingVertical: 8 },
+  descriptionRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
+  descriptionInput: { flex: 1 },
   avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: {
     width: 56,
@@ -284,14 +307,6 @@ function chatSettingsStyles(c: ThemeColors) {
       paddingBottom: 28,
       maxHeight: '85%' as const,
     },
-    row: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 12,
-      paddingVertical: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: c.border,
-    },
     chip: {
       paddingHorizontal: 12,
       paddingVertical: 8,
@@ -316,6 +331,18 @@ function chatSettingsStyles(c: ThemeColors) {
       marginBottom: 8,
     },
     rowLabel: { color: c.text, fontSize: 15, fontWeight: '600' as const },
+    actionBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    actionBtnDanger: { borderColor: 'rgba(229,115,115,0.45)' },
+    saveBtn: { backgroundColor: c.chrome, borderColor: c.chrome },
     chipOn: {
       backgroundColor: c.chrome,
       borderColor: c.chrome,
@@ -332,7 +359,6 @@ function chatSettingsStyles(c: ThemeColors) {
       borderColor: c.border,
       textAlignVertical: 'top' as const,
     },
-    saveText: { color: c.link, fontWeight: '700' as const },
     closeText: { color: c.link, fontWeight: '700' as const },
   };
 }

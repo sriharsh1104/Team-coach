@@ -203,6 +203,7 @@ export function OrgHomeScreen({ navigation }: Props) {
     <Screen padBottom={false}>
       <AppShellHeader
         title={org?.name ?? detail?.name ?? 'Team Chat'}
+        showPing
         onMenu={() => setMenuOpen(true)}
         onSettings={() => setSettingsMenuOpen(true)}
         subtitle={

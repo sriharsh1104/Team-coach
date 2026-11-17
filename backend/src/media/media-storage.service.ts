@@ -93,6 +93,16 @@ export class MediaStorageService {
         secure: true,
       });
       this.logger.log(`Cloudinary storage enabled (folder=${this.folder})`);
+    } else if (process.env.NODE_ENV === 'production') {
+      // Render / most PaaS containers have an ephemeral disk: every chat
+      // photo, video, group avatar and profile picture written here is gone
+      // the next time the service restarts or spins down — the API then
+      // 404s on their URLs and the app shows blank bubbles. Only a VPS with
+      // a persistent volume (docker-compose.prod.yml mounts `uploads`) or
+      // Cloudinary keeps them.
+      this.logger.warn(
+        'Cloudinary not configured — uploads go to local disk. On Render/PaaS this disk is EPHEMERAL: media will vanish on restart. Set CLOUDINARY_* or run on a VPS with the uploads volume.',
+      );
     } else {
       this.logger.log('Cloudinary not configured — using local MEDIA_UPLOAD_DIR');
     }
