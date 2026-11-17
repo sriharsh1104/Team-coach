@@ -49,4 +49,6 @@ export type MainStackParamList = {
   RuleBook: undefined;
   PointsTable: undefined;
   SocialHandles: undefined;
+  Games: undefined;
+  GameRoom: { roomId: string; game?: 'rps' | 'ludo' };
 };

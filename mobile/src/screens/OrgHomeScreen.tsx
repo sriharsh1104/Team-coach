@@ -100,6 +100,11 @@ export function OrgHomeScreen({ navigation }: Props) {
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Voice' }),
       },
       {
+        key: 'games',
+        label: 'Games',
+        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),
+      },
+      {
         key: 'maps',
         label: 'Maps',
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Maps' }),

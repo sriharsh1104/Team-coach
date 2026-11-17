@@ -3,6 +3,10 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
+// three.js resolves to build/three.cjs under Metro (no package-exports
+// support); needed for the 3D game boards (@react-three/fiber + expo-gl).
+config.resolver.sourceExts = [...config.resolver.sourceExts, 'cjs'];
+
 // RN 0.76 ships Platform.ios.js / Platform.android.js only. When Metro
 // bundles a deep react-native StyleSheet file for web, the relative
 // `../Utilities/Platform` import has nothing to resolve — map it to

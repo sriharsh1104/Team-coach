@@ -38,6 +38,8 @@ import { MapsScreen } from '../screens/MapsScreen';
 import { RuleBookScreen } from '../screens/RuleBookScreen';
 import { PointsTableScreen } from '../screens/PointsTableScreen';
 import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
+import { GamesHubScreen } from '../screens/games/GamesHubScreen';
+import { GameRoomScreen } from '../screens/games/GameRoomScreen';
 import { MenuButton, SideDrawer } from '../ui/SideDrawer';
 import { HeaderBackButton } from '../ui/HeaderBackButton';
 import { HeaderOrgInfo } from '../ui/HeaderOrgInfo';
@@ -491,6 +493,18 @@ export function RootNavigator() {
               component={SocialHandlesScreen}
               options={sectionOptions(orgDrawer.openWith, () => ({
                 title: 'Social Handles',
+              }))}
+            />
+            <MainStack.Screen
+              name="Games"
+              component={GamesHubScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Games' }))}
+            />
+            <MainStack.Screen
+              name="GameRoom"
+              component={GameRoomScreen}
+              options={detailOptions(({ route }) => ({
+                title: route.params?.game === 'ludo' ? 'Ludo' : route.params?.game === 'rps' ? 'Stone Paper Scissors' : 'Game',
               }))}
             />
           </MainStack.Navigator>

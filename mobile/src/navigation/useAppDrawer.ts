@@ -78,6 +78,11 @@ export function useOrgDrawer() {
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Voice' }),
       },
       {
+        key: 'games',
+        label: 'Games',
+        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),
+      },
+      {
         key: 'maps',
         label: 'Maps',
         icon: 'map-outline' as const,

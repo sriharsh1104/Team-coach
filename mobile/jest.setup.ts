@@ -161,3 +161,17 @@ jest.mock('react-native-compressor', () => ({
   getFileSize: jest.fn(async () => 1_000_000),
 }));
 
+
+// 3D game boards: expo-gl needs a real GL context; under Jest the Canvas
+// renders nothing and screens fall back to their 2D boards.
+jest.mock('expo-gl', () => ({ GLView: () => null }));
+jest.mock('@react-three/fiber/native', () => {
+  const React = require('react');
+  return {
+    Canvas: () => null,
+    useFrame: () => undefined,
+    useThree: () => ({ camera: {}, size: { width: 0, height: 0 } }),
+    extend: () => undefined,
+    __esModule: true,
+  };
+});
