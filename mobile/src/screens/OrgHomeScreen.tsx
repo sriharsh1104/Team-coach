@@ -166,6 +166,11 @@ export function OrgHomeScreen({ navigation }: Props) {
             ]
           : []),
         {
+          key: 'guildVoice',
+          label: 'Guild Voice',
+          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'GuildVoice' }),
+        },
+        {
           key: 'games',
           label: 'Games',
           onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),

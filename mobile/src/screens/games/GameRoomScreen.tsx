@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Screen } from '../../brand/Screen';
 import { GAME_CATALOG, RoomView, RpsChoice } from '../../api/games';
@@ -11,7 +11,8 @@ import { useThemedStyles } from '../../theme/useThemedStyles';
 import { emitToast } from '../../ui/toastBus';
 import { AppIcon } from '../../ui/AppIcon';
 import { IconActionButton } from '../../ui/IconActionButton';
-import { gameRoomDeepLink } from '../../games/gameLinks';
+import { shareGameInvite, ShareTarget } from '../../games/shareGameInvite';
+import { BrandShareIcon } from '../../ui/BrandShareIcon';
 import { LudoBoard, ludoColorHex } from './LudoBoard';
 import { supports3D } from '../../games/three/GameCanvas';
 import { RpsBoard } from './RpsBoard';
@@ -222,16 +223,18 @@ export function GameRoomScreen() {
     );
   }
 
-  const shareInvite = async () => {
-    try {
-      await Share.share({
-        message:
-          `🎮 Join my ${room.title} game on Sacred Esports!\n` +
-          `Open this link: ${gameRoomDeepLink(room.id)}\n` +
-          `(or open the app → Games → "${room.title}" room)`,
-      });
-    } catch {
-      emitToast('Could not open the share sheet');
+  const shareTo = async (target: ShareTarget) => {
+    const result = await shareGameInvite(target, { id: room.id, title: room.title });
+    if (result === 'failed') {
+      emitToast(
+        target === 'copy' ? 'Could not copy the invite' : 'Could not open that app. Try Copy link.',
+      );
+    } else if (result === 'copied') {
+      emitToast(
+        target === 'discord'
+          ? 'Invite copied — paste it in a Discord chat'
+          : 'Invite copied. Paste it anywhere.',
+      );
     }
   };
 
@@ -309,15 +312,49 @@ export function GameRoomScreen() {
             )}
 
             <Text style={styles.section}>Invite</Text>
-            <Pressable
-              style={styles.shareBtn}
-              onPress={() => void shareInvite()}
-              accessibilityRole="button"
-              accessibilityLabel="Share invite via WhatsApp, Discord and more"
-            >
-              <AppIcon name="share-social-outline" size={18} color={colors.link} />
-              <Text style={styles.shareText}>Share invite (WhatsApp, Discord…)</Text>
-            </Pressable>
+            <Text style={styles.subSection}>Send a join link</Text>
+            <View style={styles.shareRow}>
+              {(
+                [
+                  { target: 'whatsapp', label: 'WhatsApp' },
+                  { target: 'discord', label: 'Discord' },
+                  { target: 'telegram', label: 'Telegram' },
+                ] as const
+              ).map(({ target, label }) => (
+                <Pressable
+                  key={target}
+                  style={styles.shareTarget}
+                  onPress={() => void shareTo(target)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Invite via ${label}`}
+                >
+                  <BrandShareIcon name={target} />
+                  <Text style={styles.shareTargetText}>{label}</Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={styles.shareTarget}
+                onPress={() => void shareTo('copy')}
+                accessibilityRole="button"
+                accessibilityLabel="Copy invite link"
+              >
+                <View style={styles.shareGeneric}>
+                  <AppIcon name="copy-outline" size={20} color={colors.text} />
+                </View>
+                <Text style={styles.shareTargetText}>Copy</Text>
+              </Pressable>
+              <Pressable
+                style={styles.shareTarget}
+                onPress={() => void shareTo('more')}
+                accessibilityRole="button"
+                accessibilityLabel="More ways to share the invite"
+              >
+                <View style={styles.shareGeneric}>
+                  <AppIcon name="share-social-outline" size={20} color={colors.text} />
+                </View>
+                <Text style={styles.shareTargetText}>More</Text>
+              </Pressable>
+            </View>
 
             {invitable.length > 0 ? (
               <>
@@ -411,6 +448,10 @@ function roomStyles(c: ThemeColors) {
     waitHost: { color: c.textMuted, textAlign: 'center' as const, marginTop: 16 },
     shareBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
     shareText: { color: c.link, fontWeight: '700' as const },
+    shareRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 14, marginBottom: 6 },
+    shareTarget: { alignItems: 'center' as const, gap: 4, width: 56 },
+    shareTargetText: { color: c.textMuted, fontSize: 11, fontWeight: '600' as const },
+    shareGeneric: { width: 44, height: 44, borderRadius: 22, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
     subSection: { color: c.textDim, fontSize: 12, marginTop: 14, marginBottom: 4 },
     inviteBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
     inviteText: { color: c.link, fontWeight: '700' as const },

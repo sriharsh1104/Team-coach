@@ -342,6 +342,15 @@ export function RootNavigator() {
               }))}
             />
             <MainStack.Screen
+              name="GuildVoice"
+              getComponent={() =>
+                require('../screens/voice/VoiceChannelScreen').GuildVoiceScreen
+              }
+              options={sectionOptions(guildDrawer.openWith, () => ({
+                title: 'Guild Voice',
+              }))}
+            />
+            <MainStack.Screen
               name="Games"
               component={GamesHubScreen}
               options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Games' }))}
@@ -507,6 +516,15 @@ export function RootNavigator() {
               component={SocialHandlesScreen}
               options={sectionOptions(orgDrawer.openWith, () => ({
                 title: 'Social Handles',
+              }))}
+            />
+            <MainStack.Screen
+              name="GuildVoice"
+              getComponent={() =>
+                require('../screens/voice/VoiceChannelScreen').GuildVoiceScreen
+              }
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Guild Voice',
               }))}
             />
             <MainStack.Screen

@@ -43,6 +43,42 @@ class ScreenRecorderModule : Module() {
       activity.startActivity(Intent(activity, CapturePermissionActivity::class.java))
     }
 
+    // Foreground service that keeps an active voice channel alive in the
+    // background (see VoiceKeepAliveService). Both calls are safe to repeat.
+    Function("startVoiceService") { title: String, text: String ->
+      val context = appContext.reactContext ?: return@Function false
+      val intent = Intent(context, VoiceKeepAliveService::class.java).apply {
+        action = VoiceKeepAliveService.ACTION_START
+        putExtra(VoiceKeepAliveService.EXTRA_TITLE, title)
+        putExtra(VoiceKeepAliveService.EXTRA_TEXT, text)
+      }
+      try {
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+          context.startForegroundService(intent)
+        } else {
+          context.startService(intent)
+        }
+        true
+      } catch (_: Exception) {
+        false
+      }
+    }
+
+    Function("stopVoiceService") {
+      val context = appContext.reactContext ?: return@Function false
+      try {
+        context.startService(
+          Intent(context, VoiceKeepAliveService::class.java).apply {
+            action = VoiceKeepAliveService.ACTION_STOP
+          },
+        )
+        true
+      } catch (_: Exception) {
+        // Service not running (or app in background and not allowed) — nothing to stop.
+        false
+      }
+    }
+
     AsyncFunction("stop") { promise: Promise ->
       if (!RecordBridge.recording.get()) {
         promise.resolve(null)

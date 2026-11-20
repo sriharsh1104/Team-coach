@@ -1,7 +1,7 @@
 import React from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
-import { VoiceChannelScreen } from '../VoiceChannelScreen';
+import { VoiceChannelScreen, GuildVoiceScreen } from '../VoiceChannelScreen';
 import { VoiceProvider } from '../../../voice/VoiceContext';
 import * as voiceApi from '../../../api/voice';
 import { useHostedVoiceChannel } from '../../../voice/useHostedVoiceChannel';
@@ -90,7 +90,7 @@ describe('VoiceChannelScreen', () => {
     renderWithVoice(<VoiceChannelScreen />);
 
     await screen.findByText('Team Voice');
-    expect(mockedUseSelfHosted).toHaveBeenCalledWith('token-abc');
+    expect(mockedUseSelfHosted).toHaveBeenCalledWith('token-abc', 'team');
     expect(mockedUseHosted).not.toHaveBeenCalled();
   });
 
@@ -193,3 +193,116 @@ describe('VoiceChannelScreen', () => {
     await screen.findByText('Muted for you');
   });
 });
+
+describe('GuildVoiceScreen', () => {
+  const guildController = (overrides: Partial<any> = {}) =>
+    controller({
+      room: 'guild',
+      status: 'connected',
+      roomCount: 3,
+      roomMax: 50,
+      canModerate: false,
+      isHostMuted: false,
+      isListenOnly: false,
+      participants: [
+        {
+          id: 'p1',
+          name: 'Teammate',
+          isLocallyMuted: false,
+          isHostMuted: false,
+          isModerator: false,
+        },
+      ],
+      ...overrides,
+    });
+
+  beforeEach(async () => {
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
+    mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
+  });
+
+  it('joins the guild room and shows the 50-person capacity', async () => {
+    mockedUseSelfHosted.mockReturnValue(guildController());
+    renderWithVoice(<GuildVoiceScreen />);
+
+    await screen.findByText('Guild Voice');
+    expect(mockedUseSelfHosted).toHaveBeenCalledWith('token-abc', 'guild');
+    await screen.findByText('3 / 50 in voice');
+  });
+
+  it('is not available when the server uses hosted (LiveKit) voice', async () => {
+    mockedVoiceApi.getVoiceConfig.mockResolvedValue({
+      mode: 'hosted',
+      url: 'wss://livekit.example.com',
+      token: 'lk-token',
+    });
+    renderWithVoice(<GuildVoiceScreen />);
+
+    await screen.findByText(/Guild voice needs the self-hosted voice server/);
+  });
+
+  it('hides host controls from regular members', async () => {
+    mockedUseSelfHosted.mockReturnValue(guildController());
+    renderWithVoice(<GuildVoiceScreen />);
+
+    await screen.findByText('Teammate');
+    expect(screen.queryByText('Mute all')).toBeNull();
+    expect(screen.queryByLabelText('Mute Teammate for everyone')).toBeNull();
+    expect(screen.queryByLabelText('Kick Teammate')).toBeNull();
+  });
+
+  it('lets a host mute all, unmute all and mute one person', async () => {
+    const muteAll = jest.fn();
+    const unmuteAll = jest.fn();
+    const setParticipantHostMuted = jest.fn();
+    mockedUseSelfHosted.mockReturnValue(
+      guildController({ canModerate: true, muteAll, unmuteAll, setParticipantHostMuted }),
+    );
+    renderWithVoice(<GuildVoiceScreen />);
+
+    fireEvent.press(await screen.findByText('Mute all'));
+    expect(muteAll).toHaveBeenCalled();
+    fireEvent.press(screen.getByText('Unmute all'));
+    expect(unmuteAll).toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText('Mute Teammate for everyone'));
+    expect(setParticipantHostMuted).toHaveBeenCalledWith('p1', true);
+  });
+
+  it('offers unmute for a person a host muted, and never offers mute on another host', async () => {
+    const setParticipantHostMuted = jest.fn();
+    mockedUseSelfHosted.mockReturnValue(
+      guildController({
+        canModerate: true,
+        setParticipantHostMuted,
+        participants: [
+          { id: 'p1', name: 'Teammate', isLocallyMuted: false, isHostMuted: true, isModerator: false },
+          { id: 'h2', name: 'Leader', isLocallyMuted: false, isHostMuted: false, isModerator: true },
+        ],
+      }),
+    );
+    renderWithVoice(<GuildVoiceScreen />);
+
+    await screen.findByText('Muted by host');
+    fireEvent.press(screen.getByLabelText('Unmute Teammate for everyone'));
+    expect(setParticipantHostMuted).toHaveBeenCalledWith('p1', false);
+    expect(screen.queryByLabelText('Mute Leader for everyone')).toBeNull();
+    expect(screen.queryByLabelText('Kick Leader')).toBeNull();
+  });
+
+  it('tells a muted member they were muted and shows the mic as locked', async () => {
+    mockedUseSelfHosted.mockReturnValue(guildController({ isHostMuted: true }));
+    renderWithVoice(<GuildVoiceScreen />);
+
+    await screen.findByText('A host muted you.');
+    expect(screen.getByLabelText('Muted by host')).toBeTruthy();
+  });
+
+  it('shows the listen-only banner to everyone', async () => {
+    mockedUseSelfHosted.mockReturnValue(guildController({ isListenOnly: true, isHostMuted: true }));
+    renderWithVoice(<GuildVoiceScreen />);
+
+    await screen.findByText('Listen-only mode — only hosts can speak right now.');
+  });
+});
+

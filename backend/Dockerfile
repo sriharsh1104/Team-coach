@@ -83,7 +83,7 @@ USER appuser
 
 EXPOSE 3000
 # mediasoup RTC range (published in docker-compose.prod.yml)
-EXPOSE 40000-40100/udp 40000-40100/tcp
+EXPOSE 40000-40200/udp 40000-40200/tcp
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "dist/main"]

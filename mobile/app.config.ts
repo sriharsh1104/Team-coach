@@ -74,6 +74,11 @@ const expoConfig: ExpoConfig = {
       'POST_NOTIFICATIONS',
       'FOREGROUND_SERVICE',
       'FOREGROUND_SERVICE_MEDIA_PROJECTION',
+      // Keeps the voice-channel mic alive when the app is backgrounded.
+      'FOREGROUND_SERVICE_MICROPHONE',
+      'WAKE_LOCK',
+      // In-app APK updates: lets the downloaded update open Android's installer.
+      'REQUEST_INSTALL_PACKAGES',
       'CAMERA',
       'READ_MEDIA_IMAGES',
       'READ_MEDIA_VIDEO',

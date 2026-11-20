@@ -8,6 +8,29 @@ import { parseGameRoomLink } from './gameLinks';
 const handledKeys = new Set<string>();
 let initialUrlChecked = false;
 
+/**
+ * A shared link can arrive while nobody is mounted to handle it (signed out,
+ * still on the login screen). Keep the room id and open it as soon as the
+ * bridge mounts after sign-in, instead of dropping the invite.
+ */
+let activeOpen: ((roomId: string) => void) | null = null;
+let pendingRoomId: string | null = null;
+let linkListenerInstalled = false;
+
+function handleIncomingUrl(url: string | null | undefined) {
+  const roomId = parseGameRoomLink(url);
+  if (!roomId) return;
+  if (activeOpen) activeOpen(roomId);
+  else pendingRoomId = roomId;
+}
+
+function ensureLinkListener() {
+  if (linkListenerInstalled) return;
+  linkListenerInstalled = true;
+  Linking.addEventListener('url', ({ url }) => handleIncomingUrl(url));
+}
+ensureLinkListener();
+
 type NotificationResponseLike = {
   actionIdentifier?: string;
   notification: {
@@ -52,20 +75,23 @@ export function GameInviteBridge() {
     },
   });
 
-  // Shared link (cold start + while running).
+  // Shared link (cold start + while running + received before sign-in).
   useEffect(() => {
-    const handle = (url: string | null) => {
-      const roomId = parseGameRoomLink(url);
-      if (roomId) openRoom(roomId);
-    };
+    activeOpen = (roomId) => openRoom(roomId);
+    if (pendingRoomId) {
+      const roomId = pendingRoomId;
+      pendingRoomId = null;
+      openRoom(roomId);
+    }
     if (!initialUrlChecked) {
       initialUrlChecked = true;
       Linking.getInitialURL()
-        .then(handle)
+        .then(handleIncomingUrl)
         .catch(() => undefined);
     }
-    const sub = Linking.addEventListener('url', ({ url }) => handle(url));
-    return () => sub.remove();
+    return () => {
+      activeOpen = null;
+    };
   }, [openRoom]);
 
   // Tapping the "X invited you to play" push notification.

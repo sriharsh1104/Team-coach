@@ -12,7 +12,7 @@ export type VoiceActivation =
   // Hosted (LiveKit): url + room token from GET /voice/config.
   | { mode: 'hosted'; url: string; token: string }
   // Self-hosted (mediasoup): our own API JWT for the /voice socket.
-  | { mode: 'self'; token: string };
+  | { mode: 'self'; token: string; room?: 'team' | 'guild' };
 
 type VoiceContextValue = {
   /** Currently active controller, or null when not in a voice session. */
@@ -73,16 +73,18 @@ function HostedVoiceHolder({
  */
 function SelfHostedVoiceHolder({
   token,
+  room,
   onController,
 }: {
   token: string;
+  room: 'team' | 'guild';
   onController: (c: VoiceChannelController) => void;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { useSelfHostedVoiceChannel } = require('./useSelfHostedVoiceChannel') as {
     useSelfHostedVoiceChannel: typeof import('./useSelfHostedVoiceChannel').useSelfHostedVoiceChannel;
   };
-  const controller = useSelfHostedVoiceChannel(token);
+  const controller = useSelfHostedVoiceChannel(token, room);
 
   useEffect(() => {
     onController(controller);
@@ -112,7 +114,12 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const activate = useCallback((config: VoiceActivation) => {
     setActivation((prev) => {
       // Same session already active → keep it (and its connection) as-is.
-      if (prev && prev.mode === config.mode && prev.token === config.token) {
+      if (
+        prev &&
+        prev.mode === config.mode &&
+        prev.token === config.token &&
+        (prev.mode !== 'self' || config.mode !== 'self' || (prev.room ?? 'team') === (config.room ?? 'team'))
+      ) {
         if (prev.mode === 'hosted' && config.mode === 'hosted' && prev.url !== config.url) {
           return config;
         }
@@ -144,8 +151,9 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       ) : null}
       {activation?.mode === 'self' ? (
         <SelfHostedVoiceHolder
-          key={`self:${activation.token}`}
+          key={`self:${activation.room ?? 'team'}:${activation.token}`}
           token={activation.token}
+          room={activation.room ?? 'team'}
           onController={handleController}
         />
       ) : null}

@@ -17,6 +17,8 @@ export function VoiceFloatingWidget() {
   const slideAnim = useRef(new Animated.Value(120)).current;
 
   const isConnected = controller?.status === 'connected';
+  const isGuild = controller?.room === 'guild';
+  const micOff = !!controller && (controller.isMuted || !!controller.isHostMuted);
   const shouldShow = isConnected && !isScreenFocused;
 
   useEffect(() => {
@@ -35,7 +37,8 @@ export function VoiceFloatingWidget() {
   };
 
   const handleOpen = () => {
-    navigation.navigate('OrgHome', { screen: 'Voice' });
+    if (isGuild) navigation.navigate('GuildVoice');
+    else navigation.navigate('OrgHome', { screen: 'Voice' });
   };
 
   return (
@@ -49,7 +52,7 @@ export function VoiceFloatingWidget() {
       <Pressable style={styles.pill} onPress={handleOpen} accessibilityLabel="Open voice">
         {/* Green dot = live */}
         <View style={styles.liveDot} />
-        <Text style={styles.label}>Voice</Text>
+        <Text style={styles.label}>{isGuild ? 'Guild Voice' : 'Voice'}</Text>
         <Text style={styles.sub}>
           {controller.participants.length} member{controller.participants.length !== 1 ? 's' : ''}
         </Text>
@@ -57,14 +60,14 @@ export function VoiceFloatingWidget() {
 
       {/* Mute / unmute */}
       <Pressable
-        style={[styles.iconBtn, controller.isMuted && styles.iconBtnMuted]}
+        style={[styles.iconBtn, micOff && styles.iconBtnMuted]}
         onPress={() => controller.toggleMute()}
-        accessibilityLabel={controller.isMuted ? 'Unmute' : 'Mute'}
+        accessibilityLabel={controller.isHostMuted ? 'Muted by host' : controller.isMuted ? 'Unmute' : 'Mute'}
       >
         <AppIcon
-          name={controller.isMuted ? 'mic-off' : 'mic'}
+          name={micOff ? 'mic-off' : 'mic'}
           size={18}
-          color={controller.isMuted ? '#ef4444' : '#fff'}
+          color={micOff ? '#ef4444' : '#fff'}
         />
       </Pressable>
 

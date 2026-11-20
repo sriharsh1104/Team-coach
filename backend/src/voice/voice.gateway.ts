@@ -8,6 +8,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
+import { GuildRole, MembershipRole } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import {
@@ -23,10 +24,31 @@ import { MediasoupSfuService } from './mediasoup-sfu.service';
 import { WsRateLimiter } from '../common/ws-rate-limiter';
 import { corsOrigin } from '../common/cors-origin';
 
+/** 'team' = org roster voice (existing); 'guild' = guild-wide voice with host controls. */
+type VoiceRoomKind = 'team' | 'guild';
+
+/** Hard cap for Guild Voice — one extra join past this is refused. */
+export const GUILD_VOICE_MAX_PARTICIPANTS = 50;
+
+/** Server-side mute state of one guild room. Only non-moderators are ever muted. */
+interface GuildRoomState {
+  /** "Mute all": everyone but moderators is silent unless individually unmuted. */
+  listenOnly: boolean;
+  /** Explicitly muted by a moderator. */
+  hostMuted: Set<string>;
+  /** Explicitly allowed to speak while listenOnly is on. */
+  speakers: Set<string>;
+}
+
 interface VoiceSocketData {
   userId: string;
   userName: string;
   orgId: string;
+  /** Key used for the SFU router + socket.io room (orgId for team, `guild:${orgId}`). */
+  roomKey: string;
+  kind: VoiceRoomKind;
+  /** Guild only: owner / coach / guild leader — may mute, unmute and kick. */
+  canModerate: boolean;
   transports: Map<string, WebRtcTransport>;
   producers: Map<string, Producer>;
   consumers: Map<string, Consumer>;
@@ -50,6 +72,8 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   // orgId -> userIds with a raised hand. Purely signaling state; cleared when
   // the user disconnects.
   private readonly raisedHands = new Map<string, Set<string>>();
+  // roomKey -> host mute state (guild rooms only).
+  private readonly guildRooms = new Map<string, GuildRoomState>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -95,19 +119,38 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
         if (user.tokenVersion !== payload.tokenVersion) {
           throw new Error('Session has been logged out');
         }
-        const orgId = await this.chatService.getOrgIdForUser(payload.sub);
+        const kind: VoiceRoomKind =
+          socket.handshake.auth?.room === 'guild' ? 'guild' : 'team';
+
+        let orgId: string;
+        let canModerate = false;
+        if (kind === 'guild') {
+          const access = await this.resolveGuildAccess(user.id);
+          orgId = access.orgId;
+          canModerate = access.canModerate;
+        } else {
+          orgId = await this.chatService.getOrgIdForUser(payload.sub);
+        }
+        const roomKey = kind === 'guild' ? `guild:${orgId}` : orgId;
+
+        if (kind === 'guild') {
+          await this.assertGuildCapacity(roomKey, user.id);
+        }
 
         const data: VoiceSocketData = {
           userId: user.id,
           userName: user.name,
           orgId,
+          roomKey,
+          kind,
+          canModerate,
           transports: new Map(),
           producers: new Map(),
           consumers: new Map(),
         };
         socket.data = data;
-        await socket.join(this.roomFor(orgId));
-        await this.sfu.getOrCreateRoom(orgId);
+        await socket.join(this.roomFor(roomKey));
+        await this.sfu.getOrCreateRoom(roomKey);
         next();
       } catch (err) {
         this.logger.warn(`Rejected voice connection: ${(err as Error).message}`);
@@ -123,7 +166,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     const partial = client.data as Partial<VoiceSocketData>;
     if (!partial?.orgId) return;
     const data = partial as VoiceSocketData;
-    const room = this.roomFor(data.orgId);
+    const room = this.roomFor(data.roomKey);
 
     this.closeMedia(data);
     for (const producerId of data.producers.keys()) {
@@ -131,10 +174,10 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     }
     data.producers.clear();
 
-    const hands = this.raisedHands.get(data.orgId);
+    const hands = this.raisedHands.get(data.roomKey);
     if (hands?.delete(data.userId)) {
       this.server.to(room).emit('handRaised', { userId: data.userId, raised: false });
-      if (hands.size === 0) this.raisedHands.delete(data.orgId);
+      if (hands.size === 0) this.raisedHands.delete(data.roomKey);
     }
 
     this.server.to(room).emit('peerLeft', { userId: data.userId });
@@ -143,7 +186,10 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     // Tear the router down once the last peer is gone.
     try {
       const remaining = await this.server.in(room).fetchSockets();
-      this.sfu.closeRoomIfEmpty(data.orgId, remaining.length);
+      this.sfu.closeRoomIfEmpty(data.roomKey, remaining.length);
+      if (data.kind === 'guild') {
+        await this.afterGuildLeave(data, remaining);
+      }
     } catch (err) {
       this.logger.warn(`fetchSockets failed on disconnect: ${(err as Error).message}`);
     }
@@ -152,7 +198,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   /** Closes every mediasoup object this socket owns (transports close producers/consumers too). */
   private closeMedia(data: VoiceSocketData) {
     for (const producer of data.producers.values()) {
-      this.sfu.unregisterProducer(data.orgId, producer.id);
+      this.sfu.unregisterProducer(data.roomKey, producer.id);
     }
     for (const transport of data.transports.values()) {
       transport.close();
@@ -171,7 +217,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   async onGetRtpCapabilities(@ConnectedSocket() client: Socket) {
     this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
-    const room = await this.sfu.getOrCreateRoom(data.orgId);
+    const room = await this.sfu.getOrCreateRoom(data.roomKey);
     return room.router.rtpCapabilities;
   }
 
@@ -179,9 +225,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   onGetProducers(@ConnectedSocket() client: Socket) {
     this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
-    const hands = this.raisedHands.get(data.orgId);
+    const hands = this.raisedHands.get(data.roomKey);
     return this.sfu
-      .listProducers(data.orgId)
+      .listProducers(data.roomKey)
       .filter((p) => p.userId !== data.userId)
       .map((p) => ({ ...p, handRaised: hands?.has(p.userId) ?? false }));
   }
@@ -190,7 +236,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   async onCreateTransport(@ConnectedSocket() client: Socket) {
     this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
-    const transport = await this.sfu.createWebRtcTransport(data.orgId);
+    const transport = await this.sfu.createWebRtcTransport(data.roomKey);
     data.transports.set(transport.id, transport);
 
     return {
@@ -231,18 +277,27 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     });
     data.producers.set(producer.id, producer);
 
-    await this.sfu.registerProducer(data.orgId, producer, {
+    await this.sfu.registerProducer(data.roomKey, producer, {
       producerId: producer.id,
       userId: data.userId,
       userName: data.userName,
       kind: 'audio',
     });
 
-    client.to(this.roomFor(data.orgId)).emit('newProducer', {
+    client.to(this.roomFor(data.roomKey)).emit('newProducer', {
       producerId: producer.id,
       userId: data.userId,
       userName: data.userName,
     });
+
+    if (data.kind === 'guild') {
+      // A late joiner (or one who re-produces after a reconnect) must come in
+      // silenced if the host already muted them / turned on listen-only.
+      if (this.isHostMuted(data.roomKey, data)) {
+        await producer.pause().catch(() => undefined);
+      }
+      void this.broadcastVoiceState(data.roomKey);
+    }
 
     return { id: producer.id };
   }
@@ -262,7 +317,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     const transport = data.transports.get(body.transportId);
     if (!transport) throw new Error('Unknown transport');
 
-    const room = await this.sfu.getOrCreateRoom(data.orgId);
+    const room = await this.sfu.getOrCreateRoom(data.roomKey);
     const rtpCapabilities = body.rtpCapabilities as never;
     if (!room.router.canConsume({ producerId: body.producerId, rtpCapabilities })) {
       throw new Error('Cannot consume this producer');
@@ -303,17 +358,86 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
     const raised = !!body?.raised;
-    let hands = this.raisedHands.get(data.orgId);
+    let hands = this.raisedHands.get(data.roomKey);
     if (!hands) {
       hands = new Set();
-      this.raisedHands.set(data.orgId, hands);
+      this.raisedHands.set(data.roomKey, hands);
     }
     if (raised) hands.add(data.userId);
     else hands.delete(data.userId);
     client
-      .to(this.roomFor(data.orgId))
+      .to(this.roomFor(data.roomKey))
       .emit('handRaised', { userId: data.userId, raised });
     return { raised };
+  }
+
+  /** Current host-mute state; joiners call this once after connecting. */
+  @SubscribeMessage('getVoiceState')
+  async onGetVoiceState(@ConnectedSocket() client: Socket) {
+    this.assertNotRateLimited(client);
+    const data = client.data as VoiceSocketData;
+    const sockets = await this.server.in(this.roomFor(data.roomKey)).fetchSockets();
+    return {
+      ...this.buildVoiceState(data.roomKey, sockets),
+      userId: data.userId,
+      canModerate: data.canModerate,
+    };
+  }
+
+  /** Moderator: everyone but moderators goes listen-only. */
+  @SubscribeMessage('muteAll')
+  async onMuteAll(@ConnectedSocket() client: Socket) {
+    const data = this.assertModerator(client);
+    const state = this.guildState(data.roomKey);
+    state.listenOnly = true;
+    state.hostMuted.clear();
+    state.speakers.clear();
+    await this.broadcastVoiceState(data.roomKey);
+    return { ok: true };
+  }
+
+  /** Moderator: lifts listen-only and every individual mute. */
+  @SubscribeMessage('unmuteAll')
+  async onUnmuteAll(@ConnectedSocket() client: Socket) {
+    const data = this.assertModerator(client);
+    const state = this.guildState(data.roomKey);
+    state.listenOnly = false;
+    state.hostMuted.clear();
+    state.speakers.clear();
+    await this.broadcastVoiceState(data.roomKey);
+    return { ok: true };
+  }
+
+  /** Moderator: mute / unmute one person (works inside or outside listen-only). */
+  @SubscribeMessage('muteUser')
+  async onMuteUser(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { userId: string; muted: boolean },
+  ) {
+    const data = this.assertModerator(client);
+    const targetId = body?.userId;
+    if (!targetId || typeof body.muted !== 'boolean') {
+      throw new Error('Invalid mute request');
+    }
+    const sockets = await this.server.in(this.roomFor(data.roomKey)).fetchSockets();
+    const target = sockets.find(
+      (s) => (s.data as Partial<VoiceSocketData>)?.userId === targetId,
+    );
+    if (!target) throw new Error('That person is not in the voice room');
+    if ((target.data as VoiceSocketData).canModerate) {
+      throw new Error('Hosts cannot be muted');
+    }
+
+    const state = this.guildState(data.roomKey);
+    if (body.muted) {
+      state.speakers.delete(targetId);
+      state.hostMuted.add(targetId);
+    } else {
+      state.hostMuted.delete(targetId);
+      if (state.listenOnly) state.speakers.add(targetId);
+    }
+    await this.broadcastVoiceState(data.roomKey);
+    return { ok: true };
   }
 
   /**
@@ -332,13 +456,19 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (!targetId || targetId === data.userId) {
       throw new Error('Invalid kick target');
     }
-    const allowed = await this.membershipService.hasEditAccess(
-      data.userId,
-      data.orgId,
-    );
-    if (!allowed) throw new Error('Only the org owner or a coach can kick');
+    const allowed =
+      data.kind === 'guild'
+        ? data.canModerate
+        : await this.membershipService.hasEditAccess(data.userId, data.orgId);
+    if (!allowed) {
+      throw new Error(
+        data.kind === 'guild'
+          ? 'Only the owner or guild leaders can remove people'
+          : 'Only the org owner or a coach can kick',
+      );
+    }
 
-    const sockets = await this.server.in(this.roomFor(data.orgId)).fetchSockets();
+    const sockets = await this.server.in(this.roomFor(data.roomKey)).fetchSockets();
     let kicked = 0;
     for (const s of sockets) {
       if ((s.data as Partial<VoiceSocketData>)?.userId !== targetId) continue;
@@ -347,6 +477,147 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
       kicked += 1;
     }
     return { kicked };
+  }
+
+  private assertModerator(client: Socket): VoiceSocketData {
+    this.assertNotRateLimited(client);
+    const data = client.data as VoiceSocketData;
+    if (data.kind !== 'guild' || !data.canModerate) {
+      throw new Error('Only the owner or guild leaders can do that');
+    }
+    return data;
+  }
+
+  /**
+   * Guild voice is open to every guild member (roster or guild-only seat).
+   * Owner, coach and guild leaders/elders are "hosts".
+   */
+  private async resolveGuildAccess(userId: string) {
+    const [roster, guild] = await Promise.all([
+      this.prisma.membership.findFirst({ where: { userId } }),
+      this.prisma.guildMembership.findFirst({ where: { userId } }),
+    ]);
+    const orgId = roster?.orgId ?? guild?.orgId;
+    if (!orgId) throw new Error('You are not part of a guild yet');
+    const rosterHost =
+      !!roster && (roster.isOwner || roster.role === MembershipRole.COACH);
+    const guildHost =
+      !!guild &&
+      guild.orgId === orgId &&
+      (guild.role === GuildRole.LEADER ||
+        guild.role === GuildRole.ELDER ||
+        guild.role === GuildRole.ACTIVE_LEADER);
+    return { orgId, canModerate: rosterHost || guildHost };
+  }
+
+  /**
+   * Max 50 people at once. A second connection by someone already inside
+   * (stale socket after a reconnect, or another device) replaces the old one
+   * instead of counting twice.
+   */
+  private async assertGuildCapacity(roomKey: string, userId: string) {
+    const sockets = await this.server.in(this.roomFor(roomKey)).fetchSockets();
+    const others = new Set<string>();
+    for (const s of sockets) {
+      const id = (s.data as Partial<VoiceSocketData>)?.userId;
+      if (!id) continue;
+      if (id === userId) {
+        s.emit('kicked', { by: 'another device' });
+        s.disconnect(true);
+      } else {
+        others.add(id);
+      }
+    }
+    if (others.size >= GUILD_VOICE_MAX_PARTICIPANTS) {
+      throw new Error(
+        `Guild voice is full (${GUILD_VOICE_MAX_PARTICIPANTS} people max). Try again in a bit.`,
+      );
+    }
+  }
+
+  private guildState(roomKey: string): GuildRoomState {
+    let state = this.guildRooms.get(roomKey);
+    if (!state) {
+      state = { listenOnly: false, hostMuted: new Set(), speakers: new Set() };
+      this.guildRooms.set(roomKey, state);
+    }
+    return state;
+  }
+
+  private isHostMuted(roomKey: string, data: VoiceSocketData): boolean {
+    if (data.kind !== 'guild' || data.canModerate) return false;
+    const state = this.guildRooms.get(roomKey);
+    if (!state) return false;
+    if (state.hostMuted.has(data.userId)) return true;
+    return state.listenOnly && !state.speakers.has(data.userId);
+  }
+
+  private buildVoiceState(roomKey: string, sockets: Array<{ data: unknown }>) {
+    const mutedIds: string[] = [];
+    const moderatorIds: string[] = [];
+    const users = new Set<string>();
+    for (const s of sockets) {
+      const d = s.data as Partial<VoiceSocketData>;
+      if (!d?.userId) continue;
+      users.add(d.userId);
+      if (d.canModerate) moderatorIds.push(d.userId);
+      else if (this.isHostMuted(roomKey, d as VoiceSocketData)) mutedIds.push(d.userId);
+    }
+    return {
+      listenOnly: this.guildRooms.get(roomKey)?.listenOnly ?? false,
+      mutedIds,
+      moderatorIds,
+      count: users.size,
+      max: GUILD_VOICE_MAX_PARTICIPANTS,
+    };
+  }
+
+  /**
+   * Pushes the mute state to every client and enforces it on the server:
+   * a host-muted user's producer is paused here, so even a modified client
+   * that ignores the "muted" flag cannot be heard.
+   */
+  private async broadcastVoiceState(roomKey: string) {
+    try {
+      const room = this.roomFor(roomKey);
+      const sockets = await this.server.in(room).fetchSockets();
+      for (const s of sockets) {
+        const d = s.data as Partial<VoiceSocketData>;
+        if (typeof d?.producers?.values !== 'function') continue;
+        const muted = this.isHostMuted(roomKey, d as VoiceSocketData);
+        for (const producer of d.producers.values()) {
+          if (muted && !producer.paused) await producer.pause();
+          if (!muted && producer.paused) await producer.resume();
+        }
+      }
+      this.server.to(room).emit('voiceState', this.buildVoiceState(roomKey, sockets));
+    } catch (err) {
+      this.logger.warn(`broadcastVoiceState failed: ${(err as Error).message}`);
+    }
+  }
+
+  /** Never leave a room muted with nobody left who can unmute it. */
+  private async afterGuildLeave(
+    data: VoiceSocketData,
+    remaining: Array<{ data: unknown }>,
+  ) {
+    if (remaining.length === 0) {
+      this.guildRooms.delete(data.roomKey);
+      return;
+    }
+    const state = this.guildRooms.get(data.roomKey);
+    if (!state) return;
+    // hostMuted / speakers are kept on purpose: leaving and rejoining must
+    // not be a way around a mute. They reset when the room empties.
+    const hostLeft = remaining.every(
+      (s) => !(s.data as Partial<VoiceSocketData>)?.canModerate,
+    );
+    if (hostLeft) {
+      state.listenOnly = false;
+      state.hostMuted.clear();
+      state.speakers.clear();
+    }
+    await this.broadcastVoiceState(data.roomKey);
   }
 
   private roomFor(orgId: string) {

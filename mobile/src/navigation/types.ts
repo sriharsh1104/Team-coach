@@ -45,6 +45,7 @@ export type MainStackParamList = {
   };
   PlayerStats: { userId: string; name: string; mode: StatMode };
   Voice: undefined;
+  GuildVoice: undefined;
   Maps: undefined;
   RuleBook: undefined;
   PointsTable: undefined;

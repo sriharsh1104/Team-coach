@@ -176,8 +176,8 @@ sudo certbot --nginx -d api.yourdomain.com
 sudo ufw allow OpenSSH
 sudo ufw allow 'Nginx Full'
 # Allow mediasoup UDP range (voice calls)
-sudo ufw allow 40000:40100/udp
-sudo ufw allow 40000:40100/tcp
+sudo ufw allow 40000:40200/udp
+sudo ufw allow 40000:40200/tcp
 sudo ufw enable
 ```
 
@@ -194,11 +194,11 @@ Without `CLOUDINARY_*` the API writes uploads to `MEDIA_UPLOAD_DIR` on local dis
 ### Voice (mediasoup) checklist
 
 Voice signaling goes over the normal API port, but the **audio itself** goes
-over WebRTC on ports 40000–40100. All three must be true or you get
+over WebRTC on ports 40000–40200. All three must be true or you get
 "connected" with no sound:
 
 1. `backend/.env.production` → `MEDIASOUP_ANNOUNCED_IP=<VPS public IP>` (not 127.0.0.1)
-2. `docker-compose.prod.yml` publishes `40000-40100` udp+tcp on the backend service (already done)
+2. `docker-compose.prod.yml` publishes `40000-40200` udp+tcp on the backend service (already done)
 3. Firewall (ufw above, **and** the Contabo panel firewall if enabled) allows the same range
 
 Verify after `docker compose up`:
@@ -273,3 +273,29 @@ docker compose -f docker-compose.prod.yml down
 # Stop everything AND delete volumes (DESTRUCTIVE — loses all DB data)
 docker compose -f docker-compose.prod.yml down -v
 ```
+
+## Releasing a new APK (in-app update popup)
+
+While the app is shared as an APK (no Play Store), existing users get an
+"Update available" popup that downloads and installs the new build in-app.
+
+1. Bump `version` in `mobile/app.config.ts` (e.g. `1.0.2` → `1.0.3`) and build the APK.
+   **Sign it with the same keystore as the previous builds** — Android refuses to
+   update an app over a build signed with a different key.
+2. Upload the APK somewhere with a **direct** https download link (GitHub
+   Release asset, or a file served by your own nginx). Google Drive "share"
+   links do not work — they open a confirmation page, not the file.
+3. In `backend/.env.production` set:
+   ```
+   APP_LATEST_VERSION=1.0.3
+   APP_APK_URL=https://.../SacredTeamCoach.apk
+   APP_UPDATE_NOTES=Guild voice, game invite links
+   # optional: builds older than this cannot dismiss the popup
+   APP_MIN_VERSION=1.0.2
+   ```
+4. Apply it: `docker compose -f docker-compose.prod.yml up -d` (a plain `restart`
+   does not re-read the env file).
+5. Check: `curl "https://<api>/app/update?version=1.0.0"` → `"updateAvailable": true`.
+
+Only builds that already contain this feature can show the popup, so the first
+build with it must still be shared manually.

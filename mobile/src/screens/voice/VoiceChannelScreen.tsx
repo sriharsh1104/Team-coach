@@ -13,6 +13,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { getToken } from '../../storage/tokenStorage';
 import * as voiceApi from '../../api/voice';
+import type { VoiceRoomKind } from '../../api/voice';
 import { VoiceConfig, VoiceRoom } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { useVoiceContext } from '../../voice/VoiceContext';
@@ -250,6 +251,8 @@ type ListItem =
       isHandRaised: boolean;
       localVolume: number;
       connectionQuality: ConnectionQualityLevel;
+      isHostMuted?: boolean;
+      isModerator?: boolean;
       isSelf: true;
     };
 
@@ -301,12 +304,14 @@ function VoicePresetPicker() {
 function VoiceChannelBody({
   voice,
   channelName,
+  channelLabel = 'VOICE CHANNEL',
   rooms,
   selectedRoom,
   onSelectRoom,
 }: {
   voice: VoiceChannelController;
   channelName: string;
+  channelLabel?: string;
   rooms?: VoiceRoom[];
   selectedRoom: VoiceRoom | null;
   onSelectRoom: (room: VoiceRoom) => void;
@@ -316,7 +321,11 @@ function VoiceChannelBody({
   const themed = useThemedStyles(voiceStyles);
   const inChannel = voice.status === 'connected';
 
-  const isAdmin = !!(org?.isOwner || org?.role === 'COACH');
+  const isGuild = voice.room === 'guild';
+  // Guild voice: the server decides who is a host (owner / coach / guild
+  // leader) and enforces it; this flag only drives what the UI shows.
+  const isAdmin = isGuild ? !!voice.canModerate : !!(org?.isOwner || org?.role === 'COACH');
+  const canHostMute = isGuild && !!voice.canModerate;
 
   const listData: ListItem[] = inChannel
     ? [
@@ -328,6 +337,8 @@ function VoiceChannelBody({
           isHandRaised: voice.isLocalHandRaised,
           localVolume: 1,
           connectionQuality: 'excellent' as ConnectionQualityLevel,
+          isHostMuted: voice.isHostMuted,
+          isModerator: isGuild && !!voice.canModerate,
           isSelf: true,
         },
         ...voice.participants.map((p) => ({ ...p, isSelf: false as const })),
@@ -395,13 +406,15 @@ function VoiceChannelBody({
         )}
 
         <View style={styles.channelCard}>
-          <Text style={styles.channelLabel}>VOICE CHANNEL</Text>
+          <Text style={styles.channelLabel}>{channelLabel}</Text>
           <Text style={styles.channelName}>{channelName}</Text>
           <Text style={styles.channelMeta}>
             {voice.status === 'connecting'
               ? 'Connecting…'
               : inChannel
-                ? `${voice.participants.length + 1} connected`
+                ? isGuild && voice.roomMax
+                  ? `${voice.roomCount ?? voice.participants.length + 1} / ${voice.roomMax} in voice`
+                  : `${voice.participants.length + 1} connected`
                 : showMultipleRooms && !selectedRoom
                 ? 'Select a room above to join'
                 : 'Empty — join to talk with your team'}
@@ -437,6 +450,46 @@ function VoiceChannelBody({
 
         {inChannel && (
           <>
+            {isGuild && voice.isListenOnly && (
+              <View style={themed.banner}>
+                <AppIcon name="mic-off" size={16} color={colors.chrome} />
+                <Text style={themed.bannerText}>
+                  {voice.canModerate
+                    ? 'Everyone is muted. Only hosts can speak.'
+                    : 'Listen-only mode — only hosts can speak right now.'}
+                </Text>
+              </View>
+            )}
+            {isGuild && voice.isHostMuted && !voice.isListenOnly && (
+              <View style={themed.banner}>
+                <AppIcon name="mic-off" size={16} color={colors.danger} />
+                <Text style={themed.bannerText}>A host muted you.</Text>
+              </View>
+            )}
+            {canHostMute && (
+              <View style={styles.hostPanel}>
+                <Pressable
+                  style={[styles.hostBtn, voice.isListenOnly ? styles.hostBtnOff : styles.hostBtnDanger]}
+                  onPress={voice.isListenOnly ? undefined : voice.muteAll}
+                  disabled={voice.isListenOnly}
+                  accessibilityLabel="Mute everyone except hosts"
+                >
+                  <ButtonLabel icon="mic-off" color="#fff">
+                    Mute all
+                  </ButtonLabel>
+                </Pressable>
+                <Pressable
+                  style={[styles.hostBtn, styles.hostBtnGreen]}
+                  onPress={voice.unmuteAll}
+                  accessibilityLabel="Let everyone talk again"
+                >
+                  <ButtonLabel icon="mic" color="#fff">
+                    Unmute all
+                  </ButtonLabel>
+                </Pressable>
+              </View>
+            )}
+
             <Text style={themed.sectionTitle}>In Channel</Text>
             <FlatList
               data={listData}
@@ -475,6 +528,11 @@ function VoiceChannelBody({
                     {item.isLocallyMuted && (
                       <Text style={themed.mutedHint}>Muted for you</Text>
                     )}
+                    {isGuild && (item.isModerator || item.isHostMuted) && (
+                      <Text style={themed.mutedHint}>
+                        {item.isModerator ? 'Host' : 'Muted by host'}
+                      </Text>
+                    )}
                   </View>
 
                   {/* Volume bar (remote only) */}
@@ -485,8 +543,24 @@ function VoiceChannelBody({
                     />
                   )}
 
+                  {/* Guild host: mute / unmute this person for everyone */}
+                  {!item.isSelf && canHostMute && !item.isModerator && (
+                    <Pressable
+                      hitSlop={8}
+                      style={styles.kickBtn}
+                      onPress={() => voice.setParticipantHostMuted?.(item.id, !item.isHostMuted)}
+                      accessibilityLabel={`${item.isHostMuted ? 'Unmute' : 'Mute'} ${item.name} for everyone`}
+                    >
+                      <AppIcon
+                        name={item.isHostMuted ? 'mic' : 'mic-off'}
+                        size={16}
+                        color={item.isHostMuted ? '#23a559' : '#f59e0b'}
+                      />
+                    </Pressable>
+                  )}
+
                   {/* Kick button (admin only, remote only) */}
-                  {!item.isSelf && isAdmin && (
+                  {!item.isSelf && isAdmin && !(isGuild && item.isModerator) && (
                     <Pressable
                       hitSlop={8}
                       style={styles.kickBtn}
@@ -519,7 +593,7 @@ function VoiceChannelBody({
                 <Pressable
                   style={[
                     styles.iconBtn,
-                    voice.isMuted ? styles.iconBtnDanger : themed.iconBtnDefault,
+                    voice.isMuted || voice.isHostMuted ? styles.iconBtnDanger : themed.iconBtnDefault,
                   ]}
                   onPress={voice.isPushToTalk ? undefined : voice.toggleMute}
                   onPressIn={voice.isPushToTalk ? voice.pttStart : undefined}
@@ -527,7 +601,9 @@ function VoiceChannelBody({
                   onLongPress={voice.togglePushToTalk}
                   delayLongPress={600}
                   accessibilityLabel={
-                    voice.isPushToTalk
+                    voice.isHostMuted
+                      ? 'Muted by host'
+                      : voice.isPushToTalk
                       ? 'Hold to talk'
                       : voice.isMuted
                       ? 'Unmute mic'
@@ -535,7 +611,7 @@ function VoiceChannelBody({
                   }
                 >
                   <AppIcon
-                    name={voice.isMuted ? 'mic-off' : 'mic'}
+                    name={voice.isMuted || voice.isHostMuted ? 'mic-off' : 'mic'}
                     size={22}
                     color="#fff"
                   />
@@ -644,7 +720,13 @@ function HostedVoiceChannel({
   );
 }
 
-function SelfHostedVoiceChannel({ authToken }: { authToken: string }) {
+function SelfHostedVoiceChannel({
+  authToken,
+  room,
+}: {
+  authToken: string;
+  room: VoiceRoomKind;
+}) {
   const { activate, controller, setScreenFocused } = useVoiceContext();
   const { colors } = useTheme();
   const shared = useSharedStyles();
@@ -653,20 +735,22 @@ function SelfHostedVoiceChannel({ authToken }: { authToken: string }) {
   // navigator) so it keeps running when the user navigates away — same as
   // the hosted path. See SelfHostedVoiceHolder in VoiceContext.tsx.
   useEffect(() => {
-    activate({ mode: 'self', token: authToken });
-  }, [authToken, activate]);
+    activate({ mode: 'self', token: authToken, room });
+  }, [authToken, room, activate]);
 
   useFocusEffect(
     useCallback(() => {
       setScreenFocused(true);
-      activate({ mode: 'self', token: authToken });
+      activate({ mode: 'self', token: authToken, room });
       return () => {
         setScreenFocused(false);
       };
-    }, [authToken, activate, setScreenFocused]),
+    }, [authToken, room, activate, setScreenFocused]),
   );
 
-  if (!controller) {
+  // The shared session may still be the other room's (team <-> guild) for one
+  // render before the provider swaps holders — don't show its controls here.
+  if (!controller || (controller.room ?? 'team') !== room) {
     return (
       <Screen>
         <View style={shared.container}>
@@ -679,7 +763,8 @@ function SelfHostedVoiceChannel({ authToken }: { authToken: string }) {
   return (
     <VoiceChannelBody
       voice={controller}
-      channelName="Team Voice"
+      channelName={room === 'guild' ? 'Guild Voice' : 'Team Voice'}
+      channelLabel={room === 'guild' ? 'GUILD VOICE' : 'VOICE CHANNEL'}
       rooms={undefined}
       selectedRoom={null}
       onSelectRoom={() => {}}
@@ -687,7 +772,7 @@ function SelfHostedVoiceChannel({ authToken }: { authToken: string }) {
   );
 }
 
-function VoiceChannelScreenInner() {
+function VoiceChannelScreenInner({ room }: { room: VoiceRoomKind }) {
   const shared = useSharedStyles();
   const { colors } = useTheme();
   const [config, setConfig] = useState<VoiceConfig | null>(null);
@@ -753,20 +838,41 @@ function VoiceChannelScreenInner() {
     );
   }
 
+  if (room === 'guild' && config.mode === 'hosted') {
+    return (
+      <Screen>
+        <View style={shared.container}>
+          <Text style={shared.error}>
+            Guild voice needs the self-hosted voice server. Ask your admin to enable it.
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
+
   return config.mode === 'hosted' ? (
     <HostedVoiceChannel config={config} />
   ) : (
-    <SelfHostedVoiceChannel authToken={authToken} />
+    <SelfHostedVoiceChannel authToken={authToken} room={room} />
+  );
+}
+
+function VoiceScreenRoot({ room }: { room: VoiceRoomKind }) {
+  const [key, setKey] = useState(0);
+  return (
+    <VoiceErrorBoundary onRetry={() => setKey((k) => k + 1)}>
+      <VoiceChannelScreenInner key={key} room={room} />
+    </VoiceErrorBoundary>
   );
 }
 
 export function VoiceChannelScreen() {
-  const [key, setKey] = useState(0);
-  return (
-    <VoiceErrorBoundary onRetry={() => setKey((k) => k + 1)}>
-      <VoiceChannelScreenInner key={key} />
-    </VoiceErrorBoundary>
-  );
+  return <VoiceScreenRoot room="team" />;
+}
+
+/** Guild-wide voice: up to 50 people, host mute-all / per-person mute. */
+export function GuildVoiceScreen() {
+  return <VoiceScreenRoot room="guild" />;
 }
 
 const styles = StyleSheet.create({
@@ -896,6 +1002,22 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: 2,
   },
+  // Guild voice host controls
+  hostPanel: {
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  hostBtn: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  hostBtnDanger: { backgroundColor: '#dc2626' },
+  hostBtnOff: { backgroundColor: '#6b7280', opacity: 0.6 },
+  hostBtnGreen: { backgroundColor: '#23a559' },
   // Voice changer presets
   presetBlock: { marginBottom: 8 },
   presetRow: { paddingHorizontal: 16, gap: 8 },
@@ -954,6 +1076,20 @@ function voiceStyles(c: ThemeColors) {
       fontWeight: '600' as const,
       textTransform: 'capitalize' as const,
     },
+    banner: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      marginHorizontal: 16,
+      marginBottom: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    bannerText: { flex: 1, fontSize: 13, color: c.text },
     participantRow: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,

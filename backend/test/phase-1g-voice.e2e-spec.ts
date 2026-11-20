@@ -1,13 +1,13 @@
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { Socket } from 'socket.io-client';
+import { io, Socket } from 'socket.io-client';
 import {
   createTestApp,
   getPrisma,
   resetDatabase,
   listenOnEphemeralPort,
 } from './utils/test-app';
-import { signup, createOrgAs, joinOrgAs } from './utils/fixtures';
+import { signup, createOrgAs, joinOrgAs, changeMemberRoleAs } from './utils/fixtures';
 import {
   connectSocket,
   connectAndExpectRejection,
@@ -244,6 +244,151 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       expect(await peerLeft).toEqual({ userId: player.user.id });
       await playerDisconnected;
       expect(playerSocket.connected).toBe(false);
+    });
+  });
+
+  describe('Guild voice (host mute controls)', () => {
+    function connectGuild(token: string): Promise<Socket> {
+      return new Promise((resolve, reject) => {
+        const socket = io(`${baseUrl}/voice`, {
+          auth: { token, room: 'guild' },
+          transports: ['websocket'],
+          reconnection: false,
+        });
+        const timer = setTimeout(() => reject(new Error('connect timeout')), 5000);
+        socket.on('connect', () => {
+          clearTimeout(timer);
+          resolve(socket);
+        });
+        socket.on('connect_error', (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
+    }
+
+    it('lets the org owner/coach join as a host and a player join as a regular member', async () => {
+      const { coach, player } = await setUpOrgWithTwoPlayers();
+      const coachSocket = await connectGuild(coach.accessToken);
+      const playerSocket = await connectGuild(player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      const host = await emitAck<{ canModerate: boolean; userId: string; max: number }>(
+        coachSocket,
+        'getVoiceState',
+      );
+      expect(host.canModerate).toBe(true);
+      expect(host.userId).toBe(coach.user.id);
+      expect(host.max).toBe(50);
+
+      const member = await emitAck<{ canModerate: boolean; moderatorIds: string[] }>(
+        playerSocket,
+        'getVoiceState',
+      );
+      expect(member.canModerate).toBe(false);
+      expect(member.moderatorIds).toEqual([coach.user.id]);
+    });
+
+    it('keeps guild voice separate from team voice (a team socket never sees guild rooms)', async () => {
+      const { coach, player } = await setUpOrgWithTwoPlayers();
+      const guildSocket = await connectGuild(coach.accessToken);
+      const teamSocket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      openSockets.push(guildSocket, teamSocket);
+
+      const leftTeam = assertNoEvent(teamSocket, 'peerLeft');
+      guildSocket.disconnect();
+      await leftTeam;
+    });
+
+    it('host "mute all" puts everyone else in listen-only and tells the room; "unmute all" lifts it', async () => {
+      const { coach, player } = await setUpOrgWithTwoPlayers();
+      const coachSocket = await connectGuild(coach.accessToken);
+      const playerSocket = await connectGuild(player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      const muted = waitForEvent<{ listenOnly: boolean; mutedIds: string[] }>(
+        playerSocket,
+        'voiceState',
+      );
+      await emitAck(coachSocket, 'muteAll');
+      const state = await muted;
+      expect(state.listenOnly).toBe(true);
+      expect(state.mutedIds).toEqual([player.user.id]);
+
+      const open = waitForEvent<{ listenOnly: boolean; mutedIds: string[] }>(
+        playerSocket,
+        'voiceState',
+      );
+      await emitAck(coachSocket, 'unmuteAll');
+      expect(await open).toMatchObject({ listenOnly: false, mutedIds: [] });
+    });
+
+    it('host can mute and unmute one person, also while the room is in listen-only', async () => {
+      const { coach, player } = await setUpOrgWithTwoPlayers();
+      const coachSocket = await connectGuild(coach.accessToken);
+      const playerSocket = await connectGuild(player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      let next = waitForEvent<{ mutedIds: string[] }>(playerSocket, 'voiceState');
+      await emitAck(coachSocket, 'muteUser', { userId: player.user.id, muted: true });
+      expect((await next).mutedIds).toEqual([player.user.id]);
+
+      next = waitForEvent<{ mutedIds: string[] }>(playerSocket, 'voiceState');
+      await emitAck(coachSocket, 'muteUser', { userId: player.user.id, muted: false });
+      expect((await next).mutedIds).toEqual([]);
+
+      // listen-only, then give this one person the mic back
+      await emitAck(coachSocket, 'muteAll');
+      next = waitForEvent<{ mutedIds: string[] }>(playerSocket, 'voiceState');
+      await emitAck(coachSocket, 'muteUser', { userId: player.user.id, muted: false });
+      expect((await next).mutedIds).toEqual([]);
+    });
+
+    it('SECURITY: a regular member cannot mute all, mute others, or kick', async () => {
+      const { coach, player } = await setUpOrgWithTwoPlayers();
+      const coachSocket = await connectGuild(coach.accessToken);
+      const playerSocket = await connectGuild(player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+
+      const coachUnaffected = assertNoEvent(coachSocket, 'voiceState');
+      await expect(emitAck(playerSocket, 'muteAll', undefined, 2000)).rejects.toBeTruthy();
+      await expect(
+        emitAck(playerSocket, 'muteUser', { userId: coach.user.id, muted: true }, 2000),
+      ).rejects.toBeTruthy();
+      await expect(
+        emitAck(playerSocket, 'kick', { userId: coach.user.id }, 2000),
+      ).rejects.toBeTruthy();
+      await coachUnaffected;
+      expect(coachSocket.connected).toBe(true);
+    });
+
+    it('hosts cannot be muted by other hosts', async () => {
+      const { coach, org } = await setUpOrgWithTwoPlayers();
+      const other = await signup(server, { name: 'Second Host' });
+      await joinOrgAs(server, other.accessToken, org.rosterCode);
+      await changeMemberRoleAs(server, coach.accessToken, other.user.id, 'COACH');
+      const a = await connectGuild(coach.accessToken);
+      const b = await connectGuild(other.accessToken);
+      openSockets.push(a, b);
+
+      await expect(
+        emitAck(a, 'muteUser', { userId: other.user.id, muted: true }, 2000),
+      ).rejects.toBeTruthy();
+    });
+
+    it('resets listen-only when the last host leaves, so nobody stays muted with no one to unmute', async () => {
+      const { coach, player } = await setUpOrgWithTwoPlayers();
+      const coachSocket = await connectGuild(coach.accessToken);
+      const playerSocket = await connectGuild(player.accessToken);
+      openSockets.push(coachSocket, playerSocket);
+      await emitAck(coachSocket, 'muteAll');
+
+      const reset = waitForEvent<{ listenOnly: boolean; mutedIds: string[] }>(
+        playerSocket,
+        'voiceState',
+      );
+      coachSocket.disconnect();
+      expect(await reset).toMatchObject({ listenOnly: false, mutedIds: [] });
     });
   });
 });

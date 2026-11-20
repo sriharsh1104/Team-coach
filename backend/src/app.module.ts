@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { AppUpdateController } from './app-update/app-update.controller';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -47,7 +48,7 @@ import { GamesModule } from './games/games.module';
     MapsModule,
     GamesModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, AppUpdateController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

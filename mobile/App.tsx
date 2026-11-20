@@ -15,6 +15,7 @@ import { RecordingWidget } from './src/recording/RecordingWidget';
 import { useAppPermissions } from './src/hooks/useAppPermissions';
 import { useServerWakePing } from './src/hooks/useServerWakePing';
 import { VoiceProvider } from './src/voice/VoiceContext';
+import { AppUpdatePrompt } from './src/update/AppUpdatePrompt';
 
 /** Runs hooks that need AuthContext — must be rendered inside AuthProvider. */
 function AuthenticatedEffects() {
@@ -32,6 +33,7 @@ function AppShell() {
       <BrandWatermark variant="subtle" />
       <View style={styles.foreground}>
         <ToastProvider>
+          <AppUpdatePrompt />
           <LoaderProvider>
             <AuthProvider>
               <AuthenticatedEffects />

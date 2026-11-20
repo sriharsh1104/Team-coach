@@ -21,3 +21,17 @@ export function VoiceChannelScreen() {
     </View>
   );
 }
+
+export function GuildVoiceScreen() {
+  const shared = useSharedStyles();
+  const { colors } = useTheme();
+  return (
+    <View style={shared.container}>
+      <Text style={shared.title}>Guild Voice</Text>
+      <Text style={{ textAlign: 'center', color: colors.textMuted }}>
+        Voice channels need the native Android/iOS app — they're not available in this
+        web preview.
+      </Text>
+    </View>
+  );
+}

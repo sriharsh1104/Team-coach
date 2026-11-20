@@ -3,7 +3,9 @@ import { Device, types as mediasoupTypes } from 'mediasoup-client';
 import { Socket } from 'socket.io-client';
 import { mediaDevices } from '@livekit/react-native-webrtc';
 import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
-import { connectVoiceSocket } from '../api/voice';
+import { connectVoiceSocket, VoiceRoomKind } from '../api/voice';
+import { emitToast } from '../ui/toastBus';
+import { startVoiceBackground, stopVoiceBackground } from './voiceBackground';
 import { VoiceChannelController, VoiceChannelStatus, VoiceParticipant } from './types';
 
 function emitAsync<T = any>(socket: Socket, event: string, payload?: unknown): Promise<T> {
@@ -16,6 +18,17 @@ function emitAsync<T = any>(socket: Socket, event: string, payload?: unknown): P
 }
 
 type RemoteProducer = { producerId: string; userId: string; userName: string; handRaised?: boolean };
+/** Guild voice host-mute state as broadcast by the server. */
+type GuildVoiceState = {
+  listenOnly: boolean;
+  mutedIds: string[];
+  moderatorIds: string[];
+  count: number;
+  max: number;
+  userId?: string;
+  canModerate?: boolean;
+};
+
 type ConsumerEntry = { consumer: mediasoupTypes.Consumer; userId: string };
 
 // How many times we silently try to get back in after the socket drops
@@ -31,7 +44,10 @@ type VolumeTrack = { _setVolume?: (volume: number) => void };
  * the session survives navigating away from the Voice screen — the hook
  * itself tears everything down on unmount, which only happens on deactivate.
  */
-export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelController {
+export function useSelfHostedVoiceChannel(
+  authToken: string,
+  room: VoiceRoomKind = 'team',
+): VoiceChannelController {
   const [status, setStatus] = useState<VoiceChannelStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string>();
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
@@ -39,6 +55,15 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
   const [isLocalHandRaised, setIsLocalHandRaised] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [isPushToTalk, setIsPushToTalk] = useState(false);
+  // Guild voice only.
+  const [canModerate, setCanModerate] = useState(false);
+  const [isHostMuted, setIsHostMuted] = useState(false);
+  const [isListenOnly, setIsListenOnly] = useState(false);
+  const [roomCount, setRoomCount] = useState<number | undefined>(undefined);
+  const [roomMax, setRoomMax] = useState<number | undefined>(undefined);
+  const hostMutedIdsRef = useRef<Set<string>>(new Set());
+  const moderatorIdsRef = useRef<Set<string>>(new Set());
+  const selfIdRef = useRef<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const deviceRef = useRef<Device | null>(null);
@@ -60,6 +85,7 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
   const isDeafenedRef = useRef(false);
   const isPushToTalkRef = useRef(false);
   const isMutedRef = useRef(false);
+  const isHostMutedRef = useRef(false);
   // True between join() start and leave()/fatal error — lets the socket
   // 'disconnect' handler tell an intentional leave from a dropped connection.
   const sessionWantedRef = useRef(false);
@@ -80,10 +106,31 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
         isHandRaised: handRaisedIdsRef.current.has(owner.id),
         localVolume: vol,
         connectionQuality: 'unknown',
+        isHostMuted: hostMutedIdsRef.current.has(owner.id),
+        isModerator: moderatorIdsRef.current.has(owner.id),
       });
     }
     setParticipants([...byUser.values()]);
   }, []);
+
+  /** Applies a guild voice-state snapshot (broadcast or from getVoiceState). */
+  const applyVoiceState = useCallback(
+    (state: GuildVoiceState) => {
+      if (state.userId) selfIdRef.current = state.userId;
+      hostMutedIdsRef.current = new Set(state.mutedIds ?? []);
+      moderatorIdsRef.current = new Set(state.moderatorIds ?? []);
+      setIsListenOnly(!!state.listenOnly);
+      setRoomCount(state.count);
+      setRoomMax(state.max);
+      if (typeof state.canModerate === 'boolean') setCanModerate(state.canModerate);
+      const self = selfIdRef.current;
+      const muted = !!self && hostMutedIdsRef.current.has(self);
+      isHostMutedRef.current = muted;
+      setIsHostMuted(muted);
+      refreshParticipants();
+    },
+    [refreshParticipants],
+  );
 
   /** Applies deafen + per-user volume to one consumer's playback. */
   const applyPlayback = useCallback((userId: string) => {
@@ -168,11 +215,20 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
     isDeafenedRef.current = false;
     isPushToTalkRef.current = false;
     volumesRef.current.clear();
+    hostMutedIdsRef.current = new Set();
+    moderatorIdsRef.current = new Set();
+    setCanModerate(false);
+    isHostMutedRef.current = false;
+    setIsHostMuted(false);
+    setIsListenOnly(false);
+    setRoomCount(undefined);
+    setRoomMax(undefined);
   }, []);
 
   const leave = useCallback(() => {
     sessionWantedRef.current = false;
     rejoinAttemptsRef.current = 0;
+    stopVoiceBackground();
     teardownMedia();
     closeSocket();
     resetUiState();
@@ -263,15 +319,22 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
         refreshParticipants();
       });
 
+      socket.on('voiceState', (payload: GuildVoiceState) => {
+        applyVoiceState(payload);
+      });
+
       socket.on('kicked', (payload: { by?: string }) => {
         sessionWantedRef.current = false;
+        stopVoiceBackground();
         teardownMedia();
         closeSocket();
         resetUiState();
         setErrorMessage(
-          payload?.by
-            ? `You were removed from the voice channel by ${payload.by}.`
-            : 'You were removed from the voice channel.',
+          payload?.by === 'another device'
+            ? 'You joined voice from another device, so this one was disconnected.'
+            : payload?.by
+              ? `You were removed from the voice channel by ${payload.by}.`
+              : 'You were removed from the voice channel.',
         );
         setStatus('error');
       });
@@ -293,13 +356,14 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
           }, delay);
         } else {
           sessionWantedRef.current = false;
+          stopVoiceBackground();
           resetUiState();
           setErrorMessage('Voice connection lost. Check your network and rejoin.');
           setStatus('error');
         }
       });
     },
-    [consumeProducer, dropConsumerForUser, refreshParticipants, teardownMedia, closeSocket, resetUiState],
+    [consumeProducer, dropConsumerForUser, refreshParticipants, applyVoiceState, teardownMedia, closeSocket, resetUiState],
   );
 
   const join = useCallback(async () => {
@@ -327,7 +391,14 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
       micStreamRef.current = stream as unknown as typeof micStreamRef.current;
       const track = stream.getAudioTracks()[0] as unknown as MediaStreamTrack;
 
-      const socket = connectVoiceSocket(authToken);
+      // Android: keep the mic + socket alive when the user switches to their
+      // game. Started only after the mic permission is granted.
+      startVoiceBackground(
+        room === 'guild' ? 'Guild Voice' : 'Team Voice',
+        'You are in voice. Tap to return to the app.',
+      );
+
+      const socket = connectVoiceSocket(authToken, room);
       socketRef.current = socket;
       await new Promise<void>((resolve, reject) => {
         const onConnect = () => {
@@ -387,6 +458,13 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
         producerOwnersRef.current.set(p.producerId, { id: p.userId, name: p.userName });
         if (p.handRaised) handRaisedIdsRef.current.add(p.userId);
       }
+      if (room === 'guild') {
+        try {
+          applyVoiceState(await emitAsync<GuildVoiceState>(socket, 'getVoiceState'));
+        } catch (err) {
+          console.warn('getVoiceState failed:', err);
+        }
+      }
       refreshParticipants();
       for (const p of existingProducers) {
         try {
@@ -406,6 +484,7 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
       // Never leave half a session behind: close whatever got created so
       // "Try Again" starts clean and the mic LED goes off.
       sessionWantedRef.current = false;
+      stopVoiceBackground();
       teardownMedia();
       closeSocket();
       setErrorMessage(err?.message ?? 'Could not join voice channel');
@@ -413,7 +492,7 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
     } finally {
       joiningRef.current = false;
     }
-  }, [authToken, attachSocketEvents, consumeProducer, refreshParticipants, teardownMedia, closeSocket, isLocalHandRaised]);
+  }, [authToken, room, attachSocketEvents, consumeProducer, refreshParticipants, applyVoiceState, teardownMedia, closeSocket, isLocalHandRaised]);
   joinRef.current = join;
 
   // The hook lives in VoiceContext; unmount == deactivate. Make sure the mic
@@ -421,6 +500,7 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
   useEffect(() => {
     return () => {
       sessionWantedRef.current = false;
+      stopVoiceBackground();
       teardownMedia();
       closeSocket();
     };
@@ -428,6 +508,10 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
 
   const toggleMute = useCallback(() => {
     if (isDeafenedRef.current || isPushToTalkRef.current) return;
+    if (isHostMutedRef.current) {
+      emitToast('A host muted you. Raise your hand to ask for the mic.');
+      return;
+    }
     setMicEnabled(isMutedRef.current);
   }, [setMicEnabled]);
 
@@ -503,6 +587,22 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
     setMicEnabled(false);
   }, [setMicEnabled]);
 
+  const hostAction = useCallback((event: string, payload?: unknown) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    emitAsync(socket, event, payload).catch((err) => {
+      console.warn(`${event} failed:`, err);
+      emitToast(err instanceof Error && err.message ? err.message : 'Could not do that. Try again.');
+    });
+  }, []);
+
+  const muteAll = useCallback(() => hostAction('muteAll'), [hostAction]);
+  const unmuteAll = useCallback(() => hostAction('unmuteAll'), [hostAction]);
+  const setParticipantHostMuted = useCallback(
+    (id: string, muted: boolean) => hostAction('muteUser', { userId: id, muted }),
+    [hostAction],
+  );
+
   return {
     status,
     errorMessage,
@@ -522,5 +622,18 @@ export function useSelfHostedVoiceChannel(authToken: string): VoiceChannelContro
     togglePushToTalk,
     pttStart,
     pttStop,
+    ...(room === 'guild'
+      ? {
+          room,
+          canModerate,
+          isHostMuted,
+          isListenOnly,
+          roomCount,
+          roomMax,
+          muteAll,
+          unmuteAll,
+          setParticipantHostMuted,
+        }
+      : { room }),
   };
 }

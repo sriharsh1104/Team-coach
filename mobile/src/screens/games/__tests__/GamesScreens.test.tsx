@@ -130,7 +130,9 @@ describe('GameRoomScreen', () => {
     fireEvent.press(screen.getByLabelText('Notify Arjun'));
     await waitFor(() => expect(invite).toHaveBeenCalledWith('r1', 'u2'));
     await screen.findByLabelText('Notified Arjun');
-    expect(screen.getByLabelText('Share invite via WhatsApp, Discord and more')).toBeTruthy();
+    expect(screen.getByLabelText('Invite via WhatsApp')).toBeTruthy();
+    expect(screen.getByLabelText('Invite via Discord')).toBeTruthy();
+    expect(screen.getByLabelText('Invite via Telegram')).toBeTruthy();
     // Cooldown: the bell stays disabled right after notifying.
     expect(screen.queryByLabelText('Notify Arjun')).toBeNull();
     fireEvent.press(screen.getByLabelText('Notify all teammates'));

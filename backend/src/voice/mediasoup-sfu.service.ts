@@ -57,7 +57,7 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
     try {
       this.worker = await mediasoup.createWorker({
         rtcMinPort: Number(this.configService.get('MEDIASOUP_MIN_PORT', '40000')),
-        rtcMaxPort: Number(this.configService.get('MEDIASOUP_MAX_PORT', '40100')),
+        rtcMaxPort: Number(this.configService.get('MEDIASOUP_MAX_PORT', '40200')),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

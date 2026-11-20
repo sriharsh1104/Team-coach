@@ -146,6 +146,11 @@ export function useOrgDrawer() {
             ]
           : []),
         {
+          key: 'guildVoice',
+          label: 'Guild Voice',
+          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'GuildVoice' }),
+        },
+        {
           key: 'games',
           label: 'Games',
           onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),
@@ -209,6 +214,11 @@ export function useGuildDrawer() {
             key: 'guildHome',
             label: 'Guild Roster',
             onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Guild' }),
+          },
+          {
+            key: 'guildVoice',
+            label: 'Guild Voice',
+            onPress: () => goToSection(navigation, 'GuildHome', { screen: 'GuildVoice' }),
           },
           {
             key: 'games',
