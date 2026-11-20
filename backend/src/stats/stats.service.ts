@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -67,6 +69,22 @@ export class StatsService {
     input: { mode: StatMode; mediaPostIds: string[]; scrimEventId?: string },
   ) {
     const membership = await this.requireMembership(userId);
+
+    // Every extraction is a paid Gemini call — cap how many an org can queue
+    // per day so one member can't drain the API key by uploading in a loop.
+    const dailyLimit = Number(process.env.STATS_DAILY_EXTRACTION_LIMIT) || 100;
+    const usedToday = await this.prisma.statExtraction.count({
+      where: {
+        orgId: membership.orgId,
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+    });
+    if (usedToday + input.mediaPostIds.length > dailyLimit) {
+      throw new HttpException(
+        `Daily screenshot-reading limit reached (${dailyLimit} per day). Try again tomorrow.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
 
     if (input.scrimEventId) {
       const event = await this.prisma.scrimEvent.findUnique({
