@@ -18,6 +18,7 @@ export interface RoomParticipantProducer {
   producerId: string;
   userId: string;
   userName: string;
+  avatarUrl: string | null;
   kind: 'audio';
 }
 

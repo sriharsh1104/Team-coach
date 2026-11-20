@@ -9,15 +9,19 @@ import expo.modules.kotlin.modules.ModuleDefinition
 class ScreenRecorderModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ScreenRecorder")
-    Events("onStopped")
+    Events("onStopped", "onVoiceAction")
 
     OnCreate {
       RecordBridge.module = this@ScreenRecorderModule
+      VoiceBridge.module = this@ScreenRecorderModule
     }
 
     OnDestroy {
       if (RecordBridge.module === this@ScreenRecorderModule) {
         RecordBridge.module = null
+      }
+      if (VoiceBridge.module === this@ScreenRecorderModule) {
+        VoiceBridge.module = null
       }
     }
 
@@ -45,13 +49,16 @@ class ScreenRecorderModule : Module() {
     }
 
     // Foreground service that keeps an active voice channel alive in the
-    // background (see VoiceKeepAliveService). Both calls are safe to repeat.
-    Function("startVoiceService") { title: String, text: String ->
+    // background (see VoiceKeepAliveService). Both calls are safe to repeat —
+    // also how JS refreshes the Mute/Deafen button labels after toggling.
+    Function("startVoiceService") { title: String, text: String, muted: Boolean, deafened: Boolean ->
       val context = appContext.reactContext ?: return@Function false
       val intent = Intent(context, VoiceKeepAliveService::class.java).apply {
         action = VoiceKeepAliveService.ACTION_START
         putExtra(VoiceKeepAliveService.EXTRA_TITLE, title)
         putExtra(VoiceKeepAliveService.EXTRA_TEXT, text)
+        putExtra(VoiceKeepAliveService.EXTRA_MUTED, muted)
+        putExtra(VoiceKeepAliveService.EXTRA_DEAFENED, deafened)
       }
       try {
         if (android.os.Build.VERSION.SDK_INT >= 26) {

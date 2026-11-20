@@ -130,6 +130,7 @@ export function OrgHomeScreen({ navigation }: Props) {
           {
             key: 'teamChat',
             label: 'Chat',
+            icon: 'chatbubble-outline' as const,
             // Pop/navigate back to OrgHome (embeds ChatHubScreen) so history
             // stays intact for the system back button.
             onPress: () => goToSection(navigation, 'OrgHome'),
@@ -156,6 +157,7 @@ export function OrgHomeScreen({ navigation }: Props) {
               {
                 key: 'guildHome',
                 label: 'Guild Roster',
+                icon: 'people-outline' as const,
                 onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
               },
             ]
@@ -163,6 +165,7 @@ export function OrgHomeScreen({ navigation }: Props) {
         {
           key: 'games',
           label: 'Games',
+          icon: 'game-controller-outline' as const,
           onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),
         },
       ],
@@ -189,11 +192,13 @@ export function OrgHomeScreen({ navigation }: Props) {
         {
           key: 'profile',
           label: 'Profile',
+          icon: 'person-outline' as const,
           onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Profile' }),
         },
         {
           key: 'socialHandles',
           label: 'Social Handles',
+          icon: 'share-social-outline' as const,
           onPress: () =>
             goToSection(navigation, 'OrgHome', { screen: 'SocialHandles' }),
         },

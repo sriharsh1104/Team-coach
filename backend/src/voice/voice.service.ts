@@ -116,6 +116,9 @@ export class VoiceService {
       identity: user.id,
       name: user.name,
       attributes: { [MOD_ATTRIBUTE]: ctx.canModerate ? '1' : '0' },
+      // Carried to every other participant via Participant.metadata — lets
+      // the voice screen show a real avatar instead of just initials.
+      metadata: JSON.stringify({ avatarUrl: user.avatarUrl }),
     });
     token.addGrant({
       roomJoin: true,

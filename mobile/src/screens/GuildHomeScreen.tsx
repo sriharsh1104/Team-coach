@@ -45,6 +45,7 @@ export function GuildHomeScreen({ navigation }: Props) {
             {
               key: 'guildChat',
               label: 'Guild Chat',
+              icon: 'chatbubble-outline' as const,
               // Navigate/pop back to GuildHome (embeds ChatHubScreen) so the
               // system back button can reverse the same path.
               onPress: () => goToSection(navigation, 'GuildHome'),
@@ -59,12 +60,14 @@ export function GuildHomeScreen({ navigation }: Props) {
             {
               key: 'guildHome',
               label: 'Guild Roster',
+              icon: 'people-outline' as const,
               onPress: () =>
                 goToSection(navigation, 'GuildHome', { screen: 'Guild' }),
             },
             {
               key: 'games',
               label: 'Games',
+              icon: 'game-controller-outline' as const,
               onPress: () =>
                 goToSection(navigation, 'GuildHome', { screen: 'Games' }),
             },
@@ -90,12 +93,14 @@ export function GuildHomeScreen({ navigation }: Props) {
             {
               key: 'profile',
               label: 'Profile',
+              icon: 'person-outline' as const,
               onPress: () =>
                 goToSection(navigation, 'GuildHome', { screen: 'Profile' }),
             },
             {
               key: 'socialHandles',
               label: 'Social Handles',
+              icon: 'share-social-outline' as const,
               onPress: () =>
                 goToSection(navigation, 'GuildHome', { screen: 'SocialHandles' }),
             },

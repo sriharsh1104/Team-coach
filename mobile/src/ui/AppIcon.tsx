@@ -27,6 +27,7 @@ export type AppIconName =
   | 'notifications'
   | 'notifications-off'
   | 'person-add'
+  | 'person-outline'
   | 'person-remove'
   | 'person-remove-outline'
   | 'phone-down'
@@ -59,7 +60,9 @@ export type AppIconName =
   | 'crown-outline'
   | 'share-social-outline'
   | 'play'
-  | 'pause';
+  | 'pause'
+  | 'chatbubble-outline'
+  | 'game-controller-outline';
 
 type Props = {
   name: AppIconName;
@@ -154,6 +157,12 @@ const ICONS: Record<AppIconName, Renderer> = {
       <Path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Circle cx="9" cy="7" r="4" stroke={c} strokeWidth={2} />
       <Path d="M19 8v6M22 11h-6" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'person-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Circle cx="12" cy="7" r="4" stroke={c} strokeWidth={2} />
     </Svg>
   ),
   'person-remove': (c, s) => (
@@ -415,6 +424,17 @@ const ICONS: Record<AppIconName, Renderer> = {
       <Path d="M7 4H4a2 2 0 000 4c0 2 1.5 4 3 5" stroke={c} strokeWidth={2} strokeLinecap="round" />
       <Path d="M17 4h3a2 2 0 010 4c0 2-1.5 4-3 5" stroke={c} strokeWidth={2} strokeLinecap="round" />
       <Path d="M12 17c-3.87 0-7-3.13-7-7V4h14v6c0 3.87-3.13 7-7 7z" stroke={c} strokeWidth={2} />
+    </Svg>
+  ),
+  'chatbubble-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'game-controller-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M6 10v4M4 12h4M14.5 11.5h.01M17.5 14.5h.01" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M7.5 6h9a5 5 0 014.9 6L21 16.5a2.5 2.5 0 01-4.3 2L15 16H9l-1.7 2.5a2.5 2.5 0 01-4.3-2L2.6 12a5 5 0 014.9-6z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   ),
   'settings-outline': (c, s) => (

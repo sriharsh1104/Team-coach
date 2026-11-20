@@ -410,4 +410,60 @@ describe('Chat real-time features (e2e)', () => {
       .expect(201);
     expect(upload.body.mediaType).toBe('IMAGE');
   });
+
+  describe('@all mention', () => {
+    // notifyMentions/notifyUnreadCounts fire-and-forget off the back of the
+    // message:send ack — poll briefly instead of asserting the instant the
+    // ack resolves.
+    async function waitForFetchCall(mockFetch: jest.Mock, timeoutMs = 3000) {
+      const start = Date.now();
+      while (mockFetch.mock.calls.length === 0) {
+        if (Date.now() - start > timeoutMs) {
+          throw new Error('Expo push fetch was never called');
+        }
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    }
+
+    it('pushes every other roster member, IGN or not, not just whoever an @IGN token happens to match', async () => {
+      const { coach, org, player } = await setUpOrgWithTwoPlayers();
+      // No inGameName at all — an @IGN mention could never reach them, @all must.
+      const bystander = await signup(server, { name: 'Bystander' });
+      await joinOrgAs(server, bystander.accessToken, org.rosterCode);
+
+      for (const u of [player, bystander]) {
+        await prisma.user.update({
+          where: { id: u.user.id },
+          data: { expoPushToken: `ExponentPushToken[${u.user.id}]` },
+        });
+      }
+
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValue({ ok: true, text: async () => '{}' } as Response);
+      const originalFetch = global.fetch;
+      global.fetch = fetchMock as unknown as typeof fetch;
+      try {
+        const coachSocket = await connectSocket(baseUrl, coach.accessToken);
+        openSockets.push(coachSocket);
+        const sent = await sendMessage(coachSocket, { text: '@all gl today!' });
+        expect(sent.ok).toBe(true);
+
+        await waitForFetchCall(fetchMock);
+        const pushedTo = new Set<string>();
+        for (const call of fetchMock.mock.calls) {
+          const body = JSON.parse((call[1] as RequestInit).body as string);
+          for (const m of body) pushedTo.add(m.to);
+        }
+        expect(pushedTo).toEqual(
+          new Set([
+            `ExponentPushToken[${player.user.id}]`,
+            `ExponentPushToken[${bystander.user.id}]`,
+          ]),
+        );
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+  });
 });

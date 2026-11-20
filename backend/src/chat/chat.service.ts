@@ -38,6 +38,8 @@ export const GUILD_CHANNEL = 'guild';
 
 /** Tokens after `@` until whitespace — Free Fire IGNs like SES-SRI. */
 const MENTION_TOKEN_RE = /@([^\s@]+)/g;
+/** @all mentions everyone in a group chat, IGN or not — Discord/Slack style. */
+const ALL_MENTION_KEY = 'all';
 
 function normalizeIgnKey(value: string): string {
   return value.trim().toLowerCase().replace(/[\s~_\-.]+/g, '');
@@ -1421,6 +1423,16 @@ export class ChatService {
     const candidates = await this.loadMentionCandidates(orgId, channelKey, senderId);
     if (candidates.length === 0) return [];
 
+    // @all in a group chat (not a DM, where it'd be redundant) mentions
+    // every other member — IGN or not.
+    const isGroupChannel = channelKey === ORG_CHANNEL || channelKey === GUILD_CHANNEL;
+    if (
+      isGroupChannel &&
+      tokens.some((t) => normalizeIgnKey(t) === ALL_MENTION_KEY)
+    ) {
+      return candidates.map((c) => c.userId);
+    }
+
     const byKey = new Map<string, string>();
     for (const c of candidates) {
       if (!c.inGameName) continue;
@@ -1502,12 +1514,15 @@ export class ChatService {
       if (this.presence.isViewing(u.id, channelKey)) continue;
       if (await this.isChannelMuted(u.id, orgId, channelKey)) continue;
       const ign = u.inGameName ?? 'you';
+      const allToken = tokens.find((t) => normalizeIgnKey(t) === ALL_MENTION_KEY);
       const matched =
+        allToken ??
         tokens.find(
           (t) =>
             u.inGameName &&
             normalizeIgnKey(t) === normalizeIgnKey(u.inGameName),
-        ) ?? ign;
+        ) ??
+        ign;
       const preview = truncatePushBody(text, 80);
       messages.push({
         to: u.expoPushToken,

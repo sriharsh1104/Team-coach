@@ -12,12 +12,15 @@ interface Props {
   visible: boolean;
   deliveredTo: ReceiptEntry[];
   readBy: ReceiptEntry[];
+  /** Group-chat members this message hasn't reached yet (not delivered, not read). */
+  pending?: ReceiptEntry[];
   onClose: () => void;
 }
 
-/** WhatsApp-style "Message info" sheet — two sections, opened via a
- * long-press on the tick row rather than a plain tap on a visible count. */
-export function MessageInfoModal({ visible, deliveredTo, readBy, onClose }: Props) {
+/** WhatsApp-style "Message info" sheet — opened via a long-press on the tick
+ * row rather than a plain tap on a visible count. A group chat also gets a
+ * "Pending" section so it's obvious who's holding the double-tick back. */
+export function MessageInfoModal({ visible, deliveredTo, readBy, pending = [], onClose }: Props) {
   const styles = useThemedStyles(messageInfoStyles);
   const readIds = new Set(readBy.map((r) => r.userId));
   // Everyone who's read it has also, by definition, received it — but a
@@ -61,6 +64,22 @@ export function MessageInfoModal({ visible, deliveredTo, readBy, onClose }: Prop
               )}
             />
           )}
+
+          {pending.length > 0 ? (
+            <>
+              <Text style={styles.sectionLabel}>Pending</Text>
+              <FlatList
+                data={pending}
+                keyExtractor={(item) => item.userId}
+                renderItem={({ item }) => (
+                  <View style={styles.row}>
+                    <Text style={styles.name}>{item.name}</Text>
+                    <Text style={styles.checkPending}>✓</Text>
+                  </View>
+                )}
+              />
+            </>
+          ) : null}
 
           <Pressable style={staticStyles.closeBtn} onPress={onClose}>
             <Text style={styles.closeText}>Close</Text>
@@ -120,6 +139,7 @@ function messageInfoStyles(c: ThemeColors) {
     name: { color: c.text, fontSize: 15, fontWeight: '600' as const },
     checkRead: { color: c.link, fontSize: 14 },
     checkDelivered: { color: c.textMuted, fontSize: 14 },
+    checkPending: { color: c.textDim, fontSize: 14, opacity: 0.6 },
     empty: { color: c.textMuted, paddingVertical: 6 },
     closeText: { color: c.link, fontWeight: '700' as const },
   };

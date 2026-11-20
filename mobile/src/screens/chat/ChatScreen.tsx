@@ -222,6 +222,9 @@ export function ChatScreen({
   const [peerPresence, setPeerPresence] = useState<UserPresence | null>(null);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
   const [forwardTarget, setForwardTarget] = useState<ChatMessage | null>(null);
+  // Which pinned message the top banner currently shows, when more than one
+  // is pinned — cycled with the chevron, same idea as WhatsApp's pinned bar.
+  const [pinnedCursor, setPinnedCursor] = useState(0);
   const typingActiveRef = useRef(false);
   const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -263,12 +266,14 @@ export function ChatScreen({
     return rosterMentionables.filter((m) => m.channelKey === channelKey);
   }, [channelKey, guildMentionables, rosterMentionables]);
 
+  // @all is only a thing in a group chat (team roster / guild) — a DM
+  // already has just the one other person.
   const knownIgns = useMemo(
-    () =>
-      mentionables
-        .map((m) => m.inGameName)
-        .filter((v): v is string => !!v),
-    [mentionables],
+    () => [
+      ...(isGroup ? ['all'] : []),
+      ...mentionables.map((m) => m.inGameName).filter((v): v is string => !!v),
+    ],
+    [mentionables, isGroup],
   );
 
   const mentionState = useMemo(
@@ -278,8 +283,18 @@ export function ChatScreen({
 
   const mentionSuggestions = useMemo(() => {
     if (!mentionState) return [];
-    return filterMentionables(mentionables, mentionState.query);
-  }, [mentionState, mentionables]);
+    const filtered = filterMentionables(mentionables, mentionState.query);
+    if (!isGroup) return filtered;
+    if (!'all'.startsWith(mentionState.query.toLowerCase())) return filtered;
+    const allCandidate: ChatTeammate = {
+      userId: '__all__',
+      name: 'Everyone',
+      avatarUrl: null,
+      inGameName: 'all',
+      channelKey,
+    };
+    return [allCandidate, ...filtered];
+  }, [mentionState, mentionables, isGroup, channelKey]);
 
 
   useEffect(() => {
@@ -782,12 +797,54 @@ export function ChatScreen({
     [receiptsForMessage, infoMessageId],
   );
 
+  // Group-chat members this message hasn't reached yet — "all members" minus
+  // whoever already shows up as delivered or read. DM-only limitation: the
+  // single other party isn't always resolvable to a name outside the roster/
+  // guild mentionable lists, so this stays group-only (matches the complaint).
+  const infoPending = useMemo(() => {
+    if (!isGroup) return [] as { userId: string; name: string }[];
+    const accountedFor = new Set([
+      ...infoReceipts.deliveredTo.map((d) => d.userId),
+      ...infoReceipts.seenBy.map((r) => r.userId),
+    ]);
+    return mentionables
+      .filter((m) => !accountedFor.has(m.userId))
+      .map((m) => ({ userId: m.userId, name: m.name }));
+  }, [isGroup, mentionables, infoReceipts]);
+
   // single tick (sent) -> double grey (delivered) -> double blue (seen).
+  // In a group (org/guild) chat this must mean ALL other members, not just
+  // one — same as WhatsApp groups. `mentionables` is already "every other
+  // member of this channel" (self excluded server-side), so it's the right
+  // denominator with no extra plumbing. A DM only ever has one other member.
   const tickState: 'sent' | 'delivered' | 'seen' = useMemo(() => {
-    if (seenByForLastMine.length > 0) return 'seen';
-    if (deliveredForLastMine.length > 0) return 'delivered';
+    const otherCount = isGroup ? mentionables.length : 1;
+    if (otherCount > 0 && seenByForLastMine.length >= otherCount) return 'seen';
+    if (otherCount > 0 && deliveredForLastMine.length >= otherCount) return 'delivered';
     return 'sent';
-  }, [seenByForLastMine, deliveredForLastMine]);
+  }, [isGroup, mentionables, seenByForLastMine, deliveredForLastMine]);
+
+  // `messages` is already chronological (oldest -> newest) — same order the
+  // pinned banner cycles through.
+  const pinnedMessages = useMemo(
+    () => messages.filter((m) => m.pinned),
+    [messages],
+  );
+
+  useEffect(() => {
+    setPinnedCursor((c) =>
+      pinnedMessages.length === 0 ? 0 : Math.min(c, pinnedMessages.length - 1),
+    );
+  }, [pinnedMessages.length]);
+
+  const pinnedPreviewFor = useCallback((m: ChatMessage | undefined) => {
+    if (!m) return '';
+    if (m.text?.trim()) return m.text.trim();
+    if (m.mediaType === 'VIDEO') return 'Video';
+    if (m.mediaType === 'AUDIO') return 'Voice note';
+    if (m.mediaType === 'IMAGE') return 'Photo';
+    return '';
+  }, []);
 
   const selectedList = useMemo(
     () => messages.filter((m) => selectedIds.has(m.id)),
@@ -1661,6 +1718,40 @@ export function ChatScreen({
         </View>
       ) : null}
 
+      {!selectMode && !searchActive && pinnedMessages.length > 0 ? (
+        <View style={styles.pinnedBar}>
+          <Pressable
+            style={styles.pinnedBody}
+            onPress={() => scrollToMessageId(pinnedMessages[pinnedCursor]?.id)}
+            accessibilityRole="button"
+            accessibilityLabel="Pinned message, tap to jump to it"
+          >
+            <AppIcon name="pin" size={14} color={colors.link} />
+            <View style={styles.pinnedTextCol}>
+              <Text style={styles.pinnedLabel} numberOfLines={1}>
+                {pinnedMessages.length > 1
+                  ? `Pinned message ${pinnedCursor + 1}/${pinnedMessages.length}`
+                  : 'Pinned message'}
+              </Text>
+              <Text style={styles.pinnedPreview} numberOfLines={1}>
+                {pinnedPreviewFor(pinnedMessages[pinnedCursor])}
+              </Text>
+            </View>
+          </Pressable>
+          {pinnedMessages.length > 1 ? (
+            <Pressable
+              style={styles.pinnedNextBtn}
+              onPress={() => setPinnedCursor((c) => (c + 1) % pinnedMessages.length)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Show next pinned message"
+            >
+              <Text style={styles.pinnedNextGlyph}>›</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
       <FlatList
         ref={listRef}
         style={{ flex: 1, minWidth: 0, opacity: listReady ? 1 : 0 }}
@@ -2201,6 +2292,7 @@ export function ChatScreen({
       />
       <MessageInfoModal
         visible={!!infoMessageId}
+        pending={infoPending}
         deliveredTo={infoReceipts.deliveredTo.map((d) => ({
           userId: d.userId,
           name: d.name,
@@ -2259,6 +2351,38 @@ const chatStyles = (c: ThemeColors) => ({
     fontWeight: '700' as const,
     paddingHorizontal: 4,
   },
+  pinnedBar: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: c.border,
+    backgroundColor: c.surface,
+  },
+  pinnedBody: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+  },
+  pinnedTextCol: { flex: 1, minWidth: 0 },
+  pinnedLabel: {
+    color: c.link,
+    fontSize: 11,
+    fontWeight: '700' as const,
+    textTransform: 'uppercase' as const,
+  },
+  pinnedPreview: { color: c.text, fontSize: 13, marginTop: 1 },
+  pinnedNextBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  pinnedNextGlyph: { color: c.textMuted, fontSize: 20, fontWeight: '700' as const },
   selectBar: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -2435,8 +2559,15 @@ const chatStyles = (c: ThemeColors) => ({
   text: { color: c.text, flexShrink: 1 },
   textMine: { color: c.bubbleTextMine, flexShrink: 1 },
   stickerEmoji: { fontSize: 56, lineHeight: 64 },
-  mention: { color: c.link, fontWeight: '700' as const },
-  mentionMine: { color: c.bubbleTextMine, fontWeight: '700' as const, opacity: 0.9 },
+  // A tinted chip behind the @name, not just bold colored text — same hue as
+  // the link color so it reads as "highlighted" in all three themes without
+  // fighting the bubble's own background.
+  mention: { color: c.link, fontWeight: '700' as const, backgroundColor: `${c.link}33` },
+  mentionMine: {
+    color: c.bubbleTextMine,
+    fontWeight: '700' as const,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
   mentionMenu: {
     marginHorizontal: 12,
     marginBottom: 4,

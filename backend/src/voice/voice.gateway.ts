@@ -44,6 +44,7 @@ interface GuildRoomState {
 interface VoiceSocketData {
   userId: string;
   userName: string;
+  avatarUrl: string | null;
   orgId: string;
   /** Key used for the SFU router + socket.io room (orgId for team, `guild:${orgId}`). */
   roomKey: string;
@@ -141,6 +142,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
         const data: VoiceSocketData = {
           userId: user.id,
           userName: user.name,
+          avatarUrl: user.avatarUrl,
           orgId,
           roomKey,
           kind,
@@ -282,6 +284,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
       producerId: producer.id,
       userId: data.userId,
       userName: data.userName,
+      avatarUrl: data.avatarUrl,
       kind: 'audio',
     });
 
@@ -289,6 +292,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
       producerId: producer.id,
       userId: data.userId,
       userName: data.userName,
+      avatarUrl: data.avatarUrl,
     });
 
     if (data.kind === 'guild') {

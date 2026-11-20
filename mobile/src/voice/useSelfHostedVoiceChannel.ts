@@ -5,7 +5,11 @@ import { mediaDevices } from '@livekit/react-native-webrtc';
 import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
 import { connectVoiceSocket, VoiceRoomKind } from '../api/voice';
 import { emitToast } from '../ui/toastBus';
-import { startVoiceBackground, stopVoiceBackground } from './voiceBackground';
+import {
+  addVoiceNotificationActionListener,
+  startVoiceBackground,
+  stopVoiceBackground,
+} from './voiceBackground';
 import { attachVoiceChanger } from './voiceChanger';
 import { VoiceChannelController, VoiceChannelStatus, VoiceParticipant } from './types';
 
@@ -18,7 +22,13 @@ function emitAsync<T = any>(socket: Socket, event: string, payload?: unknown): P
   });
 }
 
-type RemoteProducer = { producerId: string; userId: string; userName: string; handRaised?: boolean };
+type RemoteProducer = {
+  producerId: string;
+  userId: string;
+  userName: string;
+  avatarUrl?: string | null;
+  handRaised?: boolean;
+};
 /** Guild voice host-mute state as broadcast by the server. */
 type GuildVoiceState = {
   listenOnly: boolean;
@@ -75,7 +85,9 @@ export function useSelfHostedVoiceChannel(
   // consumerId -> consumer + who it belongs to
   const consumersRef = useRef<Map<string, ConsumerEntry>>(new Map());
   // producerId -> who it belongs to
-  const producerOwnersRef = useRef<Map<string, { id: string; name: string }>>(new Map());
+  const producerOwnersRef = useRef<
+    Map<string, { id: string; name: string; avatarUrl?: string | null }>
+  >(new Map());
   // userId -> consumerId
   const userConsumersRef = useRef<Map<string, string>>(new Map());
   // userId -> local playback volume (0–1); unset = 1
@@ -102,6 +114,7 @@ export function useSelfHostedVoiceChannel(
       byUser.set(owner.id, {
         id: owner.id,
         name: owner.name,
+        avatarUrl: owner.avatarUrl,
         isLocallyMuted: vol === 0,
         isSpeaking: speakingIdsRef.current.has(owner.id),
         isHandRaised: handRaisedIdsRef.current.has(owner.id),
@@ -281,6 +294,7 @@ export function useSelfHostedVoiceChannel(
         producerOwnersRef.current.set(payload.producerId, {
           id: payload.userId,
           name: payload.userName,
+          avatarUrl: payload.avatarUrl,
         });
         refreshParticipants();
         const recvTransport = recvTransportRef.current;
@@ -387,8 +401,20 @@ export function useSelfHostedVoiceChannel(
       }
 
       // Mic first: a denied permission should fail fast, before we have a
-      // socket + server-side transports to clean up.
-      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+      // socket + server-side transports to clean up. Explicit constraints —
+      // without echoCancellation the loudspeaker's own output gets picked
+      // back up by the mic and bounces back to everyone else in the room.
+      // @livekit/react-native-webrtc's MediaTrackConstraints typing hasn't
+      // caught up with these (standard WebRTC) constraints — cast past it.
+      const stream = await mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+        video: false,
+      });
       micStreamRef.current = stream as unknown as typeof micStreamRef.current;
       const track = stream.getAudioTracks()[0] as unknown as MediaStreamTrack;
       // WebRTC's audio pipeline exists now — hook the voice changer in.
@@ -399,6 +425,7 @@ export function useSelfHostedVoiceChannel(
       startVoiceBackground(
         room === 'guild' ? 'Guild Voice' : 'Team Voice',
         'You are in voice. Tap to return to the app.',
+        { muted: isMutedRef.current, deafened: isDeafenedRef.current },
       );
 
       const socket = connectVoiceSocket(authToken, room);
@@ -458,7 +485,11 @@ export function useSelfHostedVoiceChannel(
 
       const existingProducers = await emitAsync<RemoteProducer[]>(socket, 'getProducers');
       for (const p of existingProducers) {
-        producerOwnersRef.current.set(p.producerId, { id: p.userId, name: p.userName });
+        producerOwnersRef.current.set(p.producerId, {
+          id: p.userId,
+          name: p.userName,
+          avatarUrl: p.avatarUrl,
+        });
         if (p.handRaised) handRaisedIdsRef.current.add(p.userId);
       }
       if (room === 'guild') {
@@ -589,6 +620,27 @@ export function useSelfHostedVoiceChannel(
     if (!isPushToTalkRef.current) return;
     setMicEnabled(false);
   }, [setMicEnabled]);
+
+  // Keep the ongoing-call notification's Mute/Deafen labels in sync with
+  // actual state, including the early call inside join() before the first
+  // render with status === 'connecting' lands.
+  useEffect(() => {
+    if (status !== 'connected' && status !== 'connecting') return;
+    startVoiceBackground(
+      room === 'guild' ? 'Guild Voice' : 'Team Voice',
+      'You are in voice. Tap to return to the app.',
+      { muted: isMuted, deafened: isDeafened },
+    );
+  }, [status, isMuted, isDeafened, room]);
+
+  // Mute / Deafen / Leave tapped on the notification itself (app backgrounded).
+  useEffect(() => {
+    return addVoiceNotificationActionListener((action) => {
+      if (action === 'mute') toggleMute();
+      else if (action === 'deafen') toggleDeafen();
+      else if (action === 'leave') leave();
+    });
+  }, [toggleMute, toggleDeafen, leave]);
 
   const hostAction = useCallback((event: string, payload?: unknown) => {
     const socket = socketRef.current;

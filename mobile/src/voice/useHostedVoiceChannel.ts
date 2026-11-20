@@ -12,6 +12,11 @@ import {
 import { moderateVoice } from '../api/voice';
 import { emitToast } from '../ui/toastBus';
 import {
+  addVoiceNotificationActionListener,
+  startVoiceBackground,
+  stopVoiceBackground,
+} from './voiceBackground';
+import {
   VoiceChannelController,
   VoiceChannelStatus,
   VoiceParticipant,
@@ -62,6 +67,17 @@ function parseRoomState(metadata: string | undefined): RoomState {
 
 function isModeratorParticipant(p: Participant): boolean {
   return p.attributes?.mod === '1';
+}
+
+/** Server mints the access token with `metadata: JSON.stringify({ avatarUrl })`. */
+function parseParticipantAvatarUrl(metadata: string | undefined): string | null {
+  if (!metadata) return null;
+  try {
+    const raw = JSON.parse(metadata) as { avatarUrl?: string | null };
+    return raw.avatarUrl ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function errorText(err: unknown): string {
@@ -119,6 +135,7 @@ export function useHostedVoiceChannel(
         return {
           id: p.identity,
           name: p.name || p.identity,
+          avatarUrl: parseParticipantAvatarUrl(p.metadata),
           isLocallyMuted: vol === 0,
           isSpeaking: speakingIdsRef.current.has(p.identity),
           isHandRaised: handRaisedIdsRef.current.has(p.identity),
@@ -152,6 +169,7 @@ export function useHostedVoiceChannel(
   const leave = useCallback(() => {
     roomRef.current?.disconnect();
     roomRef.current = null;
+    stopVoiceBackground();
     AudioSession.stopAudioSession().catch(() => {});
     localVolumesRef.current.clear();
     handRaisedIdsRef.current.clear();
@@ -194,7 +212,16 @@ export function useHostedVoiceChannel(
     isDeafenedRef.current = false;
     isPushToTalkRef.current = false;
     try {
-      const room = new Room();
+      // Explicit, not just relying on LiveKit's own defaults — without
+      // echoCancellation the loudspeaker's own output gets picked back up
+      // by the mic and bounces back to everyone else in the room.
+      const room = new Room({
+        audioCaptureDefaults: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       roomRef.current = room;
 
       room.on(RoomEvent.ParticipantConnected, () => syncParticipants(room));
@@ -209,6 +236,7 @@ export function useHostedVoiceChannel(
         if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
           emitToast('You were removed from the voice channel by a host.');
         }
+        stopVoiceBackground();
         setStatus('idle');
         setParticipants([]);
         setIsMuted(false);
@@ -494,9 +522,32 @@ export function useHostedVoiceChannel(
     return () => {
       roomRef.current?.disconnect();
       roomRef.current = null;
+      stopVoiceBackground();
       AudioSession.stopAudioSession().catch(() => {});
     };
   }, []);
+
+  // Android: keep the mic + socket alive when the user switches to their
+  // game, and show the ongoing-call notification with Mute/Deafen/Leave
+  // quick actions. Re-runs on every mute/deafen toggle to keep those
+  // buttons' labels in sync with actual state.
+  useEffect(() => {
+    if (status !== 'connected' && status !== 'connecting') return;
+    startVoiceBackground(
+      isGuild ? 'Guild Voice' : 'Team Voice',
+      'You are in voice. Tap to return to the app.',
+      { muted: isMuted, deafened: isDeafened },
+    );
+  }, [status, isMuted, isDeafened, isGuild]);
+
+  // Mute / Deafen / Leave tapped on the notification itself (app backgrounded).
+  useEffect(() => {
+    return addVoiceNotificationActionListener((action) => {
+      if (action === 'mute') toggleMute();
+      else if (action === 'deafen') toggleDeafen();
+      else if (action === 'leave') leave();
+    });
+  }, [toggleMute, toggleDeafen, leave]);
 
   const roomCount = isGuild ? participants.length + (status === 'connected' ? 1 : 0) : undefined;
   const canModerate = !!options.canModerate;

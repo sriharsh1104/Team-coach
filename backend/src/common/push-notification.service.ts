@@ -55,8 +55,15 @@ export class PushNotificationService {
         body: JSON.stringify(chunk),
       });
 
+      const text = await res.text().catch(() => '');
+      // TEMP DEBUG: Expo returns 200 even when a per-message delivery fails
+      // (stale token, FCM credentials issue, etc.) — that detail is inside
+      // this response body, not the HTTP status, so log it every time.
+      console.log(
+        `[push] to=${chunk.map((m) => m.to).join(',')} status=${res.status} response=${text}`,
+      );
+
       if (!res.ok) {
-        const text = await res.text().catch(() => '');
         throw new Error(`Expo push API returned ${res.status}: ${text}`);
       }
     }

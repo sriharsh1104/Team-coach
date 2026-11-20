@@ -5,6 +5,8 @@ export type ConnectionQualityLevel = 'excellent' | 'good' | 'poor' | 'lost' | 'u
 export interface VoiceParticipant {
   id: string;
   name: string;
+  /** Profile photo shown as a small circular avatar in the participant list. */
+  avatarUrl?: string | null;
   /** True when this client has locally muted (deafened) that participant. */
   isLocallyMuted: boolean;
   /** True when LiveKit detects this participant is actively speaking. */

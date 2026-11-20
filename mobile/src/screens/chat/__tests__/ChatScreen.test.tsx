@@ -6,7 +6,7 @@ import {
   isScreenRecording,
   startScreenRecording,
 } from '../../../media/screenRecorder';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react-native';
 import { ChatScreen } from '../ChatScreen';
 import { RecordingProvider } from '../../../recording/RecordingContext';
 import { emitToast } from '../../../ui/toastBus';
@@ -105,6 +105,13 @@ beforeEach(() => {
     channels: [],
     teammates: [],
     mentionables: [],
+    // One other org member — matches the single "Teammate" receipt used
+    // throughout the tick tests below (group tick state now needs ALL other
+    // members, not just one, so the roster size has to agree with that).
+    rosterMentionables: [
+      { userId: 'user-2', name: 'Teammate', avatarUrl: null, inGameName: null, channelKey: 'org' },
+    ],
+    guildMentionables: [],
     totalUnread: 0,
   });
   mockedChatApi.markChatRead = jest.fn().mockResolvedValue({ unreadCount: 0 });
@@ -568,6 +575,98 @@ describe('ChatScreen', () => {
       expect(await screen.findByLabelText('Seen by 1')).toBeTruthy();
     });
 
+    it('a group chat stays on "Sent"/"Delivered to N" until EVERY other member has read it, not just one', async () => {
+      mockedChatApi.getChatChannels.mockResolvedValueOnce({
+        channels: [],
+        teammates: [],
+        mentionables: [],
+        rosterMentionables: [
+          { userId: 'user-2', name: 'Alice', avatarUrl: null, inGameName: null, channelKey: 'org' },
+          { userId: 'user-3', name: 'Bob', avatarUrl: null, inGameName: null, channelKey: 'org' },
+        ],
+        guildMentionables: [],
+        totalUnread: 0,
+      });
+      mockedChatApi.getChatHistory.mockResolvedValue(lastMineMessage);
+      // Both delivered, but only one of the two has read it — a single
+      // reader must not flip the whole group tick blue.
+      mockedChatApi.getDeliveryReceipts.mockResolvedValue([
+        { userId: 'user-2', name: 'Alice', lastDeliveredAt: '2026-01-01T00:02:00.000Z' },
+        { userId: 'user-3', name: 'Bob', lastDeliveredAt: '2026-01-01T00:02:00.000Z' },
+      ]);
+      mockedChatApi.getReadReceipts.mockResolvedValue([
+        { userId: 'user-2', name: 'Alice', lastReadAt: '2026-01-01T00:05:00.000Z' },
+      ]);
+
+      await connectAndSettle();
+
+      expect(await screen.findByLabelText('Delivered to 2')).toBeTruthy();
+      expect(screen.queryByLabelText('Seen by 1')).toBeNull();
+      expect(screen.queryByLabelText('Seen by 2')).toBeNull();
+    });
+
+    it('a group chat turns the tick "Seen by N" only once the LAST member has read it', async () => {
+      mockedChatApi.getChatChannels.mockResolvedValueOnce({
+        channels: [],
+        teammates: [],
+        mentionables: [],
+        rosterMentionables: [
+          { userId: 'user-2', name: 'Alice', avatarUrl: null, inGameName: null, channelKey: 'org' },
+          { userId: 'user-3', name: 'Bob', avatarUrl: null, inGameName: null, channelKey: 'org' },
+        ],
+        guildMentionables: [],
+        totalUnread: 0,
+      });
+      mockedChatApi.getChatHistory.mockResolvedValue(lastMineMessage);
+      mockedChatApi.getDeliveryReceipts.mockResolvedValue([
+        { userId: 'user-2', name: 'Alice', lastDeliveredAt: '2026-01-01T00:02:00.000Z' },
+        { userId: 'user-3', name: 'Bob', lastDeliveredAt: '2026-01-01T00:02:00.000Z' },
+      ]);
+      mockedChatApi.getReadReceipts.mockResolvedValue([
+        { userId: 'user-2', name: 'Alice', lastReadAt: '2026-01-01T00:05:00.000Z' },
+        { userId: 'user-3', name: 'Bob', lastReadAt: '2026-01-01T00:06:00.000Z' },
+      ]);
+
+      await connectAndSettle();
+
+      expect(await screen.findByLabelText('Seen by 2')).toBeTruthy();
+    });
+
+    it('lists a group member who has neither delivered nor read as "Pending" in Message Info', async () => {
+      mockedChatApi.getChatChannels.mockResolvedValueOnce({
+        channels: [],
+        teammates: [],
+        mentionables: [],
+        rosterMentionables: [
+          { userId: 'user-2', name: 'Alice', avatarUrl: null, inGameName: null, channelKey: 'org' },
+          { userId: 'user-3', name: 'Bob', avatarUrl: null, inGameName: null, channelKey: 'org' },
+        ],
+        guildMentionables: [],
+        totalUnread: 0,
+      });
+      mockedChatApi.getChatHistory.mockResolvedValue(lastMineMessage);
+      // Only Alice has gotten it at all — Bob hasn't delivered or read it.
+      mockedChatApi.getDeliveryReceipts.mockResolvedValue([
+        { userId: 'user-2', name: 'Alice', lastDeliveredAt: '2026-01-01T00:02:00.000Z' },
+      ]);
+      mockedChatApi.getReadReceipts.mockResolvedValue([
+        { userId: 'user-2', name: 'Alice', lastReadAt: '2026-01-01T00:05:00.000Z' },
+      ]);
+
+      await connectAndSettle();
+      // Partial group delivery — tick stays "Sent", not "Delivered to 1".
+      const tick = await screen.findByLabelText('Sent');
+
+      await act(async () => {
+        fireEvent(tick, 'longPress');
+      });
+
+      expect(await screen.findByText('Message Info')).toBeTruthy();
+      expect(screen.getByText('Alice')).toBeTruthy();
+      expect(screen.getByText('Pending')).toBeTruthy();
+      expect(screen.getByText('Bob')).toBeTruthy();
+    });
+
     it('shows the singular "Delivered"/"Seen" labels (not "...to/by 1") in a 1:1 DM', async () => {
       mockedChatApi.getChatHistory.mockResolvedValue([
         { ...lastMineMessage[0], text: 'hey' },
@@ -711,6 +810,69 @@ describe('ChatScreen', () => {
       expect(await screen.findByText('Message Info')).toBeTruthy();
       expect(screen.getByText('Alice')).toBeTruthy();
       expect(screen.getByText('Bob')).toBeTruthy();
+    });
+  });
+
+  describe('pinned message banner', () => {
+    it('shows a banner with the pinned message preview once a message is pinned', async () => {
+      mockedChatApi.getChatHistory.mockResolvedValue([
+        {
+          id: 'm1',
+          senderId: 'user-2',
+          senderName: 'Teammate',
+          text: 'hello',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          id: 'm2',
+          senderId: 'user-2',
+          senderName: 'Teammate',
+          text: 'pin me',
+          createdAt: '2026-01-01T00:01:00.000Z',
+          pinned: true,
+        },
+      ] as any);
+
+      await connectAndSettle();
+
+      const banner = await screen.findByLabelText('Pinned message, tap to jump to it');
+      expect(within(banner).getByText('Pinned message')).toBeTruthy();
+      expect(within(banner).getByText('pin me')).toBeTruthy();
+    });
+
+    it('shows a count + cycle control when more than one message is pinned', async () => {
+      mockedChatApi.getChatHistory.mockResolvedValue([
+        {
+          id: 'm1',
+          senderId: 'user-2',
+          senderName: 'Teammate',
+          text: 'first pin',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          pinned: true,
+        },
+        {
+          id: 'm2',
+          senderId: 'user-2',
+          senderName: 'Teammate',
+          text: 'second pin',
+          createdAt: '2026-01-01T00:01:00.000Z',
+          pinned: true,
+        },
+      ] as any);
+
+      await connectAndSettle();
+
+      let banner = await screen.findByLabelText('Pinned message, tap to jump to it');
+      expect(within(banner).getByText('Pinned message 1/2')).toBeTruthy();
+      expect(within(banner).getByText('first pin')).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText('Show next pinned message'));
+      });
+
+      banner = await screen.findByLabelText('Pinned message, tap to jump to it');
+      expect(within(banner).getByText('Pinned message 2/2')).toBeTruthy();
+      expect(within(banner).getByText('second pin')).toBeTruthy();
     });
   });
 

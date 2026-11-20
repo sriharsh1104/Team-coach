@@ -21,6 +21,7 @@ import { VoiceChannelController, VoiceParticipant, ConnectionQualityLevel } from
 import { Screen } from '../../brand/Screen';
 import { AppIcon } from '../../ui/AppIcon';
 import { ButtonLabel } from '../../ui/ButtonLabel';
+import { ChannelAvatar } from '../chat/ChannelAvatar';
 import { useSharedStyles } from '../shared';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
@@ -253,6 +254,7 @@ type ListItem =
       connectionQuality: ConnectionQualityLevel;
       isHostMuted?: boolean;
       isModerator?: boolean;
+      avatarUrl?: string | null;
       isSelf: true;
     };
 
@@ -332,6 +334,7 @@ function VoiceChannelBody({
         {
           id: user?.id ?? 'me',
           name: `${user?.name ?? 'You'} (You)`,
+          avatarUrl: user?.avatarUrl,
           isLocallyMuted: voice.isMuted,
           isSpeaking: false,
           isHandRaised: voice.isLocalHandRaised,
@@ -506,9 +509,12 @@ function VoiceChannelBody({
                         item.isSpeaking && styles.avatarSpeaking,
                       ]}
                     >
-                      <Text style={styles.avatarText}>
-                        {(item.name[0] ?? '?').toUpperCase()}
-                      </Text>
+                      <ChannelAvatar
+                        uri={item.avatarUrl}
+                        size={32}
+                        fallback={(item.name[0] ?? '?').toUpperCase()}
+                        previewable={false}
+                      />
                     </View>
                     {item.isHandRaised && (
                       <View style={styles.handRaisedBadge}>
@@ -912,7 +918,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#5865f2',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -921,7 +926,6 @@ const styles = StyleSheet.create({
   avatarSpeaking: {
     borderColor: '#23a559',
   },
-  avatarText: { color: '#fff', fontWeight: '700' },
   speakingRing: {
     position: 'absolute',
     width: 44,
