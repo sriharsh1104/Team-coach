@@ -190,6 +190,8 @@ export interface Profile {
   inGameName: string | null;
   inGameUid: string | null;
   phone: string | null;
+  /** Null until the number is proven via Telegram verification. */
+  phoneVerifiedAt?: string | null;
   whatsappUrl: string | null;
   instagramUrl: string | null;
   discordUrl: string | null;

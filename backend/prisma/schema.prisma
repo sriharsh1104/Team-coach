@@ -42,6 +42,9 @@ model User {
   inGameName String? @unique
   inGameUid  String? @unique
   phone      String? @unique
+  // Set only by Telegram verification (POST /users/me/phone/telegram → bot
+  // contact share). Null = the number was never proven to belong to this user.
+  phoneVerifiedAt DateTime?
 
   whatsappUrl  String?
   instagramUrl String?
@@ -77,6 +80,7 @@ model User {
   emailVerified Boolean @default(false)
 
   emailVerificationCode EmailVerificationCode?
+  telegramPhoneLinks    TelegramPhoneLink[]
   passwordResetCode     PasswordResetCode?
 
   memberships        Membership[]
@@ -112,6 +116,24 @@ model RevokedToken {
   expiresAt DateTime
 
   @@index([expiresAt])
+}
+
+/// One-time link from the app to the Telegram bot. The token travels in the
+/// deep link (`t.me/<bot>?start=<token>`); the bot learns the chat id when the
+/// user opens it, and the phone is only saved after the user shares their own
+/// Telegram contact card.
+model TelegramPhoneLink {
+  token          String    @id
+  userId         String
+  telegramChatId BigInt?
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([telegramChatId])
 }
 
 model EmailVerificationCode {

@@ -50,6 +50,9 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat, seed = n
   // If the user taps before the saved tables finish loading, keep their edits.
   const edited = useRef(false);
   const seeded = !!seed;
+  const scrollRef = useRef<ScrollView>(null);
+  // Jump to the bottom (newest match + Send) once the next layout pass happens.
+  const stickToEnd = useRef(false);
 
   // Every time the sheet opens: either continue the table from the chat, or
   // restore the saved tables so a match can be added later.
@@ -57,6 +60,7 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat, seed = n
     if (!visible) return;
     if (seed) {
       edited.current = true;
+      stickToEnd.current = true;
       setTables([{ id: `seed:${Date.now()}`, matches: [...seed.matches, newMatch()].slice(0, MAX_CALC_MATCHES) }]);
       return;
     }
@@ -97,7 +101,19 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat, seed = n
             <IconActionButton icon="close" label="Close calculator" onPress={onClose} />
           </View>
 
-          <ScrollView style={staticStyles.scroll} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            ref={scrollRef}
+            style={staticStyles.scroll}
+            contentContainerStyle={staticStyles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+            onContentSizeChange={() => {
+              if (stickToEnd.current) {
+                stickToEnd.current = false;
+                scrollRef.current?.scrollToEnd({ animated: true });
+              }
+            }}
+          >
             {tables.map((table, ti) => {
               const t = ti + 1;
               const totals = seriesTotals(table.matches);
@@ -203,7 +219,10 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat, seed = n
                   {table.matches.length < MAX_CALC_MATCHES ? (
                     <Pressable
                       style={styles.addBtn}
-                      onPress={() => setMatches(ti, [...table.matches, newMatch()])}
+                      onPress={() => {
+                        stickToEnd.current = true;
+                        setMatches(ti, [...table.matches, newMatch()]);
+                      }}
                       accessibilityRole="button"
                       accessibilityLabel={`Add match to table ${t}`}
                     >
@@ -276,7 +295,10 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat, seed = n
 const staticStyles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  scroll: { flexGrow: 0 },
+  // flexShrink: the sheet has a maxHeight — without it the list never shrinks to fit,
+  // so it is clipped and cannot scroll down to Kills / Send.
+  scroll: { flexGrow: 0, flexShrink: 1 },
+  scrollContent: { paddingBottom: 32 },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
@@ -291,6 +313,7 @@ function calcStyles(c: ThemeColors) {
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       padding: 16,
+      paddingBottom: 24,
       maxHeight: '88%' as const,
       borderTopWidth: 1,
       borderColor: c.border,

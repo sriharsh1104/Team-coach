@@ -11,6 +11,13 @@ export function updateMyProfile(input: UpdateProfileInput) {
   return apiClient.patch<Profile>('/users/me', input).then((res) => res.data);
 }
 
+/** Creates a one-time Telegram bot link. The phone is saved only after the user shares their contact there. */
+export function startTelegramPhoneVerification() {
+  return apiClient
+    .post<{ deepLink: string; expiresAt: string }>('/users/me/phone/telegram')
+    .then((res) => res.data);
+}
+
 function stripMultipartContentType(data: unknown, headers?: unknown) {
   if (headers && typeof headers === 'object') {
     delete (headers as Record<string, unknown>)['Content-Type'];

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -20,6 +21,7 @@ const PROFILE_SELECT = {
   inGameName: true,
   inGameUid: true,
   phone: true,
+  phoneVerifiedAt: true,
   whatsappUrl: true,
   instagramUrl: true,
   discordUrl: true,
@@ -142,7 +144,22 @@ export class UsersService {
   async updateMyProfile(userId: string, dto: UpdateProfileDto) {
     const data: UpdateProfileDto = { ...dto };
     if (typeof data.phone === 'string') {
-      data.phone = normalizePhone(data.phone);
+      // Phone is only ever set by Telegram verification (see PhoneVerifyService).
+      // Re-sending the number already on file is a harmless no-op; anything
+      // else must go through the verify flow.
+      const requested = normalizePhone(data.phone);
+      if (requested) {
+        const current = await this.prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { phone: true },
+        });
+        if (requested !== current.phone) {
+          throw new BadRequestException(
+            'Verify your phone number with Telegram to set or change it.',
+          );
+        }
+      }
+      delete data.phone;
     }
     if (typeof data.inGameName === 'string') {
       data.inGameName = data.inGameName.trim();

@@ -2,11 +2,27 @@ import { io, Socket } from 'socket.io-client';
 import { apiClient, apiBaseUrl } from './client';
 import { VoiceConfig } from './types';
 
-export function getVoiceConfig() {
-  return apiClient.get<VoiceConfig>('/voice/config').then((res) => res.data);
+export type VoiceRoomKind = 'team' | 'guild';
+
+/** `room` picks the team room (default) or the guild-wide room. */
+export function getVoiceConfig(room: VoiceRoomKind = 'team') {
+  return apiClient
+    .get<VoiceConfig>('/voice/config', room === 'guild' ? { params: { room } } : undefined)
+    .then((res) => res.data);
 }
 
-export type VoiceRoomKind = 'team' | 'guild';
+export type VoiceModerateAction = 'muteAll' | 'unmuteAll' | 'mute' | 'unmute' | 'kick';
+
+/**
+ * Hosted-voice moderation. The server re-checks that the caller is a host and
+ * enforces the result on the LiveKit room, so this is a request, not a command
+ * the client can fake.
+ */
+export function moderateVoice(room: VoiceRoomKind, action: VoiceModerateAction, userId?: string) {
+  return apiClient
+    .post('/voice/moderate', { room, action, ...(userId ? { userId } : {}) })
+    .then((res) => res.data);
+}
 
 export function connectVoiceSocket(token: string, room: VoiceRoomKind = 'team'): Socket {
   return io(`${apiBaseUrl}/voice`, {

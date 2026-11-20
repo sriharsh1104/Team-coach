@@ -416,16 +416,22 @@ function UserSection({
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) {
-      setError('Name and phone are required.');
+    if (!name.trim()) {
+      setError('Name is required.');
+      return;
+    }
+    if (!profile.phone) {
+      setError(
+        'Phone is verified with Telegram in the mobile app. Add it there first.',
+      );
       return;
     }
     setBusy(true);
     setError(null);
     try {
+      // Phone is never sent from here: it is set only through Telegram verification.
       const updated = await usersApi.updateMyProfile({
         name: name.trim(),
-        phone: phone.trim(),
       });
       let role = updated.role;
       if (profile.isOwner) {
@@ -477,10 +483,15 @@ function UserSection({
           id="pf-phone"
           type="tel"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="Your phone number"
-          required
+          placeholder="Verify in the mobile app (Telegram)"
+          disabled
+          readOnly
         />
+        <small>
+          {profile.phoneVerifiedAt
+            ? 'Verified with Telegram.'
+            : 'Add or verify it in the mobile app with Telegram.'}
+        </small>
       </div>
       <div className="field field-span">
         <label htmlFor="pf-email">Email</label>

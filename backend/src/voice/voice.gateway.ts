@@ -8,7 +8,6 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
-import { GuildRole, MembershipRole } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import {
@@ -21,6 +20,8 @@ import { ChatService } from '../chat/chat.service';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { MembershipService } from '../membership/membership.service';
 import { MediasoupSfuService } from './mediasoup-sfu.service';
+import { resolveGuildAccess } from './guild-access';
+import { GUILD_VOICE_MAX_PARTICIPANTS } from './hosted-room-state';
 import { WsRateLimiter } from '../common/ws-rate-limiter';
 import { corsOrigin } from '../common/cors-origin';
 
@@ -28,7 +29,7 @@ import { corsOrigin } from '../common/cors-origin';
 type VoiceRoomKind = 'team' | 'guild';
 
 /** Hard cap for Guild Voice — one extra join past this is refused. */
-export const GUILD_VOICE_MAX_PARTICIPANTS = 50;
+export { GUILD_VOICE_MAX_PARTICIPANTS };
 
 /** Server-side mute state of one guild room. Only non-moderators are ever muted. */
 interface GuildRoomState {
@@ -125,7 +126,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
         let orgId: string;
         let canModerate = false;
         if (kind === 'guild') {
-          const access = await this.resolveGuildAccess(user.id);
+          const access = await resolveGuildAccess(this.prisma, user.id);
           orgId = access.orgId;
           canModerate = access.canModerate;
         } else {
@@ -486,28 +487,6 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
       throw new Error('Only the owner or guild leaders can do that');
     }
     return data;
-  }
-
-  /**
-   * Guild voice is open to every guild member (roster or guild-only seat).
-   * Owner, coach and guild leaders/elders are "hosts".
-   */
-  private async resolveGuildAccess(userId: string) {
-    const [roster, guild] = await Promise.all([
-      this.prisma.membership.findFirst({ where: { userId } }),
-      this.prisma.guildMembership.findFirst({ where: { userId } }),
-    ]);
-    const orgId = roster?.orgId ?? guild?.orgId;
-    if (!orgId) throw new Error('You are not part of a guild yet');
-    const rosterHost =
-      !!roster && (roster.isOwner || roster.role === MembershipRole.COACH);
-    const guildHost =
-      !!guild &&
-      guild.orgId === orgId &&
-      (guild.role === GuildRole.LEADER ||
-        guild.role === GuildRole.ELDER ||
-        guild.role === GuildRole.ACTIVE_LEADER);
-    return { orgId, canModerate: rosterHost || guildHost };
   }
 
   /**

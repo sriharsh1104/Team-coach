@@ -9,10 +9,13 @@ import React, {
 import { AppState, Platform } from 'react-native';
 import {
   addScreenRecordingStoppedListener,
+  discardRecording,
   isScreenRecording,
+  saveRecordingToGallery,
   startScreenRecording,
   stopScreenRecording,
 } from '../media/screenRecorder';
+import { confirmAsync } from '../ui/confirmAsync';
 import { emitToast } from '../ui/toastBus';
 
 /** A finished recording that was started from a chat, waiting for "send it?". */
@@ -52,20 +55,69 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
   const originChannelRef = useRef<string | null>(null);
   const [pendingShare, setPendingShare] = useState<PendingRecordingShare | null>(null);
 
+  // A finished recording is only in the app cache. The user decides: save it
+  // to the gallery or throw it away. If the recording ended while the app was
+  // in the background (notification Stop, 30-min limit) the question waits
+  // until the app is open again — an Alert cannot show before that.
+  const [awaitingDecision, setAwaitingDecision] = useState(false);
+  const deciding = useRef(false);
+
   // Native "stopped" events (e.g. 30-min limit, notification tap)
   useEffect(() => {
     const unsub = addScreenRecordingStoppedListener((uri) => {
       setRecording(false);
       setElapsedSec(0);
-      if (uri) emitToast('Recording saved to gallery 🎬');
-      const channelKey = originChannelRef.current;
-      originChannelRef.current = null;
-      if (uri && channelKey) {
-        setPendingShare({ uri, channelKey, finishedAt: Date.now() });
-      }
+      if (!uri) return;
+      setAwaitingDecision(true);
     });
     return unsub;
   }, []);
+
+  const askSaveOrDiscard = useCallback(async () => {
+    if (deciding.current) return;
+    deciding.current = true;
+    try {
+      const save = await confirmAsync(
+        'Save this recording?',
+        'Save it to your gallery, or discard it.',
+        'Save',
+        'Discard',
+        false,
+      );
+      setAwaitingDecision(false);
+      const channelKey = originChannelRef.current;
+      originChannelRef.current = null;
+      if (!save) {
+        await discardRecording().catch(() => undefined);
+        emitToast('Recording discarded');
+        return;
+      }
+      try {
+        const saved = await saveRecordingToGallery();
+        if (!saved) throw new Error('not saved');
+        emitToast('Recording saved to gallery 🎬');
+        if (channelKey) {
+          setPendingShare({ uri: saved, channelKey, finishedAt: Date.now() });
+        }
+      } catch {
+        emitToast('Could not save the recording');
+      }
+    } finally {
+      deciding.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!awaitingDecision) return;
+    if (AppState.currentState === 'active') {
+      void askSaveOrDiscard();
+      return;
+    }
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void askSaveOrDiscard();
+    });
+    return () => sub.remove();
+  }, [awaitingDecision, askSaveOrDiscard]);
 
   // Re-sync state when app comes back to foreground (covers the case where
   // Android stopped the projection while the app was in the background).

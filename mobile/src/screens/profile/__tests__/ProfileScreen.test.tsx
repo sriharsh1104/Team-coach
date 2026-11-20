@@ -1,5 +1,6 @@
 import React from 'react';
 import { Alert } from 'react-native';
+import { Linking } from 'react-native';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import * as Clipboard from 'expo-clipboard';
 import { ProfileScreen } from '../ProfileScreen';
@@ -8,43 +9,6 @@ import { useAuth } from '../../../auth/AuthContext';
 
 jest.mock('../../../api/users');
 jest.mock('../../../auth/AuthContext');
-jest.mock('../../../ui/PhoneField', () => {
-  const React = require('react');
-  const { TextInput } = require('react-native');
-  function toE164(national: string) {
-    const digits = String(national).replace(/\D/g, '');
-    if (!digits) return '';
-    if (digits.length === 10) return `+91${digits}`;
-    if (digits.startsWith('91') && digits.length >= 12) return `+${digits}`;
-    return `+${digits}`;
-  }
-  function nationalFromE164(value?: string) {
-    if (!value) return '';
-    const digits = String(value).replace(/\D/g, '');
-    if (digits.length > 10 && digits.startsWith('91')) return digits.slice(2);
-    return digits;
-  }
-  return {
-    PhoneField: ({
-      value,
-      onChange,
-    }: {
-      value: string;
-      onChange: (e164: string) => void;
-    }) => {
-      const [text, setText] = React.useState(() => nationalFromE164(value));
-      return React.createElement(TextInput, {
-        value: text,
-        placeholder: 'Phone number',
-        keyboardType: 'phone-pad',
-        onChangeText: (next: string) => {
-          setText(next);
-          onChange(toE164(next));
-        },
-      });
-    },
-  };
-});
 const mockedUsersApi = usersApi as jest.Mocked<typeof usersApi>;
 const mockedUseAuth = useAuth as jest.Mock;
 
@@ -110,16 +74,17 @@ describe('ProfileScreen', () => {
       expect(screen.queryByText('Name *')).toBeNull();
     });
 
-    it('pressing Edit reveals name + phone inputs, pre-filled, and shows the signup email as read-only', async () => {
+    it('pressing Edit shows the name input, the signup email, and the Telegram phone verify button', async () => {
       render(<ProfileScreen />);
       await enterEditMode();
 
       expect(screen.getByDisplayValue('Player 1')).toBeTruthy();
-      expect(screen.getByDisplayValue('9999999999')).toBeTruthy();
       expect(screen.getByText('player1@example.com')).toBeTruthy();
+      expect(screen.getByText('Verify on Telegram')).toBeTruthy();
+      expect(screen.queryByPlaceholderText('Phone number')).toBeNull();
     });
 
-    it('saves a new name and phone, then returns to the view', async () => {
+    it('saves only the name (phone is never sent from this form), then returns to the view', async () => {
       mockedUsersApi.updateMyProfile.mockResolvedValue({ ...baseProfile, name: 'New Name' });
       render(<ProfileScreen />);
       await enterEditMode();
@@ -131,7 +96,6 @@ describe('ProfileScreen', () => {
 
       expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
         name: 'New Name',
-        phone: '+919999999999',
       });
       await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
       expect(screen.queryByText('Name *')).toBeNull();
@@ -161,6 +125,39 @@ describe('ProfileScreen', () => {
       });
 
       await screen.findByText('Invalid name');
+    });
+  });
+
+  describe('Phone via Telegram', () => {
+    it('opens the bot deep link and says it is waiting for the share', async () => {
+      mockedUsersApi.startTelegramPhoneVerification.mockResolvedValue({
+        deepLink: 'https://t.me/TeamCoachBot?start=abc',
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      });
+      const openSpy = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as any);
+      render(<ProfileScreen />);
+      await enterEditMode();
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Verify on Telegram'));
+      });
+
+      expect(mockedUsersApi.startTelegramPhoneVerification).toHaveBeenCalledTimes(1);
+      expect(openSpy).toHaveBeenCalledWith('https://t.me/TeamCoachBot?start=abc');
+      await screen.findByText('Waiting for Telegram…');
+      openSpy.mockRestore();
+    });
+
+    it('shows a verified badge instead of the button once the phone is verified', async () => {
+      mockedUsersApi.getMyProfile.mockResolvedValue({
+        ...baseProfile,
+        phoneVerifiedAt: '2026-11-20T10:00:00.000Z',
+      });
+      render(<ProfileScreen />);
+      await enterEditMode();
+
+      await screen.findByText('+919999999999 · verified on Telegram ✓');
+      expect(screen.queryByText('Verify on Telegram')).toBeNull();
     });
   });
 
@@ -419,30 +416,49 @@ describe('ProfileScreen', () => {
       expect(screen.queryByText('My Devices')).toBeNull();
     });
 
-    it('does not call refreshUser until BOTH tabs satisfy the required fields', async () => {
+    it('blocks Continue on the User tab until the phone is set through Telegram', async () => {
       mockedUsersApi.getMyProfile.mockResolvedValue({
         ...baseProfile,
         inGameName: null,
         inGameUid: null,
         phone: null,
+        phoneVerifiedAt: null,
+      });
+      render(<ProfileScreen mustComplete />);
+      await screen.findByText('Name *');
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Continue'));
+      });
+      expect(mockedUsersApi.updateMyProfile).not.toHaveBeenCalled();
+      expect(screen.getByText('Verify on Telegram')).toBeTruthy();
+    });
+
+    it('does not call refreshUser until BOTH tabs satisfy the required fields', async () => {
+      // Phone already verified via Telegram; IGN/UID still missing.
+      mockedUsersApi.getMyProfile.mockResolvedValue({
+        ...baseProfile,
+        inGameName: null,
+        inGameUid: null,
+        phone: '+919999999999',
+        phoneVerifiedAt: '2026-11-20T10:00:00.000Z',
       });
       mockedUsersApi.updateMyProfile.mockResolvedValue({
         ...baseProfile,
         inGameName: null,
         inGameUid: null,
         phone: '+919999999999',
+        phoneVerifiedAt: '2026-11-20T10:00:00.000Z',
       });
       render(<ProfileScreen mustComplete />);
       await screen.findByText('Name *');
 
-      // Saving the User tab alone (phone filled) isn't enough — IGN/UID still empty.
-      fireEvent.changeText(screen.getByPlaceholderText('Phone number'), '9999999999');
+      // Saving the User tab alone isn't enough — IGN/UID still empty.
       await act(async () => {
         fireEvent.press(screen.getByText('Continue'));
       });
       expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
         name: 'Player 1',
-        phone: '+919999999999',
       });
       expect(mockRefreshUser).not.toHaveBeenCalled();
       // Auto-advance to Game profile after User Continue.
@@ -450,7 +466,10 @@ describe('ProfileScreen', () => {
 
       // Completing the Game tab (IGN + UID) on top of the now-saved phone
       // satisfies isProfileComplete and triggers refreshUser.
-      mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
+      mockedUsersApi.updateMyProfile.mockResolvedValue({
+        ...baseProfile,
+        phoneVerifiedAt: '2026-11-20T10:00:00.000Z',
+      });
       fireEvent.changeText(screen.getByPlaceholderText('Your in-game name'), 'ShadowStrike');
       fireEvent.changeText(screen.getByPlaceholderText('Your in-game UID'), 'UID-0001');
       await act(async () => {

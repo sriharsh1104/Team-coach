@@ -18,9 +18,9 @@ android {
 }
 
 dependencies {
-  // WebRTCModuleOptions (com.oney.WebRTCModule) + livekit.org.webrtc.* come
-  // from the LiveKit fork of react-native-webrtc, which the app already links.
-  // `api 'io.github.webrtc-sdk:android-prefixed'` inside it makes the
-  // ExternalAudioProcessingFactory classes visible to us transitively.
+  // livekit.org.webrtc.* come from the LiveKit fork of react-native-webrtc, which
+  // the app already links (`api 'io.github.webrtc-sdk:android-prefixed'`).
+  // LiveKitReactNative.audioProcessingController (the supported hook for audio effects).
+  implementation project(':livekit_react-native')
   implementation project(':livekit_react-native-webrtc')
 }

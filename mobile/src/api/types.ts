@@ -156,6 +156,8 @@ export interface Profile {
   inGameName: string | null;
   inGameUid: string | null;
   phone: string | null;
+  /** Null until the number is proven via Telegram verification. */
+  phoneVerifiedAt?: string | null;
   whatsappUrl: string | null;
   instagramUrl: string | null;
   discordUrl: string | null;
@@ -172,6 +174,7 @@ export interface UpdateProfileInput {
   roles?: string[];
   inGameName?: string;
   inGameUid?: string;
+  /** Phone is set only via Telegram verification; the server refuses a new number here. */
   phone?: string;
   whatsappUrl?: string;
   instagramUrl?: string;
@@ -295,7 +298,18 @@ export interface VoiceRoom {
 
 export type VoiceConfig =
   | { mode: 'self' }
-  | { mode: 'hosted'; url: string; token: string; rooms?: VoiceRoom[] };
+  | {
+      mode: 'hosted';
+      url: string;
+      token: string;
+      rooms?: VoiceRoom[];
+      /** Which room the token is for (guild voice is its own LiveKit room). */
+      room?: 'team' | 'guild';
+      /** Server says this user is a host (owner / coach / guild leader). */
+      canModerate?: boolean;
+      /** Guild room participant cap. */
+      max?: number;
+    };
 
 export type ExtractionStatus =
   | 'QUEUED'

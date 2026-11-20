@@ -4,6 +4,7 @@ import * as speakeasy from 'speakeasy';
 import * as bcrypt from 'bcrypt';
 import { createTestApp, getPrisma, resetDatabase, uniqueEmail, uniqueOrgName } from './utils/test-app';
 import { sentOtps } from './utils/mailer-mock';
+import { setVerifiedPhone } from './utils/fixtures';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Phase 1A — Auth + Org (e2e)', () => {
@@ -82,11 +83,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .expect(200);
       expect(me.body.profileComplete).toBe(false);
 
-      await request(server)
-        .patch('/users/me')
-        .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ phone: '9999999999' })
-        .expect(200);
+      await setVerifiedPhone(prisma, user.user.id, '9999999999');
       me = await request(server)
         .get('/auth/me')
         .set('Authorization', `Bearer ${user.accessToken}`)

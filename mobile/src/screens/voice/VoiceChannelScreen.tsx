@@ -655,8 +655,10 @@ function VoiceChannelBody({
 
 function HostedVoiceChannel({
   config,
+  room,
 }: {
   config: Extract<VoiceConfig, { mode: 'hosted' }>;
+  room: VoiceRoomKind;
 }) {
   const { activate, deactivate, controller, setScreenFocused } = useVoiceContext();
   const { colors } = useTheme();
@@ -670,14 +672,20 @@ function HostedVoiceChannel({
 
   const effectiveUrl = selectedRoom ? selectedRoom.url : config.url;
   const effectiveToken = selectedRoom ? selectedRoom.token : config.token;
-  const channelName = selectedRoom ? selectedRoom.name : 'Team Voice';
+  const channelName = selectedRoom
+    ? selectedRoom.name
+    : room === 'guild'
+      ? 'Guild Voice'
+      : 'Team Voice';
+  const canModerate = config.canModerate;
+  const max = config.max;
 
   // Activate (or reactivate) in the global VoiceContext whenever url/token change.
   // This is what mounts HostedVoiceHolder above the navigator, keeping the
   // LiveKit Room alive when the user navigates away.
   useEffect(() => {
-    activate({ mode: 'hosted', url: effectiveUrl, token: effectiveToken });
-  }, [effectiveUrl, effectiveToken, activate]);
+    activate({ mode: 'hosted', url: effectiveUrl, token: effectiveToken, room, canModerate, max });
+  }, [effectiveUrl, effectiveToken, room, canModerate, max, activate]);
 
   // Track screen focus so VoiceFloatingWidget only shows when user has
   // navigated away from this screen.
@@ -685,14 +693,16 @@ function HostedVoiceChannel({
     useCallback(() => {
       setScreenFocused(true);
       // Re-activate if the user left via the floating widget then came back
-      activate({ mode: 'hosted', url: effectiveUrl, token: effectiveToken });
+      activate({ mode: 'hosted', url: effectiveUrl, token: effectiveToken, room, canModerate, max });
       return () => {
         setScreenFocused(false);
       };
-    }, [effectiveUrl, effectiveToken, activate, setScreenFocused]),
+    }, [effectiveUrl, effectiveToken, room, canModerate, max, activate, setScreenFocused]),
   );
 
-  if (!controller) {
+  // The shared session may still be the other room's (team <-> guild) for one
+  // render before the provider swaps holders — don't show its controls here.
+  if (!controller || (controller.room ?? 'team') !== room) {
     return (
       <Screen>
         <View style={shared.container}>
@@ -713,6 +723,7 @@ function HostedVoiceChannel({
     <VoiceChannelBody
       voice={controller}
       channelName={channelName}
+      channelLabel={room === 'guild' ? 'GUILD VOICE' : 'VOICE CHANNEL'}
       rooms={hasMultipleRooms ? config.rooms : undefined}
       selectedRoom={selectedRoom}
       onSelectRoom={handleSelectRoom}
@@ -785,7 +796,7 @@ function VoiceChannelScreenInner({ room }: { room: VoiceRoomKind }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([voiceApi.getVoiceConfig(), getToken()])
+    Promise.all([voiceApi.getVoiceConfig(room), getToken()])
       .then(([cfg, token]) => {
         if (cancelled) return;
         if (!token) {
@@ -816,7 +827,7 @@ function VoiceChannelScreenInner({ room }: { room: VoiceRoomKind }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [room]);
 
   if (nativeError || error) {
     return (
@@ -838,20 +849,8 @@ function VoiceChannelScreenInner({ room }: { room: VoiceRoomKind }) {
     );
   }
 
-  if (room === 'guild' && config.mode === 'hosted') {
-    return (
-      <Screen>
-        <View style={shared.container}>
-          <Text style={shared.error}>
-            Guild voice needs the self-hosted voice server. Ask your admin to enable it.
-          </Text>
-        </View>
-      </Screen>
-    );
-  }
-
   return config.mode === 'hosted' ? (
-    <HostedVoiceChannel config={config} />
+    <HostedVoiceChannel config={config} room={room} />
   ) : (
     <SelfHostedVoiceChannel authToken={authToken} room={room} />
   );

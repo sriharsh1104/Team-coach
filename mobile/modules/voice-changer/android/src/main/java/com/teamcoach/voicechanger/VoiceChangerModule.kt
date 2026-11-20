@@ -8,13 +8,23 @@ class VoiceChangerModule : Module() {
     Name("VoiceChanger")
 
     OnCreate {
-      // Fallback if the config plugin's MainApplication hook is missing.
+      // Starts the attach loop (also done by the config plugin's MainApplication hook).
       VoiceChangerInstaller.install()
     }
 
-    /** True when our processor is wired into WebRTC's capture path. */
+    /** True when the LiveKit audio pipeline we plug into is part of this build. */
     Function("isAvailable") {
-      VoiceChangerInstaller.installed
+      VoiceChangerInstaller.available
+    }
+
+    /** True once the effect is attached to the live capture pipeline (after the first voice use). */
+    Function("isActive") {
+      VoiceChangerInstaller.active
+    }
+
+    /** Attach now — JS calls this when a voice session starts (idempotent). */
+    Function("attach") {
+      VoiceChangerInstaller.tryAttach()
     }
 
     Function("getPresets") {

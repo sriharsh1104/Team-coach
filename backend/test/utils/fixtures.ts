@@ -1,3 +1,5 @@
+import { PrismaService } from '../../src/prisma/prisma.service';
+import { normalizePhone } from '../../src/users/users.service';
 import * as request from 'supertest';
 import { uniqueEmail, uniqueOrgName } from './test-app';
 import { sentOtps } from './mailer-mock';
@@ -82,4 +84,20 @@ export async function uploadMedia(
     .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
     .expect(201);
   return res.body;
+}
+
+/**
+ * In production a phone number is only saved through Telegram verification
+ * (PhoneVerifyService). E2E tests need a verified number without a real bot,
+ * so they write the verified result directly.
+ */
+export async function setVerifiedPhone(
+  prisma: PrismaService,
+  userId: string,
+  phone: string,
+) {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { phone: normalizePhone(phone), phoneVerifiedAt: new Date() },
+  });
 }

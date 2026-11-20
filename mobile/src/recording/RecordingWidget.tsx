@@ -21,7 +21,7 @@ function fmt(sec: number) {
 
 /**
  * Floating recording status pill — appears at the top of the screen whenever
- * a screen recording is active. Tap "Stop" to stop + auto-save to gallery.
+ * a screen recording is active. Tap "Stop" — you are then asked to save the recording or discard it.
  */
 export function RecordingWidget() {
   const { recording, elapsedSec, stopRecording } = useRecording();

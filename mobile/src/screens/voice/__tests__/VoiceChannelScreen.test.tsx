@@ -104,7 +104,11 @@ describe('VoiceChannelScreen', () => {
     renderWithVoice(<VoiceChannelScreen />);
 
     await screen.findByText('Team Voice');
-    expect(mockedUseHosted).toHaveBeenCalledWith('wss://livekit.example.com', 'lk-token');
+    expect(mockedUseHosted).toHaveBeenCalledWith('wss://livekit.example.com', 'lk-token', {
+      room: 'team',
+      canModerate: undefined,
+      max: undefined,
+    });
     expect(mockedUseSelfHosted).not.toHaveBeenCalled();
   });
 
@@ -230,15 +234,40 @@ describe('GuildVoiceScreen', () => {
     await screen.findByText('3 / 50 in voice');
   });
 
-  it('is not available when the server uses hosted (LiveKit) voice', async () => {
+  it('joins the hosted (LiveKit) guild room with the server-provided host flag and cap', async () => {
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({
       mode: 'hosted',
       url: 'wss://livekit.example.com',
-      token: 'lk-token',
+      token: 'lk-guild-token',
+      room: 'guild',
+      canModerate: true,
+      max: 50,
     });
+    mockedUseHosted.mockReturnValue(
+      controller({
+        room: 'guild',
+        status: 'connected',
+        canModerate: true,
+        roomCount: 4,
+        roomMax: 50,
+        muteAll: jest.fn(),
+        unmuteAll: jest.fn(),
+        setParticipantHostMuted: jest.fn(),
+      }),
+    );
     renderWithVoice(<GuildVoiceScreen />);
 
-    await screen.findByText(/Guild voice needs the self-hosted voice server/);
+    await screen.findByText('Guild Voice');
+    expect(mockedVoiceApi.getVoiceConfig).toHaveBeenCalledWith('guild');
+    expect(mockedUseHosted).toHaveBeenCalledWith('wss://livekit.example.com', 'lk-guild-token', {
+      room: 'guild',
+      canModerate: true,
+      max: 50,
+    });
+    expect(mockedUseSelfHosted).not.toHaveBeenCalled();
+    await screen.findByText('4 / 50 in voice');
+    expect(screen.queryByText(/needs the self-hosted voice server/)).toBeNull();
   });
 
   it('hides host controls from regular members', async () => {

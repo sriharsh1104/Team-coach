@@ -6,6 +6,7 @@ import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
 import { connectVoiceSocket, VoiceRoomKind } from '../api/voice';
 import { emitToast } from '../ui/toastBus';
 import { startVoiceBackground, stopVoiceBackground } from './voiceBackground';
+import { attachVoiceChanger } from './voiceChanger';
 import { VoiceChannelController, VoiceChannelStatus, VoiceParticipant } from './types';
 
 function emitAsync<T = any>(socket: Socket, event: string, payload?: unknown): Promise<T> {
@@ -390,6 +391,8 @@ export function useSelfHostedVoiceChannel(
       const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
       micStreamRef.current = stream as unknown as typeof micStreamRef.current;
       const track = stream.getAudioTracks()[0] as unknown as MediaStreamTrack;
+      // WebRTC's audio pipeline exists now — hook the voice changer in.
+      attachVoiceChanger();
 
       // Android: keep the mic + socket alive when the user switches to their
       // game. Started only after the mic permission is granted.

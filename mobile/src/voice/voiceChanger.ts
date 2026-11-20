@@ -14,6 +14,8 @@ export const VOICE_PRESETS: Array<{ id: VoicePreset; label: string }> = [
 
 type NativeVoiceChanger = {
   isAvailable: () => boolean;
+  isActive: () => boolean;
+  attach: () => boolean;
   getPresets: () => string[];
   getPreset: () => string;
   setPreset: (name: string) => string;
@@ -37,6 +39,19 @@ const native = loadNative();
 export function isVoiceChangerAvailable(): boolean {
   try {
     return !!native?.isAvailable();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Hooks the effect into the live mic pipeline. The native side also retries on
+ * its own; calling this when a voice session starts just makes it immediate
+ * and re-attaches after a pipeline restart. Safe to call any number of times.
+ */
+export function attachVoiceChanger(): boolean {
+  try {
+    return !!native?.attach();
   } catch {
     return false;
   }

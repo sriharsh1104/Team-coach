@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.AudioAttributes
@@ -208,7 +209,7 @@ class ScreenRecordService : Service() {
       }
       projection = null
 
-      val finalFile = File(cacheDir, "sacred-screen-final.mp4")
+      val finalFile = File(cacheDir, PENDING_FILE)
       finalFile.delete()
       val muxed = if (video != null && video.length() > 0) {
         muxOrCopy(video, audioOut, finalFile)
@@ -224,27 +225,20 @@ class ScreenRecordService : Service() {
         }
         return@Thread
       }
-      val uri = try {
-        publishToGallery(muxed)
-      } catch (err: Exception) {
-        Log.e(TAG, "gallery save failed", err)
-        null
-      }
-      muxed.delete()
+      // Do NOT publish to the gallery yet: the finished file stays in the app
+      // cache and JS asks "Save or discard?" (ScreenRecorderModule.saveToGallery
+      // / discard). The uri handed to JS is that cache file.
+      val uri = Uri.fromFile(muxed).toString()
       main.post {
-        if (uri == null) {
-          fail("Could not save the video on your phone")
-        } else {
-          showSaved()
-          RecordBridge.deliverSaved(uri)
-          stopSelf()
-        }
+        showStopped()
+        RecordBridge.deliverSaved(uri)
+        stopSelf()
       }
     }.start()
   }
 
-  private fun showSaved() {
-    val done = buildNotification("Saved on your phone", "The recording is in your gallery.")
+  private fun showStopped() {
+    val done = buildNotification("Recording stopped", "Open the app to save or discard it.")
     val manager = getSystemService(NotificationManager::class.java)
     if (Build.VERSION.SDK_INT >= 24) {
       stopForeground(STOP_FOREGROUND_DETACH)
@@ -253,7 +247,7 @@ class ScreenRecordService : Service() {
       stopForeground(false)
     }
     manager.notify(NOTIF_ID, done)
-    main.postDelayed({ manager.cancel(NOTIF_ID) }, 4000)
+    main.postDelayed({ manager.cancel(NOTIF_ID) }, 8000)
   }
 
   private fun fail(message: String) {
@@ -333,28 +327,6 @@ class ScreenRecordService : Service() {
       .build()
   }
 
-  private fun publishToGallery(file: File): String {
-    val values = android.content.ContentValues().apply {
-      put(MediaStore.Video.Media.DISPLAY_NAME, "Sacred-${System.currentTimeMillis()}.mp4")
-      put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-      if (Build.VERSION.SDK_INT >= 29) {
-        put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/Sacred")
-        put(MediaStore.Video.Media.IS_PENDING, 1)
-      }
-    }
-    val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
-      ?: throw IllegalStateException("MediaStore insert failed")
-    contentResolver.openOutputStream(uri)?.use { out ->
-      FileInputStream(file).use { input -> input.copyTo(out) }
-    } ?: throw IllegalStateException("Could not open gallery file")
-    if (Build.VERSION.SDK_INT >= 29) {
-      values.clear()
-      values.put(MediaStore.Video.Media.IS_PENDING, 0)
-      contentResolver.update(uri, values, null, null)
-    }
-    return uri.toString()
-  }
-
   private data class Size(val width: Int, val height: Int, val dpi: Int)
 
   companion object {
@@ -362,6 +334,8 @@ class ScreenRecordService : Service() {
     const val ACTION_STOP = "com.teamcoach.screenrecorder.STOP"
     const val EXTRA_RESULT_CODE = "resultCode"
     const val EXTRA_DATA = "data"
+    /** Finished recording waiting for the user's save / discard choice. */
+    const val PENDING_FILE = "sacred-screen-final.mp4"
     private const val CHANNEL = "sacred-game-record"
     private const val NOTIF_ID = 4107
     private const val MAX_MS = 30L * 60L * 1000L
@@ -634,4 +608,28 @@ private fun mix(game: ByteArray, voice: ByteArray, length: Int) {
     game[i + 1] = ((mixed shr 8) and 0xff).toByte()
     i += 2
   }
+}
+
+/** Copies the finished recording into Movies/Sacred and returns its content uri. */
+internal fun publishRecordingToGallery(context: Context, file: File): String {
+  val resolver = context.contentResolver
+  val values = android.content.ContentValues().apply {
+    put(MediaStore.Video.Media.DISPLAY_NAME, "Sacred-${System.currentTimeMillis()}.mp4")
+    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+    if (Build.VERSION.SDK_INT >= 29) {
+      put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/Sacred")
+      put(MediaStore.Video.Media.IS_PENDING, 1)
+    }
+  }
+  val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+    ?: throw IllegalStateException("MediaStore insert failed")
+  resolver.openOutputStream(uri)?.use { out ->
+    FileInputStream(file).use { input -> input.copyTo(out) }
+  } ?: throw IllegalStateException("Could not open gallery file")
+  if (Build.VERSION.SDK_INT >= 29) {
+    values.clear()
+    values.put(MediaStore.Video.Media.IS_PENDING, 0)
+    resolver.update(uri, values, null, null)
+  }
+  return uri.toString()
 }

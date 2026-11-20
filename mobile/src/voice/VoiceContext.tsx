@@ -10,7 +10,14 @@ import { VoiceChannelController } from './types';
 
 export type VoiceActivation =
   // Hosted (LiveKit): url + room token from GET /voice/config.
-  | { mode: 'hosted'; url: string; token: string }
+  | {
+      mode: 'hosted';
+      url: string;
+      token: string;
+      room?: 'team' | 'guild';
+      canModerate?: boolean;
+      max?: number;
+    }
   // Self-hosted (mediasoup): our own API JWT for the /voice socket.
   | { mode: 'self'; token: string; room?: 'team' | 'guild' };
 
@@ -45,17 +52,23 @@ export const useVoiceContext = () => useContext(VoiceContext);
 function HostedVoiceHolder({
   url,
   token,
+  room,
+  canModerate,
+  max,
   onController,
 }: {
   url: string;
   token: string;
+  room: 'team' | 'guild';
+  canModerate?: boolean;
+  max?: number;
   onController: (c: VoiceChannelController) => void;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { useHostedVoiceChannel } = require('./useHostedVoiceChannel') as {
     useHostedVoiceChannel: typeof import('./useHostedVoiceChannel').useHostedVoiceChannel;
   };
-  const controller = useHostedVoiceChannel(url, token);
+  const controller = useHostedVoiceChannel(url, token, { room, canModerate, max });
 
   // Feed the controller up to the provider
   useEffect(() => {
@@ -118,7 +131,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         prev &&
         prev.mode === config.mode &&
         prev.token === config.token &&
-        (prev.mode !== 'self' || config.mode !== 'self' || (prev.room ?? 'team') === (config.room ?? 'team'))
+        (prev.room ?? 'team') === (config.room ?? 'team')
       ) {
         if (prev.mode === 'hosted' && config.mode === 'hosted' && prev.url !== config.url) {
           return config;
@@ -143,9 +156,12 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     >
       {activation?.mode === 'hosted' ? (
         <HostedVoiceHolder
-          key={`hosted:${activation.url}:${activation.token}`}
+          key={`hosted:${activation.room ?? 'team'}:${activation.url}:${activation.token}`}
           url={activation.url}
           token={activation.token}
+          room={activation.room ?? 'team'}
+          canModerate={activation.canModerate}
+          max={activation.max}
           onController={handleController}
         />
       ) : null}

@@ -7,13 +7,17 @@ import {
   RemoteParticipant,
   Participant,
   ConnectionQuality,
+  DisconnectReason,
 } from 'livekit-client';
+import { moderateVoice } from '../api/voice';
+import { emitToast } from '../ui/toastBus';
 import {
   VoiceChannelController,
   VoiceChannelStatus,
   VoiceParticipant,
   ConnectionQualityLevel,
 } from './types';
+import { attachVoiceChanger } from './voiceChanger';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -33,14 +37,55 @@ function mapConnectionQuality(q: ConnectionQuality): ConnectionQualityLevel {
   }
 }
 
-type DataMsg =
-  | { type: 'hand_raise'; raised: boolean }
-  | { type: 'kick' };
+// Only hand-raise travels as a data message. Kick / mute used to be
+// client-sent data messages that any modified client could fake; they now go
+// through POST /voice/moderate and are enforced by the server.
+type DataMsg = { type: 'hand_raise'; raised: boolean };
+
+/** Mirror of backend hosted-room-state (kept tiny on purpose). */
+type RoomState = { listenOnly: boolean; muted: string[]; speakers: string[] };
+const EMPTY_STATE: RoomState = { listenOnly: false, muted: [], speakers: [] };
+
+function parseRoomState(metadata: string | undefined): RoomState {
+  if (!metadata) return EMPTY_STATE;
+  try {
+    const raw = JSON.parse(metadata) as Partial<RoomState>;
+    return {
+      listenOnly: raw.listenOnly === true,
+      muted: Array.isArray(raw.muted) ? raw.muted : [],
+      speakers: Array.isArray(raw.speakers) ? raw.speakers : [],
+    };
+  } catch {
+    return EMPTY_STATE;
+  }
+}
+
+function isModeratorParticipant(p: Participant): boolean {
+  return p.attributes?.mod === '1';
+}
+
+function errorText(err: unknown): string {
+  const e = err as { response?: { data?: { message?: unknown } }; message?: string };
+  const m = e?.response?.data?.message;
+  if (typeof m === 'string' && m) return m;
+  if (Array.isArray(m) && typeof m[0] === 'string') return m[0];
+  return e?.message || 'Could not do that. Try again.';
+}
+
+export type HostedVoiceOptions = {
+  room?: 'team' | 'guild';
+  /** From the server's token response — never derived on the client. */
+  canModerate?: boolean;
+  max?: number;
+};
 
 export function useHostedVoiceChannel(
   url: string,
   token: string,
+  options: HostedVoiceOptions = {},
 ): VoiceChannelController {
+  const voiceRoom = options.room ?? 'team';
+  const isGuild = voiceRoom === 'guild';
   const [status, setStatus] = useState<VoiceChannelStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string>();
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
@@ -48,6 +93,11 @@ export function useHostedVoiceChannel(
   const [isLocalHandRaised, setIsLocalHandRaised] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [isPushToTalk, setIsPushToTalk] = useState(false);
+  // Guild voice: host-mute state, derived from room metadata + server permissions.
+  const [roomState, setRoomState] = useState<RoomState>(EMPTY_STATE);
+  const [isHostMuted, setIsHostMuted] = useState(false);
+  const isHostMutedRef = useRef(false);
+  const roomStateRef = useRef<RoomState>(EMPTY_STATE);
 
   const roomRef = useRef<Room | null>(null);
   // Per-participant local volumes (0-1); default 1 until changed
@@ -74,10 +124,20 @@ export function useHostedVoiceChannel(
           isHandRaised: handRaisedIdsRef.current.has(p.identity),
           localVolume: vol,
           connectionQuality: connectionQualitiesRef.current.get(p.identity) ?? 'unknown',
+          ...(isGuild
+            ? {
+                isModerator: isModeratorParticipant(p),
+                isHostMuted:
+                  !isModeratorParticipant(p) &&
+                  (roomStateRef.current.muted.includes(p.identity) ||
+                    (roomStateRef.current.listenOnly &&
+                      !roomStateRef.current.speakers.includes(p.identity))),
+              }
+            : {}),
         };
       }),
     );
-  }, []);
+  }, [isGuild]);
 
   const publishData = useCallback((msg: DataMsg, destinationIdentities?: string[]) => {
     const room = roomRef.current;
@@ -105,6 +165,10 @@ export function useHostedVoiceChannel(
     setIsPushToTalk(false);
     isDeafenedRef.current = false;
     isPushToTalkRef.current = false;
+    roomStateRef.current = EMPTY_STATE;
+    isHostMutedRef.current = false;
+    setRoomState(EMPTY_STATE);
+    setIsHostMuted(false);
   }, []);
 
   const join = useCallback(async () => {
@@ -130,7 +194,10 @@ export function useHostedVoiceChannel(
         connectionQualitiesRef.current.delete(p.identity);
         syncParticipants(room);
       });
-      room.on(RoomEvent.Disconnected, () => {
+      room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
+        if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
+          emitToast('You were removed from the voice channel by a host.');
+        }
         setStatus('idle');
         setParticipants([]);
         setIsMuted(false);
@@ -161,6 +228,32 @@ export function useHostedVoiceChannel(
           }
         },
       );
+      // Guild host-mute: the room metadata carries the mute list, permissions
+      // carry the server-enforced result for this device.
+      const refreshHostMuted = () => {
+        const canPublish = room.localParticipant.permissions?.canPublish !== false;
+        const muted = !canPublish;
+        if (muted && !isHostMutedRef.current) {
+          // Server just revoked our mic — reflect it locally.
+          setIsMuted(true);
+          emitToast('A host muted you. Raise your hand to ask for the mic.');
+        }
+        isHostMutedRef.current = muted;
+        setIsHostMuted(muted);
+      };
+      if (isGuild) {
+        room.on(RoomEvent.RoomMetadataChanged, (metadata: string) => {
+          const next = parseRoomState(metadata);
+          roomStateRef.current = next;
+          setRoomState(next);
+          syncParticipants(room);
+        });
+        room.on(RoomEvent.ParticipantAttributesChanged, () => syncParticipants(room));
+        room.on(RoomEvent.ParticipantPermissionsChanged, (_prev, participant) => {
+          if (participant?.isLocal) refreshHostMuted();
+          syncParticipants(room);
+        });
+      }
       room.on(
         RoomEvent.DataReceived,
         (payload: Uint8Array, participant?: RemoteParticipant) => {
@@ -173,9 +266,6 @@ export function useHostedVoiceChannel(
                 handRaisedIdsRef.current.delete(participant.identity);
               }
               syncParticipants(room);
-            } else if (msg.type === 'kick') {
-              // We were kicked — leave immediately
-              leave();
             }
           } catch {
             // Ignore malformed data messages
@@ -194,15 +284,28 @@ export function useHostedVoiceChannel(
         console.warn('AudioSession setup failed (continuing):', err);
       }
       await room.connect(url, token);
-      await room.localParticipant.setMicrophoneEnabled(true);
+      if (isGuild) {
+        const initial = parseRoomState(room.metadata);
+        roomStateRef.current = initial;
+        setRoomState(initial);
+      }
+      // Joined while muted by a host (the token has no publish right): stay
+      // silent instead of failing the whole join on the mic publish.
+      const startMuted = room.localParticipant.permissions?.canPublish === false;
+      isHostMutedRef.current = startMuted;
+      setIsHostMuted(startMuted);
+      if (!startMuted) {
+        await room.localParticipant.setMicrophoneEnabled(true);
+        attachVoiceChanger();
+      }
       syncParticipants(room);
-      setIsMuted(false);
+      setIsMuted(startMuted);
       setStatus('connected');
     } catch (err: any) {
       setErrorMessage(err?.message ?? 'Could not join voice channel');
       setStatus('error');
     }
-  }, [url, token, syncParticipants, leave]);
+  }, [url, token, isGuild, syncParticipants]);
 
   const toggleMute = useCallback(() => {
     const room = roomRef.current;
@@ -211,9 +314,18 @@ export function useHostedVoiceChannel(
     if (isDeafenedRef.current) return;
     // Don't toggle mic in PTT mode; pttStart/pttStop control it
     if (isPushToTalkRef.current) return;
+    if (isHostMutedRef.current) {
+      emitToast('A host muted you. Raise your hand to ask for the mic.');
+      return;
+    }
     setIsMuted((prev) => {
       const nextMuted = !prev;
-      room.localParticipant.setMicrophoneEnabled(!nextMuted);
+      room.localParticipant.setMicrophoneEnabled(!nextMuted).then(
+        () => {
+          if (!nextMuted) attachVoiceChanger();
+        },
+        (err) => console.warn('mic toggle failed:', err),
+      );
       return nextMuted;
     });
   }, []);
@@ -250,11 +362,25 @@ export function useHostedVoiceChannel(
     });
   }, [publishData]);
 
-  const kickParticipant = useCallback(
-    (participantId: string) => {
-      publishData({ type: 'kick' }, [participantId]);
+  const hostAction = useCallback(
+    (action: 'muteAll' | 'unmuteAll' | 'mute' | 'unmute' | 'kick', userId?: string) => {
+      moderateVoice(voiceRoom, action, userId).catch((err) => {
+        console.warn(`voice ${action} failed:`, err);
+        emitToast(errorText(err));
+      });
     },
-    [publishData],
+    [voiceRoom],
+  );
+
+  const kickParticipant = useCallback(
+    (participantId: string) => hostAction('kick', participantId),
+    [hostAction],
+  );
+  const muteAll = useCallback(() => hostAction('muteAll'), [hostAction]);
+  const unmuteAll = useCallback(() => hostAction('unmuteAll'), [hostAction]);
+  const setParticipantHostMuted = useCallback(
+    (id: string, muted: boolean) => hostAction(muted ? 'mute' : 'unmute', id),
+    [hostAction],
   );
 
   const toggleDeafen = useCallback(() => {
@@ -277,7 +403,7 @@ export function useHostedVoiceChannel(
           p.setVolume(vol);
         }
         // Restore mic (unless in PTT mode where mic stays gated)
-        if (!isPushToTalkRef.current) {
+        if (!isPushToTalkRef.current && !isHostMutedRef.current) {
           room.localParticipant.setMicrophoneEnabled(true);
           setIsMuted(false);
         }
@@ -298,7 +424,7 @@ export function useHostedVoiceChannel(
         setIsMuted(true);
       } else {
         // Leaving PTT mode: restore mic (if not deafened)
-        if (!isDeafenedRef.current) {
+        if (!isDeafenedRef.current && !isHostMutedRef.current) {
           room.localParticipant.setMicrophoneEnabled(true);
           setIsMuted(false);
         }
@@ -310,6 +436,10 @@ export function useHostedVoiceChannel(
   const pttStart = useCallback(() => {
     const room = roomRef.current;
     if (!room || !isPushToTalkRef.current || isDeafenedRef.current) return;
+    if (isHostMutedRef.current) {
+      emitToast('A host muted you. Raise your hand to ask for the mic.');
+      return;
+    }
     room.localParticipant.setMicrophoneEnabled(true);
     setIsMuted(false);
   }, []);
@@ -333,6 +463,18 @@ export function useHostedVoiceChannel(
     return () => sub.remove();
   }, []);
 
+  // The hook lives in VoiceContext; unmount == deactivate (or switching
+  // team <-> guild). Never leave the mic / room connection behind.
+  useEffect(() => {
+    return () => {
+      roomRef.current?.disconnect();
+      roomRef.current = null;
+      AudioSession.stopAudioSession().catch(() => {});
+    };
+  }, []);
+
+  const roomCount = isGuild ? participants.length + (status === 'connected' ? 1 : 0) : undefined;
+
   return {
     status,
     errorMessage,
@@ -352,5 +494,18 @@ export function useHostedVoiceChannel(
     togglePushToTalk,
     pttStart,
     pttStop,
+    ...(isGuild
+      ? {
+          room: voiceRoom,
+          canModerate: !!options.canModerate,
+          isHostMuted,
+          isListenOnly: roomState.listenOnly,
+          roomCount,
+          roomMax: options.max,
+          muteAll,
+          unmuteAll,
+          setParticipantHostMuted,
+        }
+      : { room: voiceRoom }),
   };
 }

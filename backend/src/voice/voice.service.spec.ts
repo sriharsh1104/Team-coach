@@ -1,10 +1,15 @@
 import { ConfigService } from '@nestjs/config';
-import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { TokenVerifier } from 'livekit-server-sdk';
 import { VoiceService } from './voice.service';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediasoupSfuService } from './mediasoup-sfu.service';
+import { MembershipService } from '../membership/membership.service';
 
 // The hosted/self-hosted branch is picked by an env var that the e2e suite's
 // single running app can't safely flip mid-run (process.env is shared across
@@ -28,7 +33,11 @@ describe('VoiceService (unit)', () => {
       isSelfHosted: () => selfHosted,
     } as unknown as MediasoupSfuService;
 
-    return new VoiceService(configService, chatService, prisma, sfu);
+    const membership = {
+      hasEditAccess: jest.fn().mockResolvedValue(false),
+    } as unknown as MembershipService;
+
+    return new VoiceService(configService, chatService, prisma, sfu, membership);
   }
 
   it('returns { mode: "self" } without touching org lookup or LiveKit at all when self-hosted', async () => {
@@ -104,5 +113,120 @@ describe('VoiceService (unit)', () => {
 
     const wrongVerifier = new TokenVerifier('test-key', 'a-completely-different-secret-value');
     await expect(wrongVerifier.verify(result.token)).rejects.toThrow();
+  });
+});
+
+describe('VoiceService hosted guild voice (unit)', () => {
+  const config: Record<string, string> = {
+    LIVEKIT_URL: 'wss://example.livekit.cloud',
+    LIVEKIT_API_KEY: 'test-key',
+    LIVEKIT_API_SECRET: 'test-secret-at-least-32-characters-long',
+  };
+
+  function build(opts: { canModerate: boolean; roomMetadata?: string }) {
+    const prisma = {
+      user: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'u1', name: 'Alice' }) },
+      membership: {
+        findFirst: jest.fn().mockResolvedValue({
+          orgId: 'org-1',
+          isOwner: opts.canModerate,
+          role: 'PLAYER',
+        }),
+      },
+      guildMembership: { findFirst: jest.fn().mockResolvedValue(null) },
+    } as unknown as PrismaService;
+    const service = new VoiceService(
+      { get: (k: string) => config[k] } as unknown as ConfigService,
+      { getOrgIdForUser: jest.fn().mockResolvedValue('org-1') } as unknown as ChatService,
+      prisma,
+      { isSelfHosted: () => false } as unknown as MediasoupSfuService,
+      { hasEditAccess: jest.fn().mockResolvedValue(opts.canModerate) } as unknown as MembershipService,
+    );
+    const lk = {
+      createRoom: jest.fn().mockResolvedValue({ metadata: opts.roomMetadata ?? '' }),
+      listRooms: jest.fn().mockResolvedValue([{ metadata: opts.roomMetadata ?? '' }]),
+      updateRoomMetadata: jest.fn().mockResolvedValue({}),
+      listParticipants: jest.fn().mockResolvedValue([
+        { identity: 'host', attributes: { mod: '1' }, permission: { canPublish: true } },
+        { identity: 'p2', attributes: { mod: '0' }, permission: { canPublish: true } },
+      ]),
+      getParticipant: jest.fn().mockImplementation(async (_r: string, id: string) => ({
+        identity: id,
+        attributes: { mod: id === 'host' ? '1' : '0' },
+      })),
+      updateParticipant: jest.fn().mockResolvedValue({}),
+      removeParticipant: jest.fn().mockResolvedValue(undefined),
+    };
+    jest
+      .spyOn(service as unknown as { roomClient: () => unknown }, 'roomClient' as never)
+      .mockReturnValue(lk as never);
+    return { service, lk };
+  }
+
+  it('guild token: own-org guild room, 50 cap, host flag', async () => {
+    const { service, lk } = build({ canModerate: true });
+    const res = (await service.getConfig('u1', 'guild')) as { token: string; canModerate: boolean; room: string };
+    expect(lk.createRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'guild:org-1', maxParticipants: 50 }),
+    );
+    expect(res.canModerate).toBe(true);
+    const claims = await new TokenVerifier(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET).verify(res.token);
+    expect(claims.video?.room).toBe('guild:org-1');
+    expect(claims.video?.canPublish).toBe(true);
+  });
+
+  it('a muted user cannot rejoin with publish rights', async () => {
+    const { service } = build({
+      canModerate: false,
+      roomMetadata: JSON.stringify({ listenOnly: false, muted: ['u1'], speakers: [] }),
+    });
+    const res = (await service.getConfig('u1', 'guild')) as { token: string };
+    const claims = await new TokenVerifier(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET).verify(res.token);
+    expect(claims.video?.canPublish).toBe(false);
+  });
+
+  it('non-hosts cannot moderate or kick', async () => {
+    const { service } = build({ canModerate: false });
+    await expect(
+      service.moderate('u1', { room: 'guild', action: 'muteAll' }),
+    ).rejects.toThrow(ForbiddenException);
+    await expect(
+      service.moderate('u1', { room: 'guild', action: 'kick', userId: 'p2' }),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('mute all writes state and revokes publish only for non-hosts', async () => {
+    const { service, lk } = build({ canModerate: true });
+    await service.moderate('u1', { room: 'guild', action: 'muteAll' });
+    expect(lk.updateRoomMetadata).toHaveBeenCalledWith(
+      'guild:org-1',
+      JSON.stringify({ listenOnly: true, muted: [], speakers: [] }),
+    );
+    expect(lk.updateParticipant).toHaveBeenCalledTimes(1);
+    expect(lk.updateParticipant).toHaveBeenCalledWith(
+      'guild:org-1',
+      'p2',
+      undefined,
+      expect.objectContaining({ canPublish: false }),
+    );
+  });
+
+  it('hosts cannot be muted; kick is enforced server-side', async () => {
+    const { service, lk } = build({ canModerate: true });
+    await expect(
+      service.moderate('u1', { room: 'guild', action: 'mute', userId: 'host' }),
+    ).rejects.toThrow(BadRequestException);
+    await service.moderate('u1', { room: 'guild', action: 'kick', userId: 'p2' });
+    expect(lk.removeParticipant).toHaveBeenCalledWith('guild:org-1', 'p2');
+    await expect(
+      service.moderate('u1', { room: 'guild', action: 'kick', userId: 'u1' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('team room only supports kick (no mute controls)', async () => {
+    const { service } = build({ canModerate: true });
+    await expect(
+      service.moderate('u1', { room: 'team', action: 'muteAll' }),
+    ).rejects.toThrow(ForbiddenException);
   });
 });

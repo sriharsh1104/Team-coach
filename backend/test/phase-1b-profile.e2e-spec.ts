@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import { createTestApp, getPrisma, resetDatabase } from './utils/test-app';
-import { signup, createOrgAs, joinOrgAs } from './utils/fixtures';
+import { signup, createOrgAs, joinOrgAs, setVerifiedPhone } from './utils/fixtures';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Phase 1B — Profile, roles, devices (e2e)', () => {
@@ -112,35 +112,36 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .expect(400);
     });
 
-    it('rejects duplicate phone, IGN (case-insensitive), and UID with 409', async () => {
+    it('phone is set only through Telegram: PATCH refuses a new number, accepts the stored one', async () => {
+      const user = await signup(server);
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ phone: '+91 98765 43210' })
+        .expect(400);
+
+      await setVerifiedPhone(prisma, user.user.id, '+91 98765 43210');
+      const same = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ phone: '+919876543210', name: 'Renamed' })
+        .expect(200);
+      expect(same.body.phone).toBe('9876543210');
+      expect(same.body.phoneVerifiedAt).toBeTruthy();
+    });
+
+    it('rejects duplicate IGN (case-insensitive) and UID with 409', async () => {
       const holder = await signup(server);
-      const saved = await request(server)
+      await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${holder.accessToken}`)
         .send({
-          phone: '+91 98765 43210',
           inGameName: 'UniqueIGN',
           inGameUid: 'UID-UNIQUE-1',
         })
         .expect(200);
-      // Stored as digits without country code so +91 / 0 / bare 10-digit collide.
-      expect(saved.body.phone).toBe('9876543210');
 
       const other = await signup(server);
-
-      const phoneDup = await request(server)
-        .patch('/users/me')
-        .set('Authorization', `Bearer ${other.accessToken}`)
-        .send({ phone: '9876543210' })
-        .expect(409);
-      expect(phoneDup.body.message).toMatch(/phone/i);
-
-      const phoneDupAlt = await request(server)
-        .patch('/users/me')
-        .set('Authorization', `Bearer ${other.accessToken}`)
-        .send({ phone: '+919876543210' })
-        .expect(409);
-      expect(phoneDupAlt.body.message).toMatch(/phone/i);
 
       const ignDup = await request(server)
         .patch('/users/me')
@@ -448,9 +449,9 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .send({
           inGameName: 'HiddenPhone',
           inGameUid: 'UID-HIDE-1',
-          phone: '9988776655',
         })
         .expect(200);
+      await setVerifiedPhone(prisma, player.user.id, '9988776655');
 
       const res = await request(server)
         .get(`/users/${player.user.id}/profile`)
@@ -477,8 +478,9 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${guildMate.accessToken}`)
-        .send({ inGameName: 'GuildIGN', inGameUid: 'UID-G1', phone: '9123456780' })
+        .send({ inGameName: 'GuildIGN', inGameUid: 'UID-G1' })
         .expect(200);
+      await setVerifiedPhone(prisma, guildMate.user.id, '9123456780');
 
       const ownerSeesMate = await request(server)
         .get(`/users/${guildMate.user.id}/profile`)

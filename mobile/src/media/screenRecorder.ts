@@ -7,6 +7,8 @@ type NativeScreenRecorder = {
   start: () => Promise<void>;
   stop: () => Promise<string | null>;
   isRecording: () => boolean;
+  saveToGallery: () => Promise<string>;
+  discard: () => Promise<void>;
   addListener: (
     event: 'onStopped',
     listener: (event: StopEvent) => void,
@@ -36,6 +38,20 @@ export function startScreenRecording(): Promise<ScreenRecordStart> | ScreenRecor
 export function stopScreenRecording(): Promise<string | null> {
   if (!native) return Promise.resolve(null);
   return native.stop();
+}
+
+/**
+ * A stopped recording stays in the app cache until the user decides.
+ * Save copies it into the phone gallery (returns the gallery uri).
+ */
+export function saveRecordingToGallery(): Promise<string | null> {
+  if (!native) return Promise.resolve(null);
+  return native.saveToGallery();
+}
+
+export function discardRecording(): Promise<void> {
+  if (!native) return Promise.resolve();
+  return native.discard();
 }
 
 export function isScreenRecording(): boolean {

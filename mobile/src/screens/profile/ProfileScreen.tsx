@@ -13,6 +13,7 @@ import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
 import { ROLE_OPTIONS, RoleOption } from '../../api/roles';
 import { RoleChips } from './RoleChips';
+import { TelegramPhoneVerify } from './TelegramPhoneVerify';
 import { CopyableInput } from './CopyableInput';
 import { CopyableField } from './CopyableField';
 import { CopyButton } from './CopyButton';
@@ -22,11 +23,9 @@ import { SoftPressable } from '../../ui/SoftPressable';
 import { IconActionButton } from '../../ui/IconActionButton';
 import { useBookTabs } from '../../ui/BookTabs';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
-import { PhoneField } from '../../ui/PhoneField';
 import { Toast, useToast } from '../../ui/Toast';
 import { useSharedStyles, formatRoleBadge } from '../shared';
 import { useAuth } from '../../auth/AuthContext';
-import { coercePhoneToE164 } from '../../lib/phone';
 import {
   SOCIAL_PLACEHOLDERS,
   validateAllSocialUrls,
@@ -288,14 +287,9 @@ function UserProfileSection({
   const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState(profile.name);
-  // Normalize once so prefilled bare digits still pass mustComplete canSave.
-  const [phone, setPhone] = useState(
-    () => coercePhoneToE164(profile.phone) || profile.phone || '',
-  );
-
-  const phoneE164 = coercePhoneToE164(phone);
-  const canSave =
-    name.trim().length > 0 && (!mustComplete || phoneE164.length > 0);
+  // The phone is not part of this form: it is set only through Telegram
+  // verification (TelegramPhoneVerify), so saving never sends a number.
+  const canSave = name.trim().length > 0 && (!mustComplete || !!profile.phone);
 
   const onSave = async () => {
     if (!canSave) return;
@@ -303,7 +297,6 @@ function UserProfileSection({
     try {
       const updated = await usersApi.updateMyProfile({
         name: name.trim(),
-        phone: phoneE164 || undefined,
       });
       await onUpdated(updated);
       if (mustComplete) {
@@ -326,7 +319,12 @@ function UserProfileSection({
       <View>
         <CopyableField label="Name" value={profile.name} />
         {user?.email && <CopyableField label="Email" value={user.email} />}
-        {profile.phone && <CopyableField label="Phone" value={profile.phone} />}
+        {profile.phone && (
+          <CopyableField
+            label={profile.phoneVerifiedAt ? 'Phone (verified)' : 'Phone (not verified)'}
+            value={profile.phone}
+          />
+        )}
         <SoftPressable
           style={styles.editButton}
           onPress={() => setIsEditing(true)}
@@ -353,7 +351,11 @@ function UserProfileSection({
       )}
 
       <Text style={staticStyles.sectionLabel}>Phone {mustComplete ? '*' : ''}</Text>
-      <PhoneField value={phone} onChange={setPhone} />
+      <TelegramPhoneVerify
+        profile={profile}
+        onVerified={onUpdated}
+        showToast={showToast}
+      />
       {mustComplete && <Text style={styles.requiredHint}>* Required</Text>}
 
       <SoftPressable
