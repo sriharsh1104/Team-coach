@@ -1,12 +1,12 @@
 import React, { useEffect, useId, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
-import { AppIcon } from '../../ui/AppIcon';
+import { StyleSheet } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '../../theme/ThemeContext';
 import {
   claimCopyFeedback,
   subscribeCopyFeedback,
 } from '../../ui/copyFeedbackBus';
+import { IconActionButton } from '../../ui/IconActionButton';
 
 /** Compact copy-to-clipboard control — icon only; flashes a check after copy. */
 export function CopyButton({ value }: { value: string }) {
@@ -30,35 +30,18 @@ export function CopyButton({ value }: { value: string }) {
   const checkColor = themeId === 'black' ? '#4ade80' : '#15803d';
 
   return (
-    <Pressable
-      style={[
-        styles.btn,
-        { backgroundColor: colors.surface, borderColor: colors.border },
-        !value.trim() && styles.btnDisabled,
-      ]}
-      onPress={onCopy}
+    <IconActionButton
+      icon={justCopied ? 'checkmark' : 'copy-outline'}
+      label={justCopied ? 'Copied' : 'Copy'}
+      color={justCopied ? checkColor : colors.icon}
+      iconSize={18}
+      style={styles.btn}
       disabled={!value.trim()}
-      accessibilityRole="button"
-      accessibilityLabel={justCopied ? 'Copied' : 'Copy'}
-      hitSlop={8}
-    >
-      <AppIcon
-        name={justCopied ? 'checkmark' : 'copy-outline'}
-        size={18}
-        color={justCopied ? checkColor : colors.icon}
-      />
-    </Pressable>
+      onPress={onCopy}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  btn: {
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 44,
-    height: 44,
-  },
-  btnDisabled: { opacity: 0.35 },
+  btn: { width: 44, height: 44 },
 });

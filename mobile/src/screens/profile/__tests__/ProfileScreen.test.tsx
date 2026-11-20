@@ -60,6 +60,7 @@ const baseProfile = {
   instagramUrl: null,
   discordUrl: 'https://discord.gg/example',
   youtubeUrl: null,
+  kickUrl: null,
   devices: [{ id: 'device-1', name: 'Main rig', model: 'ROG Phone 8' }],
   role: 'COACH' as const,
   isOwner: true,
@@ -270,7 +271,7 @@ describe('ProfileScreen', () => {
       expect(
         screen.getByPlaceholderText('Device model (e.g. ROG Phone 8)'),
       ).toBeTruthy();
-      expect(screen.getByText('Remove')).toBeTruthy();
+      expect(screen.getByLabelText('Remove Main rig')).toBeTruthy();
       expect(screen.queryByText('Edit')).toBeNull();
     });
 
@@ -312,7 +313,7 @@ describe('ProfileScreen', () => {
       await waitFor(() => expect(screen.getByText('Backup — iPhone 15')).toBeTruthy());
 
       await act(async () => {
-        fireEvent.press(screen.getAllByText('Remove')[0]);
+        fireEvent.press(screen.getByLabelText('Remove Main rig'));
       });
       expect(mockedUsersApi.removeDevice).toHaveBeenCalledWith('device-1');
     });
@@ -348,6 +349,7 @@ describe('ProfileScreen', () => {
         instagramUrl: null,
         discordUrl: null,
         youtubeUrl: null,
+        kickUrl: null,
       });
       render(<ProfileScreen />);
       await screen.findByText('Coach (Owner)');
@@ -381,6 +383,7 @@ describe('ProfileScreen', () => {
         instagramUrl: undefined,
         discordUrl: 'https://discord.gg/example',
         youtubeUrl: undefined,
+        kickUrl: undefined,
       });
       await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
       expect(screen.queryByPlaceholderText('WhatsApp URL')).toBeNull();

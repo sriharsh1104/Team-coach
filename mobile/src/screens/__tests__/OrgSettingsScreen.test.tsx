@@ -47,9 +47,9 @@ describe('OrgSettingsScreen', () => {
     expect(screen.getAllByText('Player')).toHaveLength(2);
     expect(screen.getAllByText('Coach')).toHaveLength(2);
     expect(screen.getAllByText('Analyst')).toHaveLength(2);
-    // Only the non-owner row gets Make Owner / Remove from Roster.
-    expect(screen.getAllByText('Make Owner')).toHaveLength(1);
-    expect(screen.getAllByText('Remove from Roster')).toHaveLength(1);
+    // Only the non-owner row gets the Make Owner / Remove from Roster icon buttons.
+    expect(screen.getAllByLabelText('Make Teammate owner')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Remove Teammate from roster')).toHaveLength(1);
   });
 
   it('shows the chat-history switch reflecting the current setting, and flips it on toggle', async () => {
@@ -150,7 +150,7 @@ describe('OrgSettingsScreen', () => {
     await screen.findByText('Teammate');
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Make Owner'));
+      fireEvent.press(screen.getByLabelText('Make Teammate owner'));
     });
 
     expect(Alert.alert).toHaveBeenCalledWith(
@@ -175,7 +175,7 @@ describe('OrgSettingsScreen', () => {
     await screen.findByText('Teammate');
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Remove from Roster'));
+      fireEvent.press(screen.getByLabelText('Remove Teammate from roster'));
     });
 
     expect(mockedOrgApi.removeFromGuildRoster).toHaveBeenCalledWith('user-2');
@@ -195,7 +195,7 @@ describe('OrgSettingsScreen', () => {
     await screen.findByText('Teammate');
 
     await act(async () => {
-      fireEvent.press(screen.getByText('Remove from Roster'));
+      fireEvent.press(screen.getByLabelText('Remove Teammate from roster'));
     });
 
     expect(mockedOrgApi.removeFromGuildRoster).toHaveBeenCalledWith('user-2');
@@ -235,7 +235,7 @@ describe('OrgSettingsScreen', () => {
       fireEvent.press(screen.getAllByText('Analyst').at(-1)!);
     });
     await act(async () => {
-      fireEvent.press(screen.getByText('Add to Roster'));
+      fireEvent.press(screen.getByLabelText('Add Waiting Member to roster'));
     });
 
     expect(mockedOrgApi.addGuildMemberToRoster).toHaveBeenCalledWith(

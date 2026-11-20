@@ -13,6 +13,7 @@ import {
 } from '../lib/socialUrls';
 import { BookStage, useBookTabs } from '../ui/BookTabs';
 import { SesLoader } from '../ui/SesLoader';
+import { IconButton } from '../ui/IconButton';
 
 type ProfileTab = 'user' | 'game' | 'devices' | 'social';
 
@@ -29,13 +30,14 @@ const SOCIAL_FIELDS: Array<{
   label: string;
   profileKey: keyof Pick<
     Profile,
-    'whatsappUrl' | 'instagramUrl' | 'discordUrl' | 'youtubeUrl'
+    'whatsappUrl' | 'instagramUrl' | 'discordUrl' | 'youtubeUrl' | 'kickUrl'
   >;
 }> = [
   { key: 'whatsapp', label: 'WhatsApp', profileKey: 'whatsappUrl' },
   { key: 'instagram', label: 'Instagram', profileKey: 'instagramUrl' },
   { key: 'discord', label: 'Discord', profileKey: 'discordUrl' },
   { key: 'youtube', label: 'YouTube', profileKey: 'youtubeUrl' },
+  { key: 'kick', label: 'Kick', profileKey: 'kickUrl' },
 ];
 
 function SocialPlatformIcon({ name }: { name: SocialPlatform }) {
@@ -46,6 +48,15 @@ function SocialPlatformIcon({ name }: { name: SocialPlatform }) {
           <path
             fill="currentColor"
             d="M12 2a10 10 0 0 0-8.67 14.94L2 22l5.2-1.36A10 10 0 1 0 12 2zm0 1.8a8.2 8.2 0 0 1 6.9 12.64l.4.7-.72 2.17-2.25-.59-.67.39A8.2 8.2 0 1 1 12 3.8zm4.55 10.63c-.22-.11-1.3-.64-1.5-.71-.2-.08-.35-.11-.5.11-.14.22-.57.71-.7.86-.13.14-.26.16-.48.05-.22-.11-.93-.34-1.77-1.1-.65-.58-1.1-1.3-1.23-1.52-.13-.22-.01-.34.1-.45.1-.1.22-.26.33-.4.11-.13.15-.22.22-.37.08-.15.04-.28-.02-.39-.06-.11-.5-1.2-.68-1.65-.18-.43-.36-.37-.5-.38h-.42c-.15 0-.39.06-.59.28-.2.22-.78.76-.78 1.86s.8 2.16.91 2.31c.11.15 1.57 2.4 3.81 3.36.53.23.95.37 1.27.47.54.17 1.03.15 1.42.09.43-.06 1.3-.53 1.49-1.05.18-.51.18-.95.13-1.05-.05-.09-.2-.15-.42-.26z"
+          />
+        </svg>
+      );
+    case 'kick':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M2 2h6v6h2V6h2V2h6v6h-2v2h-2v4h2v2h2v6h-6v-4h-2v-2h-2v6H2z"
           />
         </svg>
       );
@@ -133,13 +144,11 @@ function CopyField({
       {heading}
       <div className="profile-field-row">
         <span className="profile-field-value">{value}</span>
-        <button
-          type="button"
-          className="btn btn-ghost profile-copy"
+        <IconButton
+          icon="copy"
+          label="Copy"
           onClick={() => copyText(value)}
-        >
-          Copy
-        </button>
+        />
       </div>
     </div>
   );
@@ -729,25 +738,21 @@ function DevicesSection({
                 {device.name} — {device.model}
               </span>
               <div className="profile-device-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost profile-copy"
+                <IconButton
+                  icon="copy"
+                  label="Copy"
                   onClick={() =>
                     copyText(`${device.name} — ${device.model}`)
                   }
-                >
-                  Copy
-                </button>
+                />
                 {editing ? (
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{ color: 'var(--danger)' }}
+                  <IconButton
+                    icon="trash"
+                    label="Remove"
+                    danger
                     disabled={busy}
                     onClick={() => onRemove(device.id)}
-                  >
-                    Remove
-                  </button>
+                  />
                 ) : null}
               </div>
             </li>
@@ -843,12 +848,14 @@ function SocialSection({
   const [instagramUrl, setInstagramUrl] = useState(profile.instagramUrl ?? '');
   const [discordUrl, setDiscordUrl] = useState(profile.discordUrl ?? '');
   const [youtubeUrl, setYoutubeUrl] = useState(profile.youtubeUrl ?? '');
+  const [kickUrl, setKickUrl] = useState(profile.kickUrl ?? '');
 
   useEffect(() => {
     setWhatsappUrl(profile.whatsappUrl ?? '');
     setInstagramUrl(profile.instagramUrl ?? '');
     setDiscordUrl(profile.discordUrl ?? '');
     setYoutubeUrl(profile.youtubeUrl ?? '');
+    setKickUrl(profile.kickUrl ?? '');
   }, [profile]);
 
   function socialDraft() {
@@ -857,6 +864,7 @@ function SocialSection({
       instagram: instagramUrl,
       discord: discordUrl,
       youtube: youtubeUrl,
+      kick: kickUrl,
     };
   }
 
@@ -866,6 +874,7 @@ function SocialSection({
       instagramUrl: instagramUrl.trim() || undefined,
       discordUrl: discordUrl.trim() || undefined,
       youtubeUrl: youtubeUrl.trim() || undefined,
+      kickUrl: kickUrl.trim() || undefined,
     });
     await onUpdated(updated);
     return updated;
@@ -904,7 +913,8 @@ function SocialSection({
         whatsappUrl.trim() ||
         instagramUrl.trim() ||
         discordUrl.trim() ||
-        youtubeUrl.trim();
+        youtubeUrl.trim() ||
+        kickUrl.trim();
       if (hasAny) await persistSocial();
       onContinue?.();
     } catch (err) {
@@ -919,12 +929,14 @@ function SocialSection({
     instagram: instagramUrl,
     discord: discordUrl,
     youtube: youtubeUrl,
+    kick: kickUrl,
   };
   const setDraftByKey: Record<SocialPlatform, (v: string) => void> = {
     whatsapp: setWhatsappUrl,
     instagram: setInstagramUrl,
     discord: setDiscordUrl,
     youtube: setYoutubeUrl,
+    kick: setKickUrl,
   };
 
   if (!editing) {
@@ -1008,6 +1020,7 @@ function SocialSection({
               setInstagramUrl(profile.instagramUrl ?? '');
               setDiscordUrl(profile.discordUrl ?? '');
               setYoutubeUrl(profile.youtubeUrl ?? '');
+              setKickUrl(profile.kickUrl ?? '');
               setEditing(false);
               setError(null);
             }}

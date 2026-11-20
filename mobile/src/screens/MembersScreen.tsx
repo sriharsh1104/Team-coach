@@ -13,6 +13,7 @@ import { ThemeColors } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { SoftPressable } from '../ui/SoftPressable';
+import { IconActionButton } from '../ui/IconActionButton';
 import { InviteQr } from '../ui/InviteQr';
 import { CopyButton } from './profile/CopyButton';
 import { RoleSelector } from './RoleSelector';
@@ -209,17 +210,15 @@ export function MembersScreen({ navigation }: Props) {
                 />
               ) : null}
               {showRemove ? (
-                <SoftPressable
-                  style={styles.removeBtn}
+                <IconActionButton
+                  icon="person-remove-outline"
+                  label={`Remove ${item.name}`}
+                  tooltip="Remove"
+                  danger
+                  style={staticStyles.removeIcon}
                   disabled={busyId === item.userId}
                   onPress={() => void onRemove(item)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${item.name}`}
-                  pressScale={0.94}
-                >
-                  <AppIcon name="person-remove-outline" size={18} color={colors.text} />
-                  <Text style={styles.removeLabel}>Remove</Text>
-                </SoftPressable>
+                />
               ) : null}
             </View>
           );
@@ -259,25 +258,16 @@ const staticStyles = StyleSheet.create({
     gap: 8,
   },
   memberInfo: { flex: 1 },
+  removeIcon: {
+    alignSelf: 'flex-start',
+    marginHorizontal: 12,
+    marginBottom: 12,
+  },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function membersStyles(c: ThemeColors) {
   return {
-    removeBtn: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 8,
-      alignSelf: 'flex-start' as const,
-      marginHorizontal: 12,
-      marginBottom: 12,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: 10,
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
-    },
     rosterHint: {
       color: c.textMuted,
       fontSize: 13,
@@ -315,6 +305,5 @@ function membersStyles(c: ThemeColors) {
     memberName: { fontSize: 16, color: c.text, fontWeight: '600' as const },
     memberInGameRoles: { fontSize: 12, color: c.textMuted, marginTop: 2 },
     memberRole: { color: c.textMuted, fontWeight: '600' as const, fontSize: 12 },
-    removeLabel: { color: c.text, fontWeight: '600' as const, fontSize: 13 },
   };
 }

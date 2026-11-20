@@ -1,4 +1,9 @@
-export type SocialPlatform = 'whatsapp' | 'instagram' | 'discord' | 'youtube';
+export type SocialPlatform =
+  | 'whatsapp'
+  | 'instagram'
+  | 'discord'
+  | 'youtube'
+  | 'kick';
 
 const PATTERNS: Record<SocialPlatform, RegExp> = {
   whatsapp:
@@ -7,6 +12,7 @@ const PATTERNS: Record<SocialPlatform, RegExp> = {
   discord:
     /^https:\/\/(www\.)?(discord\.gg\/|discord\.com\/(invite|users|channels)\/|discordapp\.com\/(invite|users|channels)\/).+/i,
   youtube: /^https:\/\/(www\.)?(youtube\.com\/|youtu\.be\/|m\.youtube\.com\/).+/i,
+  kick: /^https:\/\/(www\.)?kick\.com\/.+/i,
 };
 
 const MESSAGES: Record<SocialPlatform, string> = {
@@ -14,6 +20,7 @@ const MESSAGES: Record<SocialPlatform, string> = {
   instagram: 'Use an Instagram link (instagram.com).',
   discord: 'Use a Discord link (discord.gg / discord.com).',
   youtube: 'Use a YouTube link (youtube.com / youtu.be).',
+  kick: 'Use a Kick link (kick.com).',
 };
 
 export const SOCIAL_PLACEHOLDERS: Record<SocialPlatform, string> = {
@@ -21,6 +28,7 @@ export const SOCIAL_PLACEHOLDERS: Record<SocialPlatform, string> = {
   instagram: 'https://instagram.com/username',
   discord: 'https://discord.gg/invite',
   youtube: 'https://youtube.com/@channel',
+  kick: 'https://kick.com/username',
 };
 
 export function validateSocialUrl(

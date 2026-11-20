@@ -31,6 +31,7 @@ const SOCIAL_LINKS: Array<{
   { key: 'instagramUrl', label: 'Instagram', platform: 'instagram' },
   { key: 'discordUrl', label: 'Discord', platform: 'discord' },
   { key: 'youtubeUrl', label: 'YouTube', platform: 'youtube' },
+  { key: 'kickUrl', label: 'Kick', platform: 'kick' },
 ];
 
 /** Profile sheet used inside ChatHub’s local back stack (not MainStack). */

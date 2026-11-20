@@ -15,6 +15,7 @@ import {
 import { Image } from 'expo-image';
 import { ResizeMode, Video } from 'expo-av';
 import { AppIcon } from '../../ui/AppIcon';
+import { IconActionButton } from '../../ui/IconActionButton';
 import * as ImagePicker from 'expo-image-picker';
 import { Socket } from 'socket.io-client';
 import { getToken } from '../../storage/tokenStorage';
@@ -1265,83 +1266,56 @@ export function ChatScreen({
             {selectedIds.size} selected
           </Text>
           <View style={styles.selectBarActions}>
-            <Pressable
+            <IconActionButton
+              plain
+              icon={selectedList[0]?.pinned ? 'pin' : 'pin-outline'}
+              label={selectedList[0]?.pinned ? 'Unpin message' : 'Pin message'}
+              color={colors.link}
+              disabled={!canPinStar}
               onPress={() => void onPinSelected()}
+            />
+            <IconActionButton
+              plain
+              icon={selectedList[0]?.starred ? 'star' : 'star-outline'}
+              label={selectedList[0]?.starred ? 'Unstar message' : 'Star message'}
+              color={colors.link}
               disabled={!canPinStar}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={
-                selectedList[0]?.pinned ? 'Unpin message' : 'Pin message'
-              }
-              style={[styles.selectBarBtn, !canPinStar && styles.selectBarDisabled]}
-            >
-              <AppIcon
-                name={selectedList[0]?.pinned ? 'pin' : 'pin-outline'}
-                size={20}
-                color={colors.link}
-              />
-            </Pressable>
-            <Pressable
               onPress={() => void onStarSelected()}
-              disabled={!canPinStar}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={
-                selectedList[0]?.starred ? 'Unstar message' : 'Star message'
-              }
-              style={[styles.selectBarBtn, !canPinStar && styles.selectBarDisabled]}
-            >
-              <AppIcon
-                name={selectedList[0]?.starred ? 'star' : 'star-outline'}
-                size={20}
-                color={colors.link}
-              />
-            </Pressable>
-            <Pressable
-              onPress={onReplySelected}
+            />
+            <IconActionButton
+              plain
+              icon="arrow-undo"
+              label="Reply"
+              color={colors.link}
               disabled={!canReply}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Reply"
-              style={[styles.selectBarBtn, !canReply && styles.selectBarDisabled]}
-            >
-              <Text style={styles.selectBarAction}>Reply</Text>
-            </Pressable>
-            <Pressable
-              onPress={onEditSelected}
+              onPress={onReplySelected}
+            />
+            <IconActionButton
+              plain
+              icon="pencil-outline"
+              label="Edit"
+              color={colors.link}
               disabled={!canEdit}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Edit"
-              style={[styles.selectBarBtn, !canEdit && styles.selectBarDisabled]}
-            >
-              <Text style={styles.selectBarAction}>Edit</Text>
-            </Pressable>
-            <Pressable
-              onPress={onInfoSelected}
+              onPress={onEditSelected}
+            />
+            <IconActionButton
+              plain
+              icon="information-circle-outline"
+              label="Message info"
+              tooltip="Info"
+              color={colors.link}
               disabled={!canShowInfo}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Message info"
-              style={[styles.selectBarBtn, !canShowInfo && styles.selectBarDisabled]}
-            >
-              <Text style={styles.selectBarAction}>Info</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => void onDeleteSelected()}
+              onPress={onInfoSelected}
+            />
+            <IconActionButton
+              plain
+              icon="trash-outline"
+              label="Delete selected"
+              tooltip="Delete"
+              danger
               disabled={!allSelectedAreMine}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Delete selected"
-              style={[
-                styles.selectBarBtn,
-                !allSelectedAreMine && styles.selectBarDisabled,
-              ]}
-            >
-              <Text style={[styles.selectBarAction, styles.selectBarDelete]}>
-                Delete
-              </Text>
-            </Pressable>
+              onPress={() => void onDeleteSelected()}
+            />
           </View>
         </View>
       ) : searchActive ? (
@@ -1892,13 +1866,11 @@ const chatStyles = (c: ThemeColors) => ({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  selectBarDisabled: { opacity: 0.35 },
   selectBarAction: {
     color: c.link,
     fontSize: 15,
     fontWeight: '700' as const,
   },
-  selectBarDelete: { color: c.danger },
   composeBanner: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

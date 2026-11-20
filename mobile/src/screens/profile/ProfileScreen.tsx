@@ -19,6 +19,7 @@ import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { IconActionButton } from '../../ui/IconActionButton';
 import { useBookTabs } from '../../ui/BookTabs';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { PhoneField } from '../../ui/PhoneField';
@@ -562,15 +563,14 @@ function DevicesProfileSection({
               {device.name} — {device.model}
             </Text>
             <CopyButton value={`${device.name} — ${device.model}`} />
-            <SoftPressable
+            <IconActionButton
+              icon="trash-outline"
+              label={`Remove ${device.name}`}
+              tooltip="Remove"
+              danger
+              style={staticStyles.deviceActionBtn}
               onPress={() => onRemoveDevice(device.id)}
-              hitSlop={8}
-              pressScale={0.95}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove ${device.name}`}
-            >
-              <Text style={styles.removeText}>Remove</Text>
-            </SoftPressable>
+            />
           </View>
         ))
       )}
@@ -635,6 +635,7 @@ function SocialProfileSection({
   const [instagramUrl, setInstagramUrl] = useState(profile.instagramUrl ?? '');
   const [discordUrl, setDiscordUrl] = useState(profile.discordUrl ?? '');
   const [youtubeUrl, setYoutubeUrl] = useState(profile.youtubeUrl ?? '');
+  const [kickUrl, setKickUrl] = useState(profile.kickUrl ?? '');
 
   const onSave = async () => {
     const invalid = validateAllSocialUrls({
@@ -642,6 +643,7 @@ function SocialProfileSection({
       instagram: instagramUrl,
       discord: discordUrl,
       youtube: youtubeUrl,
+      kick: kickUrl,
     });
     if (invalid) {
       showToast(invalid);
@@ -654,6 +656,7 @@ function SocialProfileSection({
         instagramUrl: instagramUrl.trim() || undefined,
         discordUrl: discordUrl.trim() || undefined,
         youtubeUrl: youtubeUrl.trim() || undefined,
+        kickUrl: kickUrl.trim() || undefined,
       });
       await onUpdated(updated);
       if (mustComplete) {
@@ -681,6 +684,7 @@ function SocialProfileSection({
         <CopyableField label="Instagram" value={profile.instagramUrl ?? ''} />
         <CopyableField label="Discord" value={profile.discordUrl ?? ''} />
         <CopyableField label="YouTube" value={profile.youtubeUrl ?? ''} />
+        <CopyableField label="Kick" value={profile.kickUrl ?? ''} />
 
         <SoftPressable
           style={styles.editButton}
@@ -734,6 +738,13 @@ function SocialProfileSection({
         value={youtubeUrl}
         onChangeText={setYoutubeUrl}
       />
+      <Text style={staticStyles.sectionLabel}>Kick</Text>
+      <CopyableInput
+        placeholder={SOCIAL_PLACEHOLDERS.kick}
+        autoCapitalize="none"
+        value={kickUrl}
+        onChangeText={setKickUrl}
+      />
 
       <SoftPressable
         style={[shared.button, isSaving && shared.buttonDisabled]}
@@ -751,6 +762,7 @@ function SocialProfileSection({
 
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
+  deviceActionBtn: { width: 44, height: 44 },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -842,10 +854,6 @@ function profileStyles(c: ThemeColors) {
       flex: 1,
       color: c.text,
       fontSize: 15,
-    },
-    removeText: {
-      color: c.danger,
-      fontWeight: '600' as const,
     },
     emptyHint: {
       color: c.textMuted,

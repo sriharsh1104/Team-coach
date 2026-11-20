@@ -293,7 +293,35 @@ export async function uploadChatMedia(
     options.onProgress?.({ phase, fraction });
 
   report('preparing', 0);
-  const prepared = await compressForUpload(file);
+  // Compression is only an optimisation — if it throws or hangs, send the
+  // original file instead of blocking the message.
+  const original = { uri: file.uri, fileName: file.fileName, mimeType: file.mimeType };
+  let prepared = original;
+  try {
+    prepared = await compressForUpload(file);
+  } catch (err) {
+    console.warn('Compression failed, sending original:', (err as Error)?.message);
+  }
+
+  try {
+    return await uploadPrepared(prepared, report);
+  } catch (err) {
+    // The compressed copy may be broken/unreadable — try the untouched
+    // original once. Skip when the server said "too large" (original is
+    // bigger, so it would only fail the same way).
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (prepared.uri !== original.uri && status !== 413) {
+      console.warn('Upload of compressed file failed, retrying original:', (err as Error)?.message);
+      return uploadPrepared(original, report);
+    }
+    throw err;
+  }
+}
+
+async function uploadPrepared(
+  prepared: { uri: string; fileName: string; mimeType: string },
+  report: (phase: UploadProgress['phase'], fraction: number) => void,
+): Promise<ChatMediaUploadResult> {
   const resourceType = prepared.mimeType.startsWith('video/')
     ? ('video' as const)
     : ('image' as const);

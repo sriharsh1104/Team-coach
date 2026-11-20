@@ -3,7 +3,6 @@ import {
   Text,
   View,
   FlatList,
-  Pressable,
   RefreshControl,
   Switch,
   StyleSheet,
@@ -20,6 +19,7 @@ import { useThemedStyles } from '../theme/useThemedStyles';
 import { RoleSelector } from './RoleSelector';
 import { Toast, useToast } from '../ui/Toast';
 import { confirmAsync } from '../ui/confirmAsync';
+import { IconActionButton } from '../ui/IconActionButton';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgSettings'>;
 
@@ -227,27 +227,31 @@ export function OrgSettingsScreen({ navigation }: Props) {
               />
               <View style={staticStyles.actionsRow}>
                 {!item.onRoster ? (
-                  <Pressable
+                  <IconActionButton
+                    icon="person-add"
+                    label={`Add ${item.name} to roster`}
+                    tooltip="Add to Roster"
+                    color={colors.link}
                     onPress={() => void onAddToRoster(item)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Add ${item.name} to roster`}
-                  >
-                    <Text style={styles.actionLink}>Add to Roster</Text>
-                  </Pressable>
+                  />
                 ) : null}
                 {canRemove ? (
-                  <Pressable
+                  <IconActionButton
+                    icon="person-remove"
+                    label={`Remove ${item.name} from roster`}
+                    tooltip="Remove from Roster"
+                    danger
                     onPress={() => void onRemoveFromRoster(item)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${item.name} from roster`}
-                  >
-                    <Text style={styles.removeLink}>Remove from Roster</Text>
-                  </Pressable>
+                  />
                 ) : null}
                 {item.onRoster && !item.isOwner ? (
-                  <Pressable onPress={() => onMakeOwner(orgMember ?? toOrgMember(item))}>
-                    <Text style={styles.actionLink}>Make Owner</Text>
-                  </Pressable>
+                  <IconActionButton
+                    icon="crown-outline"
+                    label={`Make ${item.name} owner`}
+                    tooltip="Make Owner"
+                    color={colors.link}
+                    onPress={() => onMakeOwner(orgMember ?? toOrgMember(item))}
+                  />
                 ) : null}
               </View>
             </View>
@@ -287,7 +291,7 @@ const staticStyles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
   },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
@@ -309,7 +313,5 @@ function orgSettingsStyles(c: ThemeColors) {
       color: c.textMuted,
     },
     memberName: { flex: 1, fontSize: 16, fontWeight: '700' as const, color: c.text },
-    actionLink: { color: c.link, fontWeight: '600' as const },
-    removeLink: { color: c.danger, fontWeight: '600' as const },
   };
 }

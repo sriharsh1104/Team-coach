@@ -24,6 +24,7 @@ const PROFILE_SELECT = {
   instagramUrl: true,
   discordUrl: true,
   youtubeUrl: true,
+  kickUrl: true,
   devices: {
     select: { id: true, name: true, model: true },
   },
@@ -41,6 +42,7 @@ const PEER_PROFILE_SELECT = {
   instagramUrl: true,
   discordUrl: true,
   youtubeUrl: true,
+  kickUrl: true,
   devices: {
     select: { id: true, name: true, model: true },
   },

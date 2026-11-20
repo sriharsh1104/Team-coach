@@ -1,4 +1,11 @@
-type PlatformKey = 'email' | 'instagram' | 'discord' | 'youtube' | 'telegram';
+type PlatformKey =
+  | 'email'
+  | 'instagram'
+  | 'discord'
+  | 'youtube'
+  | 'kick'
+  | 'telegram';
+import { IconButton } from '../ui/IconButton';
 
 const CONTACTS: Array<{
   key: PlatformKey;
@@ -30,6 +37,7 @@ const CONTACTS: Array<{
     value: 'https://www.youtube.com/channel/UC_SatA-81Ycr3gpQnqRix3g',
     href: 'https://www.youtube.com/channel/UC_SatA-81Ycr3gpQnqRix3g',
   },
+  { key: 'kick', label: 'Kick', value: '', href: '' },
   { key: 'telegram', label: 'Telegram', value: '', href: '' },
 ];
 
@@ -68,6 +76,15 @@ function PlatformIcon({ name }: { name: PlatformKey }) {
           <path
             fill="currentColor"
             d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.5 31.5 0 0 0 0 12a31.5 31.5 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.5 31.5 0 0 0 24 12a31.5 31.5 0 0 0-.5-5.8zM9.8 15.5v-7L16 12z"
+          />
+        </svg>
+      );
+    case 'kick':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M2 2h6v6h2V6h2V2h6v6h-2v2h-2v4h2v2h2v6h-6v-4h-2v-2h-2v6H2z"
           />
         </svg>
       );
@@ -121,14 +138,12 @@ export function SocialHandlesPage() {
                   )}
                 </div>
               </div>
-              <button
-                type="button"
-                className="btn btn-ghost"
+              <IconButton
+                icon="copy"
+                label="Copy"
                 disabled={!c.value}
                 onClick={() => navigator.clipboard.writeText(c.value)}
-              >
-                Copy
-              </button>
+              />
             </div>
           ))}
         </div>

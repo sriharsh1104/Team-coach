@@ -86,6 +86,7 @@ beforeEach(() => {
     instagramUrl: null,
     discordUrl: null,
     youtubeUrl: null,
+    kickUrl: null,
     devices: [],
     role: 'PLAYER',
     isOwner: false,

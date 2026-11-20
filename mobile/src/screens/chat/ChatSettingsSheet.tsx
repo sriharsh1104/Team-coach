@@ -112,9 +112,16 @@ export function ChatSettingsSheet({
       Alert.alert('Permission needed', 'Allow gallery access to set a group photo.');
       return;
     }
+    // Close this sheet first. On Android, launching the gallery/crop activity
+    // while an RN <Modal> window is open is unreliable, and toasts render in
+    // the app root *behind* the Modal — so progress/success were invisible
+    // and the photo looked like it never changed (the profile picker works
+    // because it runs on a normal screen, not inside a Modal).
+    onClose();
+    await new Promise((resolve) => setTimeout(resolve, 350));
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
+      quality: 0.9,
       allowsEditing: true,
       aspect: [1, 1],
     });
@@ -130,6 +137,14 @@ export function ChatSettingsSheet({
       });
       setMeta(next);
       onMetaChanged?.(next);
+
+      if (!next.avatarUrl) {
+        Alert.alert(
+          'Photo not saved',
+          'The server did not return a link for the new group photo. Please try again.',
+        );
+        return;
+      }
       emitToast('Group photo updated ✓', 2500);
     } catch (err) {
       const msg = apiErrorMessage(err, 'Could not upload group photo');

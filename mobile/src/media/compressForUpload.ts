@@ -19,6 +19,27 @@ const IMAGE_JPEG_QUALITY = 0.72;
 const IMAGE_SKIP_UNDER_BYTES = 350_000;
 const VIDEO_SKIP_UNDER_BYTES = 4_000_000;
 
+/** Give compression this long, then send the original instead of waiting forever. */
+const IMAGE_COMPRESS_TIMEOUT_MS = 20_000;
+const VIDEO_COMPRESS_TIMEOUT_MS = 120_000;
+
+/** Resolves to `fallback` if `work` rejects or takes longer than `ms`. */
+function withTimeout<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    work.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
+}
+
 function isVideoMime(mime: string) {
   return mime.startsWith('video/');
 }
@@ -89,7 +110,7 @@ async function compressImageWithManipulator(
  * preferred when available). Videos use native auto compress when the
  * compressor module is linked; otherwise the original file is uploaded.
  */
-export async function compressForUpload(
+async function compressForUploadInner(
   input: {
     uri: string;
     fileName?: string | null;
@@ -111,7 +132,12 @@ export async function compressForUpload(
   if (isVideoMime(mimeType)) {
     const size = await tryGetSizeBytes(asset.uri);
     if (size != null && size < VIDEO_SKIP_UNDER_BYTES) return asset;
-    return (await compressVideoNative(asset)) ?? asset;
+    const compressed = await withTimeout(
+      compressVideoNative(asset),
+      VIDEO_COMPRESS_TIMEOUT_MS,
+      null,
+    );
+    return compressed ?? asset;
   }
 
   if (!isImageMime(mimeType)) return asset;
@@ -136,16 +162,49 @@ export async function compressForUpload(
     return asset;
   }
 
-  const native = await compressImageNative(asset);
+  const native = await withTimeout(
+    compressImageNative(asset),
+    IMAGE_COMPRESS_TIMEOUT_MS,
+    null,
+  );
   if (native) return native;
 
+  const manipulated = await withTimeout<UploadAsset | null>(
+    compressImageWithManipulator(asset, input.width, input.height),
+    IMAGE_COMPRESS_TIMEOUT_MS,
+    null,
+  );
+  return manipulated ?? asset;
+}
+
+/**
+ * Compression is best-effort: whatever goes wrong (module missing, native
+ * error, timeout, zero-byte output) the ORIGINAL file is returned so the
+ * message still gets sent — just bigger.
+ */
+export async function compressForUpload(input: {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  width?: number | null;
+  height?: number | null;
+}): Promise<UploadAsset> {
+  const mimeType = (input.mimeType ?? 'image/jpeg').toLowerCase();
+  const original: UploadAsset = {
+    uri: input.uri,
+    fileName:
+      input.fileName?.trim() ||
+      (isVideoMime(mimeType) ? `video-${Date.now()}.mp4` : `image-${Date.now()}.jpg`),
+    mimeType,
+  };
   try {
-    return await compressImageWithManipulator(
-      asset,
-      input.width,
-      input.height,
-    );
+    const out = await compressForUploadInner(input);
+    if (out.uri !== original.uri) {
+      const outSize = await tryGetSizeBytes(out.uri);
+      if (outSize === 0) return original; // broken/empty output
+    }
+    return out;
   } catch {
-    return asset;
+    return original;
   }
 }

@@ -5,11 +5,12 @@ import * as usersApi from '../api/users';
 import { MembershipRole, Profile } from '../api/types';
 import { copyText } from '../lib/copyText';
 import { SesLoader } from '../ui/SesLoader';
+import { IconButton } from '../ui/IconButton';
 
 const SOCIAL: Array<{
   key: keyof Pick<
     Profile,
-    'whatsappUrl' | 'instagramUrl' | 'discordUrl' | 'youtubeUrl'
+    'whatsappUrl' | 'instagramUrl' | 'discordUrl' | 'youtubeUrl' | 'kickUrl'
   >;
   label: string;
 }> = [
@@ -17,6 +18,7 @@ const SOCIAL: Array<{
   { key: 'instagramUrl', label: 'Instagram' },
   { key: 'discordUrl', label: 'Discord' },
   { key: 'youtubeUrl', label: 'YouTube' },
+  { key: 'kickUrl', label: 'Kick' },
 ];
 
 function roleBadge(role: MembershipRole | null, isOwner: boolean): string | null {
@@ -39,18 +41,16 @@ function CopyRow({ label, value }: { label: string; value: string }) {
         <span className="muted">{label}</span>
         <strong>{value}</strong>
       </div>
-      <button
-        type="button"
-        className="btn btn-ghost"
+      <IconButton
+        icon={copied ? 'check' : 'copy'}
+        label={copied ? 'Copied' : 'Copy'}
         onClick={async () => {
           if (await copyText(value)) {
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1200);
           }
         }}
-      >
-        {copied ? 'Copied' : 'Copy'}
-      </button>
+      />
     </div>
   );
 }

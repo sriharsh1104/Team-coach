@@ -4,6 +4,7 @@ import * as authApi from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { copyText } from '../lib/copyText';
 import { SesLoader } from '../ui/SesLoader';
+import { IconButton } from '../ui/IconButton';
 
 function apiError(err: unknown, fallback: string) {
   const msg = (err as { response?: { data?: { message?: string | string[] } } })
@@ -130,13 +131,11 @@ export function TwoFactorSetupPage() {
               {backupCodes.map((backupCode) => (
                 <li key={backupCode} className="backup-code-row">
                   <code>{backupCode}</code>
-                  <button
-                    type="button"
-                    className="btn btn-ghost profile-copy"
+                  <IconButton
+                    icon={copied === backupCode ? 'check' : 'copy'}
+                    label={copied === backupCode ? 'Copied' : 'Copy'}
                     onClick={() => onCopy(backupCode)}
-                  >
-                    {copied === backupCode ? 'Copied' : 'Copy'}
-                  </button>
+                  />
                 </li>
               ))}
             </ul>
@@ -170,13 +169,11 @@ export function TwoFactorSetupPage() {
           <p className="muted">Can&apos;t scan? Enter this code manually:</p>
           <div className="profile-field-row" style={{ marginBottom: 16 }}>
             <code className="profile-field-value">{secret}</code>
-            <button
-              type="button"
-              className="btn btn-ghost profile-copy"
+            <IconButton
+              icon={copied === secret ? 'check' : 'copy'}
+              label={copied === secret ? 'Copied' : 'Copy'}
               onClick={() => onCopy(secret)}
-            >
-              {copied === secret ? 'Copied' : 'Copy'}
-            </button>
+            />
           </div>
           <form className="profile-form-grid" onSubmit={onEnable}>
             <div className="field">

@@ -11,6 +11,7 @@ import {
 import {
   DISCORD_URL_REGEX,
   INSTAGRAM_URL_REGEX,
+  KICK_URL_REGEX,
   SOCIAL_URL_MESSAGES,
   WHATSAPP_URL_REGEX,
   YOUTUBE_URL_REGEX,
@@ -82,4 +83,10 @@ export class UpdateProfileDto {
   @MaxLength(200)
   @Matches(YOUTUBE_URL_REGEX, { message: SOCIAL_URL_MESSAGES.youtubeUrl })
   youtubeUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  @Matches(KICK_URL_REGEX, { message: SOCIAL_URL_MESSAGES.kickUrl })
+  kickUrl?: string;
 }

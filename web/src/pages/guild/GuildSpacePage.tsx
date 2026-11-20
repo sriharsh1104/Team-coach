@@ -13,6 +13,7 @@ import { copyText } from '../../lib/copyText';
 import { BookStage, useBookTabs } from '../../ui/BookTabs';
 import { InviteSharePanel } from '../../ui/InviteSharePanel';
 import { SesLoader } from '../../ui/SesLoader';
+import { IconButton } from '../../ui/IconButton';
 
 const PAGE_SIZE = 10;
 const GUILD_TABS = [
@@ -529,14 +530,13 @@ function RosterTab({
               </span>
             </div>
             {canManage && !member.isOwner && member.userId !== selfId ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
+              <IconButton
+                icon="person-remove"
+                label="Remove"
+                danger
                 disabled={busyId === member.userId}
                 onClick={() => onRemove(member.userId)}
-              >
-                Remove
-              </button>
+              />
             ) : null}
           </div>
         ))}

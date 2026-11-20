@@ -83,6 +83,7 @@ describe('detectSocialPlatform', () => {
     expect(detectSocialPlatform('https://instagram.com/x')).toBe('instagram');
     expect(detectSocialPlatform('https://discord.gg/x')).toBe('discord');
     expect(detectSocialPlatform('https://youtu.be/x')).toBe('youtube');
+    expect(detectSocialPlatform('https://kick.com/sacredesports')).toBe('kick');
     expect(detectSocialPlatform('mailto:a@b.com')).toBe('email');
   });
 });

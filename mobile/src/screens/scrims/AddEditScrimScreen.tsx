@@ -16,6 +16,7 @@ import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { ScheduleDateTimeField, defaultEventTimeToPM } from '../../ui/ScheduleDateTimeField';
 import { confirmAsync } from '../../ui/confirmAsync';
+import { IconActionButton } from '../../ui/IconActionButton';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
@@ -248,9 +249,14 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
                 <View style={staticStyles.roundHeader}>
                   <Text style={styles.roundTitle}>Round {round.roundNumber}</Text>
                   {rounds.length > 1 && (
-                    <Pressable onPress={() => removeRound(index)}>
-                      <Text style={styles.remove}>Remove</Text>
-                    </Pressable>
+                    <IconActionButton
+                      icon="trash-outline"
+                      label={`Remove round ${round.roundNumber}`}
+                      tooltip="Remove"
+                      danger
+                      style={staticStyles.roundRemoveBtn}
+                      onPress={() => removeRound(index)}
+                    />
                   )}
                 </View>
 
@@ -300,9 +306,13 @@ export function AddEditScrimScreen({ navigation, route }: Props) {
             ))}
 
             {rounds[rounds.length - 1]?.result === 'QUALIFIED' && (
-              <Pressable style={styles.addRoundBtn} onPress={addRound}>
-                <Text style={styles.addRoundText}>+ Add Round</Text>
-              </Pressable>
+              <IconActionButton
+                icon="add-circle-outline"
+                label="Add Round"
+                color={colors.link}
+                style={styles.addRoundBtn}
+                onPress={addRound}
+              />
             )}
           </>
         )}
@@ -362,8 +372,10 @@ const staticStyles = StyleSheet.create({
   roundHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
   },
+  roundRemoveBtn: { width: 36, height: 36 },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
@@ -408,16 +420,15 @@ function addEditScrimStyles(c: ThemeColors) {
       backgroundColor: 'rgba(255,255,255,0.03)',
     },
     roundTitle: { color: c.text, fontWeight: '700' as const },
-    remove: { color: c.danger, fontWeight: '600' as const },
     addRoundBtn: {
-      alignItems: 'center' as const,
-      paddingVertical: 12,
+      width: '100%' as const,
+      height: 44,
       marginBottom: 12,
       borderWidth: 1,
       borderColor: c.border,
       borderRadius: 8,
       borderStyle: 'dashed' as const,
+      backgroundColor: 'transparent',
     },
-    addRoundText: { color: c.link, fontWeight: '700' as const },
   };
 }

@@ -52,7 +52,11 @@ export type AppIconName =
   | 'book-outline'
   | 'trophy-outline'
   | 'settings-outline'
-  | 'trash-outline';
+  | 'trash-outline'
+  | 'pencil-outline'
+  | 'arrow-undo'
+  | 'information-circle-outline'
+  | 'crown-outline';
 
 type Props = {
   name: AppIconName;
@@ -192,6 +196,30 @@ const ICONS: Record<AppIconName, Renderer> = {
   'trash-outline': (c, s) => (
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'pencil-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 20h9" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'arrow-undo': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M9 14L4 9l5-5" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M4 9h10.5a5.5 5.5 0 010 11H11" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'information-circle-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="10" stroke={c} strokeWidth={2} />
+      <Path d="M12 16v-4" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="12" y1="8" x2="12.01" y2="8" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'crown-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 7l4.5 5L12 5l4.5 7L21 7l-2 12H5L3 7z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   ),
   'checkmark': (c, s) => (

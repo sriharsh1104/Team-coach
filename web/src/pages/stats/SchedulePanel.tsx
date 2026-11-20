@@ -12,6 +12,7 @@ import {
 } from '../../api/types';
 import { SesLoader } from '../../ui/SesLoader';
 import { ExtractionReviewModal } from './ExtractionReviewModal';
+import { IconButton } from '../../ui/IconButton';
 
 type RoundDraft = {
   roundNumber: number;
@@ -410,34 +411,28 @@ export function SchedulePanel({ eventType }: { eventType: ScrimEventType }) {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
+                          <IconButton
+                            icon="upload"
+                            label="Upload result"
                             disabled={uploadForId === event.id}
                             onClick={() => {
                               pendingUploadId.current = event.id;
                               setUploadForId(event.id);
                               fileRef.current?.click();
                             }}
-                          >
-                            Upload result
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
+                          />
+                          <IconButton
+                            icon="edit"
+                            label="Edit"
                             onClick={() => openEdit(event)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{ color: 'var(--danger)' }}
+                          />
+                          <IconButton
+                            icon="trash"
+                            label="Delete"
+                            danger
                             onClick={() => onDelete(event)}
                             disabled={busy}
-                          >
-                            Delete
-                          </button>
+                          />
                         </div>
                       </td>
                     </tr>
@@ -581,14 +576,12 @@ export function SchedulePanel({ eventType }: { eventType: ScrimEventType }) {
                         <div className="scrim-round-head">
                           <strong>Round {round.roundNumber}</strong>
                           {rounds.length > 1 ? (
-                            <button
-                              type="button"
-                              className="btn btn-ghost"
-                              style={{ color: 'var(--danger)' }}
+                            <IconButton
+                              icon="trash"
+                              label="Remove"
+                              danger
                               onClick={() => removeRound(index)}
-                            >
-                              Remove
-                            </button>
+                            />
                           ) : null}
                         </div>
                         <label className="scrim-round-label" htmlFor={`round-when-${index}`}>
@@ -627,14 +620,12 @@ export function SchedulePanel({ eventType }: { eventType: ScrimEventType }) {
                     ))}
                   </div>
                   {rounds[rounds.length - 1]?.result === 'QUALIFIED' ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ marginTop: 8 }}
+                    <IconButton
+                      icon="plus"
+                      label="Add round"
+                      className="icon-btn-inline"
                       onClick={addRound}
-                    >
-                      + Add round
-                    </button>
+                    />
                   ) : null}
                 </div>
               )}

@@ -160,6 +160,7 @@ export interface Profile {
   instagramUrl: string | null;
   discordUrl: string | null;
   youtubeUrl: string | null;
+  kickUrl: string | null;
   devices: Device[];
   // Org role/ownership — null when viewed somewhere with no org context.
   role: MembershipRole | null;
@@ -176,6 +177,7 @@ export interface UpdateProfileInput {
   instagramUrl?: string;
   discordUrl?: string;
   youtubeUrl?: string;
+  kickUrl?: string;
 }
 
 export interface OrgCreateJoinResponse {

@@ -75,6 +75,12 @@ const SOCIAL_CONTACTS: SocialContact[] = [
     href: 'https://www.youtube.com/channel/UC_SatA-81Ycr3gpQnqRix3g',
   },
   {
+    key: 'kick',
+    label: 'Kick',
+    value: '',
+    href: '',
+  },
+  {
     key: 'telegram',
     label: 'Telegram',
     value: '',

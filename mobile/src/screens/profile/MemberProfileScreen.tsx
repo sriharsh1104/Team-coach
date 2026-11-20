@@ -26,6 +26,7 @@ const SOCIAL_LINKS: Array<{
   { key: 'instagramUrl', label: 'Instagram', platform: 'instagram' },
   { key: 'discordUrl', label: 'Discord', platform: 'discord' },
   { key: 'youtubeUrl', label: 'YouTube', platform: 'youtube' },
+  { key: 'kickUrl', label: 'Kick', platform: 'kick' },
 ];
 
 export function MemberProfileScreen({ route }: Props) {

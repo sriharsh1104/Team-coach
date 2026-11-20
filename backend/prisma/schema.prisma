@@ -47,6 +47,7 @@ model User {
   instagramUrl String?
   discordUrl   String?
   youtubeUrl   String?
+  kickUrl      String?
 
   // Expo push token for the device currently signed in. One per user is enough
   // for Phase 1 testing; move to a per-device table if multi-device push matters later.

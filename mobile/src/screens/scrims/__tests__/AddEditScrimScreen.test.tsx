@@ -76,7 +76,7 @@ describe('AddEditScrimScreen', () => {
     // SCRIM is the default type.
     expect(screen.queryByText('Rounds')).toBeNull();
     expect(screen.queryByText('Round 1')).toBeNull();
-    expect(screen.queryByText('+ Add Round')).toBeNull();
+    expect(screen.queryByLabelText('Add Round')).toBeNull();
     expect(screen.queryByText('Qualified')).toBeNull();
     expect(screen.getByText('Date & Time')).toBeTruthy();
   });
@@ -111,7 +111,7 @@ describe('AddEditScrimScreen', () => {
     fireEvent.press(screen.getByText('Tournament'));
     fireEvent.press(screen.getByText('Qualified'));
     expect(screen.getByText('Round 2')).toBeTruthy();
-    expect(screen.queryByText('+ Add Round')).toBeNull();
+    expect(screen.queryByLabelText('Add Round')).toBeNull();
 
     fireEvent.press(screen.getByText('Scrim'));
     fireEvent.changeText(
@@ -132,17 +132,17 @@ describe('AddEditScrimScreen', () => {
     render(<AddEditScrimScreen navigation={navigation} route={{ params: {} } as any} />);
     fireEvent.press(screen.getByText('Tournament'));
 
-    expect(screen.queryByText('+ Add Round')).toBeNull();
+    expect(screen.queryByLabelText('Add Round')).toBeNull();
 
     fireEvent.press(screen.getByText('Eliminated'));
-    expect(screen.queryByText('+ Add Round')).toBeNull();
+    expect(screen.queryByLabelText('Add Round')).toBeNull();
     expect(screen.queryByText('Round 2')).toBeNull();
 
     fireEvent.press(screen.getByText('Qualified'));
     // Qualifying auto-adds the next round (PENDING), so the manual button
     // stays hidden again until that new round is itself qualified.
     expect(screen.getByText('Round 2')).toBeTruthy();
-    expect(screen.queryByText('+ Add Round')).toBeNull();
+    expect(screen.queryByLabelText('Add Round')).toBeNull();
   });
 
   it('blocks saving until a title is entered', async () => {

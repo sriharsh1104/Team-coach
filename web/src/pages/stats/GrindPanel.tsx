@@ -11,6 +11,7 @@ import {
 import { BookStage, useBookTabs } from '../../ui/BookTabs';
 import { SesLoader } from '../../ui/SesLoader';
 import { ExtractionReviewModal } from './ExtractionReviewModal';
+import { IconButton } from '../../ui/IconButton';
 
 const VIEW_TABS = ['board', 'days'] as const;
 
@@ -210,21 +211,17 @@ export function GrindPanel({
                 <div className="stats-pending-actions">
                   {extraction.status === 'FAILED' ? (
                     <>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
+                      <IconButton
+                        icon="retry"
+                        label="Retry"
                         onClick={() => onRetry(extraction.id)}
-                      >
-                        Retry
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        style={{ color: 'var(--danger)' }}
+                      />
+                      <IconButton
+                        icon="trash"
+                        label="Discard"
+                        danger
                         onClick={() => onDiscard(extraction.id)}
-                      >
-                        Discard
-                      </button>
+                      />
                     </>
                   ) : (
                     <button

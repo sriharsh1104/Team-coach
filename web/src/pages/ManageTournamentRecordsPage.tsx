@@ -13,6 +13,7 @@ import {
 } from '../api/tournamentRecords';
 import { useAuth } from '../auth/AuthContext';
 import { SesLoader } from '../ui/SesLoader';
+import { IconButton } from '../ui/IconButton';
 
 const EMPTY: TournamentRecordInput = {
   name: '',
@@ -233,21 +234,17 @@ export function ManageTournamentRecordsPage() {
                     {canEdit ? (
                       <td>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
+                          <IconButton
+                            icon="edit"
+                            label="Edit"
                             onClick={() => openEdit(row)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{ color: 'var(--danger)' }}
+                          />
+                          <IconButton
+                            icon="trash"
+                            label="Delete"
+                            danger
                             onClick={() => onDelete(row.id)}
-                          >
-                            Delete
-                          </button>
+                          />
                         </div>
                       </td>
                     ) : null}

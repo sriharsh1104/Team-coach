@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FreeFireMap, MapPin, listMaps, mapPins } from '../api/maps';
 import { SesLoader } from '../ui/SesLoader';
+import { IconButton } from '../ui/IconButton';
 
 type ViewerTarget =
   | { kind: 'overview'; map: FreeFireMap }
@@ -293,13 +294,11 @@ export function MapsPage() {
               >
                 +
               </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
+              <IconButton
+                icon="reset"
+                label="Reset zoom"
                 onClick={() => setZoom(1)}
-              >
-                Reset
-              </button>
+              />
               <button
                 type="button"
                 className="btn btn-primary topbar-add-btn"

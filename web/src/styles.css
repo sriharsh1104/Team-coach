@@ -2198,6 +2198,53 @@ a:hover {
   padding: 8px 10px;
 }
 
+/* Icon-only action button — label shows as a hover/focus tooltip. */
+.icon-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.icon-btn-danger {
+  color: var(--danger);
+}
+
+.icon-btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #1c1c22;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+  z-index: 50;
+}
+
+.icon-btn[data-tip]:hover::after,
+.icon-btn[data-tip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .btn-icon {
   width: 36px;
   height: 36px;
@@ -3545,6 +3592,10 @@ button.invite-qr-open:hover {
   color: #7dd3fc;
 }
 
+.contact-platform-icon.platform-kick {
+  color: #53fc18;
+}
+
 .contact-platform-icon.platform-email {
   color: var(--chrome);
 }
@@ -3863,6 +3914,10 @@ button.invite-qr-open:hover {
 
 .profile-social-icon.platform-youtube {
   color: #fca5a5;
+}
+
+.profile-social-icon.platform-kick {
+  color: #53fc18;
 }
 
 .profile-field-row {
@@ -4430,4 +4485,8 @@ button.invite-qr-open:hover {
   .chat-inbox {
     display: none;
   }
+}
+
+.icon-btn-inline {
+  margin-top: 8px;
 }

@@ -12,9 +12,12 @@ export const DISCORD_URL_REGEX =
 export const YOUTUBE_URL_REGEX =
   /^https:\/\/(www\.)?(youtube\.com\/|youtu\.be\/|m\.youtube\.com\/).+/i;
 
+export const KICK_URL_REGEX = /^https:\/\/(www\.)?kick\.com\/.+/i;
+
 export const SOCIAL_URL_MESSAGES = {
   whatsappUrl: 'WhatsApp link must be a wa.me / whatsapp.com URL',
   instagramUrl: 'Instagram link must be an instagram.com URL',
   discordUrl: 'Discord link must be a discord.gg / discord.com invite URL',
   youtubeUrl: 'YouTube link must be a youtube.com / youtu.be URL',
+  kickUrl: 'Kick link must be a kick.com URL',
 } as const;

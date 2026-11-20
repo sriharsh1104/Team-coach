@@ -17,6 +17,18 @@ function escapeHtml(value: string) {
 }
 
 /**
+ * Resend only accepts `email@example.com` or `Name <email@example.com>`.
+ * Env files loaded by Docker (`env_file`, `docker run --env-file`) keep
+ * surrounding quotes literally, which makes Resend reply 422 "Invalid `from`
+ * field" — strip them (and stray whitespace) before use.
+ */
+function normalizeFromAddress(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const cleaned = raw.trim().replace(/^(["'])(.*)\1$/s, '$2').trim();
+  return cleaned || undefined;
+}
+
+/**
  * Sacred Esports branded shell — dark bg + logo watermark like the web app.
  * Logo loads from WEB_PUBLIC_URL when set; otherwise the wordmark still shows.
  */
@@ -83,9 +95,9 @@ export class MailerService implements OnModuleInit {
 
   onModuleInit() {
     const apiKey = this.configService.get<string>('RESEND_API_KEY')?.trim();
-    const fromAddress = this.configService
-      .get<string>('RESEND_FROM_EMAIL')
-      ?.trim();
+    const fromAddress = normalizeFromAddress(
+      this.configService.get<string>('RESEND_FROM_EMAIL'),
+    );
     if (!apiKey || !fromAddress) {
       this.logger.warn(
         'RESEND_API_KEY / RESEND_FROM_EMAIL missing — signup OTP and Google password emails will fail until set on this host.',
@@ -108,9 +120,9 @@ export class MailerService implements OnModuleInit {
 
   private async send(to: string, subject: string, html: string): Promise<void> {
     const apiKey = this.configService.get<string>('RESEND_API_KEY')?.trim();
-    const fromAddress = this.configService
-      .get<string>('RESEND_FROM_EMAIL')
-      ?.trim();
+    const fromAddress = normalizeFromAddress(
+      this.configService.get<string>('RESEND_FROM_EMAIL'),
+    );
     if (!apiKey || !fromAddress) {
       throw new ServiceUnavailableException(
         'Email sending is not configured — set RESEND_API_KEY and RESEND_FROM_EMAIL on the backend.',

@@ -207,6 +207,13 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .expect(400);
       expect(JSON.stringify(wrongWhatsapp.body.message)).toMatch(/whatsapp/i);
 
+      const wrongKick = await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ kickUrl: 'https://youtube.com/@sacred' })
+        .expect(400);
+      expect(JSON.stringify(wrongKick.body.message)).toMatch(/kick/i);
+
       await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${user.accessToken}`)
@@ -214,6 +221,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
           whatsappUrl: 'https://wa.me/919876543210',
           instagramUrl: 'https://instagram.com/sacred',
           youtubeUrl: 'https://youtube.com/@sacred',
+          kickUrl: 'https://kick.com/sacred',
         })
         .expect(200);
     });

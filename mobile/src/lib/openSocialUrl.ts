@@ -6,6 +6,7 @@ export type SocialOpenPlatform =
   | 'instagram'
   | 'discord'
   | 'youtube'
+  | 'kick'
   | 'telegram'
   | 'web';
 
@@ -23,6 +24,7 @@ export function detectSocialPlatform(url: string): SocialOpenPlatform {
     return 'discord';
   }
   if (lower.includes('youtube.com') || lower.includes('youtu.be')) return 'youtube';
+  if (lower.includes('kick.com')) return 'kick';
   if (
     lower.includes('t.me') ||
     lower.includes('telegram.me') ||

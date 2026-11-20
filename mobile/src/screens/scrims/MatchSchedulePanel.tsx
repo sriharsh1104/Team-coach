@@ -8,7 +8,6 @@ import {
   Linking,
   Alert,
   StyleSheet,
-  ActivityIndicator,
   Modal,
   Image,
 } from 'react-native';
@@ -32,6 +31,7 @@ import {
 } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { IconActionButton } from '../../ui/IconActionButton';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
@@ -250,46 +250,38 @@ export function MatchSchedulePanel({
         {item.notes ? <Text style={styles.notes}>{item.notes}</Text> : null}
 
         <View style={staticStyles.actionsRow}>
-          <SoftPressable
-            style={styles.primaryAction}
+          <IconActionButton
+            icon="cloud-upload-outline"
+            label="Upload Result"
+            color={colors.link}
+            loading={uploadingEventId === item.id}
             onPress={() => uploadResultForEvent(item)}
-            disabled={uploadingEventId === item.id}
-            accessibilityRole="button"
-            accessibilityLabel="Upload Result"
-            pressScale={0.97}
-          >
-            {uploadingEventId === item.id ? (
-              <ActivityIndicator color={colors.chromeInk} />
-            ) : (
-              <Text style={styles.primaryActionText}>Upload Result</Text>
-            )}
-          </SoftPressable>
+          />
           {viewUrl ? (
-            <SoftPressable
-              style={styles.viewAction}
+            <IconActionButton
+              icon="eye-outline"
+              label="View uploaded result"
+              tooltip="View Result"
+              color={colors.link}
               onPress={() => setViewingUrl(viewUrl)}
-              accessibilityLabel="View uploaded result"
-              pressScale={0.96}
-            >
-              <AppIcon name="eye-outline" size={18} color={colors.chromeInk} />
-              <Text style={styles.viewActionText}>View</Text>
-            </SoftPressable>
+            />
           ) : null}
           {canEdit(item) && (
             <>
-              <SoftPressable
+              <IconActionButton
+                icon="pencil-outline"
+                label="Edit"
+                color={colors.link}
                 onPress={() =>
                   navigation.navigate('AddEditScrim', { scrim: item })
                 }
-                pressScale={0.96}
-              >
-                <Text style={styles.action}>Edit</Text>
-              </SoftPressable>
-              <SoftPressable onPress={() => onDelete(item)} pressScale={0.96}>
-                <Text style={[styles.action, { color: colors.danger }]}>
-                  Delete
-                </Text>
-              </SoftPressable>
+              />
+              <IconActionButton
+                icon="trash-outline"
+                label="Delete"
+                danger
+                onPress={() => onDelete(item)}
+              />
             </>
           )}
         </View>
@@ -497,39 +489,11 @@ function matchScheduleStyles(c: ThemeColors) {
     meta: { color: c.textMuted, fontSize: 12, marginTop: 6 },
     link: { color: c.link, marginTop: 4 },
     notes: { color: c.textMuted, marginTop: 4 },
-    primaryAction: {
-      backgroundColor: c.chrome,
-      borderRadius: 12,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      minWidth: 110,
-      alignItems: 'center' as const,
-    },
-    primaryActionText: {
-      color: c.chromeInk,
-      fontWeight: '700' as const,
-      fontSize: 12,
-    },
-    viewAction: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 6,
-      backgroundColor: c.chrome,
-      borderRadius: 12,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-    },
-    viewActionText: {
-      color: c.chromeInk,
-      fontWeight: '700' as const,
-      fontSize: 12,
-    },
     uploadHint: {
       marginTop: 8,
       color: c.textMuted,
       fontSize: 12,
     },
-    action: { color: c.link, fontWeight: '600' as const },
     dayHeader: {
       flexDirection: 'row' as const,
       justifyContent: 'space-between' as const,
