@@ -129,6 +129,18 @@ export class AuthService {
       where: { email },
     });
     if (existing?.emailVerified) {
+      // A successful Google signup/login always leaves this account with a
+      // real passwordHash (see googleLogin — it mails a generated password
+      // and rolls the row back if that mail fails, so this is never null for
+      // a Google account that actually exists). The account is the *same*
+      // one, not a duplicate — point the user at Google sign-in or, since
+      // they already have a password, Forgot Password, instead of a bare
+      // "already exists" that looks like a dead end.
+      if (existing.googleId) {
+        throw new ConflictException(
+          'This email is already signed up with Google. Sign in with Google, or use "Forgot password?" to set a direct password for the same account.',
+        );
+      }
       throw new ConflictException('An account with this email already exists');
     }
 

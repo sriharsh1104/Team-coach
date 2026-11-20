@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import * as speakeasy from 'speakeasy';
+import * as bcrypt from 'bcrypt';
 import { createTestApp, getPrisma, resetDatabase, uniqueEmail, uniqueOrgName } from './utils/test-app';
 import { sentOtps } from './utils/mailer-mock';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -100,6 +101,27 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .post('/auth/signup')
         .send({ email, password: 'Password123!', name: 'Second' })
         .expect(409);
+    });
+
+    it('tells the user it is the same Google-linked account, not a generic "already exists", when the email is already signed up via Google', async () => {
+      const email = uniqueEmail('googledup');
+      // Mirrors what a real googleLogin() row looks like (emailVerified +
+      // googleId set) without needing a real Google idToken in this test.
+      await prisma.user.create({
+        data: {
+          email,
+          googleId: `google-${Date.now()}`,
+          name: 'Google User',
+          emailVerified: true,
+          passwordHash: await bcrypt.hash('Whatever123!', 10),
+        },
+      });
+      const res = await request(server)
+        .post('/auth/signup')
+        .send({ email, password: 'Password123!', name: 'Second' })
+        .expect(409);
+      expect(res.body.message).toMatch(/already signed up with Google/i);
+      expect(res.body.message).toMatch(/Forgot password/i);
     });
 
     it('rejects an invalid email format', async () => {
