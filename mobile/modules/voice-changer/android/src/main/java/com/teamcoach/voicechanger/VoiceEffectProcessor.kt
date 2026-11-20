@@ -1,5 +1,6 @@
 package com.teamcoach.voicechanger
 
+import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.PI
@@ -20,16 +21,34 @@ import livekit.org.webrtc.ExternalAudioProcessingFactory
  * otherwise carry un-shifted highs that sound like a second voice).
  *
  * Presets are deliberately cheap (no FFT): a two-tap crossfaded delay-line
- * pitch shifter (~30 ms added latency) plus a ring modulator for "robot".
+ * pitch shifter (~40 ms added latency) plus a ring modulator for "robot".
+ *
+ * ---- Choosing the pitch (why these numbers) ----
+ * Typical speaking fundamental (F0):
+ *   adult man     85–155 Hz  (avg ~120)
+ *   adult woman  165–255 Hz  (avg ~210)
+ *   child        250–400 Hz  (avg ~300)
+ * An octave is 12 semitones (ratio 2.0); one semitone is a ratio of 2^(1/12).
+ * We can't know who is talking, so every preset is a *relative* move that
+ * has to clear the ~3-4 semitone "this is obviously processed" threshold from
+ * either starting voice:
+ *   MAN    -5  : woman 210 → 157 Hz (male range), man 120 → 90 Hz (deep)
+ *   WOMAN  +5  : man   120 → 160 Hz (female edge), woman 210 → 280 Hz
+ *   GIRL   +8  : man   120 → 190 Hz, woman 210 → 333 Hz
+ *   CHILD  +11 : man   120 → 226 Hz, woman 210 → 396 Hz  (kid range)
+ * A plain pitch shift also scales the formants by the same ratio, so past
+ * about +8 it starts to sound like a cartoon — that is the "child" sound.
+ * The old values (±4 / +7 / +10) were small enough that most people heard
+ * "the same voice".
  */
 class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
 
   enum class Preset(val semitones: Double, val ringModHz: Double, val ringMix: Double) {
     OFF(0.0, 0.0, 0.0),
-    MAN(-4.0, 0.0, 0.0),
-    WOMAN(4.0, 0.0, 0.0),
-    GIRL(7.0, 0.0, 0.0),
-    CHILD(10.0, 0.0, 0.0),
+    MAN(-5.0, 0.0, 0.0),
+    WOMAN(5.0, 0.0, 0.0),
+    GIRL(8.0, 0.0, 0.0),
+    CHILD(11.0, 0.0, 0.0),
     ROBOT(-2.0, 45.0, 0.8);
 
     companion object {
@@ -38,81 +57,141 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
     }
   }
 
+  private companion object {
+    const val TAG = "VoiceChanger"
+    /** WebRTC float audio is on the int16 scale. */
+    const val CLAMP = 32767f
+  }
+
   @Volatile var preset: Preset = Preset.OFF
 
   private var bandRate = 16000
   private val shifter = PitchShifter()
   private var ringPhase = 0.0
   private var scratch = FloatArray(0)
+  private var zeros = FloatArray(0)
+  private var loggedKey = 0L
 
   override fun initialize(sampleRateHz: Int, numChannels: Int) {
     bandRate = sampleRateHz
     shifter.reset()
     ringPhase = 0.0
+    Log.i(TAG, "initialize rate=$sampleRateHz channels=$numChannels")
   }
 
   override fun reset(newRate: Int) {
     bandRate = newRate
     shifter.reset()
     ringPhase = 0.0
+    Log.i(TAG, "reset rate=$newRate")
   }
 
   override fun process(numBands: Int, numFrames: Int, buffer: ByteBuffer) {
     val p = preset
     if (p == Preset.OFF || numBands <= 0 || numFrames <= 0) return
-    val needed = numBands * numFrames * 4
-    if (buffer.capacity() < needed) return // unexpected layout — leave audio untouched
 
+    // Work out how many samples one band holds. WebRTC's wrapper reports
+    // `numFrames` per band, but fall back to "whole buffer / bands" if the
+    // buffer is smaller than that — otherwise a layout mismatch would make the
+    // effect silently do nothing (the voice would just sound unchanged).
+    val capacityFloats = buffer.capacity() / 4
+    val perBand: Int = when {
+      numBands * numFrames <= capacityFloats -> numFrames
+      capacityFloats >= numBands && capacityFloats % numBands == 0 -> capacityFloats / numBands
+      else -> {
+        logLayout(numBands, numFrames, capacityFloats, -1, p)
+        return
+      }
+    }
+    logLayout(numBands, numFrames, capacityFloats, perBand, p)
+
+    buffer.clear()
     val fb = buffer.order(ByteOrder.nativeOrder()).asFloatBuffer()
-    if (scratch.size < numFrames) scratch = FloatArray(numFrames)
+    if (scratch.size < perBand) scratch = FloatArray(perBand)
     val x = scratch
 
     // Band 0 in, effect, band 0 out.
     fb.position(0)
-    fb.get(x, 0, numFrames)
+    fb.get(x, 0, perBand)
 
-    val rate = if (numBands > 1) bandRate / numBands else bandRate
+    // Sample rate of one band (16 kHz for the 16/32/48 kHz capture rates).
+    val rate = if (numBands > 1) (bandRate / numBands).coerceAtLeast(8000) else bandRate
+    shifter.setRate(rate)
     shifter.ratio = 2.0.pow(p.semitones / 12.0)
-    shifter.process(x, numFrames)
+    shifter.process(x, perBand)
 
     if (p.ringMix > 0.0 && p.ringModHz > 0.0) {
       val inc = 2.0 * PI * p.ringModHz / rate
       val dry = 1.0 - p.ringMix
-      for (i in 0 until numFrames) {
+      for (i in 0 until perBand) {
         x[i] = (x[i] * (dry + p.ringMix * sin(ringPhase))).toFloat()
         ringPhase += inc
         if (ringPhase > 2.0 * PI) ringPhase -= 2.0 * PI
       }
     }
 
+    for (i in 0 until perBand) {
+      val v = x[i]
+      x[i] = if (v > CLAMP) CLAMP else if (v < -CLAMP) -CLAMP else v
+    }
+
     fb.position(0)
-    fb.put(x, 0, numFrames)
+    fb.put(x, 0, perBand)
 
     // Mute the upper bands (8 kHz+) while shifting — see class doc.
     if (numBands > 1) {
-      val zero = FloatArray(numFrames)
+      if (zeros.size < perBand) zeros = FloatArray(perBand)
       for (band in 1 until numBands) {
-        fb.position(band * numFrames)
-        fb.put(zero, 0, numFrames)
+        fb.position(band * perBand)
+        fb.put(zeros, 0, perBand)
       }
     }
+  }
+
+  /** Logs the buffer layout once per change, so logcat shows what WebRTC gives us. */
+  private fun logLayout(numBands: Int, numFrames: Int, capacity: Int, perBand: Int, p: Preset) {
+    val key = (numBands.toLong() shl 48) xor (numFrames.toLong() shl 32) xor
+      (capacity.toLong() shl 16) xor perBand.toLong() xor (p.ordinal.toLong() shl 56)
+    if (key == loggedKey) return
+    loggedKey = key
+    Log.i(
+      TAG,
+      "process: bands=$numBands frames=$numFrames capacity=$capacity perBand=$perBand " +
+        "rate=$bandRate preset=${p.name}" + if (perBand < 0) " (UNSUPPORTED LAYOUT, audio untouched)" else "",
+    )
   }
 
   /**
    * Classic delay-line pitch shifter: two read taps sweep a ring buffer at
    * (1 - ratio) samples per sample, half a window apart, crossfaded with
    * sin/cos gains so power stays constant through the seam.
+   *
+   * The window is ~40 ms of audio: long enough to span several pitch periods
+   * of a deep voice (a 90 Hz voice repeats every 11 ms), short enough that
+   * the sweep doesn't sound like an echo.
    */
-  private class PitchShifter(private val window: Int = 1024) {
+  private class PitchShifter {
     private companion object {
-      const val INV_SQRT2 = 0.70710678
+      // Sum of two crossfaded taps is ≈ 1.06x the input RMS at 0.707; 0.95 gives
+      // roughly unity loudness (peaks are clamped by the caller).
+      const val OUT_GAIN = 0.95
+      const val WINDOW_SECONDS = 0.04
     }
-    private val size = 4096 // power of two, > window
+    private val size = 8192 // power of two, > window at every supported rate
     private val mask = size - 1
     private val buf = FloatArray(size)
     private var writePos = 0
+    private var window = 640
     private var phase = 0.0 // delay of tap A, in [0, window)
     @Volatile var ratio = 1.0
+
+    fun setRate(rate: Int) {
+      val w = (rate * WINDOW_SECONDS).toInt().coerceIn(256, size / 2)
+      if (w != window) {
+        window = w
+        reset()
+      }
+    }
 
     fun reset() {
       buf.fill(0f)
@@ -135,9 +214,7 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
         val b = readAt(writePos - dB)
         val gA = sin(piOverWindow * dA)
         val gB = sin(piOverWindow * dB)
-        // sin/cos taps sum to up to sqrt(2) when in phase; scale back so the
-        // effect never adds gain (WebRTC clamps to int16 right after us).
-        x[i] = ((a * gA + b * gB) * INV_SQRT2).toFloat()
+        x[i] = ((a * gA + b * gB) * OUT_GAIN).toFloat()
 
         phase += step
         if (phase >= window) phase -= window

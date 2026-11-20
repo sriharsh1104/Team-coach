@@ -10,7 +10,7 @@ import {
   startVoiceBackground,
   stopVoiceBackground,
 } from './voiceBackground';
-import { attachVoiceChanger } from './voiceChanger';
+import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
 import { VoiceChannelController, VoiceChannelStatus, VoiceParticipant } from './types';
 
 function emitAsync<T = any>(socket: Socket, event: string, payload?: unknown): Promise<T> {
@@ -324,8 +324,15 @@ export function useSelfHostedVoiceChannel(
       });
 
       socket.on('handRaised', (payload: { userId: string; raised: boolean }) => {
-        if (payload.raised) handRaisedIdsRef.current.add(payload.userId);
-        else handRaisedIdsRef.current.delete(payload.userId);
+        if (payload.raised) {
+          // Beep once when a hand goes up (not on repeats / when deafened).
+          if (!handRaisedIdsRef.current.has(payload.userId) && !isDeafenedRef.current) {
+            playHandRaiseCue();
+          }
+          handRaisedIdsRef.current.add(payload.userId);
+        } else {
+          handRaisedIdsRef.current.delete(payload.userId);
+        }
         refreshParticipants();
       });
 

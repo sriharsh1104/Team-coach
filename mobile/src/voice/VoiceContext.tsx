@@ -129,17 +129,32 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
 
   const activate = useCallback((config: VoiceActivation) => {
     setActivation((prev) => {
-      // Same session already active → keep it (and its connection) as-is.
       if (
         prev &&
         prev.mode === config.mode &&
-        prev.token === config.token &&
         (prev.room ?? 'team') === (config.room ?? 'team')
       ) {
+        // A different LiveKit server / room → new session.
         if (prev.mode === 'hosted' && config.mode === 'hosted' && prev.url !== config.url) {
           return config;
         }
-        return prev;
+        if (prev.token === config.token) return prev;
+        // Same room but a freshly minted token (the voice screen re-fetches
+        // /voice/config every time it opens, and hosted tokens are new JWTs
+        // each call). Swapping the token remounts the holder, which drops the
+        // call and shows "Join" again. While the user is in (or joining) the
+        // call keep the live session; only pick up the new token once idle.
+        const live = controllerRef.current?.status;
+        if (live === 'connected' || live === 'connecting') {
+          if (
+            prev.mode === 'hosted' &&
+            config.mode === 'hosted' &&
+            (prev.canModerate !== config.canModerate || prev.max !== config.max)
+          ) {
+            return { ...config, token: prev.token };
+          }
+          return prev;
+        }
       }
       return config;
     });

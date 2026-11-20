@@ -19,6 +19,7 @@ type NativeVoiceChanger = {
   getPresets: () => string[];
   getPreset: () => string;
   setPreset: (name: string) => string;
+  playCue: () => boolean;
 };
 
 function loadNative(): NativeVoiceChanger | null {
@@ -79,5 +80,18 @@ export function setVoicePreset(preset: VoicePreset): boolean {
   } catch (err) {
     console.warn('setVoicePreset failed:', err);
     return false;
+  }
+}
+
+/**
+ * Short beep on the call stream — played when someone in the channel raises
+ * their hand so people notice they want to speak. No-op where the native
+ * module isn't available (iOS / web / Expo Go) or an older APK without it.
+ */
+export function playHandRaiseCue(): void {
+  try {
+    native?.playCue?.();
+  } catch {
+    // A missing beep must never break the call.
   }
 }

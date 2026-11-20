@@ -87,4 +87,35 @@ describe('VoiceProvider', () => {
     await settle();
     expect(screen.getByText('status:connected')).toBeTruthy();
   });
+
+  it('keeps a connected call when the screen re-activates with a fresh token', async () => {
+    let activateFn: ((c: Parameters<ReturnType<typeof useVoiceContext>['activate']>[0]) => void) | null = null;
+    function Probe() {
+      const { activate, controller } = useVoiceContext();
+      activateFn = activate;
+      useEffect(() => {
+        activate({ mode: 'hosted', url: 'wss://lk', token: 'token-1', room: 'team' });
+      }, [activate]);
+      return <Text>{controller ? `status:${controller.status}` : 'none'}</Text>;
+    }
+    render(
+      <VoiceProvider>
+        <Probe />
+      </VoiceProvider>,
+    );
+    await settle();
+    await act(async () => {
+      mockSetHostedStatus?.('connected');
+    });
+    await settle();
+    expect(screen.getByText('status:connected')).toBeTruthy();
+
+    // Re-opening the voice screen fetches a brand-new LiveKit token.
+    await act(async () => {
+      activateFn?.({ mode: 'hosted', url: 'wss://lk', token: 'token-2', room: 'team' });
+    });
+    await settle();
+    // Holder was not remounted → still connected (a remount would reset to idle).
+    expect(screen.getByText('status:connected')).toBeTruthy();
+  });
 });

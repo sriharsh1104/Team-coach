@@ -22,7 +22,7 @@ import {
   VoiceParticipant,
   ConnectionQualityLevel,
 } from './types';
-import { attachVoiceChanger } from './voiceChanger';
+import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -300,6 +300,13 @@ export function useHostedVoiceChannel(
             const msg = JSON.parse(decoder.decode(payload)) as DataMsg;
             if (msg.type === 'hand_raise' && participant) {
               if (msg.raised) {
+                // Beep once when a hand goes up (not on repeats / when deafened).
+                if (
+                  !handRaisedIdsRef.current.has(participant.identity) &&
+                  !isDeafenedRef.current
+                ) {
+                  playHandRaiseCue();
+                }
                 handRaisedIdsRef.current.add(participant.identity);
               } else {
                 handRaisedIdsRef.current.delete(participant.identity);
