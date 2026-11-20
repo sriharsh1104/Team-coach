@@ -49,7 +49,9 @@ export const useVoiceContext = () => useContext(VoiceContext);
  * controller back through the ref. Mounted only while a hosted session is
  * active; stays mounted across screen navigation.
  */
-function HostedVoiceHolder({
+// memo: the provider re-renders whenever the controller changes; without it the
+// holder re-ran its hook on every one of those renders.
+const HostedVoiceHolder = React.memo(function HostedVoiceHolder({
   url,
   token,
   room,
@@ -70,13 +72,14 @@ function HostedVoiceHolder({
   };
   const controller = useHostedVoiceChannel(url, token, { room, canModerate, max });
 
-  // Feed the controller up to the provider
+  // Feed the controller up only when it changes. With no deps this ran after
+  // every render → setState in the provider → re-render → infinite loop.
   useEffect(() => {
     onController(controller);
-  });
+  }, [controller, onController]);
 
   return null;
-}
+});
 
 /**
  * Same idea for the self-hosted (mediasoup) path. Before this existed the
@@ -84,7 +87,7 @@ function HostedVoiceHolder({
  * unmounted it without closing the socket or the mic — the session leaked
  * and "Join" on return opened a second one.
  */
-function SelfHostedVoiceHolder({
+const SelfHostedVoiceHolder = React.memo(function SelfHostedVoiceHolder({
   token,
   room,
   onController,
@@ -101,10 +104,10 @@ function SelfHostedVoiceHolder({
 
   useEffect(() => {
     onController(controller);
-  });
+  }, [controller, onController]);
 
   return null;
-}
+});
 
 /**
  * Global voice provider — wraps the entire app so the voice connection

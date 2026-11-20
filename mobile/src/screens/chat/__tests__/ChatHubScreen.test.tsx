@@ -67,12 +67,20 @@ const orgDetail = {
   ],
 };
 
+let inboxListener: ((channelKey: string | null) => void) | null = null;
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockedChatApi.getChatChannels.mockResolvedValue(channelsResponse as any);
   mockedChatApi.getChatMedia.mockResolvedValue([]);
   mockedChatApi.getChatLinks.mockResolvedValue([]);
   mockedChatApi.searchChatMessages.mockResolvedValue([]);
+  mockedChatApi.subscribeChatInbox.mockImplementation((listener) => {
+    inboxListener = listener;
+    return () => {
+      inboxListener = null;
+    };
+  });
   mockedOrgApi.getMyOrg.mockResolvedValue(orgDetail as any);
   mockedUsersApi.getMemberProfile.mockResolvedValue({
     id: 'user-2',
@@ -100,6 +108,24 @@ describe('ChatHubScreen', () => {
     await screen.findByText('Team Chat');
     expect(screen.getByText(/gg everyone/)).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
+  });
+
+  it('refreshes unread badges live when the chat socket reports activity', async () => {
+    render(<ChatHubScreen />);
+    await screen.findByText('2');
+
+    mockedChatApi.getChatChannels.mockResolvedValue({
+      ...channelsResponse,
+      channels: [{ ...channelsResponse.channels[0], unreadCount: 5 }],
+    } as any);
+    act(() => {
+      inboxListener?.('org');
+      inboxListener?.('org');
+    });
+
+    await screen.findByText('5');
+    // Burst of events → one debounced refetch (plus the initial load).
+    expect(mockedChatApi.getChatChannels).toHaveBeenCalledTimes(2);
   });
 
   it('lists every teammate under Direct Messages', async () => {

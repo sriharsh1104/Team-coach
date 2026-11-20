@@ -81,6 +81,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
           await socket.join(this.roomFor(ctx.orgId, ORG_CHANNEL));
         }
         await socket.join(this.roomFor(ctx.orgId, GUILD_CHANNEL));
+        // Personal room: lets a DM recipient's inbox badge update live even
+        // when they haven't opened that DM (so aren't in its channel room).
+        await socket.join(this.userRoom(user.id));
         next();
       } catch (err) {
         this.logger.warn(`Rejected socket connection: ${(err as Error).message}`);
@@ -224,9 +227,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
         channelKey,
       });
     } else {
-      this.server.to(this.roomFor(orgId, channelKey)).emit('chat:unread', {
-        channelKey,
-      });
+      const peerId = this.chatService.parseDmPeer(channelKey, data.userId);
+      const rooms = [this.roomFor(orgId, channelKey)];
+      if (peerId) rooms.push(this.userRoom(peerId));
+      this.server.to(rooms).emit('chat:unread', { channelKey });
     }
     return { ok: true as const, id: message.id, ...(clientId ? { clientId } : {}) };
   }
@@ -290,5 +294,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   private roomFor(orgId: string, channelKey: string) {
     return `org:${orgId}:ch:${channelKey}`;
+  }
+
+  private userRoom(userId: string) {
+    return `user:${userId}`;
   }
 }

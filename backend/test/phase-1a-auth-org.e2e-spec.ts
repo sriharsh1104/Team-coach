@@ -4,7 +4,6 @@ import * as speakeasy from 'speakeasy';
 import * as bcrypt from 'bcrypt';
 import { createTestApp, getPrisma, resetDatabase, uniqueEmail, uniqueOrgName } from './utils/test-app';
 import { sentOtps } from './utils/mailer-mock';
-import { setVerifiedPhone } from './utils/fixtures';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Phase 1A — Auth + Org (e2e)', () => {
@@ -68,14 +67,14 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       expect(user.user.passwordHash).toBeUndefined();
     });
 
-    it('profileComplete is false for a brand new user until IGN/UID/phone are all set', async () => {
+    it('profileComplete is false for a brand new user until IGN and UID are set (phone is optional)', async () => {
       const user = await signup();
       expect(user.user.profileComplete).toBe(false);
 
       await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ inGameName: 'ShadowStrike', inGameUid: 'UID-1' })
+        .send({ inGameName: 'ShadowStrike' })
         .expect(200);
       let me = await request(server)
         .get('/auth/me')
@@ -83,7 +82,11 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .expect(200);
       expect(me.body.profileComplete).toBe(false);
 
-      await setVerifiedPhone(prisma, user.user.id, '9999999999');
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ inGameUid: 'UID-1' })
+        .expect(200);
       me = await request(server)
         .get('/auth/me')
         .set('Authorization', `Bearer ${user.accessToken}`)

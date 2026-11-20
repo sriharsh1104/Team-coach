@@ -11,10 +11,23 @@ export function updateMyProfile(input: UpdateProfileInput) {
   return apiClient.patch<Profile>('/users/me', input).then((res) => res.data);
 }
 
-/** Creates a one-time Telegram bot link. The phone is saved only after the user shares their contact there. */
-export function startTelegramPhoneVerification() {
+/**
+ * Step 1: send the typed number, get a one-time Telegram bot link. The phone is
+ * saved only after the user shares the matching contact in the bot AND types
+ * the 6-digit code the bot sends back (see confirmTelegramPhoneCode).
+ */
+export function startTelegramPhoneVerification(phone: string) {
   return apiClient
-    .post<{ deepLink: string; expiresAt: string }>('/users/me/phone/telegram')
+    .post<{ deepLink: string; expiresAt: string }>('/users/me/phone/telegram', {
+      phone,
+    })
+    .then((res) => res.data);
+}
+
+/** Step 3: the code the bot sent to the user's Telegram chat. */
+export function confirmTelegramPhoneCode(code: string) {
+  return apiClient
+    .post<{ phone: string }>('/users/me/phone/telegram/verify', { code })
     .then((res) => res.data);
 }
 

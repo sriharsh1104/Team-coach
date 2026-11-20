@@ -69,6 +69,22 @@ export function ChatHubScreen({ onLoadError }: Props) {
     load().catch((err) => onLoadError?.(err));
   }, [load, onLoadError]);
 
+  // Live unread badges / previews: refetch the inbox when the shared chat
+  // socket reports activity. Debounced so a burst of messages = one fetch.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = chatApi.subscribeChatInbox(() => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        load().catch(() => undefined);
+      }, 400);
+    });
+    return () => {
+      unsubscribe();
+      if (timer) clearTimeout(timer);
+    };
+  }, [load]);
+
   const onRefresh = async () => {
     setIsRefreshing(true);
     await load().catch((err) => onLoadError?.(err));

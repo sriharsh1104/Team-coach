@@ -6,6 +6,7 @@ import { AuthProvider } from './src/auth/AuthContext';
 import { BrandWatermark } from './src/brand/BrandWatermark';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { OrgRealtimeProvider } from './src/realtime/OrgRealtimeProvider';
+import { useChatSocketSession } from './src/realtime/useChatSocketSession';
 import { AppErrorBoundary } from './src/ui/AppErrorBoundary';
 import { LoaderProvider } from './src/ui/SesLoader';
 import { ToastProvider } from './src/ui/Toast';
@@ -24,6 +25,7 @@ installInviteLinkListener();
 /** Runs hooks that need AuthContext — must be rendered inside AuthProvider. */
 function AuthenticatedEffects() {
   useServerWakePing();
+  useChatSocketSession();
   return null;
 }
 

@@ -184,11 +184,11 @@ function RoleChips({
 }
 
 function isRequiredProfileFilled(profile: {
-  phone?: string | null;
   inGameName?: string | null;
   inGameUid?: string | null;
 }) {
-  return !!(profile.phone && profile.inGameName && profile.inGameUid);
+  // Phone is optional — it is verified later from the mobile app via Telegram.
+  return !!(profile.inGameName && profile.inGameUid);
 }
 
 export function ProfilePage() {
@@ -242,7 +242,7 @@ export function ProfilePage() {
 
   const roleBadge = formatRoleBadge(profile.role, profile.isOwner);
   const current = profile;
-  const userDone = !!current.phone;
+  const userDone = !!current.name?.trim();
   const gameDone = !!(current.inGameName && current.inGameUid);
 
   function canOpenTab(next: ProfileTab) {
@@ -257,7 +257,7 @@ export function ProfilePage() {
     if (!canOpenTab(next)) {
       setError(
         !userDone
-          ? 'Save your name and phone first.'
+          ? 'Save your name first.'
           : 'Save your in-game name and UID first.',
       );
       openTab(!userDone ? 'user' : 'game');
@@ -285,8 +285,8 @@ export function ProfilePage() {
     setProfile(me);
     await refreshUser();
     if (!isRequiredProfileFilled(me)) {
-      setError('Phone, in-game name, and UID are required before you continue.');
-      openTab(!me.phone ? 'user' : 'game');
+      setError('In-game name and UID are required before you continue.');
+      openTab('game');
       return;
     }
     navigate(postAuthPath({ profileComplete: true }, org));
@@ -347,7 +347,7 @@ export function ProfilePage() {
           <h1>{onboarding ? 'Complete your profile' : profile.name}</h1>
           <p>
             {onboarding
-              ? 'Phone, in-game name, and UID are required before you continue.'
+              ? 'In-game name and UID are required before you continue.'
               : null}
             {!onboarding && roleBadge ? `${roleBadge} · ` : null}
             {user?.email}
@@ -420,12 +420,6 @@ function UserSection({
       setError('Name is required.');
       return;
     }
-    if (!profile.phone) {
-      setError(
-        'Phone is verified with Telegram in the mobile app. Add it there first.',
-      );
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -478,7 +472,7 @@ function UserSection({
         />
       </div>
       <div className="field">
-        <label htmlFor="pf-phone">Phone *</label>
+        <label htmlFor="pf-phone">Phone (optional)</label>
         <input
           id="pf-phone"
           type="tel"
@@ -490,7 +484,7 @@ function UserSection({
         <small>
           {profile.phoneVerifiedAt
             ? 'Verified with Telegram.'
-            : 'Add or verify it in the mobile app with Telegram.'}
+            : 'Optional. Add and verify it in the mobile app with Telegram.'}
         </small>
       </div>
       <div className="field field-span">

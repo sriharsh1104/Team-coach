@@ -326,6 +326,8 @@ export function ChatScreen({
   useEffect(() => {
     let cancelled = false;
     const scrollTimers: ReturnType<typeof setTimeout>[] = [];
+    // Listener removers for the shared socket; run on unmount / channel change.
+    const detach: Array<() => void> = [];
 
     const revealList = () => {
       if (cancelled) return;
@@ -365,27 +367,39 @@ export function ChatScreen({
       const token = await getToken();
       if (!token || cancelled) return;
 
+      // Shared app socket: attach our listeners, detach them on unmount.
       const socket = chatApi.connectChatSocket(token);
       socketRef.current = socket;
-
-      socket.on('connect', () => {
-        setIsConnected(true);
+      const listen = (event: string, handler: (...args: any[]) => void) => {
+        socket.on(event, handler);
+        detach.push(() => socket.off(event, handler));
+      };
+      const joinChannel = () => {
         socket.emit('channel:join', { channelKey });
-        // Catch up anything sent while we were offline / between the first
-        // history fetch and this join — otherwise a late opener sees the
-        // push badge but an empty/stale thread until remount.
-        void refreshHistory().then(() => {
-          if (stickToBottomRef.current) scrollToLatest(false);
-        });
         // Loading this channel's history means it's been delivered to this
         // device — fire before channel:read so the two stay conceptually
         // distinct even though they land almost together in this flow.
         socket.emit('channel:delivered', { channelKey });
         // Also broadcasts "Seen" live to anyone else currently in this channel.
         socket.emit('channel:read', { channelKey });
+      };
+
+      // Usually already connected (shared socket) — no "Connecting…" flash.
+      setIsConnected(socket.connected);
+      if (socket.connected) joinChannel();
+
+      listen('connect', () => {
+        setIsConnected(true);
+        joinChannel();
+        // Catch up anything sent while we were offline / between the first
+        // history fetch and this join — otherwise a late opener sees the
+        // push badge but an empty/stale thread until remount.
+        void refreshHistory().then(() => {
+          if (stickToBottomRef.current) scrollToLatest(false);
+        });
       });
-      socket.on('disconnect', () => setIsConnected(false));
-      socket.on('message:new', (message: ChatMessage) => {
+      listen('disconnect', () => setIsConnected(false));
+      listen('message:new', (message: ChatMessage) => {
         // Every socket is joined to the org room regardless of which
         // channel screen is open, so this can fire for a channel other than
         // the one being viewed — still mark it delivered (the device got
@@ -414,7 +428,7 @@ export function ChatScreen({
         void chatApi.markChatRead(channelKey);
         socket.emit('channel:read', { channelKey });
       });
-      socket.on(
+      listen(
         'message:deleted',
         (payload: { channelKey?: string; ids?: string[] }) => {
           if (payload.channelKey && payload.channelKey !== channelKey) return;
@@ -429,7 +443,7 @@ export function ChatScreen({
           });
         },
       );
-      socket.on(
+      listen(
         'message:edited',
         (payload: { channelKey?: string; message?: ChatMessage }) => {
           if (payload.channelKey && payload.channelKey !== channelKey) return;
@@ -440,7 +454,7 @@ export function ChatScreen({
           );
         },
       );
-      socket.on(
+      listen(
         'chat:read',
         (payload: { userId: string; userName: string; channelKey: string; lastReadAt: string }) => {
           if (payload.channelKey !== channelKey) return;
@@ -451,7 +465,7 @@ export function ChatScreen({
           });
         },
       );
-      socket.on(
+      listen(
         'chat:delivered',
         (payload: { userId: string; userName: string; channelKey: string; lastDeliveredAt: string }) => {
           if (payload.channelKey !== channelKey) return;
@@ -474,7 +488,9 @@ export function ChatScreen({
       if (sock?.connected) {
         sock.emit('channel:leave', { channelKey });
       }
-      sock?.disconnect();
+      // Keep the shared socket open for the rest of the app; only drop our listeners.
+      for (const off of detach) off();
+      detach.length = 0;
     };
   }, [
     channelKey,

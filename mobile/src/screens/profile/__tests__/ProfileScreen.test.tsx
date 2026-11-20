@@ -128,8 +128,9 @@ describe('ProfileScreen', () => {
     });
   });
 
-  describe('Phone via Telegram', () => {
-    it('opens the bot deep link and says it is waiting for the share', async () => {
+  describe('Phone via Telegram (type number → Telegram → enter code)', () => {
+    it('sends the typed number, opens the bot, then asks for the 6-digit code', async () => {
+      mockedUsersApi.getMyProfile.mockResolvedValue({ ...baseProfile, phone: null });
       mockedUsersApi.startTelegramPhoneVerification.mockResolvedValue({
         deepLink: 'https://t.me/TeamCoachBot?start=abc',
         expiresAt: new Date(Date.now() + 600_000).toISOString(),
@@ -138,17 +139,98 @@ describe('ProfileScreen', () => {
       render(<ProfileScreen />);
       await enterEditMode();
 
+      // Can't start without a number.
+      await act(async () => {
+        fireEvent.press(screen.getByText('Verify on Telegram'));
+      });
+      expect(mockedUsersApi.startTelegramPhoneVerification).not.toHaveBeenCalled();
+
+      fireEvent.changeText(screen.getByLabelText('Phone number'), '+91 98765 43210');
       await act(async () => {
         fireEvent.press(screen.getByText('Verify on Telegram'));
       });
 
-      expect(mockedUsersApi.startTelegramPhoneVerification).toHaveBeenCalledTimes(1);
+      expect(mockedUsersApi.startTelegramPhoneVerification).toHaveBeenCalledWith(
+        '+91 98765 43210',
+      );
       expect(openSpy).toHaveBeenCalledWith('https://t.me/TeamCoachBot?start=abc');
-      await screen.findByText('Waiting for Telegram…');
+      await screen.findByLabelText('Telegram verification code');
+      expect(screen.getByText('Verify code')).toBeTruthy();
       openSpy.mockRestore();
     });
 
-    it('shows a verified badge instead of the button once the phone is verified', async () => {
+    it('verifies the code, refreshes the profile and shows the verified badge', async () => {
+      const verified = {
+        ...baseProfile,
+        phone: '9876543210',
+        phoneVerifiedAt: '2026-11-20T10:00:00.000Z',
+      };
+      mockedUsersApi.getMyProfile
+        .mockResolvedValueOnce({ ...baseProfile, phone: null })
+        .mockResolvedValue(verified);
+      mockedUsersApi.startTelegramPhoneVerification.mockResolvedValue({
+        deepLink: 'https://t.me/TeamCoachBot?start=abc',
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      });
+      mockedUsersApi.confirmTelegramPhoneCode.mockResolvedValue({ phone: '9876543210' });
+      const openSpy = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as any);
+      render(<ProfileScreen />);
+      await enterEditMode();
+
+      fireEvent.changeText(screen.getByLabelText('Phone number'), '9876543210');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Verify on Telegram'));
+      });
+      await screen.findByLabelText('Telegram verification code');
+
+      // Needs all 6 digits before it can be submitted.
+      fireEvent.changeText(screen.getByLabelText('Telegram verification code'), '123');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Verify code'));
+      });
+      expect(mockedUsersApi.confirmTelegramPhoneCode).not.toHaveBeenCalled();
+
+      fireEvent.changeText(screen.getByLabelText('Telegram verification code'), '123456');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Verify code'));
+      });
+
+      expect(mockedUsersApi.confirmTelegramPhoneCode).toHaveBeenCalledWith('123456');
+      await screen.findByText('9876543210 · verified on Telegram ✓');
+      openSpy.mockRestore();
+    });
+
+    it('shows the server error when the code is wrong and stays on the code step', async () => {
+      mockedUsersApi.getMyProfile.mockResolvedValue({ ...baseProfile, phone: null });
+      mockedUsersApi.startTelegramPhoneVerification.mockResolvedValue({
+        deepLink: 'https://t.me/TeamCoachBot?start=abc',
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      });
+      mockedUsersApi.confirmTelegramPhoneCode.mockRejectedValue({
+        response: { data: { message: 'Incorrect code. Check Telegram and try again.' } },
+      });
+      const openSpy = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as any);
+      render(<ProfileScreen />);
+      await enterEditMode();
+
+      fireEvent.changeText(screen.getByLabelText('Phone number'), '9876543210');
+      await act(async () => {
+        fireEvent.press(screen.getByText('Verify on Telegram'));
+      });
+      fireEvent.changeText(
+        await screen.findByLabelText('Telegram verification code'),
+        '000000',
+      );
+      await act(async () => {
+        fireEvent.press(screen.getByText('Verify code'));
+      });
+
+      await screen.findByText('Incorrect code. Check Telegram and try again.');
+      expect(screen.getByLabelText('Telegram verification code')).toBeTruthy();
+      openSpy.mockRestore();
+    });
+
+    it('shows a verified badge instead of the form once the phone is verified', async () => {
       mockedUsersApi.getMyProfile.mockResolvedValue({
         ...baseProfile,
         phoneVerifiedAt: '2026-11-20T10:00:00.000Z',
@@ -158,6 +240,7 @@ describe('ProfileScreen', () => {
 
       await screen.findByText('+919999999999 · verified on Telegram ✓');
       expect(screen.queryByText('Verify on Telegram')).toBeNull();
+      expect(screen.getByText('Change number')).toBeTruthy();
     });
   });
 
@@ -416,39 +499,41 @@ describe('ProfileScreen', () => {
       expect(screen.queryByText('My Devices')).toBeNull();
     });
 
-    it('blocks Continue on the User tab until the phone is set through Telegram', async () => {
-      mockedUsersApi.getMyProfile.mockResolvedValue({
+    it('lets a new user Continue past the User tab without any phone (Telegram verify is optional)', async () => {
+      const noPhone = {
         ...baseProfile,
         inGameName: null,
         inGameUid: null,
         phone: null,
         phoneVerifiedAt: null,
-      });
+      };
+      mockedUsersApi.getMyProfile.mockResolvedValue(noPhone);
+      mockedUsersApi.updateMyProfile.mockResolvedValue(noPhone);
       render(<ProfileScreen mustComplete />);
       await screen.findByText('Name *');
 
+      expect(screen.getByText('Phone (optional)')).toBeTruthy();
+      expect(screen.getByText('Verify on Telegram')).toBeTruthy();
       await act(async () => {
         fireEvent.press(screen.getByText('Continue'));
       });
-      expect(mockedUsersApi.updateMyProfile).not.toHaveBeenCalled();
-      expect(screen.getByText('Verify on Telegram')).toBeTruthy();
+      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({ name: 'Player 1' });
+      await screen.findByText('Role');
     });
 
     it('does not call refreshUser until BOTH tabs satisfy the required fields', async () => {
-      // Phone already verified via Telegram; IGN/UID still missing.
+      // No phone at all; IGN/UID still missing.
       mockedUsersApi.getMyProfile.mockResolvedValue({
         ...baseProfile,
         inGameName: null,
         inGameUid: null,
-        phone: '+919999999999',
-        phoneVerifiedAt: '2026-11-20T10:00:00.000Z',
+        phone: null,
       });
       mockedUsersApi.updateMyProfile.mockResolvedValue({
         ...baseProfile,
         inGameName: null,
         inGameUid: null,
-        phone: '+919999999999',
-        phoneVerifiedAt: '2026-11-20T10:00:00.000Z',
+        phone: null,
       });
       render(<ProfileScreen mustComplete />);
       await screen.findByText('Name *');
@@ -464,11 +549,11 @@ describe('ProfileScreen', () => {
       // Auto-advance to Game profile after User Continue.
       await screen.findByText('Role');
 
-      // Completing the Game tab (IGN + UID) on top of the now-saved phone
-      // satisfies isProfileComplete and triggers refreshUser.
+      // Completing the Game tab (IGN + UID) satisfies isProfileComplete and
+      // triggers refreshUser — no phone needed.
       mockedUsersApi.updateMyProfile.mockResolvedValue({
         ...baseProfile,
-        phoneVerifiedAt: '2026-11-20T10:00:00.000Z',
+        phone: null,
       });
       fireEvent.changeText(screen.getByPlaceholderText('Your in-game name'), 'ShadowStrike');
       fireEvent.changeText(screen.getByPlaceholderText('Your in-game UID'), 'UID-0001');

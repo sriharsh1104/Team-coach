@@ -40,14 +40,12 @@ type ProfileTab = 'user' | 'game' | 'devices' | 'social';
 
 const PROFILE_TAB_IDS: ProfileTab[] = ['user', 'game', 'devices', 'social'];
 
-// IGN, UID and phone are compulsory for every user — everything else
-// (socials) stays optional. Enforced here for both the one-time forced
-// post-login gate (mustComplete) and the regular "Edit My Profile" screen,
-// so the invariant can't be broken again by a later edit. Phone lives on the
-// User Profile tab, IGN/UID on the Game Profile tab — isProfileComplete
-// doesn't care which tab a field is edited from.
-function isFormComplete(inGameName: string, inGameUid: string, phone: string) {
-  return !!(inGameName.trim() && inGameUid.trim() && phone.trim());
+// IGN and UID are compulsory for every user — everything else (phone,
+// socials) stays optional. The phone is verified later from the User tab via
+// Telegram and never blocks the post-login gate. Mirrors the backend's
+// isProfileComplete.
+function isFormComplete(inGameName: string, inGameUid: string) {
+  return !!(inGameName.trim() && inGameUid.trim());
 }
 
 export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean } = {}) {
@@ -75,17 +73,13 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
     setProfile(updated);
     if (
       mustComplete &&
-      isFormComplete(
-        updated.inGameName ?? '',
-        updated.inGameUid ?? '',
-        updated.phone ?? '',
-      )
+      isFormComplete(updated.inGameName ?? '', updated.inGameUid ?? '')
     ) {
       await refreshUser();
     }
   };
 
-  const userDone = !!profile?.phone?.trim();
+  const userDone = !!profile?.name?.trim();
   const gameDone = !!(
     profile?.inGameName?.trim() && profile?.inGameUid?.trim()
   );
@@ -101,7 +95,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
     }
     if (next === 'game') {
       if (!userDone) {
-        showToast('Save your name and phone first.');
+        showToast('Save your name first.');
         openTab('user');
         return;
       }
@@ -112,7 +106,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
     if (!userDone || !gameDone) {
       showToast(
         !userDone
-          ? 'Save your name and phone first.'
+          ? 'Save your name first.'
           : 'Save your in-game name and UID first.',
       );
       openTab(!userDone ? 'user' : 'game');
@@ -287,9 +281,9 @@ function UserProfileSection({
   const [isEditing, setIsEditing] = useState(mustComplete);
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState(profile.name);
-  // The phone is not part of this form: it is set only through Telegram
-  // verification (TelegramPhoneVerify), so saving never sends a number.
-  const canSave = name.trim().length > 0 && (!mustComplete || !!profile.phone);
+  // The phone is not part of this form: it is optional and set only through
+  // Telegram verification (TelegramPhoneVerify), so saving never sends a number.
+  const canSave = name.trim().length > 0;
 
   const onSave = async () => {
     if (!canSave) return;
@@ -350,17 +344,17 @@ function UserProfileSection({
         </>
       )}
 
-      <Text style={staticStyles.sectionLabel}>Phone {mustComplete ? '*' : ''}</Text>
+      <Text style={staticStyles.sectionLabel}>Phone (optional)</Text>
       <TelegramPhoneVerify
         profile={profile}
         onVerified={onUpdated}
         showToast={showToast}
       />
-      {mustComplete && <Text style={styles.requiredHint}>* Required</Text>}
 
       <SoftPressable
         style={[
           shared.button,
+          staticStyles.saveButton,
           (isSaving || !canSave) && shared.buttonDisabled,
         ]}
         disabled={isSaving || !canSave}
@@ -765,6 +759,8 @@ function SocialProfileSection({
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
   deviceActionBtn: { width: 44, height: 44 },
+  // Clear air between the phone-verify block and the primary Save/Continue button.
+  saveButton: { marginTop: 24 },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',

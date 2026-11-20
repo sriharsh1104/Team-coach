@@ -57,9 +57,9 @@ const PEER_PROFILE_SELECT = {
 export function isProfileComplete(user: {
   inGameName?: string | null;
   inGameUid?: string | null;
-  phone?: string | null;
 }): boolean {
-  return !!(user.inGameName && user.inGameUid && user.phone);
+  // Phone is optional: it can be added and verified later from the profile.
+  return !!(user.inGameName && user.inGameUid);
 }
 
 /** Digits only; strip IN trunk `0` / country `91` so +91-… and 10-digit match. */

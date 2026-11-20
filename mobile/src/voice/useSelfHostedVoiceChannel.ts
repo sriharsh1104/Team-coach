@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Device, types as mediasoupTypes } from 'mediasoup-client';
 import { Socket } from 'socket.io-client';
 import { mediaDevices } from '@livekit/react-native-webrtc';
@@ -606,37 +606,70 @@ export function useSelfHostedVoiceChannel(
     [hostAction],
   );
 
-  return {
-    status,
-    errorMessage,
-    participants,
-    isMuted,
-    isLocalHandRaised,
-    isDeafened,
-    isPushToTalk,
-    join,
-    leave,
-    toggleMute,
-    toggleParticipantMute,
-    toggleHandRaise,
-    setParticipantVolume,
-    kickParticipant,
-    toggleDeafen,
-    togglePushToTalk,
-    pttStart,
-    pttStop,
-    ...(room === 'guild'
-      ? {
-          room,
-          canModerate,
-          isHostMuted,
-          isListenOnly,
-          roomCount,
-          roomMax,
-          muteAll,
-          unmuteAll,
-          setParticipantHostMuted,
-        }
-      : { room }),
-  };
+  // Stable identity until something actually changes: VoiceProvider stores
+  // this in state, so a fresh object per render looped forever (app hang).
+  return useMemo<VoiceChannelController>(
+    () => ({
+      status,
+      errorMessage,
+      participants,
+      isMuted,
+      isLocalHandRaised,
+      isDeafened,
+      isPushToTalk,
+      join,
+      leave,
+      toggleMute,
+      toggleParticipantMute,
+      toggleHandRaise,
+      setParticipantVolume,
+      kickParticipant,
+      toggleDeafen,
+      togglePushToTalk,
+      pttStart,
+      pttStop,
+      ...(room === 'guild'
+        ? {
+            room,
+            canModerate,
+            isHostMuted,
+            isListenOnly,
+            roomCount,
+            roomMax,
+            muteAll,
+            unmuteAll,
+            setParticipantHostMuted,
+          }
+        : { room }),
+    }),
+    [
+      status,
+      errorMessage,
+      participants,
+      isMuted,
+      isLocalHandRaised,
+      isDeafened,
+      isPushToTalk,
+      join,
+      leave,
+      toggleMute,
+      toggleParticipantMute,
+      toggleHandRaise,
+      setParticipantVolume,
+      kickParticipant,
+      toggleDeafen,
+      togglePushToTalk,
+      pttStart,
+      pttStop,
+      room,
+      canModerate,
+      isHostMuted,
+      isListenOnly,
+      roomCount,
+      roomMax,
+      muteAll,
+      unmuteAll,
+      setParticipantHostMuted,
+    ],
+  );
 }

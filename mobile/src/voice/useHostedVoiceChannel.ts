@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
 import {
@@ -171,7 +171,18 @@ export function useHostedVoiceChannel(
     setIsHostMuted(false);
   }, []);
 
+  const joiningRef = useRef(false);
+
   const join = useCallback(async () => {
+    // A double tap used to open two Rooms that fought over the mic.
+    if (joiningRef.current) return;
+    joiningRef.current = true;
+    // Rejoin (after an error / kick): close the old Room before opening a new one.
+    if (roomRef.current) {
+      roomRef.current.removeAllListeners();
+      await roomRef.current.disconnect().catch(() => undefined);
+      roomRef.current = null;
+    }
     setStatus('connecting');
     localVolumesRef.current.clear();
     handRaisedIdsRef.current.clear();
@@ -284,6 +295,12 @@ export function useHostedVoiceChannel(
         console.warn('AudioSession setup failed (continuing):', err);
       }
       await room.connect(url, token);
+      if (roomRef.current !== room) {
+        // Left (or unmounted) while we were still connecting.
+        room.removeAllListeners();
+        await room.disconnect().catch(() => undefined);
+        return;
+      }
       if (isGuild) {
         const initial = parseRoomState(room.metadata);
         roomStateRef.current = initial;
@@ -302,8 +319,16 @@ export function useHostedVoiceChannel(
       setIsMuted(startMuted);
       setStatus('connected');
     } catch (err: any) {
+      // Don't leave a half-connected Room holding the mic / audio session.
+      const failed = roomRef.current;
+      roomRef.current = null;
+      failed?.removeAllListeners();
+      failed?.disconnect().catch(() => undefined);
+      AudioSession.stopAudioSession().catch(() => {});
       setErrorMessage(err?.message ?? 'Could not join voice channel');
       setStatus('error');
+    } finally {
+      joiningRef.current = false;
     }
   }, [url, token, isGuild, syncParticipants]);
 
@@ -474,38 +499,75 @@ export function useHostedVoiceChannel(
   }, []);
 
   const roomCount = isGuild ? participants.length + (status === 'connected' ? 1 : 0) : undefined;
+  const canModerate = !!options.canModerate;
+  const roomMax = options.max;
+  const isListenOnly = roomState.listenOnly;
 
-  return {
-    status,
-    errorMessage,
-    participants,
-    isMuted,
-    isLocalHandRaised,
-    isDeafened,
-    isPushToTalk,
-    join,
-    leave,
-    toggleMute,
-    toggleParticipantMute,
-    toggleHandRaise,
-    setParticipantVolume,
-    kickParticipant,
-    toggleDeafen,
-    togglePushToTalk,
-    pttStart,
-    pttStop,
-    ...(isGuild
-      ? {
-          room: voiceRoom,
-          canModerate: !!options.canModerate,
-          isHostMuted,
-          isListenOnly: roomState.listenOnly,
-          roomCount,
-          roomMax: options.max,
-          muteAll,
-          unmuteAll,
-          setParticipantHostMuted,
-        }
-      : { room: voiceRoom }),
-  };
+  // Stable identity until something actually changes: VoiceProvider stores
+  // this in state, so a fresh object per render looped forever (app hang).
+  return useMemo<VoiceChannelController>(
+    () => ({
+      status,
+      errorMessage,
+      participants,
+      isMuted,
+      isLocalHandRaised,
+      isDeafened,
+      isPushToTalk,
+      join,
+      leave,
+      toggleMute,
+      toggleParticipantMute,
+      toggleHandRaise,
+      setParticipantVolume,
+      kickParticipant,
+      toggleDeafen,
+      togglePushToTalk,
+      pttStart,
+      pttStop,
+      ...(isGuild
+        ? {
+            room: voiceRoom,
+            canModerate,
+            isHostMuted,
+            isListenOnly,
+            roomCount,
+            roomMax,
+            muteAll,
+            unmuteAll,
+            setParticipantHostMuted,
+          }
+        : { room: voiceRoom }),
+    }),
+    [
+      status,
+      errorMessage,
+      participants,
+      isMuted,
+      isLocalHandRaised,
+      isDeafened,
+      isPushToTalk,
+      join,
+      leave,
+      toggleMute,
+      toggleParticipantMute,
+      toggleHandRaise,
+      setParticipantVolume,
+      kickParticipant,
+      toggleDeafen,
+      togglePushToTalk,
+      pttStart,
+      pttStop,
+      isGuild,
+      voiceRoom,
+      canModerate,
+      isHostMuted,
+      isListenOnly,
+      roomCount,
+      roomMax,
+      muteAll,
+      unmuteAll,
+      setParticipantHostMuted,
+    ],
+  );
 }

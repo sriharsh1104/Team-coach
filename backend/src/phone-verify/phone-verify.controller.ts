@@ -11,6 +11,7 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ConfirmPhoneCodeDto, StartPhoneVerifyDto } from './dto';
 import { PhoneVerifyService } from './phone-verify.service';
 import { TelegramBot, TelegramUpdate } from './telegram-bot';
 
@@ -25,8 +26,21 @@ export class PhoneVerifyController {
 
   @UseGuards(JwtAuthGuard)
   @Post('users/me/phone/telegram')
-  startTelegram(@CurrentUser() user: { userId: string }) {
-    return this.phoneVerify.startTelegramLink(user.userId);
+  startTelegram(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: StartPhoneVerifyDto,
+  ) {
+    return this.phoneVerify.startTelegramLink(user.userId, dto.phone);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  @Post('users/me/phone/telegram/verify')
+  confirmCode(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: ConfirmPhoneCodeDto,
+  ) {
+    return this.phoneVerify.confirmCode(user.userId, dto.code);
   }
 
   /**

@@ -120,6 +120,7 @@ describe('ChatScreen', () => {
   it('shows "Connecting…" until the socket connects, then hides it', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();
+    fakeSocket.connected = false;
     mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
 
     render(<ChatScreen />);
@@ -285,7 +286,7 @@ describe('ChatScreen', () => {
     expect(screen.getByText('gl hf')).toBeTruthy();
   });
 
-  it('disconnects the socket on unmount', async () => {
+  it('leaves the channel but keeps the shared socket open on unmount', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();
     mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
@@ -294,7 +295,21 @@ describe('ChatScreen', () => {
     await waitFor(() => expect(mockedChatApi.connectChatSocket).toHaveBeenCalled());
 
     unmount();
-    expect(fakeSocket.disconnect).toHaveBeenCalled();
+    expect(fakeSocket.emit).toHaveBeenCalledWith('channel:leave', expect.anything());
+    expect(fakeSocket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('does not re-handshake when a chat opens on an already-connected socket', async () => {
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
+    const fakeSocket = createFakeSocket();
+    mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
+
+    render(<ChatScreen />);
+
+    await waitFor(() =>
+      expect(fakeSocket.emit).toHaveBeenCalledWith('channel:join', expect.anything()),
+    );
+    expect(screen.queryByText('Connecting…')).toBeNull();
   });
 
   describe('attach menu (consolidated emoji / photo / video / camera)', () => {

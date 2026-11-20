@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { AppState, AppStateStatus } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 import { apiClient, apiBaseUrl, resolveMediaUrl } from './client';
 import { ChatChannelsResponse, ChatMessage } from './types';
@@ -403,11 +404,72 @@ export function fileKeyFromChatMediaUrl(mediaUrl: string | null | undefined) {
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
+// One socket for the whole signed-in session. Opening a chat used to create
+// (and tear down) its own socket, so every chat paid a fresh handshake and
+// showed "Connecting…". Now the socket is shared: screens attach/detach their
+// listeners and join/leave channels, but never disconnect it.
+let sharedSocket: Socket | null = null;
+let sharedToken: string | null = null;
+let appStateWatching = false;
+
+function watchAppState() {
+  if (appStateWatching) return;
+  appStateWatching = true;
+  // Socket.io drops the link while the app is suspended. Reconnect on resume
+  // so live messages come back without the user reopening a chat.
+  AppState.addEventListener('change', (state: AppStateStatus) => {
+    if (state === 'active' && sharedSocket && !sharedSocket.connected) {
+      sharedSocket.connect();
+    }
+  });
+}
+
+type InboxListener = (channelKey: string | null) => void;
+const inboxListeners = new Set<InboxListener>();
+
+function notifyInbox(channelKey: string | null) {
+  inboxListeners.forEach((listener) => listener(channelKey));
+}
+
+/**
+ * Fires when any chat may have new/unread messages (live message, unread
+ * nudge, or a reconnect that may have missed some). The inbox refetches on it.
+ */
+export function subscribeChatInbox(listener: InboxListener): () => void {
+  inboxListeners.add(listener);
+  return () => {
+    inboxListeners.delete(listener);
+  };
+}
+
 export function connectChatSocket(token: string): Socket {
-  return io(apiBaseUrl, {
+  watchAppState();
+  if (sharedSocket && sharedToken === token) {
+    if (!sharedSocket.connected) sharedSocket.connect();
+    return sharedSocket;
+  }
+  sharedSocket?.disconnect();
+  sharedToken = token;
+  const socket = io(apiBaseUrl, {
     auth: { token },
     transports: ['websocket'],
   });
+  socket.on('connect', () => notifyInbox(null));
+  socket.on('chat:unread', (p?: { channelKey?: string }) =>
+    notifyInbox(p?.channelKey ?? null),
+  );
+  socket.on('message:new', (m?: { channelKey?: string }) =>
+    notifyInbox(m?.channelKey ?? null),
+  );
+  sharedSocket = socket;
+  return socket;
+}
+
+/** Call on sign-out so the previous account's socket is closed. */
+export function disconnectChatSocket() {
+  sharedSocket?.disconnect();
+  sharedSocket = null;
+  sharedToken = null;
 }
 
 export function resolveChatMediaUrl(mediaUrl: string | null | undefined) {

@@ -126,6 +126,13 @@ model TelegramPhoneLink {
   token          String    @id
   userId         String
   telegramChatId BigInt?
+  /// Number the user typed in the app; the bot only proceeds if the contact they share matches it.
+  phone          String?
+  /// SHA-256 of the 6-digit code the bot sent to the user's Telegram chat.
+  codeHash       String?
+  codeExpiresAt  DateTime?
+  /// Wrong-code attempts; the link dies after a few so a 6-digit code can't be brute forced.
+  attempts       Int       @default(0)
   expiresAt      DateTime
   usedAt         DateTime?
   createdAt      DateTime  @default(now())
