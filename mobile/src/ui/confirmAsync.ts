@@ -11,6 +11,8 @@ export function confirmAsync(
   message: string,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  // Destructive (red on iOS) suits Remove/Delete; use false for plain "Yes" actions like Add.
+  destructive = true,
 ): Promise<boolean> {
   if (Platform.OS === 'web') {
     return Promise.resolve(window.confirm(`${title}\n\n${message}`));
@@ -20,7 +22,7 @@ export function confirmAsync(
       { text: cancelLabel, style: 'cancel', onPress: () => resolve(false) },
       {
         text: confirmLabel,
-        style: 'destructive',
+        style: destructive ? 'destructive' : 'default',
         onPress: () => resolve(true),
       },
     ]);

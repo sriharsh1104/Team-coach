@@ -4,6 +4,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { JoinOrgScreen } from '../JoinOrgScreen';
 import { useAuth } from '../../auth/AuthContext';
 import * as orgApi from '../../api/org';
+import { setPendingInvite, peekPendingInvite } from '../../invite/inviteLinks';
 
 jest.mock('../../auth/AuthContext');
 jest.mock('../../api/org');
@@ -110,5 +111,35 @@ describe('JoinOrgScreen', () => {
     expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({
       referralToken: 'https://app.test/join/rostertoken?seat=roster',
     });
+  });
+
+  it('joins the roster straight away when an invite link was tapped', async () => {
+    const setOrg = jest.fn();
+    mockedUseAuth.mockReturnValue({
+      setGuild: jest.fn(),
+      setOrg,
+      refreshOrg: jest.fn().mockResolvedValue(undefined),
+    });
+    mockedOrgApi.joinOrg.mockResolvedValue({
+      id: 'org-1',
+      name: 'Alpha Squad',
+      orgCode: 'GUILDCOD',
+      referralLink: 'g',
+      rosterCode: 'ROSTER01',
+      rosterReferralLink: 'r',
+      myRole: 'PLAYER',
+      isOwner: false,
+    });
+    await act(async () => {
+      setPendingInvite({ token: 'tok123', seat: 'roster', ref: 'u1' });
+    });
+    render(<JoinOrgScreen navigation={navigation} route={{} as any} />);
+
+    await act(async () => {});
+    expect(mockedOrgApi.joinOrg).toHaveBeenCalledWith({
+      referralToken: '/join/tok123?seat=roster&ref=u1',
+    });
+    expect(setOrg).toHaveBeenCalled();
+    expect(peekPendingInvite()).toBeNull();
   });
 });

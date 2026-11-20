@@ -11,6 +11,24 @@ import {
 import { postAuthPath } from '../auth/postAuthPath';
 import { SesLoader } from '../ui/SesLoader';
 
+const APP_PACKAGE = 'com.teamcoach.app';
+const APP_SCHEME = 'teamcoach';
+
+function isAndroidBrowser() {
+  return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+}
+
+/** Link that opens the installed Android app straight on this invite. */
+function appInviteLink(token: string, seat: 'guild' | 'roster', ref?: string) {
+  const qs = new URLSearchParams();
+  if (seat === 'roster') qs.set('seat', 'roster');
+  if (ref) qs.set('ref', ref);
+  const query = qs.toString();
+  return `intent://join/${encodeURIComponent(token)}${
+    query ? `?${query}` : ''
+  }#Intent;scheme=${APP_SCHEME};package=${APP_PACKAGE};end`;
+}
+
 function errorMessage(err: unknown) {
   const msg = (err as { response?: { data?: { message?: string | string[] } } })
     ?.response?.data?.message;
@@ -35,8 +53,23 @@ export function InviteJoinPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // On Android, offer the app first (it joins in one tap). "Continue in
+  // browser" or ?web=1 falls back to the normal web flow below.
+  const [webMode, setWebMode] = useState(
+    () => !isAndroidBrowser() || searchParams.get('web') === '1',
+  );
+  const appLink = token ? appInviteLink(token, seat, invitedByUserId) : '';
 
   useEffect(() => {
+    if (webMode || !appLink) return;
+    const t = window.setTimeout(() => {
+      window.location.href = appLink;
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [webMode, appLink]);
+
+  useEffect(() => {
+    if (!webMode) return;
     if (!token) {
       setError('This invite link is missing a code.');
       return;
@@ -106,6 +139,7 @@ export function InviteJoinPage() {
       cancelled = true;
     };
   }, [
+    webMode,
     token,
     invitedByUserId,
     seat,
@@ -117,6 +151,34 @@ export function InviteJoinPage() {
     setOrg,
     setGuild,
   ]);
+
+  if (!webMode && token) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <h1 className="brand">Invite</h1>
+          <p>
+            {seat === 'roster'
+              ? 'You were invited to join the esports roster.'
+              : 'You were invited to join a guild.'}
+          </p>
+          <a className="btn btn-primary" href={appLink}>
+            Open in the app
+          </a>
+          <p className="auth-footer">
+            App not installed?
+          </p>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setWebMode(true)}
+          >
+            Continue in browser
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (

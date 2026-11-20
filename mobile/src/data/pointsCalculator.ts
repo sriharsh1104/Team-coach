@@ -69,3 +69,28 @@ export function formatSummary(matches: CalcMatch[], title = 'Points'): string {
   const t = seriesTotals(scored);
   return [`🏆 ${title} (${scored.length} match${scored.length === 1 ? '' : 'es'})`, ...lines, `Total: ${t.total} pts`].join('\n');
 }
+
+/** A points table recovered from a message that `formatSummary` posted to the chat. */
+export type ParsedSummary = { title: string; matches: CalcMatch[] };
+
+/**
+ * Reads a chat message back into a table, so the next match can be added from
+ * the chat itself. Returns null for anything that is not a points summary.
+ */
+export function parsePointsSummary(text: string | null | undefined): ParsedSummary | null {
+  if (!text) return null;
+  const lines = text.split('\n').map((l) => l.trim());
+  const head = lines[0]?.match(/^🏆 (.+?) \(\d+ matches?\)$/);
+  if (!head) return null;
+  const matches: CalcMatch[] = [];
+  for (const line of lines.slice(1)) {
+    const m = line.match(/^Match \d+: (\S+) · (\d+) kills? = \d+ pts$/);
+    if (!m) continue;
+    const rank = Array.from({ length: MAX_RANK }, (_, i) => i + 1).find(
+      (r) => rankLabel(r) === m[1],
+    );
+    if (!rank) return null;
+    matches.push({ rank, kills: Math.min(MAX_KILLS_PER_MATCH, Number(m[2])) });
+  }
+  return matches.length ? { title: head[1], matches: matches.slice(0, MAX_CALC_MATCHES) } : null;
+}

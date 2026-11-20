@@ -1,12 +1,12 @@
 import React, { useLayoutEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
+import { AppIcon } from '../../ui/AppIcon';
 import { SoftPressable } from '../../ui/SoftPressable';
-import { ThemeColors } from '../../theme';
-import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useTheme } from '../../theme/ThemeContext';
 import { MainStackParamList } from '../../navigation/types';
 
 interface Props {
@@ -25,23 +25,42 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList, 'Chat'>>();
   const [mediaOpen, setMediaOpen] = useState(false);
-  const styles = useThemedStyles(mediaBtnStyles);
+  const { colors: theme } = useTheme();
+  const voiceRoute =
+    channelKey === 'guild' ? 'GuildVoice' : channelKey === 'org' ? 'Voice' : null;
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <SoftPressable
-          onPress={() => setMediaOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Chat Media"
-          hitSlop={8}
-          pressScale={0.95}
-        >
-          <Text style={styles.mediaBtnText}>Media</Text>
-        </SoftPressable>
+        <View style={staticStyles.headerActions}>
+          {voiceRoute ? (
+            <SoftPressable
+              onPress={() => (navigation as any).navigate(voiceRoute)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                voiceRoute === 'GuildVoice' ? 'Join guild voice' : 'Join team voice'
+              }
+              hitSlop={8}
+              pressScale={0.92}
+              style={staticStyles.headerBtn}
+            >
+              <AppIcon name="mic-outline" size={22} color={theme.icon} />
+            </SoftPressable>
+          ) : null}
+          <SoftPressable
+            onPress={() => setMediaOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Chat Media"
+            hitSlop={8}
+            pressScale={0.92}
+            style={staticStyles.headerBtn}
+          >
+            <AppIcon name="images-outline" size={22} color={theme.icon} />
+          </SoftPressable>
+        </View>
       ),
     });
-  }, [navigation, styles]);
+  }, [navigation, theme, voiceRoute]);
 
   return (
     <View style={staticStyles.root}>
@@ -60,16 +79,11 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
   root: { flex: 1, minWidth: 0 },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
+  headerBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
-
-/** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
-function mediaBtnStyles(c: ThemeColors) {
-  return {
-    mediaBtnText: {
-      color: c.chrome,
-      fontWeight: '700' as const,
-      fontSize: 14,
-      paddingHorizontal: 12,
-    },
-  };
-}

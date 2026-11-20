@@ -72,12 +72,6 @@ export function useOrgDrawer() {
           }),
       },
       {
-        key: 'voice',
-        label: 'Team Voice',
-        icon: 'mic-outline' as const,
-        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Voice' }),
-      },
-      {
         key: 'maps',
         label: 'Maps',
         icon: 'map-outline' as const,
@@ -116,7 +110,7 @@ export function useOrgDrawer() {
         items: [
           {
             key: 'teamChat',
-            label: 'Team Chat',
+            label: 'Chat',
             onPress: () => goToSection(navigation, 'OrgHome'),
           },
         ],
@@ -145,11 +139,6 @@ export function useOrgDrawer() {
               },
             ]
           : []),
-        {
-          key: 'guildVoice',
-          label: 'Guild Voice',
-          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'GuildVoice' }),
-        },
         {
           key: 'games',
           label: 'Games',
@@ -214,11 +203,6 @@ export function useGuildDrawer() {
             key: 'guildHome',
             label: 'Guild Roster',
             onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Guild' }),
-          },
-          {
-            key: 'guildVoice',
-            label: 'Guild Voice',
-            onPress: () => goToSection(navigation, 'GuildHome', { screen: 'GuildVoice' }),
           },
           {
             key: 'games',

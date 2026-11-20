@@ -95,11 +95,6 @@ export function OrgHomeScreen({ navigation }: Props) {
           }),
       },
       {
-        key: 'voice',
-        label: 'Team Voice',
-        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Voice' }),
-      },
-      {
         key: 'maps',
         label: 'Maps',
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Maps' }),
@@ -134,7 +129,7 @@ export function OrgHomeScreen({ navigation }: Props) {
         items: [
           {
             key: 'teamChat',
-            label: 'Team Chat',
+            label: 'Chat',
             // Pop/navigate back to OrgHome (embeds ChatHubScreen) so history
             // stays intact for the system back button.
             onPress: () => goToSection(navigation, 'OrgHome'),
@@ -165,11 +160,6 @@ export function OrgHomeScreen({ navigation }: Props) {
               },
             ]
           : []),
-        {
-          key: 'guildVoice',
-          label: 'Guild Voice',
-          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'GuildVoice' }),
-        },
         {
           key: 'games',
           label: 'Games',

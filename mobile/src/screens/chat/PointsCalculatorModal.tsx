@@ -11,6 +11,7 @@ import {
   matchPoints,
   newMatch,
   newTable,
+  ParsedSummary,
   seriesTotals,
 } from '../../data/pointsCalculator';
 import { loadCalcTables, saveCalcTables } from '../../data/pointsCalcStorage';
@@ -25,6 +26,12 @@ type Props = {
   onClose: () => void;
   /** Post the formatted summary into the current chat. */
   onSendToChat: (text: string) => void;
+  /**
+   * Continue a table that was already posted in the chat: opens just that
+   * table with its matches plus an empty next match, and sends the updated
+   * summary. Saved tables are left alone.
+   */
+  seed?: ParsedSummary | null;
 };
 
 /**
@@ -36,27 +43,33 @@ type Props = {
  * table; "New points table" starts a separate one that never mixes with the
  * previous tables.
  */
-export function PointsCalculatorModal({ visible, onClose, onSendToChat }: Props) {
+export function PointsCalculatorModal({ visible, onClose, onSendToChat, seed = null }: Props) {
   const { colors } = useTheme();
   const styles = useThemedStyles(calcStyles);
   const [tables, setTables] = useState<CalcTable[]>(() => [newTable()]);
-  const loaded = useRef(false);
   // If the user taps before the saved tables finish loading, keep their edits.
   const edited = useRef(false);
+  const seeded = !!seed;
 
-  // Restore tables from last time so a match can be added later.
+  // Every time the sheet opens: either continue the table from the chat, or
+  // restore the saved tables so a match can be added later.
   useEffect(() => {
-    if (!visible || loaded.current) return;
-    loaded.current = true;
+    if (!visible) return;
+    if (seed) {
+      edited.current = true;
+      setTables([{ id: `seed:${Date.now()}`, matches: [...seed.matches, newMatch()].slice(0, MAX_CALC_MATCHES) }]);
+      return;
+    }
+    edited.current = false;
     void loadCalcTables().then((saved) => {
       if (!edited.current) setTables(saved);
     });
-  }, [visible]);
+  }, [visible, seed]);
 
   const commit = (next: CalcTable[]) => {
     edited.current = true;
     setTables(next);
-    void saveCalcTables(next);
+    if (!seeded) void saveCalcTables(next);
   };
 
   const setMatches = (tableIndex: number, matches: CalcMatch[]) =>
@@ -76,7 +89,9 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat }: Props)
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>Points Calculator</Text>
               <Text style={styles.sub}>
-                Placement points + {ELIMINATION_POINTS} pt per kill (official Points Table)
+                {seeded
+                  ? 'Add the next match, then send the updated table'
+                  : `Placement points + ${ELIMINATION_POINTS} pt per kill (official Points Table)`}
               </Text>
             </View>
             <IconActionButton icon="close" label="Close calculator" onPress={onClose} />
@@ -86,12 +101,13 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat }: Props)
             {tables.map((table, ti) => {
               const t = ti + 1;
               const totals = seriesTotals(table.matches);
-              const summary = formatSummary(table.matches, `Points Table ${t}`);
+              const tableTitle = seed?.title ?? `Points Table ${t}`;
+              const summary = formatSummary(table.matches, tableTitle);
               return (
                 <View key={table.id} style={styles.section}>
                   <View style={staticStyles.cardHead}>
-                    <Text style={styles.sectionTitle}>Points Table {t}</Text>
-                    {tables.length > 1 ? (
+                    <Text style={styles.sectionTitle}>{tableTitle}</Text>
+                    {tables.length > 1 && !seeded ? (
                       <IconActionButton
                         icon="trash-outline"
                         label={`Delete table ${t}`}
@@ -210,14 +226,16 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat }: Props)
                         {totals.booyahs ? ` · ${totals.booyahs} Booyah` : ''}
                       </Text>
                     </View>
-                    <Pressable
-                      style={styles.ghostBtn}
-                      onPress={() => setMatches(ti, [newMatch()])}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Reset table ${t}`}
-                    >
-                      <Text style={styles.ghostText}>Reset</Text>
-                    </Pressable>
+                    {!seeded ? (
+                      <Pressable
+                        style={styles.ghostBtn}
+                        onPress={() => setMatches(ti, [newMatch()])}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reset table ${t}`}
+                      >
+                        <Text style={styles.ghostText}>Reset</Text>
+                      </Pressable>
+                    ) : null}
                     <Pressable
                       style={[styles.sendBtn, !summary && staticStyles.dim]}
                       disabled={!summary}
@@ -236,7 +254,7 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat }: Props)
               );
             })}
 
-            {tables.length < MAX_CALC_TABLES ? (
+            {tables.length < MAX_CALC_TABLES && !seeded ? (
               <Pressable
                 style={[styles.addBtn, styles.newTableBtn]}
                 onPress={() => commit([...tables, newTable()])}

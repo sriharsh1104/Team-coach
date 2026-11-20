@@ -56,6 +56,29 @@ export function GamesHubScreen() {
     navigation.navigate('GameRoom', { roomId: room.id, game: room.game });
   };
 
+  /**
+   * A player can be in one room at a time. Starting/joining another one makes
+   * them leave the current room (a forfeit if its game is running), so ask
+   * first instead of doing it silently.
+   */
+  const confirmSwitch = (then: () => void) => {
+    if (!mine || mine.status === 'finished') {
+      then();
+      return;
+    }
+    const playing = mine.status === 'playing';
+    Alert.alert(
+      playing ? 'Leave your running game?' : 'Leave your current room?',
+      playing
+        ? `You are in a ${mine.title} game. Leaving counts as a forfeit.`
+        : `You are in a ${mine.title} room. You can only be in one room at a time.`,
+      [
+        { text: 'Stay', style: 'cancel' },
+        { text: 'Leave & continue', style: 'destructive', onPress: then },
+      ],
+    );
+  };
+
   const join = async (roomId: string) => {
     setBusy(true);
     const room = await tryGames(() => games.joinRoom(roomId), 'Could not join');
@@ -63,7 +86,9 @@ export function GamesHubScreen() {
     if (room) openRoom(room);
   };
 
-  const create = async (game: GameKind) => {
+  const create = (game: GameKind) => confirmSwitch(() => void createRoom(game));
+
+  const createRoom = async (game: GameKind) => {
     const spec = GAME_CATALOG.find((g) => g.id === game)!;
     const go = async (maxPlayers: number) => {
       setBusy(true);
@@ -148,7 +173,10 @@ export function GamesHubScreen() {
             <View style={styles.room}>
               <Text style={staticStyles.roomEmoji}>{spec?.emoji ?? '🎮'}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.roomTitle}>{item.title}</Text>
+                <Text style={styles.roomTitle}>
+                  {host?.name ? `${host.name}'s ` : ''}
+                  {item.title}
+                </Text>
                 <Text style={styles.roomSub}>
                   {host?.name ?? 'Someone'} · {item.players.length}/{item.maxPlayers} players
                 </Text>
@@ -156,7 +184,7 @@ export function GamesHubScreen() {
               <Pressable
                 style={[styles.joinBtn, (full || busy) && staticStyles.dim]}
                 disabled={full || busy}
-                onPress={() => void join(item.id)}
+                onPress={() => confirmSwitch(() => void join(item.id))}
                 accessibilityRole="button"
                 accessibilityLabel={`Join ${item.title}`}
               >

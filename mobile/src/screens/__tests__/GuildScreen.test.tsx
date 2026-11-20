@@ -100,6 +100,9 @@ describe('GuildScreen', () => {
           { ...detail.members[2], onRoster: true, rosterRole: 'PLAYER' },
         ],
       } as any);
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
+      buttons?.find((b) => b.text === 'Yes')?.onPress?.(undefined as any);
+    });
     render(<GuildScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Waiting Member');
 
@@ -107,6 +110,14 @@ describe('GuildScreen', () => {
       fireEvent.press(screen.getByLabelText('Add Waiting Member to roster'));
     });
 
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Add To Roster',
+      expect.stringContaining('Waiting Member'),
+      expect.arrayContaining([
+        expect.objectContaining({ text: 'No' }),
+        expect.objectContaining({ text: 'Yes' }),
+      ]),
+    );
     expect(mockedOrgApi.addGuildMemberToRoster).toHaveBeenCalledWith(
       'user-3',
       'PLAYER',
@@ -114,6 +125,25 @@ describe('GuildScreen', () => {
     await waitFor(() =>
       expect(emitToast).toHaveBeenCalledWith('Waiting Member added to roster'),
     );
+  });
+
+  it('does nothing when the owner answers No to adding or removing', async () => {
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
+      buttons?.find((b) => b.text === 'No')?.onPress?.(undefined as any);
+    });
+    render(<GuildScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Waiting Member');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Add Waiting Member to roster'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Remove Teammate from roster'));
+    });
+
+    expect(Alert.alert).toHaveBeenCalledTimes(2);
+    expect(mockedOrgApi.addGuildMemberToRoster).not.toHaveBeenCalled();
+    expect(mockedOrgApi.removeFromGuildRoster).not.toHaveBeenCalled();
   });
 
   it('does not show roster-management icons to a member who cannot manage the roster', async () => {
@@ -141,7 +171,7 @@ describe('GuildScreen', () => {
     await screen.findByText(/Teammate/);
 
     jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const confirm = buttons?.find((b) => b.text === 'Remove');
+      const confirm = buttons?.find((b) => b.text === 'Yes');
       confirm?.onPress?.(undefined as any);
     });
 

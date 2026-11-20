@@ -28,6 +28,7 @@ import { useSharedStyles, formatRoleBadge } from '../shared';
 import { AttachMenu, AttachOption } from './AttachMenu';
 import { CameraPreviewModal } from './CameraPreviewModal';
 import { PointsCalculatorModal } from './PointsCalculatorModal';
+import { ParsedSummary, parsePointsSummary } from '../../data/pointsCalculator';
 import { ReminderComposer } from './ReminderComposer';
 import { MediaViewerModal } from './MediaViewerModal';
 import { PendingMediaOverlay, PendingUploadStatus } from './PendingMediaOverlay';
@@ -1207,10 +1208,24 @@ export function ChatScreen({
   }, [pendingShare, channelKey, clearPendingShare]);
 
   const [pointsOpen, setPointsOpen] = useState(false);
+  // Set when continuing a table that is already posted in this chat.
+  const [pointsSeed, setPointsSeed] = useState<ParsedSummary | null>(null);
+
+  // Only the newest points table in the chat offers "Add match" — that is the
+  // one still being played; older ones stay as plain history.
+  const latestPointsId = useMemo(() => {
+    let best: ChatMessage | null = null;
+    for (const m of messages) {
+      if (!parsePointsSummary(m.text)) continue;
+      if (!best || new Date(m.createdAt).getTime() >= new Date(best.createdAt).getTime()) best = m;
+    }
+    return best?.id ?? null;
+  }, [messages]);
 
   const onPickMedia = async (option: AttachOption) => {
     setShowAttach(false);
     if (option === 'points') {
+      setPointsSeed(null);
       setPointsOpen(true);
       return;
     }
@@ -1659,6 +1674,32 @@ export function ChatScreen({
                       mine={isMine}
                     />
                   ) : null}
+                  {item.id === latestPointsId && !selectMode && !pending
+                    ? (() => {
+                        const parsed = parsePointsSummary(item.text);
+                        if (!parsed) return null;
+                        return (
+                          <Pressable
+                            style={[styles.addMatchBtn, isMine && styles.addMatchBtnMine]}
+                            onPress={() => {
+                              setPointsSeed(parsed);
+                              setPointsOpen(true);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add next match to this points table"
+                          >
+                            <AppIcon
+                              name="add-circle-outline"
+                              size={16}
+                              color={isMine ? colors.chromeInk : colors.link}
+                            />
+                            <Text style={[styles.addMatchText, isMine && styles.addMatchTextMine]}>
+                              Add match {parsed.matches.length + 1}
+                            </Text>
+                          </Pressable>
+                        );
+                      })()
+                    : null}
                   <View style={styles.metaRow}>
                     {item.pinned ? (
                       <AppIcon
@@ -1733,7 +1774,11 @@ export function ChatScreen({
       )}
       <PointsCalculatorModal
         visible={pointsOpen}
-        onClose={() => setPointsOpen(false)}
+        seed={pointsSeed}
+        onClose={() => {
+          setPointsOpen(false);
+          setPointsSeed(null);
+        }}
         // Same plain-text send path as a sticker/emoji message.
         onSendToChat={(text) => onPickStickerEmoji(text)}
       />
@@ -2017,6 +2062,22 @@ const chatStyles = (c: ThemeColors) => ({
   },
   editedLabelMine: { color: c.chromeInk, opacity: 0.55 },
   timeLabel: { fontSize: 10, color: c.textDim },
+  addMatchBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'flex-start' as const,
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.surface,
+  },
+  addMatchBtnMine: { borderColor: c.chromeInk, backgroundColor: 'transparent' },
+  addMatchText: { fontSize: 12, fontWeight: '700' as const, color: c.link },
+  addMatchTextMine: { color: c.chromeInk },
   timeLabelMine: { color: c.chromeInk, opacity: 0.6 },
   bubbleRow: {
     flexDirection: 'row' as const,

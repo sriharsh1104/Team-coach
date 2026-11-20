@@ -102,6 +102,14 @@ export function GuildScreen({ navigation }: Props) {
   };
 
   const onAdd = async (member: GuildMemberRow, role: MembershipRole) => {
+    const confirmed = await confirmAsync(
+      'Add To Roster',
+      `Add ${personLabel(member.name, member.inGameName)} to the esports roster?`,
+      'Yes',
+      'No',
+      false,
+    );
+    if (!confirmed) return;
     setBusyId(member.userId);
     try {
       await orgApi.addGuildMemberToRoster(member.userId, role);
@@ -121,7 +129,8 @@ export function GuildScreen({ navigation }: Props) {
     const confirmed = await confirmAsync(
       'Remove From Roster',
       `Remove ${label} from the roster? They stay in the guild.`,
-      'Remove',
+      'Yes',
+      'No',
     );
     if (!confirmed) return;
     setBusyId(member.userId);
@@ -484,10 +493,11 @@ const staticStyles = StyleSheet.create({
     maxWidth: '100%',
   },
   rosterTextCol: { flex: 1, minWidth: 0 },
-  iconActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  iconActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   iconBtn: {
-    width: 40,
-    height: 40,
+    // 44pt minimum touch target on phones.
+    width: 44,
+    height: 44,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',

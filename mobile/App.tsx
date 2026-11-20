@@ -16,6 +16,10 @@ import { useAppPermissions } from './src/hooks/useAppPermissions';
 import { useServerWakePing } from './src/hooks/useServerWakePing';
 import { VoiceProvider } from './src/voice/VoiceContext';
 import { AppUpdatePrompt } from './src/update/AppUpdatePrompt';
+import { installInviteLinkListener } from './src/invite/inviteLinks';
+
+// Catch roster/guild invite links from the very start (even while signed out).
+installInviteLinkListener();
 
 /** Runs hooks that need AuthContext — must be rendered inside AuthProvider. */
 function AuthenticatedEffects() {

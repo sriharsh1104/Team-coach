@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Text } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
@@ -8,12 +8,19 @@ import { useSharedStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
+import { usePendingInvite } from '../invite/inviteLinks';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'OrgChoice'>;
 
 export function OrgChoiceScreen({ navigation }: Props) {
   const shared = useSharedStyles();
   const { user, logout } = useAuth();
+  const pendingInvite = usePendingInvite();
+
+  // Signed in via an invite link → skip the choice and go straight to joining.
+  useEffect(() => {
+    if (pendingInvite) navigation.navigate('JoinOrg');
+  }, [pendingInvite, navigation]);
 
   return (
     // Key by user so a logout → other login never paints overlapping buttons

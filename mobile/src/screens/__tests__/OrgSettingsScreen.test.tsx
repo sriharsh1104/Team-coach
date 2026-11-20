@@ -164,7 +164,7 @@ describe('OrgSettingsScreen', () => {
 
   it('removes a member after confirming, then shows a toast and reloads', async () => {
     jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const confirm = buttons?.find((b) => b.text === 'Remove');
+      const confirm = buttons?.find((b) => b.text === 'Yes');
       confirm?.onPress?.(undefined as any);
     });
     mockedOrgApi.removeFromGuildRoster.mockResolvedValue(undefined);
@@ -185,7 +185,7 @@ describe('OrgSettingsScreen', () => {
 
   it('shows an error alert when removal fails', async () => {
     jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const confirm = buttons?.find((b) => b.text === 'Remove');
+      const confirm = buttons?.find((b) => b.text === 'Yes');
       confirm?.onPress?.(undefined as any);
     });
     mockedOrgApi.removeFromGuildRoster.mockRejectedValue({
@@ -227,6 +227,9 @@ describe('OrgSettingsScreen', () => {
     mockedOrgApi.addGuildMemberToRoster.mockResolvedValue({
       userId: 'user-3',
       role: 'ANALYST',
+    });
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
+      buttons?.find((b) => b.text === 'Yes')?.onPress?.(undefined as any);
     });
     render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Waiting Member');

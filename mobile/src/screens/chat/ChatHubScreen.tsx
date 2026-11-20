@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from 'react-native';
+import { NavigationContext } from '@react-navigation/native';
 import { AppIcon } from '../../ui/AppIcon';
 import * as chatApi from '../../api/chat';
 import { ChatChannel, ChatTeammate } from '../../api/types';
@@ -45,6 +46,8 @@ type ChatOverlay =
  * Inbox + conversation: Team Chat (group) separate from 1:1 DMs.
  */
 export function ChatHubScreen({ onLoadError }: Props) {
+  // Optional (no throw outside a navigator) — used for the voice shortcut.
+  const navigation = useContext(NavigationContext);
   const { colors: theme } = useTheme();
   const [channels, setChannels] = useState<ChatChannel[]>([]);
   const [teammates, setTeammates] = useState<ChatTeammate[]>([]);
@@ -223,17 +226,37 @@ export function ChatHubScreen({ onLoadError }: Props) {
           }
           trailing={
             <>
+              {active.type === 'ORG' &&
+              (active.channelKey === 'org' || active.channelKey === 'guild') ? (
+                <SoftPressable
+                  style={styles.iconBtn}
+                  onPress={() =>
+                    (navigation as any)?.navigate(
+                      active.channelKey === 'guild' ? 'GuildVoice' : 'Voice',
+                    )
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    active.channelKey === 'guild'
+                      ? 'Join guild voice'
+                      : 'Join team voice'
+                  }
+                  hitSlop={10}
+                  pressScale={0.92}
+                >
+                  <AppIcon name="mic-outline" size={22} color={theme.icon} />
+                </SoftPressable>
+              ) : null}
+
               <SoftPressable
-                style={styles.mediaBtn}
+                style={styles.iconBtn}
                 onPress={() => pushOverlay({ kind: 'media' })}
                 accessibilityRole="button"
                 accessibilityLabel="Chat Media"
-                hitSlop={8}
-                pressScale={0.95}
+                hitSlop={10}
+                pressScale={0.92}
               >
-                <Text style={[styles.mediaBtnText, { color: theme.icon }]}>
-                  Media
-                </Text>
+                <AppIcon name="images-outline" size={22} color={theme.icon} />
               </SoftPressable>
 
               <SoftPressable
@@ -590,16 +613,6 @@ const styles = StyleSheet.create({
   empty: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-  },
-  mediaBtn: {
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  mediaBtnText: {
-    fontWeight: '700',
-    fontSize: 14,
   },
   iconBtn: {
     width: 38,

@@ -16,9 +16,9 @@ export function drawerItemKeyForRoute(routeName: string | undefined): string | n
     case 'AddEditScrim':
       return 'stats';
     case 'Voice':
-      return 'voice';
+      return 'teamChat';
     case 'GuildVoice':
-      return 'guildVoice';
+      return 'guildChat';
     case 'Games':
     case 'GameRoom':
       return 'games';

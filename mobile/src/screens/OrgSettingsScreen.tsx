@@ -123,6 +123,14 @@ export function OrgSettingsScreen({ navigation }: Props) {
 
   const onAddToRoster = async (member: GuildMemberRow) => {
     const role = draftRole[member.userId] ?? 'PLAYER';
+    const confirmed = await confirmAsync(
+      'Add to Roster',
+      `Add ${member.name} to the roster as ${role.toLowerCase()}?`,
+      'Yes',
+      'No',
+      false,
+    );
+    if (!confirmed) return;
     try {
       await orgApi.addGuildMemberToRoster(member.userId, role);
       showToast(`${member.name} added to roster`);
@@ -137,7 +145,8 @@ export function OrgSettingsScreen({ navigation }: Props) {
     const confirmed = await confirmAsync(
       'Remove from Roster',
       `Remove ${member.name} from the roster? They stay in the guild and can be added again.`,
-      'Remove',
+      'Yes',
+      'No',
     );
     if (!confirmed) return;
     try {

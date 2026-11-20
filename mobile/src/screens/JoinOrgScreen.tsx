@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Text, TextInput } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
@@ -9,6 +9,7 @@ import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
 import { AuthBackButton } from '../ui/AuthBackButton';
+import { inviteToJoinInput, takePendingInvite, usePendingInvite } from '../invite/inviteLinks';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'JoinOrg'>;
 
@@ -29,10 +30,10 @@ export function JoinOrgScreen({ navigation }: Props) {
   const [orgCode, setOrgCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const onSubmit = async () => {
+  const onSubmit = async (override?: string) => {
     setIsSubmitting(true);
     try {
-      const trimmed = orgCode.trim();
+      const trimmed = (override ?? orgCode).trim();
       const looksLikeCode =
         trimmed.length === CODE_LENGTH && !/[/:.]/.test(trimmed);
       const invitedByUserId = extractInviteRef(trimmed);
@@ -97,6 +98,27 @@ export function JoinOrgScreen({ navigation }: Props) {
     }
   };
 
+  // An invite link the user tapped (or that arrived before sign-in): fill it
+  // in and join straight away — no copy/paste.
+  const pendingInvite = usePendingInvite();
+  const autoJoined = useRef(false);
+  useEffect(() => {
+    if (!pendingInvite || autoJoined.current) return;
+    autoJoined.current = true;
+    const invite = takePendingInvite();
+    if (!invite) {
+      autoJoined.current = false;
+      return;
+    }
+    const input = inviteToJoinInput(invite);
+    setOrgCode(input);
+    void onSubmit(input).finally(() => {
+      autoJoined.current = false;
+    });
+    // onSubmit closes over setters only; run once per arriving invite.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingInvite]);
+
   return (
     <FormScreen>
       <AuthBackButton onPress={() => navigation.navigate('OrgChoice')} />
@@ -119,7 +141,7 @@ export function JoinOrgScreen({ navigation }: Props) {
           (isSubmitting || !orgCode) && shared.buttonDisabled,
         ]}
         disabled={isSubmitting || !orgCode}
-        onPress={onSubmit}
+        onPress={() => void onSubmit()}
         pressScale={0.98}
       >
         <ButtonLabel icon="enter">Join</ButtonLabel>

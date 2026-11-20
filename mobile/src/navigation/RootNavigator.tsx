@@ -41,6 +41,7 @@ import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
 import { GamesHubScreen } from '../screens/games/GamesHubScreen';
 import { GameRoomScreen } from '../screens/games/GameRoomScreen';
 import { GameInviteBridge } from '../games/GameInviteBridge';
+import { InviteLinkBridge } from '../invite/InviteLinkBridge';
 import { MenuButton, SideDrawer } from '../ui/SideDrawer';
 import { HeaderBackButton } from '../ui/HeaderBackButton';
 import { HeaderOrgInfo } from '../ui/HeaderOrgInfo';
@@ -378,6 +379,7 @@ export function RootNavigator() {
             sections={guildDrawer.sections}
           />
           <GameInviteBridge />
+          <InviteLinkBridge />
         </>
       ) : (
         <>
@@ -548,6 +550,7 @@ export function RootNavigator() {
             sections={orgDrawer.sections}
           />
           <GameInviteBridge />
+          <InviteLinkBridge />
         </>
       )}
       {/* VoiceFloatingWidget must be inside NavigationContainer so

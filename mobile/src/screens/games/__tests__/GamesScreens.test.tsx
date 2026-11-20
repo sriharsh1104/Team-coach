@@ -102,6 +102,32 @@ describe('GamesHubScreen', () => {
     expect(mockNavigate).toHaveBeenCalledWith('GameRoom', { roomId: 'r1', game: 'rps' });
   });
 
+  it('asks before leaving a running game to start or join another room', async () => {
+    const alertSpy = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+    const createRoom = jest.fn().mockResolvedValue(lobbyRoom({ id: 'r2' }));
+    mockedSocket.mockReturnValue(
+      api({
+        createRoom,
+        currentRoom: jest.fn().mockResolvedValue(lobbyRoom({ id: 'busy', status: 'playing' })),
+      }),
+    );
+    render(<GamesHubScreen />);
+    await screen.findByText(/Game in progress/);
+
+    fireEvent.press(screen.getByLabelText('Create Stone Paper Scissors room'));
+    expect(createRoom).not.toHaveBeenCalled();
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Leave your running game?',
+      expect.stringContaining('forfeit'),
+      expect.any(Array),
+    );
+
+    const buttons = alertSpy.mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
+    buttons.find((b) => b.text === 'Leave & continue')!.onPress!();
+    await waitFor(() => expect(createRoom).toHaveBeenCalledWith('rps', 2));
+    alertSpy.mockRestore();
+  });
+
   it('creates an RPS room straight away (no player-count prompt for 2-player games)', async () => {
     const createRoom = jest.fn().mockResolvedValue(lobbyRoom());
     mockedSocket.mockReturnValue(api({ createRoom }));
