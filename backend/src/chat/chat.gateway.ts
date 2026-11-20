@@ -36,6 +36,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
   // few links) while stopping a flood — per socket, not per org, so one
   // abusive connection can't drown out the rest of the room's budget.
   private readonly messageLimiter = new WsRateLimiter(20, 10_000);
+  // Typing events fire far more often than messages (every keystroke-ish) —
+  // its own, more generous limiter so normal typing never gets throttled.
+  private readonly typingLimiter = new WsRateLimiter(60, 10_000);
+  // socketId -> channelKeys this socket last said "typing" in, so a dropped
+  // connection (crash, kill, airplane mode) still clears the indicator for
+  // everyone else instead of leaving "X is typing…" stuck forever.
+  private readonly typingChannels = new Map<string, Set<string>>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -84,6 +91,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
         // Personal room: lets a DM recipient's inbox badge update live even
         // when they haven't opened that DM (so aren't in its channel room).
         await socket.join(this.userRoom(user.id));
+
+        // Online presence: broadcast only on the FIRST device coming online
+        // (a second tab/device reconnecting is a no-op for everyone else).
+        if (this.presence.markOnline(user.id, socket.id)) {
+          this.broadcastPresence(ctx.orgId, user.id, true, null);
+        }
         next();
       } catch (err) {
         this.logger.warn(`Rejected socket connection: ${(err as Error).message}`);
@@ -95,8 +108,79 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
   handleDisconnect(client: Socket) {
     // socket.io removes room membership automatically on disconnect.
     this.messageLimiter.clear(client.id);
+    this.typingLimiter.clear(client.id);
     const data = client.data as SocketData | undefined;
-    if (data?.userId) this.presence.clearViewing(data.userId);
+    if (!data?.userId) return;
+    this.presence.clearViewing(data.userId);
+
+    // A dropped connection shouldn't leave "X is typing…" stuck for others.
+    const typingIn = this.typingChannels.get(client.id);
+    if (typingIn) {
+      for (const channelKey of typingIn) {
+        this.server.to(this.roomFor(data.orgId, channelKey)).emit('typing:update', {
+          channelKey,
+          userId: data.userId,
+          userName: data.userName,
+          typing: false,
+        });
+      }
+      this.typingChannels.delete(client.id);
+    }
+
+    // Online presence: only the LAST device disconnecting takes this user
+    // offline — record when, so "last seen" has something to show.
+    if (this.presence.markOffline(data.userId, client.id)) {
+      void this.prisma.user
+        .update({ where: { id: data.userId }, data: { lastSeenAt: new Date() } })
+        .then((updated) => {
+          this.broadcastPresence(data.orgId, data.userId, false, updated.lastSeenAt);
+        })
+        .catch((err) => {
+          this.logger.warn(`lastSeenAt update failed for ${data.userId}: ${(err as Error).message}`);
+        });
+    }
+  }
+
+  private broadcastPresence(
+    orgId: string,
+    userId: string,
+    online: boolean,
+    lastSeenAt: Date | null,
+  ) {
+    this.server
+      .to([this.roomFor(orgId, ORG_CHANNEL), this.roomFor(orgId, GUILD_CHANNEL)])
+      .emit('presence:update', {
+        userId,
+        online,
+        lastSeenAt: lastSeenAt ? lastSeenAt.toISOString() : null,
+      });
+  }
+
+  /** On-demand online/last-seen for a set of users (e.g. opening a DM or member list). */
+  @SubscribeMessage('presence:get')
+  async onPresenceGet(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { userIds?: string[] },
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.orgId) return { ok: false as const, error: 'Not connected' };
+    const ids = [
+      ...new Set((Array.isArray(body?.userIds) ? body.userIds : []).filter(Boolean)),
+    ].slice(0, 100);
+    if (ids.length === 0) return { ok: true as const, presence: {} };
+
+    const rows = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, lastSeenAt: true },
+    });
+    const presence: Record<string, { online: boolean; lastSeenAt: string | null }> = {};
+    for (const row of rows) {
+      presence[row.id] = {
+        online: this.presence.isOnline(row.id),
+        lastSeenAt: row.lastSeenAt ? row.lastSeenAt.toISOString() : null,
+      };
+    }
+    return { ok: true as const, presence };
   }
 
   @SubscribeMessage('channel:join')
@@ -172,6 +256,47 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     });
   }
 
+  /** Client fires this on every keystroke-ish (debounced client-side); auto-clears on disconnect. */
+  @SubscribeMessage('typing:start')
+  onTypingStart(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { channelKey?: string },
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.orgId) return;
+    if (!this.typingLimiter.allow(client.id)) return;
+    const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
+    let set = this.typingChannels.get(client.id);
+    if (!set) {
+      set = new Set();
+      this.typingChannels.set(client.id, set);
+    }
+    set.add(channelKey);
+    client.to(this.roomFor(data.orgId, channelKey)).emit('typing:update', {
+      channelKey,
+      userId: data.userId,
+      userName: data.userName,
+      typing: true,
+    });
+  }
+
+  @SubscribeMessage('typing:stop')
+  onTypingStop(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { channelKey?: string },
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.orgId) return;
+    const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
+    this.typingChannels.get(client.id)?.delete(channelKey);
+    client.to(this.roomFor(data.orgId, channelKey)).emit('typing:update', {
+      channelKey,
+      userId: data.userId,
+      userName: data.userName,
+      typing: false,
+    });
+  }
+
   @SubscribeMessage('message:send')
   async onMessageSend(
     @ConnectedSocket() client: Socket,
@@ -213,6 +338,16 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
       this.logger.warn(`message:send failed user=${data.userId}: ${error}`);
       return { ok: false as const, error };
     }
+
+    // A sent message implies typing stopped — don't wait for the client's
+    // own timer to clear the indicator for everyone else.
+    this.typingChannels.get(client.id)?.delete(channelKey);
+    client.to(this.roomFor(orgId, channelKey)).emit('typing:update', {
+      channelKey,
+      userId: data.userId,
+      userName: data.userName,
+      typing: false,
+    });
 
     // Ensure sender is in the room, then broadcast.
     await client.join(this.roomFor(orgId, channelKey));
@@ -289,6 +424,77 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
       this.server
         .to(this.roomFor(data.orgId, channelKey))
         .emit('message:deleted', { channelKey, ids });
+    }
+  }
+
+  /** Toggle (add/replace/remove) the caller's reaction on one message. */
+  @SubscribeMessage('message:react')
+  async onMessageReact(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { messageId?: string; emoji?: string },
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.orgId) return { ok: false as const, error: 'Not connected' };
+    if (!this.messageLimiter.allow(client.id)) {
+      return { ok: false as const, error: 'Too many requests — slow down' };
+    }
+    if (!body?.messageId || !body?.emoji) {
+      return { ok: false as const, error: 'messageId and emoji are required' };
+    }
+    try {
+      const { orgId, channelKey, messageId, reactions } =
+        await this.chatService.reactToMessage(data.userId, body.messageId, body.emoji);
+      this.server
+        .to(this.roomFor(orgId, channelKey))
+        .emit('message:reaction', { messageId, reactions });
+      return { ok: true as const, reactions };
+    } catch (err) {
+      return { ok: false as const, error: (err as Error).message || 'Could not react' };
+    }
+  }
+
+  /** Re-send a message the caller can see into one or more chats they're in. */
+  @SubscribeMessage('message:forward')
+  async onMessageForward(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { messageId?: string; toChannelKeys?: string[] },
+  ) {
+    const data = client.data as SocketData;
+    if (!data?.orgId) return { ok: false as const, error: 'Not connected' };
+    if (!this.messageLimiter.allow(client.id)) {
+      return { ok: false as const, error: 'Too many requests — slow down' };
+    }
+    if (!body?.messageId || !Array.isArray(body?.toChannelKeys)) {
+      return { ok: false as const, error: 'messageId and toChannelKeys are required' };
+    }
+    try {
+      const results = await this.chatService.forwardMessage(
+        data.userId,
+        data.userName,
+        body.messageId,
+        body.toChannelKeys,
+      );
+      for (const r of results) {
+        if (!r.ok || !r.orgId || !r.message) continue;
+        await client.join(this.roomFor(r.orgId, r.channelKey));
+        this.server.to(this.roomFor(r.orgId, r.channelKey)).emit('message:new', r.message);
+        if (r.channelKey === ORG_CHANNEL) {
+          this.server
+            .to(this.roomFor(r.orgId, ORG_CHANNEL))
+            .emit('chat:unread', { channelKey: r.channelKey });
+        } else {
+          const peerId = this.chatService.parseDmPeer(r.channelKey, data.userId);
+          const rooms = [this.roomFor(r.orgId, r.channelKey)];
+          if (peerId) rooms.push(this.userRoom(peerId));
+          this.server.to(rooms).emit('chat:unread', { channelKey: r.channelKey });
+        }
+      }
+      return {
+        ok: true as const,
+        results: results.map(({ channelKey, ok, error }) => ({ channelKey, ok, error })),
+      };
+    } catch (err) {
+      return { ok: false as const, error: (err as Error).message || 'Could not forward' };
     }
   }
 

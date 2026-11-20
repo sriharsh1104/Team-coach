@@ -8,6 +8,7 @@ import { ChatGateway } from './chat.gateway';
 import { ChatPresenceTracker } from './chat-presence.tracker';
 import { ChatDisappearService } from './chat-disappear.service';
 import { ChatReminderService } from './chat-reminder.service';
+import { LinkPreviewService } from './link-preview.service';
 
 @Module({
   imports: [AuthModule, MediaModule],
@@ -18,6 +19,7 @@ import { ChatReminderService } from './chat-reminder.service';
     ChatPresenceTracker,
     ChatDisappearService,
     ChatReminderService,
+    LinkPreviewService,
   ],
   controllers: [ChatController],
   exports: [ChatService, ChatGateway],

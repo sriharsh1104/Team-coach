@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as usersApi from '../api/users';
 import { getActiveChatChannel } from './activeChatChannel';
+import { isChatSocketConnected } from '../api/chat';
 
 // Best-effort: push notifications need a real device and an EAS project id.
 // Any failure here should never block the app.
@@ -18,12 +19,18 @@ export async function registerPushTokenWithBackend() {
           | { channelKey?: string; type?: string }
           | undefined;
         const active = getActiveChatChannel();
+        const isChatPush =
+          data?.type === 'chat_unread' || data?.type === 'chat_mention';
         // Already staring at this thread — don't flash a banner on top.
-        const suppress =
-          !!active &&
-          !!data?.channelKey &&
-          data.channelKey === active &&
-          (data.type === 'chat_unread' || data.type === 'chat_mention');
+        const viewingThread =
+          !!active && !!data?.channelKey && data.channelKey === active;
+        // App open with a live chat socket: the in-app alert already shows
+        // the message, so skip the duplicate banner. Only Team/Guild chat
+        // messages reach the app-level socket; DMs still need their push.
+        const groupChannel =
+          data?.channelKey === 'org' || data?.channelKey === 'guild';
+        const liveInApp = isChatSocketConnected() && groupChannel;
+        const suppress = isChatPush && (viewingThread || liveInApp);
 
         return {
           shouldShowAlert: !suppress,

@@ -21,6 +21,16 @@ const CLOUDINARY_DELIVERY_RE =
 
 const HISTORY_LIMIT = 50;
 const MAX_PINS_PER_CHANNEL = 3;
+/** Forwarding to a pile of chats at once isn't a real use case — cap it. */
+const MAX_FORWARD_TARGETS = 10;
+
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  userIds: string[];
+  /** Whether the viewer themself reacted with this emoji. */
+  reactedByMe: boolean;
+}
 /** Allowed disappearing-message timers (seconds). 0 = off. */
 export const DISAPPEAR_OPTIONS_SEC = [0, 3600, 86400, 604800] as const;
 export const ORG_CHANNEL = 'org';
@@ -481,6 +491,11 @@ export class ChatService {
       ).map((p) => p.messageId),
     );
 
+    const reactionsByMessage = await this.loadReactions(
+      messages.map((m) => m.id),
+      userId,
+    );
+
     return this.rescopeForViewer(
       messages
         .reverse()
@@ -490,6 +505,7 @@ export class ChatService {
             m.sender.name,
             roleByUserId.get(m.senderId),
             m.replyToId ? replyMap.get(m.replyToId) : undefined,
+            reactionsByMessage.get(m.id),
           ),
           starred: starSet.has(m.id),
           pinned: pinSet.has(m.id),
@@ -603,10 +619,12 @@ export class ChatService {
       text?: string;
       channelKey?: string;
       mediaUrl?: string;
-      mediaType?: 'IMAGE' | 'VIDEO';
+      mediaType?: 'IMAGE' | 'VIDEO' | 'AUDIO';
       replyToId?: string;
       /** Skip Expo push (e.g. scrim auto-post that already sent its own push). */
       skipPush?: boolean;
+      /** Set by forwardMessage() — client renders a "Forwarded" label. */
+      forwarded?: boolean;
     },
   ) {
     const channelKey = input.channelKey?.trim() || ORG_CHANNEL;
@@ -642,6 +660,7 @@ export class ChatService {
         mediaUrl: input.mediaUrl ?? null,
         mediaType: input.mediaType ?? null,
         replyToId,
+        forwarded: input.forwarded ?? false,
       },
     });
 
@@ -712,6 +731,111 @@ export class ChatService {
       channelKey,
       message: response,
     };
+  }
+
+  /**
+   * Toggle a reaction: same emoji again removes it, a different emoji
+   * replaces it — one reaction per user per message, same gesture WhatsApp
+   * uses. Returns the channel to broadcast on plus the fresh summary.
+   */
+  async reactToMessage(userId: string, messageId: string, emoji: string) {
+    const trimmedEmoji = emoji.trim();
+    if (!trimmedEmoji || trimmedEmoji.length > 16) {
+      throw new BadRequestException('Invalid reaction');
+    }
+    const message = await this.prisma.chatMessage.findUnique({
+      where: { id: messageId },
+      select: { id: true, orgId: true, channelKey: true },
+    });
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+    await this.assertChannelAccess(userId, message.orgId, message.channelKey);
+
+    const existing = await this.prisma.chatReaction.findUnique({
+      where: { userId_messageId: { userId, messageId } },
+    });
+    if (existing && existing.emoji === trimmedEmoji) {
+      await this.prisma.chatReaction.delete({ where: { id: existing.id } });
+    } else {
+      await this.prisma.chatReaction.upsert({
+        where: { userId_messageId: { userId, messageId } },
+        create: { userId, messageId, emoji: trimmedEmoji },
+        update: { emoji: trimmedEmoji },
+      });
+    }
+
+    const reactions = (await this.loadReactions([messageId], userId)).get(messageId) ?? [];
+    return {
+      orgId: message.orgId,
+      channelKey: message.channelKey,
+      messageId,
+      reactions,
+    };
+  }
+
+  /**
+   * Re-send an existing message's content into one or more chats the caller
+   * can access — WhatsApp-style forward. The caller must have had legitimate
+   * access to the *source* message to forward it at all; each *target*
+   * channel is independently access-checked by createMessage itself, so a
+   * forward can't be used to post into a chat the caller isn't actually in.
+   */
+  async forwardMessage(
+    userId: string,
+    senderName: string,
+    messageId: string,
+    toChannelKeys: string[],
+  ) {
+    const source = await this.prisma.chatMessage.findUnique({
+      where: { id: messageId },
+    });
+    if (!source) {
+      throw new NotFoundException('Message not found');
+    }
+    await this.assertChannelAccess(userId, source.orgId, source.channelKey);
+    if (!source.text && !source.mediaUrl) {
+      throw new BadRequestException('Nothing to forward');
+    }
+
+    const targets = [
+      ...new Set(toChannelKeys.map((k) => k?.trim()).filter((k): k is string => !!k)),
+    ];
+    if (targets.length === 0) {
+      throw new BadRequestException('Pick at least one chat to forward to');
+    }
+    if (targets.length > MAX_FORWARD_TARGETS) {
+      throw new BadRequestException(
+        `Forward to at most ${MAX_FORWARD_TARGETS} chats at a time`,
+      );
+    }
+
+    const results: Array<{
+      channelKey: string;
+      ok: boolean;
+      orgId?: string;
+      message?: ReturnType<ChatService['toResponse']>;
+      error?: string;
+    }> = [];
+    for (const target of targets) {
+      try {
+        const { orgId, message } = await this.createMessage(userId, senderName, {
+          channelKey: target,
+          text: source.text ?? undefined,
+          mediaUrl: source.mediaUrl ?? undefined,
+          mediaType: (source.mediaType as 'IMAGE' | 'VIDEO' | 'AUDIO' | null) ?? undefined,
+          forwarded: true,
+        });
+        results.push({ channelKey: target, ok: true, orgId, message });
+      } catch (err) {
+        results.push({
+          channelKey: target,
+          ok: false,
+          error: (err as Error).message || 'Could not forward',
+        });
+      }
+    }
+    return results;
   }
 
   /**
@@ -1409,7 +1533,7 @@ export class ChatService {
     senderId: string,
     skipUserIds: string[] = [],
     latestText: string | null = null,
-    mediaType?: 'IMAGE' | 'VIDEO' | null,
+    mediaType?: 'IMAGE' | 'VIDEO' | 'AUDIO' | null,
   ) {
     const skip = new Set(skipUserIds);
     const sender = await this.prisma.user.findUnique({
@@ -1504,7 +1628,9 @@ export class ChatService {
               ? 'Sent a video'
               : mediaType === 'IMAGE'
                 ? 'Sent a photo'
-                : null)
+                : mediaType === 'AUDIO'
+                  ? 'Sent a voice note'
+                  : null)
           : null;
       messages.push({
         to: token,
@@ -1586,6 +1712,40 @@ export class ChatService {
     );
   }
 
+  /** Batched reaction summary for a page of messages — same shape every read uses. */
+  private async loadReactions(
+    messageIds: string[],
+    viewerId: string,
+  ): Promise<Map<string, ReactionSummary[]>> {
+    const result = new Map<string, ReactionSummary[]>();
+    const unique = [...new Set(messageIds.filter(Boolean))];
+    if (unique.length === 0) return result;
+    const rows = await this.prisma.chatReaction.findMany({
+      where: { messageId: { in: unique } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const byMessage = new Map<string, Map<string, ReactionSummary>>();
+    for (const r of rows) {
+      let perEmoji = byMessage.get(r.messageId);
+      if (!perEmoji) {
+        perEmoji = new Map();
+        byMessage.set(r.messageId, perEmoji);
+      }
+      let summary = perEmoji.get(r.emoji);
+      if (!summary) {
+        summary = { emoji: r.emoji, count: 0, userIds: [], reactedByMe: false };
+        perEmoji.set(r.emoji, summary);
+      }
+      summary.count += 1;
+      summary.userIds.push(r.userId);
+      if (r.userId === viewerId) summary.reactedByMe = true;
+    }
+    for (const [messageId, perEmoji] of byMessage) {
+      result.set(messageId, [...perEmoji.values()]);
+    }
+    return result;
+  }
+
   private async loadReplyPreviews(ids: string[]) {
     const unique = [...new Set(ids.filter(Boolean))];
     const map = new Map<
@@ -1619,6 +1779,7 @@ export class ChatService {
       createdAt: Date;
       editedAt?: Date | null;
       replyToId?: string | null;
+      forwarded?: boolean;
     },
     senderName: string,
     senderMembership?: { role: MembershipRole; isOwner: boolean },
@@ -1628,6 +1789,7 @@ export class ChatService {
       senderName: string;
       mediaType: string | null;
     },
+    reactions?: ReactionSummary[],
   ) {
     return {
       id: message.id,
@@ -1643,6 +1805,8 @@ export class ChatService {
       mediaType: message.mediaType,
       createdAt: message.createdAt,
       editedAt: message.editedAt ?? null,
+      forwarded: message.forwarded ?? false,
+      reactions: reactions ?? [],
       replyToId: message.replyToId ?? null,
       replyTo: replyTo
         ? {

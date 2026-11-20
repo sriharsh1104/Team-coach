@@ -79,6 +79,11 @@ model User {
   // email before AuthService.googleLogin will even create the user.
   emailVerified Boolean @default(false)
 
+  // Last time this user had a live chat socket connection (ChatGateway).
+  // Null until their first connect. Drives "last seen" in chat; "online"
+  // itself is live-only (in-memory socket set), never persisted.
+  lastSeenAt DateTime?
+
   emailVerificationCode EmailVerificationCode?
   telegramPhoneLinks    TelegramPhoneLink[]
   passwordResetCode     PasswordResetCode?
@@ -93,6 +98,7 @@ model User {
   chatDeliveryStates ChatDeliveryState[]
   chatMutes          ChatMute[]
   chatStars          ChatStar[]
+  chatReactions      ChatReaction[]
   chatClears         ChatClear[]
   chatPins           ChatPin[]
   chatReminders      ChatReminder[]
@@ -342,11 +348,17 @@ model ChatMessage {
   replyToId String?
   replyTo   ChatMessage?  @relation("ChatReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   ChatMessage[] @relation("ChatReplies")
+  // True when this message was created via POST /chat/forward — client
+  // renders a "Forwarded" label. We deliberately don't track which message
+  // it came from (WhatsApp doesn't show that either, and it would leak
+  // whether the forwarder has access to the source channel).
+  forwarded Boolean @default(false)
 
-  org    Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  pins   ChatPin[]
-  stars  ChatStar[]
+  org       Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sender    User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  pins      ChatPin[]
+  stars     ChatStar[]
+  reactions ChatReaction[]
 
   @@index([orgId, channelKey, createdAt])
   @@index([replyToId])
@@ -399,6 +411,22 @@ model ChatStar {
 
   @@unique([userId, messageId])
   @@index([userId, orgId, channelKey])
+}
+
+// One reaction per user per message (tapping a different emoji replaces it,
+// tapping the same one again removes it — same gesture WhatsApp uses).
+model ChatReaction {
+  id        String   @id @default(cuid())
+  userId    String
+  messageId String
+  emoji     String   @db.VarChar(16)
+  createdAt DateTime @default(now())
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([messageId])
 }
 
 // Per-user personal reminder for a chat — push only to the creator at fireAt.
@@ -482,6 +510,7 @@ model ChatDeliveryState {
 enum MediaType {
   IMAGE
   VIDEO
+  AUDIO
 }
 
 model MediaPost {

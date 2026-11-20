@@ -66,7 +66,14 @@ export interface ChatReplyPreview {
   id: string;
   text: string | null;
   senderName: string;
-  mediaType: 'IMAGE' | 'VIDEO' | null;
+  mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO' | null;
+}
+
+export interface ChatReaction {
+  emoji: string;
+  count: number;
+  userIds: string[];
+  reactedByMe: boolean;
 }
 
 export interface ChatMessage {
@@ -79,15 +86,31 @@ export interface ChatMessage {
   senderIsOwner: boolean;
   text: string | null;
   mediaUrl: string | null;
-  mediaType: 'IMAGE' | 'VIDEO' | null;
+  mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO' | null;
   createdAt: string;
   editedAt?: string | null;
   replyToId?: string | null;
   replyTo?: ChatReplyPreview | null;
   starred?: boolean;
   pinned?: boolean;
+  /** True when this message was created via forward — client shows a label. */
+  forwarded?: boolean;
+  reactions?: ChatReaction[];
   /** Echoed from message:send so the sender can swap out an optimistic row. */
   clientId?: string;
+}
+
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  siteName: string | null;
+}
+
+export interface UserPresence {
+  online: boolean;
+  lastSeenAt: string | null;
 }
 
 export interface ChatChannelMeta {

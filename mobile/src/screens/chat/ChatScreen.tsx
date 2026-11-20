@@ -21,7 +21,7 @@ import { Socket } from 'socket.io-client';
 import { getToken } from '../../storage/tokenStorage';
 import * as chatApi from '../../api/chat';
 import { ReadReceipt, DeliveryReceipt } from '../../api/chat';
-import { ChatMessage, ChatTeammate } from '../../api/types';
+import { ChatMessage, ChatReaction, ChatTeammate, UserPresence } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { Screen } from '../../brand/Screen';
 import { useSharedStyles, formatRoleBadge } from '../shared';
@@ -34,6 +34,13 @@ import { MediaViewerModal } from './MediaViewerModal';
 import { PendingMediaOverlay, PendingUploadStatus } from './PendingMediaOverlay';
 import { MessageInfoModal } from './MessageInfoModal';
 import { CustomSticker } from './stickerStorage';
+import { MessageReactionPills } from './MessageReactionPills';
+import { ReactionPicker } from './ReactionPicker';
+import { ForwardSheet } from './ForwardSheet';
+import { LinkPreviewCard } from './LinkPreviewCard';
+import { VoiceRecorderButton } from './VoiceRecorderButton';
+import { VoiceNoteBubble } from './VoiceNoteBubble';
+import { ChatStatusLine, presenceLabel, typingLabel } from './ChatStatusLine';
 import {
   activeMentionQuery,
   filterMentionables,
@@ -113,7 +120,7 @@ type PendingUpload = {
     width?: number | null;
     height?: number | null;
   };
-  mediaType: 'IMAGE' | 'VIDEO';
+  mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO';
   text?: string;
   replyToId: string | null;
   sizeLabel: string | null;
@@ -145,6 +152,11 @@ export function ChatScreen({
   const styles = useThemedStyles(chatStyles);
   const { startRecording, pendingShare, clearPendingShare } = useRecording();
   const isGroup = channelKey === 'org' || channelKey === 'guild';
+  // DM channel keys are `dm:{userA}:{userB}` (sorted) — the other id is the peer.
+  const dmPeerId = useMemo(() => {
+    if (!channelKey.startsWith('dm:') || !user?.id) return null;
+    return channelKey.slice(3).split(':').find((id) => id !== user.id) ?? null;
+  }, [channelKey, user?.id]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Media bubbles that are still uploading / sending / failed, keyed by the
   // optimistic message id (clientId). The bubble shows the picked file from
@@ -184,6 +196,8 @@ export function ChatScreen({
     [],
   );
   const [isConnected, setIsConnected] = useState(false);
+  // Why the live socket isn't up (shown under "Connecting…" so it's diagnosable).
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [showAttach, setShowAttach] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
   const [receipts, setReceipts] = useState<ReadReceipt[]>([]);
@@ -203,6 +217,13 @@ export function ChatScreen({
   const [matchIndex, setMatchIndex] = useState(0);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  // userId -> userName, for everyone currently typing in this channel.
+  const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
+  const [peerPresence, setPeerPresence] = useState<UserPresence | null>(null);
+  const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<ChatMessage | null>(null);
+  const typingActiveRef = useRef(false);
+  const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -318,6 +339,8 @@ export function ChatScreen({
     stickToBottomRef.current = true;
     initialScrollDoneRef.current = false;
     setListReady(false);
+    setTypingUsers(new Map());
+    setPeerPresence(null);
     return () => {
       setActiveChatChannel(null);
     };
@@ -382,14 +405,29 @@ export function ChatScreen({
         socket.emit('channel:delivered', { channelKey });
         // Also broadcasts "Seen" live to anyone else currently in this channel.
         socket.emit('channel:read', { channelKey });
+        if (dmPeerId) {
+          socket.emit(
+            'presence:get',
+            { userIds: [dmPeerId] },
+            (ack: { ok?: boolean; presence?: Record<string, UserPresence> }) => {
+              if (cancelled) return;
+              const peer = ack?.presence?.[dmPeerId];
+              if (ack?.ok && peer) setPeerPresence(peer);
+            },
+          );
+        }
       };
 
       // Usually already connected (shared socket) — no "Connecting…" flash.
       setIsConnected(socket.connected);
       if (socket.connected) joinChannel();
 
+      listen('connect_error', (err: { message?: string } | undefined) => {
+        setConnectError(err?.message || 'connection failed');
+      });
       listen('connect', () => {
         setIsConnected(true);
+        setConnectError(null);
         joinChannel();
         // Catch up anything sent while we were offline / between the first
         // history fetch and this join — otherwise a late opener sees the
@@ -479,12 +517,52 @@ export function ChatScreen({
           });
         },
       );
+      listen(
+        'typing:update',
+        (payload: { channelKey?: string; userId: string; userName: string; typing: boolean }) => {
+          if (payload.channelKey !== channelKey) return;
+          if (payload.userId === user?.id) return;
+          setTypingUsers((prev) => {
+            const next = new Map(prev);
+            if (payload.typing) next.set(payload.userId, payload.userName);
+            else next.delete(payload.userId);
+            return next;
+          });
+        },
+      );
+      listen(
+        'message:reaction',
+        (payload: { messageId: string; reactions: ChatReaction[] }) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === payload.messageId ? { ...m, reactions: payload.reactions } : m,
+            ),
+          );
+        },
+      );
+      listen(
+        'presence:update',
+        (payload: { userId: string; online: boolean; lastSeenAt: string | null }) => {
+          if (!dmPeerId || payload.userId !== dmPeerId) return;
+          setPeerPresence({ online: payload.online, lastSeenAt: payload.lastSeenAt });
+        },
+      );
     })();
 
     return () => {
       cancelled = true;
       for (const t of scrollTimers) clearTimeout(t);
       const sock = socketRef.current;
+      // Leaving the channel while still "typing" would otherwise leave
+      // everyone else stuck seeing "X is typing…" forever.
+      if (typingStopTimerRef.current) {
+        clearTimeout(typingStopTimerRef.current);
+        typingStopTimerRef.current = null;
+      }
+      if (typingActiveRef.current && sock?.connected) {
+        sock.emit('typing:stop', { channelKey });
+      }
+      typingActiveRef.current = false;
       if (sock?.connected) {
         sock.emit('channel:leave', { channelKey });
       }
@@ -495,6 +573,7 @@ export function ChatScreen({
   }, [
     channelKey,
     clearPendingUpload,
+    dmPeerId,
     mergeHistory,
     pinToBottom,
     refreshHistory,
@@ -825,6 +904,18 @@ export function ChatScreen({
     exitSelectMode();
   }, [canReply, exitSelectMode, selectedList]);
 
+  const onReactSelected = useCallback(() => {
+    if (!canReply) return;
+    setReactionTarget(selectedList[0]);
+    exitSelectMode();
+  }, [canReply, exitSelectMode, selectedList]);
+
+  const onForwardPressSelected = useCallback(() => {
+    if (!canReply) return;
+    setForwardTarget(selectedList[0]);
+    exitSelectMode();
+  }, [canReply, exitSelectMode, selectedList]);
+
   const onEditSelected = useCallback(() => {
     if (!canEdit) return;
     const msg = selectedList[0];
@@ -914,7 +1005,7 @@ export function ChatScreen({
     async (payload: {
       text?: string;
       mediaUrl?: string;
-      mediaType?: 'IMAGE' | 'VIDEO';
+      mediaType?: 'IMAGE' | 'VIDEO' | 'AUDIO';
       clientId?: string;
       replyToId?: string;
     }) => {
@@ -951,6 +1042,93 @@ export function ChatScreen({
     [channelKey, waitForSocket],
   );
 
+  // Debounced typing:start, auto-clearing typing:stop after a pause — mirrors
+  // WhatsApp's "stops showing typing… a few seconds after you stop typing".
+  const notifyTyping = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    if (!typingActiveRef.current) {
+      typingActiveRef.current = true;
+      socket.emit('typing:start', { channelKey });
+    }
+    if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current);
+    typingStopTimerRef.current = setTimeout(() => {
+      typingStopTimerRef.current = null;
+      typingActiveRef.current = false;
+      socketRef.current?.emit('typing:stop', { channelKey });
+    }, 3000);
+  }, [channelKey]);
+
+  const clearTypingNow = useCallback(() => {
+    if (typingStopTimerRef.current) {
+      clearTimeout(typingStopTimerRef.current);
+      typingStopTimerRef.current = null;
+    }
+    if (typingActiveRef.current) {
+      typingActiveRef.current = false;
+      socketRef.current?.emit('typing:stop', { channelKey });
+    }
+  }, [channelKey]);
+
+  const onToggleReaction = useCallback((messageId: string, emoji: string) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      emitToast('Chat disconnected — try again in a moment');
+      return;
+    }
+    socket
+      .timeout(8000)
+      .emit(
+        'message:react',
+        { messageId, emoji },
+        (err: unknown, ack?: { ok?: boolean; reactions?: ChatReaction[]; error?: string }) => {
+          if (err || !ack?.ok) {
+            emitToast(ack?.error || 'Could not react');
+            return;
+          }
+          setMessages((prev) =>
+            prev.map((m) => (m.id === messageId ? { ...m, reactions: ack.reactions } : m)),
+          );
+        },
+      );
+  }, []);
+
+  const onForwardSelected = useCallback(
+    async (toChannelKeys: string[]) => {
+      const target = forwardTarget;
+      if (!target) return;
+      const socket = await waitForSocket();
+      if (!socket?.connected) {
+        throw new Error('Chat disconnected — try again in a moment');
+      }
+      await new Promise<void>((resolve, reject) => {
+        socket
+          .timeout(15_000)
+          .emit(
+            'message:forward',
+            { messageId: target.id, toChannelKeys },
+            (
+              err: unknown,
+              ack?: { ok?: boolean; error?: string; results?: Array<{ channelKey: string; ok: boolean; error?: string }> },
+            ) => {
+              if (err || !ack?.ok) {
+                reject(new Error(ack?.error || 'Could not forward'));
+                return;
+              }
+              const results = ack.results ?? [];
+              if (results.length > 0 && results.every((r) => !r.ok)) {
+                reject(new Error(results[0]?.error || 'Could not forward'));
+                return;
+              }
+              resolve();
+            },
+          );
+      });
+      emitToast('Message forwarded');
+    },
+    [forwardTarget, waitForSocket],
+  );
+
   const onSend = useCallback(() => {
     const text = draft.trim();
     if (!text || !user) return;
@@ -968,6 +1146,7 @@ export function ChatScreen({
       setDraft('');
       setCaret(0);
       setEditingId(null);
+      clearTypingNow();
       const socket = socketRef.current;
       if (socket?.connected) {
         socket.emit('message:edit', { id, text });
@@ -1013,6 +1192,7 @@ export function ChatScreen({
     setDraft('');
     setCaret(0);
     setReplyTo(null);
+    clearTypingNow();
     void emitMessage({
       text,
       clientId,
@@ -1025,7 +1205,7 @@ export function ChatScreen({
         if (parent) setReplyTo(parent);
       }
     });
-  }, [channelKey, draft, editingId, emitMessage, refreshHistory, replyTo, user]);
+  }, [channelKey, clearTypingNow, draft, editingId, emitMessage, refreshHistory, replyTo, user]);
 
   const pickMention = useCallback(
     (mate: ChatTeammate) => {
@@ -1126,7 +1306,7 @@ export function ChatScreen({
   const startMediaSend = useCallback(
     (
       asset: PendingUpload['asset'],
-      mediaType: 'IMAGE' | 'VIDEO',
+      mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO',
       extras: { text?: string; replyTo?: ChatMessage | null; sizeLabel?: string | null } = {},
     ) => {
       if (!user) return;
@@ -1376,6 +1556,24 @@ export function ChatScreen({
             />
             <IconActionButton
               plain
+              icon="happy-outline"
+              label="React"
+              tooltip="React"
+              color={colors.link}
+              disabled={!canReply}
+              onPress={onReactSelected}
+            />
+            <IconActionButton
+              plain
+              icon="share-social-outline"
+              label="Forward"
+              tooltip="Forward"
+              color={colors.link}
+              disabled={!canReply}
+              onPress={onForwardPressSelected}
+            />
+            <IconActionButton
+              plain
               icon="pencil-outline"
               label="Edit"
               color={colors.link}
@@ -1571,6 +1769,11 @@ export function ChatScreen({
                   {!isMine && (
                     <Text style={styles.sender}>{formatSenderLabel(item)}</Text>
                   )}
+                  {item.forwarded ? (
+                    <Text style={[styles.forwardedLabel, isMine && styles.forwardedLabelMine]}>
+                      ↪ Forwarded
+                    </Text>
+                  ) : null}
                   {item.replyTo ? (
                     <View
                       style={[
@@ -1683,6 +1886,26 @@ export function ChatScreen({
                       ) : null}
                     </Pressable>
                   ) : null}
+                  {item.mediaType === 'AUDIO' && mediaUri ? (
+                    pending ? (
+                      <View style={styles.voiceUploading}>
+                        <ActivityIndicator
+                          color={isMine ? colors.chromeInk : colors.chrome}
+                          size="small"
+                        />
+                        <Text
+                          style={[
+                            styles.voiceUploadingText,
+                            isMine && styles.voiceUploadingTextMine,
+                          ]}
+                        >
+                          {pending.label ?? 'Uploading…'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <VoiceNoteBubble uri={mediaUri} isMine={isMine} />
+                    )
+                  ) : null}
                   {item.text ? (
                     <MessageText
                       text={item.text}
@@ -1690,6 +1913,12 @@ export function ChatScreen({
                       mine={isMine}
                     />
                   ) : null}
+                  {!item.mediaType && item.text && !pending
+                    ? (() => {
+                        const url = chatApi.extractFirstUrl(item.text);
+                        return url ? <LinkPreviewCard url={url} isMine={isMine} /> : null;
+                      })()
+                    : null}
                   {item.id === latestPointsId && !selectMode && !pending
                     ? (() => {
                         const parsed = parsePointsSummary(item.text);
@@ -1716,6 +1945,12 @@ export function ChatScreen({
                         );
                       })()
                     : null}
+                  {!selectMode ? (
+                    <MessageReactionPills
+                      reactions={item.reactions ?? []}
+                      onToggle={(emoji) => onToggleReaction(item.id, emoji)}
+                    />
+                  ) : null}
                   <View style={styles.metaRow}>
                     {item.pinned ? (
                       <AppIcon
@@ -1771,7 +2006,11 @@ export function ChatScreen({
           );
         }}
       />
-      {!isConnected && <Text style={styles.connecting}>Connecting…</Text>}
+      {!isConnected && (
+        <Text style={styles.connecting}>
+          {connectError ? `Connecting… (${connectError})` : 'Connecting…'}
+        </Text>
+      )}
       {showAttach && (
         <AttachMenu
           onPickMedia={onPickMedia}
@@ -1821,6 +2060,19 @@ export function ChatScreen({
         channelKey={channelKey}
         onClose={() => setReminderOpen(false)}
       />
+      <ReactionPicker
+        visible={!!reactionTarget}
+        onClose={() => setReactionTarget(null)}
+        onPick={(emoji) => {
+          if (reactionTarget) onToggleReaction(reactionTarget.id, emoji);
+        }}
+      />
+      <ForwardSheet
+        visible={!!forwardTarget}
+        excludeChannelKey={channelKey}
+        onClose={() => setForwardTarget(null)}
+        onForward={onForwardSelected}
+      />
       {mentionSuggestions.length > 0 ? (
         <View style={styles.mentionMenu}>
           {mentionSuggestions.map((mate) => (
@@ -1864,6 +2116,12 @@ export function ChatScreen({
           </Pressable>
         </View>
       )}
+      <ChatStatusLine
+        label={
+          typingLabel([...typingUsers.values()]) ??
+          (!isGroup ? presenceLabel(peerPresence) : null)
+        }
+      />
       <View style={styles.inputRow}>
         <Pressable
           onPress={() => setShowAttach((v) => !v)}
@@ -1897,26 +2155,42 @@ export function ChatScreen({
           onChangeText={(text) => {
             setDraft(text);
             setCaret(text.length);
+            if (text.trim()) notifyTyping();
+            else clearTypingNow();
           }}
           onSelectionChange={(e) => {
             setCaret(e.nativeEvent.selection.end);
           }}
           onSubmitEditing={onSend}
         />
-        <Pressable
-          style={[styles.sendIconBtn, !draft.trim() && styles.sendIconDisabled]}
-          disabled={!draft.trim()}
-          onPress={onSend}
-          accessibilityRole="button"
-          accessibilityLabel={editingId ? 'Save edit' : 'Send'}
-          hitSlop={8}
-        >
-          <AppIcon
-            name={editingId ? 'checkmark-circle' : 'send'}
-            size={24}
-            color={colors.icon}
+        {draft.trim() || editingId ? (
+          <Pressable
+            style={[styles.sendIconBtn, !draft.trim() && styles.sendIconDisabled]}
+            disabled={!draft.trim()}
+            onPress={onSend}
+            accessibilityRole="button"
+            accessibilityLabel={editingId ? 'Save edit' : 'Send'}
+            hitSlop={8}
+          >
+            <AppIcon
+              name={editingId ? 'checkmark-circle' : 'send'}
+              size={24}
+              color={colors.icon}
+            />
+          </Pressable>
+        ) : (
+          <VoiceRecorderButton
+            onRecorded={(note) => {
+              const parent = replyTo;
+              setReplyTo(null);
+              startMediaSend(
+                { uri: note.uri, fileName: note.fileName, mimeType: note.mimeType },
+                'AUDIO',
+                { replyTo: parent },
+              );
+            }}
           />
-        </Pressable>
+        )}
       </View>
 
       <MediaViewerModal
@@ -2077,6 +2351,22 @@ const chatStyles = (c: ThemeColors) => ({
     fontStyle: 'italic' as const,
   },
   editedLabelMine: { color: c.chromeInk, opacity: 0.55 },
+  forwardedLabel: {
+    fontSize: 11,
+    color: c.textDim,
+    fontStyle: 'italic' as const,
+    marginBottom: 2,
+  },
+  forwardedLabelMine: { color: c.chromeInk, opacity: 0.6 },
+  voiceUploading: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    minWidth: 160,
+    paddingVertical: 6,
+  },
+  voiceUploadingText: { fontSize: 12, color: c.textMuted },
+  voiceUploadingTextMine: { color: c.chromeInk, opacity: 0.8 },
   timeLabel: { fontSize: 10, color: c.textDim },
   addMatchBtn: {
     flexDirection: 'row' as const,

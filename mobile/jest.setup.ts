@@ -126,6 +126,36 @@ jest.mock('expo-av', () => {
       React.createElement(View, { ...props, ref, testID: props.testID ?? 'mock-video' }),
     ),
     ResizeMode: { CONTAIN: 'contain', COVER: 'cover', STRETCH: 'stretch' },
+    // Voice notes (VoiceRecorderButton/VoiceNoteBubble) reference these enum
+    // values at module scope — a missing mock crashes on import, not just on use.
+    Audio: {
+      AndroidOutputFormat: { MPEG_4: 2 },
+      AndroidAudioEncoder: { AAC: 3 },
+      IOSOutputFormat: { MPEG4AAC: 'aac ' },
+      IOSAudioQuality: { MEDIUM: 0x20 },
+      requestPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
+      setAudioModeAsync: jest.fn().mockResolvedValue(undefined),
+      Recording: {
+        createAsync: jest.fn().mockResolvedValue({
+          recording: {
+            stopAndUnloadAsync: jest.fn().mockResolvedValue(undefined),
+            getURI: jest.fn().mockReturnValue('file://fake-recording.m4a'),
+          },
+        }),
+      },
+      Sound: {
+        createAsync: jest.fn().mockResolvedValue({
+          sound: {
+            setOnPlaybackStatusUpdate: jest.fn(),
+            playAsync: jest.fn().mockResolvedValue(undefined),
+            pauseAsync: jest.fn().mockResolvedValue(undefined),
+            setPositionAsync: jest.fn().mockResolvedValue(undefined),
+            getStatusAsync: jest.fn().mockResolvedValue({ isLoaded: true, isPlaying: false }),
+            unloadAsync: jest.fn().mockResolvedValue(undefined),
+          },
+        }),
+      },
+    },
   };
 });
 

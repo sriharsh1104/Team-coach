@@ -33,6 +33,7 @@ import { ClearChatDto } from './dto/clear-chat.dto';
 import { UpdateChannelMetaDto } from './dto/update-channel-meta.dto';
 import { CreateReminderDto } from './dto/create-reminder.dto';
 import { ChatReminderService } from './chat-reminder.service';
+import { LinkPreviewService } from './link-preview.service';
 
 @Controller('chat')
 export class ChatController {
@@ -44,7 +45,23 @@ export class ChatController {
     private readonly jwtService: JwtService,
     private readonly mediaService: MediaService,
     private readonly storage: MediaStorageService,
+    private readonly linkPreview: LinkPreviewService,
   ) {}
+
+  /**
+   * Fetches a shared URL's Open Graph metadata so the chat bubble can show a
+   * link preview card. Authenticated (no reason to let an anonymous caller
+   * use this backend as a URL-probing proxy) but not otherwise org-scoped —
+   * the target is a public web page, not org data.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('link-preview')
+  async linkPreviewFor(@Query('url') url?: string) {
+    if (!url?.trim()) {
+      throw new BadRequestException('url is required');
+    }
+    return this.linkPreview.fetchPreview(url.trim());
+  }
 
   @UseGuards(JwtAuthGuard)
   @Post('reminders')
@@ -334,13 +351,17 @@ export class ChatController {
       publicId,
       resourceType,
     );
-    return this.finalizeChatMedia(user.userId, fileKey, resourceType);
+    const mediaType = resourceType === 'video' ? 'VIDEO' : 'IMAGE';
+    return this.finalizeChatMedia(user.userId, fileKey, mediaType);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('media')
   @UseInterceptors(
-    FileInterceptor('file', mediaFileInterceptorOptions(50 * 1024 * 1024)),
+    // allowAudio: this is the only upload route voice notes go through —
+    // they're small enough (a minute of AAC is well under a megabyte) that
+    // there's no need for the Cloudinary-direct-upload path images/video use.
+    FileInterceptor('file', mediaFileInterceptorOptions(50 * 1024 * 1024, true)),
   )
   async uploadChatMedia(
     @CurrentUser() user: { userId: string },
@@ -351,17 +372,20 @@ export class ChatController {
       `[chat-media] POST /chat/media (guild/org/DM attachment) user=${user.userId} mime=${file.mimetype} bytes=${file.buffer?.length ?? file.size ?? 0}`,
     );
     await this.chatService.getChatContext(user.userId);
-    const resourceType = file.mimetype.startsWith('video/') ? 'video' : 'image';
+    const mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO' = file.mimetype.startsWith('audio/')
+      ? 'AUDIO'
+      : file.mimetype.startsWith('video/')
+        ? 'VIDEO'
+        : 'IMAGE';
     const stored = await this.storage.storeUploadedFile(file);
-    return this.finalizeChatMedia(user.userId, stored.fileKey, resourceType);
+    return this.finalizeChatMedia(user.userId, stored.fileKey, mediaType);
   }
 
   private async finalizeChatMedia(
     userId: string,
     fileKey: string,
-    resourceType: 'image' | 'video',
+    mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO',
   ) {
-    const mediaType = resourceType === 'video' ? 'VIDEO' : 'IMAGE';
     // Always store the API proxy path (not a raw Cloudinary delivery URL).
     // Signed CDN URLs expire (~1h) and then chat history thumbnails die;
     // listMessages/rescope regenerates a fresh delivery URL from this fileKey
@@ -372,21 +396,25 @@ export class ChatController {
     );
     const mediaUrl = `/chat/files/${encodeURIComponent(fileKey)}?token=${token}`;
 
+    // Voice notes don't mirror into the Media Feed — it's a photos/videos
+    // grid, a note-to-self "listen to this clip" dump would be clutter.
     let mediaPostId: string | null = null;
-    try {
-      const post = await this.mediaService.createPost(
-        userId,
-        fileKey,
-        mediaType,
-      );
-      mediaPostId = post.id;
-      this.logger.log(
-        `[chat-media] mirrored to Media feed postId=${mediaPostId} fileKey=${fileKey}`,
-      );
-    } catch (err) {
-      this.logger.warn(
-        `Failed to mirror chat upload into Media feed: ${(err as Error).message}`,
-      );
+    if (mediaType !== 'AUDIO') {
+      try {
+        const post = await this.mediaService.createPost(
+          userId,
+          fileKey,
+          mediaType,
+        );
+        mediaPostId = post.id;
+        this.logger.log(
+          `[chat-media] mirrored to Media feed postId=${mediaPostId} fileKey=${fileKey}`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to mirror chat upload into Media feed: ${(err as Error).message}`,
+        );
+      }
     }
 
     this.logger.log(

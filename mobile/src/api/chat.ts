@@ -2,7 +2,7 @@ import axios from 'axios';
 import { AppState, AppStateStatus } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 import { apiClient, apiBaseUrl, resolveMediaUrl } from './client';
-import { ChatChannelsResponse, ChatMessage } from './types';
+import { ChatChannelsResponse, ChatMessage, LinkPreview } from './types';
 import { appendFileToFormData } from './uploadFile';
 import { compressForUpload } from '../media/compressForUpload';
 
@@ -204,6 +204,35 @@ export function getUnreadSummary() {
   return apiClient
     .get<{ totalUnread: number }>('/chat/unread')
     .then((res) => res.data);
+}
+
+// First http(s) link in a message — drives whether a preview card renders.
+// Deliberately simple (no full RFC-3986 URL grammar): good enough for
+// "someone pasted a link in chat" without pulling in a regex library.
+const FIRST_URL_RE = /https?:\/\/[^\s<>"')\]]+/i;
+
+export function extractFirstUrl(text: string | null | undefined): string | null {
+  if (!text) return null;
+  return text.match(FIRST_URL_RE)?.[0] ?? null;
+}
+
+// Session-lived cache — the same shared link in a busy group chat shouldn't
+// hit the network (and the backend's own fetch) more than once per screen.
+const linkPreviewCache = new Map<string, Promise<LinkPreview | null>>();
+
+export function getLinkPreview(url: string): Promise<LinkPreview | null> {
+  const cached = linkPreviewCache.get(url);
+  if (cached) return cached;
+  const promise = apiClient
+    .get<LinkPreview>('/chat/link-preview', {
+      params: { url },
+      skipErrorToast: true,
+      timeout: 8000,
+    } as Record<string, unknown>)
+    .then((res) => res.data)
+    .catch(() => null); // no card is a fine fallback — never blocks the bubble
+  linkPreviewCache.set(url, promise);
+  return promise;
 }
 
 export type ReadReceipt = {
@@ -442,6 +471,21 @@ export function subscribeChatInbox(listener: InboxListener): () => void {
   };
 }
 
+type MessageListener = (message: ChatMessage) => void;
+const messageListeners = new Set<MessageListener>();
+
+/** Every live message the shared socket receives (any channel), for in-app alerts. */
+export function subscribeChatMessages(listener: MessageListener): () => void {
+  messageListeners.add(listener);
+  return () => {
+    messageListeners.delete(listener);
+  };
+}
+
+export function isChatSocketConnected(): boolean {
+  return !!sharedSocket?.connected;
+}
+
 export function connectChatSocket(token: string): Socket {
   watchAppState();
   if (sharedSocket && sharedToken === token) {
@@ -452,15 +496,18 @@ export function connectChatSocket(token: string): Socket {
   sharedToken = token;
   const socket = io(apiBaseUrl, {
     auth: { token },
-    transports: ['websocket'],
+    // Polling fallback: some networks/proxies block the websocket upgrade and
+    // then the socket never connects at all.
+    transports: ['websocket', 'polling'],
   });
   socket.on('connect', () => notifyInbox(null));
   socket.on('chat:unread', (p?: { channelKey?: string }) =>
     notifyInbox(p?.channelKey ?? null),
   );
-  socket.on('message:new', (m?: { channelKey?: string }) =>
-    notifyInbox(m?.channelKey ?? null),
-  );
+  socket.on('message:new', (m?: ChatMessage) => {
+    notifyInbox(m?.channelKey ?? null);
+    if (m) messageListeners.forEach((listener) => listener(m));
+  });
   sharedSocket = socket;
   return socket;
 }

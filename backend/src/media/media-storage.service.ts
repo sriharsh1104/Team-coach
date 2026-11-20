@@ -24,7 +24,25 @@ const LOCAL_MEDIA_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
   '.mov': 'video/quicktime',
   '.webm': 'video/webm',
+  // Voice notes (expo-av recordings) — Android records .m4a/.aac, iOS .caf/.m4a.
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.caf': 'audio/x-caf',
+  '.ogg': 'audio/ogg',
 };
+
+/** Extension to fall back to when the upload has none — by actual mimetype, not just resourceType. */
+function fallbackExtFor(mimetype: string): string {
+  if (mimetype.startsWith('audio/')) {
+    if (mimetype.includes('mpeg') || mimetype.includes('mp3')) return '.mp3';
+    if (mimetype.includes('wav')) return '.wav';
+    if (mimetype.includes('ogg')) return '.ogg';
+    return '.m4a';
+  }
+  return mimetype.startsWith('video/') ? '.mp4' : '.jpg';
+}
 
 export function localMediaType(fileKey: string): string {
   return LOCAL_MEDIA_TYPES[extname(fileKey).toLowerCase()] ?? 'application/octet-stream';
@@ -35,6 +53,10 @@ export type StoredMedia = {
   fileKey: string;
   /** Public HTTPS URL when Cloudinary is on; otherwise null (use signed local route). */
   deliveryUrl: string | null;
+  // Cloudinary's own storage concept — it has no separate "audio" resource
+  // type, voice notes upload fine as 'video'. The *application*-level media
+  // type (IMAGE/VIDEO/AUDIO shown to users) is derived separately from the
+  // real mimetype wherever a file is stored (see chat.controller.ts).
   resourceType: 'image' | 'video';
 };
 
@@ -166,9 +188,12 @@ export class MediaStorageService {
   }
 
   async storeUploadedFile(file: Express.Multer.File): Promise<StoredMedia> {
-    const resourceType: 'image' | 'video' = file.mimetype.startsWith('video/')
-      ? 'video'
-      : 'image';
+    // Audio (voice notes) stores under Cloudinary's 'video' resource type —
+    // there is no dedicated audio type in their API, and it handles
+    // audio-only files correctly under 'video'.
+    const resourceType: 'image' | 'video' = file.mimetype.startsWith('image/')
+      ? 'image'
+      : 'video';
     const bytes = file.buffer?.length ?? file.size ?? 0;
     this.logger.log(
       `[media] store start type=${resourceType} mime=${file.mimetype} bytes=${bytes} name=${file.originalname || 'n/a'} via=${this.cloudinaryEnabled ? 'cloudinary' : 'local'}`,
@@ -275,9 +300,7 @@ export class MediaStorageService {
     if (!file.buffer?.length) {
       throw new Error('Uploaded file buffer is empty');
     }
-    const ext =
-      extname(file.originalname) ||
-      (resourceType === 'video' ? '.mp4' : '.jpg');
+    const ext = extname(file.originalname) || fallbackExtFor(file.mimetype);
     const fileKey = `${generateLocalKey()}${ext}`;
     const { writeFile } = await import('fs/promises');
     await writeFile(this.localFilePath(fileKey), file.buffer);

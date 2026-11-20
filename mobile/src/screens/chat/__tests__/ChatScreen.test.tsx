@@ -252,11 +252,14 @@ describe('ChatScreen', () => {
   it('blocks sending an empty or whitespace-only draft', async () => {
     const fakeSocket = await connectAndSettle();
 
-    await pressAndSettle('Send');
-    expect(fakeSocket.emit).not.toHaveBeenCalledWith('message:send', expect.anything());
+    // Empty draft — no Send button rendered at all (a voice-note mic takes
+    // its place instead, matching WhatsApp's composer behavior).
+    expect(screen.queryByLabelText('Send')).toBeNull();
+    expect(screen.getByLabelText('Record a voice note')).toBeTruthy();
 
+    // Whitespace-only draft trims to empty too — same story.
     fireEvent.changeText(screen.getByPlaceholderText('Message… @IGN to mention'), '   ');
-    await pressAndSettle('Send');
+    expect(screen.queryByLabelText('Send')).toBeNull();
     expect(fakeSocket.emit).not.toHaveBeenCalledWith(
       'message:send',
       expect.anything(),

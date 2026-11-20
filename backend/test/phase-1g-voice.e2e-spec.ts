@@ -337,8 +337,14 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       await emitAck(coachSocket, 'muteUser', { userId: player.user.id, muted: false });
       expect((await next).mutedIds).toEqual([]);
 
-      // listen-only, then give this one person the mic back
+      // listen-only, then give this one person the mic back. muteAll's own
+      // broadcast must be awaited here too — otherwise it can race past this
+      // ack and get caught by the *next* listener below instead, which would
+      // then wrongly see "everyone muted" rather than the later unmute.
+      next = waitForEvent<{ mutedIds: string[] }>(playerSocket, 'voiceState');
       await emitAck(coachSocket, 'muteAll');
+      await next;
+
       next = waitForEvent<{ mutedIds: string[] }>(playerSocket, 'voiceState');
       await emitAck(coachSocket, 'muteUser', { userId: player.user.id, muted: false });
       expect((await next).mutedIds).toEqual([]);
@@ -381,7 +387,12 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       const coachSocket = await connectGuild(coach.accessToken);
       const playerSocket = await connectGuild(player.accessToken);
       openSockets.push(coachSocket, playerSocket);
+      // Same race as above: consume muteAll's own broadcast here so the
+      // listener registered below only ever catches the disconnect-triggered
+      // reset, never muteAll's own "everyone's muted" event arriving late.
+      const muted = waitForEvent(playerSocket, 'voiceState');
       await emitAck(coachSocket, 'muteAll');
+      await muted;
 
       const reset = waitForEvent<{ listenOnly: boolean; mutedIds: string[] }>(
         playerSocket,

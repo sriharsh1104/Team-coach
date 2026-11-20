@@ -19,8 +19,8 @@ export class SendMessageDto {
   mediaUrl?: string;
 
   @IsOptional()
-  @IsIn(['IMAGE', 'VIDEO'])
-  mediaType?: 'IMAGE' | 'VIDEO';
+  @IsIn(['IMAGE', 'VIDEO', 'AUDIO'])
+  mediaType?: 'IMAGE' | 'VIDEO' | 'AUDIO';
 
   /** Client-generated id so the sender can reconcile an optimistic bubble. */
   @IsOptional()
