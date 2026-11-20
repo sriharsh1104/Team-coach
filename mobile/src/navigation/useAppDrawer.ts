@@ -78,11 +78,6 @@ export function useOrgDrawer() {
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Voice' }),
       },
       {
-        key: 'games',
-        label: 'Games',
-        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),
-      },
-      {
         key: 'maps',
         label: 'Maps',
         icon: 'map-outline' as const,
@@ -134,20 +129,29 @@ export function useOrgDrawer() {
       },
     ];
 
-    if (isOwner) {
-      sections.push({
-        key: 'guild',
-        label: 'Guild',
-        split: true,
-        items: [
-          {
-            key: 'guildHome',
-            label: 'Guild Roster',
-            onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
-          },
-        ],
-      });
-    }
+    // Everyone gets the Guild section (Games live here so any guild member
+    // can play); the roster screen itself stays owner-only.
+    sections.push({
+      key: 'guild',
+      label: 'Guild',
+      split: true,
+      items: [
+        ...(isOwner
+          ? [
+              {
+                key: 'guildHome',
+                label: 'Guild Roster',
+                onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
+              },
+            ]
+          : []),
+        {
+          key: 'games',
+          label: 'Games',
+          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),
+        },
+      ],
+    });
 
     sections.push({
       key: 'account',
@@ -205,6 +209,11 @@ export function useGuildDrawer() {
             key: 'guildHome',
             label: 'Guild Roster',
             onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Guild' }),
+          },
+          {
+            key: 'games',
+            label: 'Games',
+            onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Games' }),
           },
         ],
       },

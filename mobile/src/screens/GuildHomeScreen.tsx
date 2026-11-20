@@ -62,6 +62,12 @@ export function GuildHomeScreen({ navigation }: Props) {
               onPress: () =>
                 goToSection(navigation, 'GuildHome', { screen: 'Guild' }),
             },
+            {
+              key: 'games',
+              label: 'Games',
+              onPress: () =>
+                goToSection(navigation, 'GuildHome', { screen: 'Games' }),
+            },
           ],
         },
         {

@@ -110,6 +110,14 @@ export class GamesService {
       .map((r) => this.view(r));
   }
 
+  /** Current view of a room by id (undefined if it's gone or already finished). */
+  roomViewById(roomId: string): RoomView | undefined {
+    const room = this.rooms.get(roomId);
+    if (!room || room.status === 'finished') return undefined;
+    if (Date.now() - room.createdAt >= ROOM_TTL_MS) return undefined;
+    return this.view(room);
+  }
+
   roomOf(userId: string): RoomView | null {
     const id = this.userRoom.get(userId);
     const room = id ? this.rooms.get(id) : undefined;

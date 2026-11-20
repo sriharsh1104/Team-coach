@@ -3405,6 +3405,17 @@ button.invite-qr-open:hover {
   color: rgba(10, 10, 12, 0.55);
 }
 
+.bubble .bubble-time {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: right;
+  margin-top: 4px;
+}
+
+.bubble.mine .bubble-time {
+  color: rgba(10, 10, 12, 0.55);
+}
+
 .bubble.hit {
   outline: 2px solid var(--link);
 }

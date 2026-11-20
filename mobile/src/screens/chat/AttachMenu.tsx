@@ -8,7 +8,14 @@ import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { useTheme } from '../../theme/ThemeContext';
 
-export type AttachOption = 'photo' | 'video' | 'camera' | 'record' | 'reminder' | 'screenShare';
+export type AttachOption =
+  | 'photo'
+  | 'video'
+  | 'camera'
+  | 'record'
+  | 'reminder'
+  | 'screenShare'
+  | 'points';
 
 interface Props {
   onPickMedia: (option: AttachOption) => void;
@@ -132,6 +139,13 @@ export function AttachMenu({
       icon: 'alarm-outline',
       tint: '#e8c547',
       onPress: () => onPickMedia('reminder'),
+    },
+    {
+      key: 'points',
+      label: 'Points',
+      icon: 'trophy-outline',
+      tint: '#2ecc71',
+      onPress: () => onPickMedia('points'),
     },
   ];
 

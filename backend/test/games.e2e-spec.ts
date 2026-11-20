@@ -208,4 +208,26 @@ describe('Games (/games namespace) (e2e)', () => {
     const refused = await emitAck<Ack>(host, 'room:invite', { userId: outsider.user.id });
     expect(refused.ok).toBe(false);
   });
+  it('notify cooldown: same teammate only once per 5 min; room:members lists the pool; notify-all skips cooled-down users', async () => {
+    const { players, sockets } = await setUp(3);
+    const [host] = sockets;
+    await emitAck<Ack>(host, 'room:create', { game: 'ludo' });
+
+    const members = await emitAck<Ack>(host, 'room:members');
+    expect(members.ok).toBe(true);
+    expect((members.room as any[]).map((m) => m.userId).sort()).toEqual(
+      [players[1].user.id, players[2].user.id].sort(),
+    );
+
+    const first = await emitAck<Ack>(host, 'room:invite', { userId: players[1].user.id });
+    expect(first).toMatchObject({ ok: true });
+    const again = await emitAck<Ack>(host, 'room:invite', { userId: players[1].user.id });
+    expect(again.ok).toBe(false);
+    expect(again.error).toMatch(/already notified/i);
+
+    const all = await emitAck<Ack>(host, 'room:invite-all', {});
+    expect(all).toMatchObject({ ok: true });
+    expect(all.room.sentIds).toEqual([players[2].user.id]);
+    expect(all.room.skippedIds).toEqual([players[1].user.id]);
+  });
 });

@@ -104,7 +104,7 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Org Settings')).toBeTruthy();
   });
 
-  it('hides Guild and Org Settings from non-owners', async () => {
+  it('hides Guild Roster and Org Settings from non-owners but keeps Games under Guild', async () => {
     mockedUseAuth.mockReturnValue({
       logout,
       refreshOrg,
@@ -123,7 +123,9 @@ describe('OrgHomeScreen', () => {
     fireEvent.press(screen.getByLabelText('Open Menu'));
     expect(screen.getByText(/^Roster$/)).toBeTruthy();
     expect(screen.queryByText('Org Settings')).toBeNull();
-    expect(screen.queryByText('Guild')).toBeNull();
+    expect(screen.queryByText('Guild Roster')).toBeNull();
+    // Games live in the Guild section so every member can play.
+    expect(screen.getByText('Games')).toBeTruthy();
   });
 
   it('navigates to Roster from the sidebar', async () => {

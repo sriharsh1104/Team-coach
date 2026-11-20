@@ -43,6 +43,8 @@ function api(overrides: Partial<ReturnType<typeof useGamesSocket>> = {}) {
     startGame: jest.fn(),
     rematch: jest.fn(),
     invite: jest.fn().mockResolvedValue(null),
+    members: jest.fn().mockResolvedValue([]),
+    inviteAll: jest.fn().mockResolvedValue({ sentIds: [], skippedIds: [], total: 0 }),
     rpsPick: jest.fn(),
     ludoRoll: jest.fn(),
     ludoMove: jest.fn(),
@@ -113,21 +115,26 @@ describe('GamesHubScreen', () => {
 describe('GameRoomScreen', () => {
   it('lobby: host sees players, invite list, and a disabled Start until enough players', async () => {
     mockRouteParams = { roomId: 'r1', game: 'rps' };
-    mockedOrg.getMyOrg.mockResolvedValue({
-      members: [
-        { userId: 'me', name: 'Me', avatarUrl: null, role: null, isOwner: true, inGameRoles: [] },
-        { userId: 'u2', name: 'Arjun', avatarUrl: null, role: null, isOwner: false, inGameRoles: [] },
-      ],
-    } as any);
     const invite = jest.fn().mockResolvedValue(null);
-    mockedSocket.mockReturnValue(api({ joinRoom: jest.fn().mockResolvedValue(lobbyRoom()), invite }));
+    const inviteAll = jest.fn().mockResolvedValue({ sentIds: ['u2'], skippedIds: [], total: 1 });
+    mockedSocket.mockReturnValue(api({
+      joinRoom: jest.fn().mockResolvedValue(lobbyRoom()),
+      invite,
+      members: jest.fn().mockResolvedValue([{ userId: 'u2', name: 'Arjun', avatarUrl: null }]),
+      inviteAll,
+    }));
     render(<GameRoomScreen />);
     await screen.findByText('Me (You)');
     expect(screen.getByText('Need 1 more')).toBeTruthy();
     await screen.findByText('Arjun');
-    fireEvent.press(screen.getByLabelText('Invite Arjun'));
+    fireEvent.press(screen.getByLabelText('Notify Arjun'));
     await waitFor(() => expect(invite).toHaveBeenCalledWith('r1', 'u2'));
-    await screen.findByText('Sent');
+    await screen.findByLabelText('Notified Arjun');
+    expect(screen.getByLabelText('Share invite via WhatsApp, Discord and more')).toBeTruthy();
+    // Cooldown: the bell stays disabled right after notifying.
+    expect(screen.queryByLabelText('Notify Arjun')).toBeNull();
+    fireEvent.press(screen.getByLabelText('Notify all teammates'));
+    await waitFor(() => expect(inviteAll).toHaveBeenCalledWith('r1'));
   });
 
   it('playing RPS: shows scores/round, sends my pick, and disables picks once picked', async () => {

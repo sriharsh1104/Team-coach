@@ -46,6 +46,16 @@ function MessageBody({
   );
 }
 
+/** "4:49 pm" — local time the message was sent/received. */
+function formatMessageTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const h = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${h % 12 || 12}:${minutes} ${h >= 12 ? 'pm' : 'am'}`;
+}
+
 export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' }) {
   const { user, org, guild } = useAuth();
   const [channels, setChannels] = useState<ChatChannel[]>([]);
@@ -494,6 +504,7 @@ export function ChatPage({ variant = 'roster' }: { variant?: 'roster' | 'guild' 
                           />
                         ) : null}
                         <MessageBody text={m.text} knownIgns={knownIgns} />
+                        <div className="bubble-time">{formatMessageTime(m.createdAt)}</div>
                       </div>
                     );
                   })}

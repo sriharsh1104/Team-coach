@@ -15,11 +15,24 @@ import {
 } from '../media/screenRecorder';
 import { emitToast } from '../ui/toastBus';
 
+/** A finished recording that was started from a chat, waiting for "send it?". */
+export type PendingRecordingShare = {
+  uri: string;
+  channelKey: string;
+  finishedAt: number;
+};
+
+/** Ignore a finished recording nobody confirmed within this window. */
+const PENDING_SHARE_TTL_MS = 30 * 60 * 1000;
+
 type RecordingCtx = {
   recording: boolean;
   elapsedSec: number;
-  startRecording: () => Promise<void>;
+  /** Pass the chat `channelKey` to be offered "send this recording?" when it stops. */
+  startRecording: (originChannelKey?: string) => Promise<void>;
   stopRecording: () => Promise<void>;
+  pendingShare: PendingRecordingShare | null;
+  clearPendingShare: () => void;
 };
 
 const RecordingContext = createContext<RecordingCtx>({
@@ -27,6 +40,8 @@ const RecordingContext = createContext<RecordingCtx>({
   elapsedSec: 0,
   startRecording: async () => {},
   stopRecording: async () => {},
+  pendingShare: null,
+  clearPendingShare: () => undefined,
 });
 
 export function RecordingProvider({ children }: { children: React.ReactNode }) {
@@ -34,6 +49,8 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
   const [elapsedSec, setElapsedSec] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startEpochRef = useRef<number>(0);
+  const originChannelRef = useRef<string | null>(null);
+  const [pendingShare, setPendingShare] = useState<PendingRecordingShare | null>(null);
 
   // Native "stopped" events (e.g. 30-min limit, notification tap)
   useEffect(() => {
@@ -41,6 +58,11 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
       setRecording(false);
       setElapsedSec(0);
       if (uri) emitToast('Recording saved to gallery 🎬');
+      const channelKey = originChannelRef.current;
+      originChannelRef.current = null;
+      if (uri && channelKey) {
+        setPendingShare({ uri, channelKey, finishedAt: Date.now() });
+      }
     });
     return unsub;
   }, []);
@@ -79,7 +101,7 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording]);
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (originChannelKey?: string) => {
     if (Platform.OS !== 'android') {
       emitToast('Screen recording is only available on Android');
       return;
@@ -90,6 +112,7 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
     }
     const result = await startScreenRecording();
     if (result === 'started') {
+      originChannelRef.current = originChannelKey ?? null;
       setRecording(true);
       setElapsedSec(0);
       emitToast('Recording started — Open your game! Stop from widget or notification.');
@@ -107,9 +130,21 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
     setElapsedSec(0);
   }, []);
 
+  const clearPendingShare = useCallback(() => setPendingShare(null), []);
+
   return (
     <RecordingContext.Provider
-      value={{ recording, elapsedSec, startRecording, stopRecording }}
+      value={{
+        recording,
+        elapsedSec,
+        startRecording,
+        stopRecording,
+        pendingShare:
+          pendingShare && Date.now() - pendingShare.finishedAt < PENDING_SHARE_TTL_MS
+            ? pendingShare
+            : null,
+        clearPendingShare,
+      }}
     >
       {children}
     </RecordingContext.Provider>

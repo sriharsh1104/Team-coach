@@ -40,6 +40,7 @@ import { PointsTableScreen } from '../screens/PointsTableScreen';
 import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
 import { GamesHubScreen } from '../screens/games/GamesHubScreen';
 import { GameRoomScreen } from '../screens/games/GameRoomScreen';
+import { GameInviteBridge } from '../games/GameInviteBridge';
 import { MenuButton, SideDrawer } from '../ui/SideDrawer';
 import { HeaderBackButton } from '../ui/HeaderBackButton';
 import { HeaderOrgInfo } from '../ui/HeaderOrgInfo';
@@ -341,6 +342,18 @@ export function RootNavigator() {
               }))}
             />
             <MainStack.Screen
+              name="Games"
+              component={GamesHubScreen}
+              options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Games' }))}
+            />
+            <MainStack.Screen
+              name="GameRoom"
+              component={GameRoomScreen}
+              options={detailOptions(({ route }) => ({
+                title: route.params?.game === 'ludo' ? 'Ludo' : route.params?.game === 'rps' ? 'Stone Paper Scissors' : 'Game',
+              }))}
+            />
+            <MainStack.Screen
               name="MemberProfile"
               component={MemberProfileScreen}
               options={detailOptions(({ route }) => ({
@@ -355,6 +368,7 @@ export function RootNavigator() {
             subtitle={guild?.name ?? user?.name}
             sections={guildDrawer.sections}
           />
+          <GameInviteBridge />
         </>
       ) : (
         <>
@@ -515,6 +529,7 @@ export function RootNavigator() {
             subtitle={org?.name ?? user?.name}
             sections={orgDrawer.sections}
           />
+          <GameInviteBridge />
         </>
       )}
       {/* VoiceFloatingWidget must be inside NavigationContainer so

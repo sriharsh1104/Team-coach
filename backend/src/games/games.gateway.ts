@@ -13,10 +13,18 @@ import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatService } from '../chat/chat.service';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
-import { PushNotificationService } from '../common/push-notification.service';
+import { PushMessage, PushNotificationService } from '../common/push-notification.service';
 import { WsRateLimiter } from '../common/ws-rate-limiter';
 import { corsOrigin } from '../common/cors-origin';
 import { GAME_CATALOG, GameKind, GamesService, RoomView } from './games.service';
+
+/** One user may notify one specific teammate at most once per this window. */
+const NOTIFY_COOLDOWN_MS = 5 * 60 * 1000;
+/** Hard cap on a single "notify all" blast. */
+const MAX_NOTIFY_ALL = 100;
+
+/** An invite queued for an offline user is dropped after this long. */
+const PENDING_INVITE_TTL_MS = 30 * 60 * 1000;
 
 interface GamesSocketData {
   userId: string;
@@ -39,14 +47,16 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   room:leave                      → { ok }
  *   room:start {roomId}             → RoomView
  *   room:rematch {roomId}           → RoomView
- *   room:invite {roomId, userId}    → { ok }
+ *   room:members                    → [{ userId, name, avatarUrl }] (invite pool)
+ *   room:invite {roomId, userId}    → { ok }  (same sender→target: once per 5 min)
+ *   room:invite-all {roomId}        → { sentIds, skippedIds, total }
  *   rps:pick {roomId, choice}       → RoomView
  *   ludo:roll {roomId}              → RoomView
  *   ludo:move {roomId, tokenIndex}  → RoomView
  * Server → client:
  *   room:update {room, event?}   every change in a room you're in
  *   rooms:changed                lobby list for your org changed
- *   room:invite {room, from}     someone invited you
+ *   room:invite {room, from}     someone invited you (queued + sent on connect if you were offline)
  */
 @WebSocketGateway({ namespace: 'games', cors: { origin: corsOrigin() } })
 export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
@@ -57,6 +67,17 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   private readonly limiter = new WsRateLimiter(60, 10_000);
   /** userId -> live socket ids (a user may have the app open on two devices). */
   private readonly userSockets = new Map<string, Set<string>>();
+  /**
+   * Invites for users who were offline when invited: userId -> pending invites.
+   * Delivered the moment they connect (the push notification covers the
+   * "device is away" case; this covers the in-app alert on next open).
+   */
+  /** `${fromUserId}:${targetUserId}` -> last notify time (ms), for the 5-min cooldown. */
+  private readonly lastNotified = new Map<string, number>();
+  private readonly pendingInvites = new Map<
+    string,
+    Array<{ roomId: string; fromUserId: string; fromName: string; at: number }>
+  >();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -108,6 +129,7 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
       let set = this.userSockets.get(data.userId);
       if (!set) this.userSockets.set(data.userId, (set = new Set()));
       set.add(socket.id);
+      this.flushPendingInvites(data.userId, socket);
       // Coming back to a room we were in (app reopened / network blip).
       const room = this.games.markConnected(data.userId);
       if (room) {
@@ -126,6 +148,24 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (!set || set.size === 0) {
       this.userSockets.delete(data.userId);
       this.games.markDisconnected(data.userId);
+    }
+  }
+
+  /** Deliver invites that arrived while this user was offline (still-open rooms only). */
+  private flushPendingInvites(userId: string, socket: Socket) {
+    const pending = this.pendingInvites.get(userId);
+    if (!pending?.length) return;
+    this.pendingInvites.delete(userId);
+    const now = Date.now();
+    for (const inv of pending) {
+      if (now - inv.at > PENDING_INVITE_TTL_MS) continue;
+      const room = this.games.roomViewById(inv.roomId);
+      if (!room || room.status !== 'lobby') continue;
+      if (room.players.some((p) => p.userId === userId)) continue;
+      socket.emit('room:invite', {
+        room,
+        from: { userId: inv.fromUserId, name: inv.fromName },
+      });
     }
   }
 
@@ -208,6 +248,93 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     return this.run(client, (data) => this.games.rematch(this.roomIdOf(body, data), data.userId));
   }
 
+  /** Everyone in this org (roster + guild-only), minus the caller — the invite pool. */
+  private async orgCandidates(orgId: string, selfId: string) {
+    const [roster, guild] = await Promise.all([
+      this.prisma.membership.findMany({
+        where: { orgId },
+        select: { user: { select: { id: true, name: true, avatarUrl: true, expoPushToken: true } } },
+      }),
+      this.prisma.guildMembership.findMany({
+        where: { orgId },
+        select: { user: { select: { id: true, name: true, avatarUrl: true, expoPushToken: true } } },
+      }),
+    ]);
+    const byId = new Map<
+      string,
+      { id: string; name: string; avatarUrl: string | null; expoPushToken: string | null }
+    >();
+    for (const row of [...roster, ...guild]) {
+      if (row.user.id !== selfId) byId.set(row.user.id, row.user);
+    }
+    return [...byId.values()];
+  }
+
+  /** Remaining cooldown (ms) before `fromId` may notify `targetId` again; 0 = allowed now. */
+  private notifyCooldownLeft(fromId: string, targetId: string): number {
+    const last = this.lastNotified.get(`${fromId}:${targetId}`);
+    if (!last) return 0;
+    return Math.max(0, last + NOTIFY_COOLDOWN_MS - Date.now());
+  }
+
+  private pruneNotifyLog() {
+    if (this.lastNotified.size < 500) return;
+    const cutoff = Date.now() - NOTIFY_COOLDOWN_MS;
+    for (const [k, at] of this.lastNotified) if (at < cutoff) this.lastNotified.delete(k);
+  }
+
+  /** Live event + offline queue + push for one target. Caller has already validated + rate-limited. */
+  private deliverInvite(
+    data: GamesSocketData,
+    room: RoomView,
+    target: { id: string; expoPushToken: string | null },
+  ): PushMessage | null {
+    this.lastNotified.set(`${data.userId}:${target.id}`, Date.now());
+    this.server.to(this.userChannel(target.id)).emit('room:invite', {
+      room,
+      from: { userId: data.userId, name: data.userName },
+    });
+    // Offline right now → hold the invite and hand it over when they connect.
+    if (!this.userSockets.get(target.id)?.size) {
+      const queue = (this.pendingInvites.get(target.id) ?? []).filter((i) => i.roomId !== room.id);
+      queue.push({
+        roomId: room.id,
+        fromUserId: data.userId,
+        fromName: data.userName,
+        at: Date.now(),
+      });
+      this.pendingInvites.set(target.id, queue.slice(-10));
+    }
+    return this.push.isValidExpoPushToken(target.expoPushToken)
+      ? {
+          to: target.expoPushToken as string,
+          title: `${data.userName} invited you to play`,
+          body: `${room.title} — tap to join`,
+          data: { type: 'game_invite', roomId: room.id, game: room.game },
+          collapseId: `game-invite:${room.id}:${target.id}`,
+          channelId: 'chat',
+        }
+      : null;
+  }
+
+  private sendPushes(messages: Array<PushMessage | null>) {
+    const list = messages.filter((m): m is PushMessage => !!m);
+    if (!list.length) return Promise.resolve();
+    return this.push
+      .send(list)
+      .catch((err) => this.logger.warn(`invite push failed: ${(err as Error).message}`));
+  }
+
+  @SubscribeMessage('room:members')
+  onMembers(@ConnectedSocket() client: Socket) {
+    return this.run(client, async (data) => {
+      const list = await this.orgCandidates(data.orgId, data.userId);
+      return list
+        .map((u) => ({ userId: u.id, name: u.name, avatarUrl: u.avatarUrl ?? null }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }
+
   @SubscribeMessage('room:invite')
   onInvite(
     @ConnectedSocket() client: Socket,
@@ -220,32 +347,53 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
       if (!targetId || targetId === data.userId) throw new Error('Pick a teammate to invite');
       const target = await this.prisma.user.findUnique({
         where: { id: targetId },
-        select: { id: true, expoPushToken: true },
+        select: { id: true, name: true, expoPushToken: true },
       });
       if (!target) throw new Error('Teammate not found');
       // Same-org check: the target must resolve to this org.
       const ctx = await this.chatService.getChatContext(targetId).catch(() => null);
       if (!ctx || ctx.orgId !== data.orgId) throw new Error('Teammate is not in your org');
 
-      this.server.to(this.userChannel(targetId)).emit('room:invite', {
-        room,
-        from: { userId: data.userId, name: data.userName },
-      });
-      if (this.push.isValidExpoPushToken(target.expoPushToken)) {
-        await this.push
-          .send([
-            {
-              to: target.expoPushToken,
-              title: `${data.userName} invited you to play`,
-              body: `${room.title} — tap to join`,
-              data: { type: 'game_invite', roomId: room.id, game: room.game },
-              collapseId: `game-invite:${room.id}:${targetId}`,
-              channelId: 'chat',
-            },
-          ])
-          .catch((err) => this.logger.warn(`invite push failed: ${(err as Error).message}`));
+      const left = this.notifyCooldownLeft(data.userId, targetId);
+      if (left > 0) {
+        throw new Error(
+          `You already notified ${target.name}. Try again in ${Math.ceil(left / 60_000)} min.`,
+        );
       }
+      this.pruneNotifyLog();
+      await this.sendPushes([this.deliverInvite(data, room, target)]);
       return null;
+    });
+  }
+
+  /**
+   * "Notify all": invite every teammate who isn't in the room yet, skipping
+   * anyone this user already notified within the cooldown window.
+   */
+  @SubscribeMessage('room:invite-all')
+  onInviteAll(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId?: string }) {
+    return this.run(client, async (data) => {
+      const room = this.games.roomOf(data.userId);
+      if (!room || room.id !== (body?.roomId ?? room.id)) throw new Error('You are not in that room');
+      if (room.status !== 'lobby') throw new Error('Game already started');
+      const inRoom = new Set(room.players.map((p) => p.userId));
+      const candidates = (await this.orgCandidates(data.orgId, data.userId)).filter(
+        (u) => !inRoom.has(u.id),
+      );
+      this.pruneNotifyLog();
+      const sentIds: string[] = [];
+      const skippedIds: string[] = [];
+      const pushes: Array<PushMessage | null> = [];
+      for (const u of candidates.slice(0, MAX_NOTIFY_ALL)) {
+        if (this.notifyCooldownLeft(data.userId, u.id) > 0) {
+          skippedIds.push(u.id);
+          continue;
+        }
+        pushes.push(this.deliverInvite(data, room, u));
+        sentIds.push(u.id);
+      }
+      await this.sendPushes(pushes);
+      return { sentIds, skippedIds, total: candidates.length };
     });
   }
 

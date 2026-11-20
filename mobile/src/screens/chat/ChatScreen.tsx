@@ -26,6 +26,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { Screen } from '../../brand/Screen';
 import { useSharedStyles, formatRoleBadge } from '../shared';
 import { AttachMenu, AttachOption } from './AttachMenu';
+import { CameraPreviewModal } from './CameraPreviewModal';
+import { PointsCalculatorModal } from './PointsCalculatorModal';
 import { ReminderComposer } from './ReminderComposer';
 import { MediaViewerModal } from './MediaViewerModal';
 import { PendingMediaOverlay, PendingUploadStatus } from './PendingMediaOverlay';
@@ -85,6 +87,16 @@ function MessageText({
 
 // "Teammate · Coach" / "Owner Coach · Coach (Owner)" — role badge is shown
 // next to the name for everyone but yourself (you already know your own role).
+/** "4:49 pm" — local time the message was sent/received, same on every platform. */
+export function formatMessageTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const h = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${h % 12 || 12}:${minutes} ${h >= 12 ? 'pm' : 'am'}`;
+}
+
 function formatSenderLabel(message: ChatMessage): string {
   const badge = formatRoleBadge(message.senderRole, message.senderIsOwner);
   return badge ? `${message.senderName} · ${badge}` : message.senderName;
@@ -130,7 +142,7 @@ export function ChatScreen({
   const { user } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(chatStyles);
-  const { startRecording } = useRecording();
+  const { startRecording, pendingShare, clearPendingShare } = useRecording();
   const isGroup = channelKey === 'org' || channelKey === 'guild';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Media bubbles that are still uploading / sending / failed, keyed by the
@@ -1171,8 +1183,37 @@ export function ChatScreen({
     [startMediaSend],
   );
 
+  const [cameraShot, setCameraShot] = useState<{
+    asset: ImagePicker.ImagePickerAsset;
+    option: AttachOption;
+  } | null>(null);
+
+  // A screen recording started from this chat just finished — ask before sending.
+  useEffect(() => {
+    if (!pendingShare || pendingShare.channelKey !== channelKey) return;
+    const name = `recording-${Date.now()}.mp4`;
+    setCameraShot({
+      asset: {
+        uri: pendingShare.uri,
+        width: 0,
+        height: 0,
+        type: 'video',
+        mimeType: 'video/mp4',
+        fileName: name,
+      } as ImagePicker.ImagePickerAsset,
+      option: 'record',
+    });
+    clearPendingShare();
+  }, [pendingShare, channelKey, clearPendingShare]);
+
+  const [pointsOpen, setPointsOpen] = useState(false);
+
   const onPickMedia = async (option: AttachOption) => {
     setShowAttach(false);
+    if (option === 'points') {
+      setPointsOpen(true);
+      return;
+    }
     if (option === 'reminder') {
       setReminderOpen(true);
       return;
@@ -1180,7 +1221,8 @@ export function ChatScreen({
     if (option === 'screenShare' || option === 'record') {
       // Start background screen recording — recording widget appears at top,
       // user switches to their game. Stop from the widget or notification.
-      await startRecording();
+      // Remember this chat so we can offer "send this recording?" when it stops.
+      await startRecording(channelKey);
       return;
     }
     const fromCamera = option === 'camera';
@@ -1196,7 +1238,7 @@ export function ChatScreen({
       );
       return;
     }
-    // Camera = snap a photo and send. Gallery photo/video keep their filters.
+    // Camera photo and video: confirm in a preview, then send. Gallery photo sends directly.
     const mediaTypes =
       option === 'video'
         ? ImagePicker.MediaTypeOptions.Videos
@@ -1215,6 +1257,17 @@ export function ChatScreen({
         });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
+    // Ask "send this?" first for camera photos and videos instead of
+    // sending the instant they're captured/picked. Gallery photos send directly.
+    if (fromCamera || option === 'video') {
+      setCameraShot({ asset, option });
+      return;
+    }
+    sendPickedAsset(asset, option);
+  };
+
+  /** Bubble + upload for an asset the user picked (or confirmed from camera). */
+  const sendPickedAsset = (asset: ImagePicker.ImagePickerAsset, option: AttachOption) => {
     const looksVideo =
       (asset.mimeType?.startsWith('video/') ?? false) ||
       option === 'video';
@@ -1631,6 +1684,12 @@ export function ChatScreen({
                         edited
                       </Text>
                     ) : null}
+                    <Text
+                      style={[styles.timeLabel, isMine && styles.timeLabelMine]}
+                      accessibilityLabel={`Sent at ${formatMessageTime(item.createdAt)}`}
+                    >
+                      {formatMessageTime(item.createdAt)}
+                    </Text>
                   </View>
                 </View>
                 {showSeen && !selectMode && (
@@ -1672,6 +1731,30 @@ export function ChatScreen({
           }}
         />
       )}
+      <PointsCalculatorModal
+        visible={pointsOpen}
+        onClose={() => setPointsOpen(false)}
+        // Same plain-text send path as a sticker/emoji message.
+        onSendToChat={(text) => onPickStickerEmoji(text)}
+      />
+      <CameraPreviewModal
+        uri={cameraShot?.asset.uri ?? null}
+        isVideo={cameraShot?.option === 'video' || cameraShot?.option === 'record'}
+        hideRetake={cameraShot?.option === 'record'}
+        question={cameraShot?.option === 'record' ? 'Send this screen recording?' : undefined}
+        onSend={() => {
+          const shot = cameraShot;
+          setCameraShot(null);
+          if (shot) sendPickedAsset(shot.asset, shot.option);
+        }}
+        onRetake={() => {
+          const option = cameraShot?.option ?? 'camera';
+          setCameraShot(null);
+          // Let the preview modal dismiss before reopening camera / gallery.
+          setTimeout(() => void onPickMedia(option), 350);
+        }}
+        onCancel={() => setCameraShot(null)}
+      />
       <ReminderComposer
         visible={reminderOpen}
         channelKey={channelKey}
@@ -1923,6 +2006,7 @@ const chatStyles = (c: ThemeColors) => ({
   metaRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
+    alignSelf: 'flex-end' as const,
     gap: 6,
     marginTop: 4,
   },
@@ -1932,6 +2016,8 @@ const chatStyles = (c: ThemeColors) => ({
     fontStyle: 'italic' as const,
   },
   editedLabelMine: { color: c.chromeInk, opacity: 0.55 },
+  timeLabel: { fontSize: 10, color: c.textDim },
+  timeLabelMine: { color: c.chromeInk, opacity: 0.6 },
   bubbleRow: {
     flexDirection: 'row' as const,
     marginBottom: 10,

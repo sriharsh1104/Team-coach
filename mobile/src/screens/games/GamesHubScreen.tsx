@@ -39,16 +39,7 @@ export function GamesHubScreen() {
     onRoom: (room) => {
       if (room.players.some((p) => p.userId === user?.id)) setMine(room);
     },
-    onInvite: ({ room, from }) => {
-      Alert.alert(
-        `${from.name} invited you`,
-        `Join their ${room.title} room?`,
-        [
-          { text: 'Not now', style: 'cancel' },
-          { text: 'Join', onPress: () => void join(room.id) },
-        ],
-      );
-    },
+    // Invites are handled app-wide by <GameInviteBridge/> (one alert, any screen).
   });
 
   useFocusEffect(

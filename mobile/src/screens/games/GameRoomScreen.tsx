@@ -1,19 +1,22 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Screen } from '../../brand/Screen';
-import * as orgApi from '../../api/org';
-import { OrgMember } from '../../api/types';
 import { GAME_CATALOG, RoomView, RpsChoice } from '../../api/games';
 import { useAuth } from '../../auth/AuthContext';
-import { useGamesSocket, tryGames } from '../../games/useGamesSocket';
+import { useGamesSocket, tryGames, GameCandidate } from '../../games/useGamesSocket';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { emitToast } from '../../ui/toastBus';
+import { AppIcon } from '../../ui/AppIcon';
+import { IconActionButton } from '../../ui/IconActionButton';
+import { gameRoomDeepLink } from '../../games/gameLinks';
 import { LudoBoard, ludoColorHex } from './LudoBoard';
 import { supports3D } from '../../games/three/GameCanvas';
 import { RpsBoard } from './RpsBoard';
+
+const NOTIFY_COOLDOWN_MS = 5 * 60 * 1000;
 
 /**
  * One room, all three phases: lobby (players + invite + start), playing
@@ -30,8 +33,10 @@ export function GameRoomScreen() {
   const [room, setRoom] = useState<RoomView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [members, setMembers] = useState<OrgMember[]>([]);
-  const [invited, setInvited] = useState<Set<string>>(() => new Set());
+  const [members, setMembers] = useState<GameCandidate[]>([]);
+  // userId -> when I last notified them (server enforces 1 per 5 min per pair).
+  const [notifiedAt, setNotifiedAt] = useState<Record<string, number>>({});
+  const [now, setNow] = useState(() => Date.now());
   const [mode, setMode] = useState<'2d' | '3d'>(() => (supports3D() ? '3d' : '2d'));
   const meId = user?.id ?? '';
 
@@ -58,12 +63,51 @@ export function GameRoomScreen() {
     };
   }, [roomId, games.connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Invite pool comes from the games server: roster players AND guild-only
+  // members, so a guild member can invite / be invited too.
   useEffect(() => {
-    orgApi
-      .getMyOrg()
-      .then((detail) => setMembers(detail.members))
+    if (!games.connected) return;
+    let cancelled = false;
+    games
+      .members()
+      .then((list) => {
+        if (!cancelled) setMembers(list);
+      })
       .catch(() => {});
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [games.connected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tick while any cooldown is running so the bell re-enables by itself.
+  useEffect(() => {
+    if (Object.keys(notifiedAt).length === 0) return;
+    const t = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(t);
+  }, [notifiedAt]);
+
+  const cooldownLeftMs = (userId: string) =>
+    Math.max(0, (notifiedAt[userId] ?? 0) + NOTIFY_COOLDOWN_MS - now);
+
+  const notifyAll = () =>
+    act(async () => {
+      const res = await games.inviteAll(room!.id);
+      const at = Date.now();
+      setNow(at);
+      setNotifiedAt((prev) => {
+        const next = { ...prev };
+        for (const id of res.sentIds) next[id] = at;
+        return next;
+      });
+      if (res.sentIds.length === 0) {
+        emitToast('Everyone was already notified in the last 5 minutes');
+      } else {
+        const skipped = res.skippedIds.length
+          ? ` · ${res.skippedIds.length} already notified recently`
+          : '';
+        emitToast(`Notified ${res.sentIds.length} teammate${res.sentIds.length === 1 ? '' : 's'}${skipped}`);
+      }
+    });
 
   const leave = useCallback(() => {
     const doLeave = async () => {
@@ -178,6 +222,19 @@ export function GameRoomScreen() {
     );
   }
 
+  const shareInvite = async () => {
+    try {
+      await Share.share({
+        message:
+          `🎮 Join my ${room.title} game on Sacred Esports!\n` +
+          `Open this link: ${gameRoomDeepLink(room.id)}\n` +
+          `(or open the app → Games → "${room.title}" room)`,
+      });
+    } catch {
+      emitToast('Could not open the share sheet');
+    }
+  };
+
   // Lobby + finished share the player list.
   const invitable = members.filter(
     (m) => m.userId !== meId && !room.players.some((p) => p.userId === m.userId),
@@ -251,32 +308,56 @@ export function GameRoomScreen() {
               <Text style={styles.waitHost}>Waiting for the host to start…</Text>
             )}
 
+            <Text style={styles.section}>Invite</Text>
+            <Pressable
+              style={styles.shareBtn}
+              onPress={() => void shareInvite()}
+              accessibilityRole="button"
+              accessibilityLabel="Share invite via WhatsApp, Discord and more"
+            >
+              <AppIcon name="share-social-outline" size={18} color={colors.link} />
+              <Text style={styles.shareText}>Share invite (WhatsApp, Discord…)</Text>
+            </Pressable>
+
             {invitable.length > 0 ? (
               <>
-                <Text style={styles.section}>Invite teammates</Text>
+                <Text style={styles.subSection}>Notify a teammate in the app</Text>
+                <Pressable
+                  style={[styles.shareBtn, busy && staticStyles.dim]}
+                  disabled={busy}
+                  onPress={() => void notifyAll()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Notify all teammates"
+                >
+                  <AppIcon name="notifications" size={18} color={colors.link} />
+                  <Text style={styles.shareText}>Notify all teammates</Text>
+                </Pressable>
                 {invitable.map((m) => {
-                  const sent = invited.has(m.userId);
+                  const leftMs = cooldownLeftMs(m.userId);
+                  const cooling = leftMs > 0;
+                  const mins = Math.ceil(leftMs / 60_000);
                   return (
                     <View key={m.userId} style={styles.playerRow}>
                       <View style={styles.avatar}>
                         <Text style={styles.avatarText}>{m.name.slice(0, 1).toUpperCase()}</Text>
                       </View>
                       <Text style={styles.playerName}>{m.name}</Text>
-                      <Pressable
-                        style={[styles.inviteBtn, sent && staticStyles.dim]}
-                        disabled={sent || busy}
+                      <IconActionButton
+                        icon={cooling ? 'checkmark-circle' : 'notifications'}
+                        label={cooling ? `Notified ${m.name}` : `Notify ${m.name}`}
+                        tooltip={cooling ? `Notified · again in ${mins} min` : 'Send notification'}
+                        disabled={cooling || busy}
+                        color={cooling ? undefined : colors.link}
                         onPress={() =>
                           void act(async () => {
                             await games.invite(room.id, m.userId);
-                            setInvited((prev) => new Set(prev).add(m.userId));
-                            emitToast(`Invite sent to ${m.name}`);
+                            const at = Date.now();
+                            setNow(at);
+                            setNotifiedAt((prev) => ({ ...prev, [m.userId]: at }));
+                            emitToast(`Notification sent to ${m.name}`);
                           })
                         }
-                        accessibilityRole="button"
-                        accessibilityLabel={`Invite ${m.name}`}
-                      >
-                        <Text style={styles.inviteText}>{sent ? 'Sent' : 'Invite'}</Text>
-                      </Pressable>
+                      />
                     </View>
                   );
                 })}
@@ -328,6 +409,9 @@ function roomStyles(c: ThemeColors) {
     secondaryBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: c.border },
     secondaryText: { color: c.link, fontWeight: '700' as const },
     waitHost: { color: c.textMuted, textAlign: 'center' as const, marginTop: 16 },
+    shareBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+    shareText: { color: c.link, fontWeight: '700' as const },
+    subSection: { color: c.textDim, fontSize: 12, marginTop: 14, marginBottom: 4 },
     inviteBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
     inviteText: { color: c.link, fontWeight: '700' as const },
     resultCard: { alignItems: 'center' as const, padding: 18, borderRadius: 16, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },

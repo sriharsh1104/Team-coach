@@ -56,7 +56,8 @@ export type AppIconName =
   | 'pencil-outline'
   | 'arrow-undo'
   | 'information-circle-outline'
-  | 'crown-outline';
+  | 'crown-outline'
+  | 'share-social-outline';
 
 type Props = {
   name: AppIconName;
@@ -231,6 +232,15 @@ const ICONS: Record<AppIconName, Renderer> = {
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="12" r="10" stroke={c} strokeWidth={2} />
       <Path d="M8 12l3 3 5-6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'share-social-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Circle cx="18" cy="5" r="3" stroke={c} strokeWidth={2} />
+      <Circle cx="6" cy="12" r="3" stroke={c} strokeWidth={2} />
+      <Circle cx="18" cy="19" r="3" stroke={c} strokeWidth={2} />
+      <Line x1="8.6" y1="13.5" x2="15.4" y2="17.5" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="15.4" y1="6.5" x2="8.6" y2="10.5" stroke={c} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   ),
   'copy-outline': (c, s) => (

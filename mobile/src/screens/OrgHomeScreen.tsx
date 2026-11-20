@@ -100,11 +100,6 @@ export function OrgHomeScreen({ navigation }: Props) {
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Voice' }),
       },
       {
-        key: 'games',
-        label: 'Games',
-        onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),
-      },
-      {
         key: 'maps',
         label: 'Maps',
         onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Maps' }),
@@ -154,20 +149,29 @@ export function OrgHomeScreen({ navigation }: Props) {
       },
     ];
 
-    if (canManageGuild) {
-      sections.push({
-        key: 'guild',
-        label: 'Guild',
-        split: true,
-        items: [
-          {
-            key: 'guildHome',
-            label: 'Guild Roster',
-            onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
-          },
-        ],
-      });
-    }
+    // Games live under Guild so every guild member can play; only the
+    // roster screen is limited to people who can manage the guild.
+    sections.push({
+      key: 'guild',
+      label: 'Guild',
+      split: true,
+      items: [
+        ...(canManageGuild
+          ? [
+              {
+                key: 'guildHome',
+                label: 'Guild Roster',
+                onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
+              },
+            ]
+          : []),
+        {
+          key: 'games',
+          label: 'Games',
+          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),
+        },
+      ],
+    });
 
     sections.push({
       key: 'tools',

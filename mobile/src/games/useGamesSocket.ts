@@ -11,6 +11,9 @@ import {
 } from '../api/games';
 import { emitToast } from '../ui/toastBus';
 
+export type GameCandidate = { userId: string; name: string; avatarUrl: string | null };
+export type InviteAllResult = { sentIds: string[]; skippedIds: string[]; total: number };
+
 export type GamesInvite = { room: RoomView; from: { userId: string; name: string } };
 
 type Listener = {
@@ -129,6 +132,10 @@ export function useGamesSocket(listener: Listener) {
     startGame: (roomId: string) => call<RoomView>('room:start', { roomId }),
     rematch: (roomId: string) => call<RoomView>('room:rematch', { roomId }),
     invite: (roomId: string, userId: string) => call<null>('room:invite', { roomId, userId }),
+    /** Everyone in the org/guild the caller can invite (roster + guild-only). */
+    members: () => call<GameCandidate[]>('room:members'),
+    /** Notify every teammate not in the room; skips anyone on the 5-min cooldown. */
+    inviteAll: (roomId: string) => call<InviteAllResult>('room:invite-all', { roomId }),
     rpsPick: (roomId: string, choice: RpsChoice) =>
       call<RoomView>('rps:pick', { roomId, choice }),
     ludoRoll: (roomId: string) => call<RoomView>('ludo:roll', { roomId }),
