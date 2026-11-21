@@ -34,6 +34,8 @@ type GuildVoiceState = {
   listenOnly: boolean;
   mutedIds: string[];
   moderatorIds: string[];
+  /** Everyone currently in the socket room (even before their audio producer lands). */
+  members?: Array<{ id: string; name: string; avatarUrl?: string | null }>;
   count: number;
   max: number;
   userId?: string;
@@ -88,6 +90,10 @@ export function useSelfHostedVoiceChannel(
   const producerOwnersRef = useRef<
     Map<string, { id: string; name: string; avatarUrl?: string | null }>
   >(new Map());
+  /** Socket-room roster from getVoiceState / voiceState (guild). */
+  const roomMembersRef = useRef<
+    Map<string, { id: string; name: string; avatarUrl?: string | null }>
+  >(new Map());
   // userId -> consumerId
   const userConsumersRef = useRef<Map<string, string>>(new Map());
   // userId -> local playback volume (0–1); unset = 1
@@ -109,12 +115,33 @@ export function useSelfHostedVoiceChannel(
 
   const refreshParticipants = useCallback(() => {
     const byUser = new Map<string, VoiceParticipant>();
+    const self = selfIdRef.current;
+    // Socket-room roster first so late joiners see who is already in, even
+    // before every remote produce/consume finishes.
+    for (const m of roomMembersRef.current.values()) {
+      if (self && m.id === self) continue;
+      const vol = volumesRef.current.get(m.id) ?? 1;
+      byUser.set(m.id, {
+        id: m.id,
+        name: m.name,
+        avatarUrl: m.avatarUrl,
+        isLocallyMuted: vol === 0,
+        isSpeaking: speakingIdsRef.current.has(m.id),
+        isHandRaised: handRaisedIdsRef.current.has(m.id),
+        localVolume: vol,
+        connectionQuality: 'unknown',
+        isHostMuted: hostMutedIdsRef.current.has(m.id),
+        isModerator: moderatorIdsRef.current.has(m.id),
+      });
+    }
     for (const owner of producerOwnersRef.current.values()) {
+      if (self && owner.id === self) continue;
       const vol = volumesRef.current.get(owner.id) ?? 1;
+      const prev = byUser.get(owner.id);
       byUser.set(owner.id, {
         id: owner.id,
-        name: owner.name,
-        avatarUrl: owner.avatarUrl,
+        name: owner.name || prev?.name || 'Member',
+        avatarUrl: owner.avatarUrl ?? prev?.avatarUrl,
         isLocallyMuted: vol === 0,
         isSpeaking: speakingIdsRef.current.has(owner.id),
         isHandRaised: handRaisedIdsRef.current.has(owner.id),
@@ -133,6 +160,14 @@ export function useSelfHostedVoiceChannel(
       if (state.userId) selfIdRef.current = state.userId;
       hostMutedIdsRef.current = new Set(state.mutedIds ?? []);
       moderatorIdsRef.current = new Set(state.moderatorIds ?? []);
+      if (Array.isArray(state.members)) {
+        roomMembersRef.current = new Map(
+          state.members.map((m) => [
+            m.id,
+            { id: m.id, name: m.name, avatarUrl: m.avatarUrl ?? null },
+          ]),
+        );
+      }
       setIsListenOnly(!!state.listenOnly);
       setRoomCount(state.count);
       setRoomMax(state.max);
@@ -200,6 +235,7 @@ export function useSelfHostedVoiceChannel(
     consumersRef.current.clear();
     userConsumersRef.current.clear();
     producerOwnersRef.current.clear();
+    roomMembersRef.current.clear();
     handRaisedIdsRef.current.clear();
     speakingIdsRef.current.clear();
     sendTransportRef.current?.close();
@@ -296,6 +332,11 @@ export function useSelfHostedVoiceChannel(
           name: payload.userName,
           avatarUrl: payload.avatarUrl,
         });
+        roomMembersRef.current.set(payload.userId, {
+          id: payload.userId,
+          name: payload.userName,
+          avatarUrl: payload.avatarUrl,
+        });
         refreshParticipants();
         const recvTransport = recvTransportRef.current;
         if (recvTransport) {
@@ -316,6 +357,7 @@ export function useSelfHostedVoiceChannel(
         for (const [producerId, owner] of producerOwnersRef.current) {
           if (owner.id === payload.userId) producerOwnersRef.current.delete(producerId);
         }
+        roomMembersRef.current.delete(payload.userId);
         dropConsumerForUser(payload.userId);
         volumesRef.current.delete(payload.userId);
         handRaisedIdsRef.current.delete(payload.userId);
@@ -497,8 +539,15 @@ export function useSelfHostedVoiceChannel(
           name: p.userName,
           avatarUrl: p.avatarUrl,
         });
+        roomMembersRef.current.set(p.userId, {
+          id: p.userId,
+          name: p.userName,
+          avatarUrl: p.avatarUrl,
+        });
         if (p.handRaised) handRaisedIdsRef.current.add(p.userId);
       }
+      // Guild: pull the socket roster so we list people who are already in
+      // even if their producer handshake is still catching up.
       if (room === 'guild') {
         try {
           applyVoiceState(await emitAsync<GuildVoiceState>(socket, 'getVoiceState'));

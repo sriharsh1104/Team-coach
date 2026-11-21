@@ -12,6 +12,7 @@ import { MediaStorageService } from '../media/media-storage.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { SetPushTokenDto } from './dto/set-push-token.dto';
+import { mergePushToken } from '../common/push-tokens';
 
 const PROFILE_SELECT = {
   id: true,
@@ -293,9 +294,15 @@ export class UsersService {
   }
 
   async setPushToken(userId: string, dto: SetPushTokenDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { expoPushToken: true },
+    });
+    // Keep tokens from other devices so an old phone still gets pushes after
+    // a new phone logs in (capped list — see mergePushToken).
     await this.prisma.user.update({
       where: { id: userId },
-      data: { expoPushToken: dto.token },
+      data: { expoPushToken: mergePushToken(user?.expoPushToken, dto.token) },
     });
   }
 
@@ -316,16 +323,13 @@ export class UsersService {
       this.prisma.guildMembership.findFirst({ where: { userId: targetUserId } }),
     ]);
 
-    const shareRoster =
-      !!requesterMembership &&
-      !!targetMembership &&
-      requesterMembership.orgId === targetMembership.orgId;
-    const shareGuild =
-      !!requesterGuild &&
-      !!targetGuild &&
-      requesterGuild.orgId === targetGuild.orgId;
-
-    if (!shareRoster && !shareGuild) {
+    // Same org via either seat counts. A roster player may not have a
+    // guildMembership row yet, and a guild-only joiner has no roster seat —
+    // both still belong to the same org and can see each other.
+    const requesterOrgId =
+      requesterMembership?.orgId ?? requesterGuild?.orgId ?? null;
+    const targetOrgId = targetMembership?.orgId ?? targetGuild?.orgId ?? null;
+    if (!requesterOrgId || !targetOrgId || requesterOrgId !== targetOrgId) {
       throw new ForbiddenException(
         'You can only view profiles of members in your own org',
       );

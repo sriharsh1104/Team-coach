@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   Pressable,
-  Image,
   ScrollView,
   Alert,
   ActivityIndicator,
@@ -15,6 +14,7 @@ import * as statsApi from '../../api/stats';
 import * as orgApi from '../../api/org';
 import * as scrimsApi from '../../api/scrims';
 import { resolveMediaUrl } from '../../api/client';
+import { Image } from 'expo-image';
 import { ExtractionRow, OrgMember, ScrimEvent, StatExtraction } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
@@ -378,7 +378,10 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
           <Image
             source={{ uri: resolveMediaUrl(extraction.mediaUrl) ?? undefined }}
             style={staticStyles.preview}
-            resizeMode="contain"
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={150}
+            placeholder={{ color: 'rgba(128,128,128,0.15)' }}
           />
         )}
 

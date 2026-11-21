@@ -10,6 +10,7 @@ import { useChatSocketSession } from './src/realtime/useChatSocketSession';
 import { AppErrorBoundary } from './src/ui/AppErrorBoundary';
 import { LoaderProvider } from './src/ui/SesLoader';
 import { ToastProvider } from './src/ui/Toast';
+import { ConfirmModalHost } from './src/ui/ConfirmModal';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { RecordingProvider } from './src/recording/RecordingContext';
 import { RecordingWidget } from './src/recording/RecordingWidget';
@@ -18,9 +19,19 @@ import { useServerWakePing } from './src/hooks/useServerWakePing';
 import { VoiceProvider } from './src/voice/VoiceContext';
 import { AppUpdatePrompt } from './src/update/AppUpdatePrompt';
 import { installInviteLinkListener } from './src/invite/inviteLinks';
+import { startNetworkWatch } from './src/net/networkStatus';
+import { warmUpServer } from './src/perf/serverWarmup';
+import { OfflineBanner } from './src/ui/OfflineBanner';
 
 // Catch roster/guild invite links from the very start (even while signed out).
 installInviteLinkListener();
+// Connectivity has to be known before the first request so the API layer can
+// fail fast instead of sitting on a 15s timeout while the phone has no data.
+startNetworkWatch();
+// The free-tier backend sleeps when idle and takes up to a minute to wake.
+// Starting that now means it is usually up by the time anyone has finished
+// typing a password, instead of the login request paying for it.
+warmUpServer();
 
 /** Runs hooks that need AuthContext — must be rendered inside AuthProvider. */
 function AuthenticatedEffects() {
@@ -39,6 +50,7 @@ function AppShell() {
       <BrandWatermark variant="subtle" />
       <View style={styles.foreground}>
         <ToastProvider>
+          <ConfirmModalHost />
           <AppUpdatePrompt />
           <LoaderProvider>
             <AuthProvider>
@@ -55,6 +67,7 @@ function AppShell() {
           </LoaderProvider>
         </ToastProvider>
       </View>
+      <OfflineBanner />
       <StatusBar style={colors.statusBar} />
     </View>
   );

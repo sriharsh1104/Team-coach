@@ -1510,7 +1510,8 @@ export class ChatService {
     const tokens = extractMentionTokens(text);
     const messages: PushMessage[] = [];
     for (const u of users) {
-      if (!this.pushNotifications.isValidExpoPushToken(u.expoPushToken)) continue;
+      const pushTokens = this.pushNotifications.tokensFor(u.expoPushToken);
+      if (pushTokens.length === 0) continue;
       if (this.presence.isViewing(u.id, channelKey)) continue;
       if (await this.isChannelMuted(u.id, orgId, channelKey)) continue;
       const ign = u.inGameName ?? 'you';
@@ -1524,20 +1525,25 @@ export class ChatService {
         ) ??
         ign;
       const preview = truncatePushBody(text, 80);
-      messages.push({
-        to: u.expoPushToken,
-        title: `${senderName} mentioned you`,
-        body: preview
-          ? `@${matched}: ${preview}`
-          : `@${matched} in ${channelLabel}`,
-        data: {
-          channelKey,
-          type: 'chat_mention',
-          mentionedBy: senderId,
-        },
-        collapseId: `chat-mention:${orgId}:${channelKey}:${u.id}`,
-        channelId: 'chat',
-      });
+      for (const to of pushTokens) {
+        messages.push({
+          to,
+          title: `${senderName} mentioned you`,
+          body: preview
+            ? `@${matched}: ${preview}`
+            : `@${matched} in ${channelLabel}`,
+          data: {
+            channelKey,
+            type: 'chat_mention',
+            mentionedBy: senderId,
+            senderId,
+            senderName,
+          },
+          collapseId: `chat-mention:${orgId}:${channelKey}:${u.id}`,
+          channelId: 'chat',
+          categoryId: 'chat_reply',
+        });
+      }
     }
     await this.pushNotifications.send(messages);
   }
@@ -1603,8 +1609,8 @@ export class ChatService {
       // delivers the bubble; a push would just spam the shade.
       if (this.presence.isViewing(m.userId, channelKey)) continue;
       if (await this.isChannelMuted(m.userId, orgId, channelKey)) continue;
-      const token = m.expoPushToken;
-      if (!this.pushNotifications.isValidExpoPushToken(token)) continue;
+      const pushTokens = this.pushNotifications.tokensFor(m.expoPushToken);
+      if (pushTokens.length === 0) continue;
       let cutoff: Date | undefined;
       if (channelKey === ORG_CHANNEL || channelKey === GUILD_CHANNEL) {
         const seat =
@@ -1628,40 +1634,101 @@ export class ChatService {
       const unread = await this.countUnread(m.userId, orgId, channelKey, cutoff);
       if (unread <= 0) continue;
       const isDm = channelKey.startsWith('dm:');
-      const title =
-        channelKey === GUILD_CHANNEL
-          ? 'Guild Chat'
+      // Heading = who wrote it. Channel name used to be the title ("Direct
+      // Message" / "Guild Chat"), which told the recipient nothing useful.
+      const title = senderLabel;
+      const stacked = await this.recentUnreadLines(
+        orgId,
+        channelKey,
+        m.userId,
+        senderId,
+        cutoff,
+        5,
+      );
+      const fallbackLine =
+        truncatePushBody(latestText, 120) ||
+        (mediaType === 'VIDEO'
+          ? 'Sent a video'
+          : mediaType === 'IMAGE'
+            ? 'Sent a photo'
+            : mediaType === 'AUDIO'
+              ? 'Sent a voice note'
+              : 'New message');
+      const body =
+        stacked.length > 0
+          ? stacked.join('\n')
           : isDm
-            ? 'Direct Message'
-            : 'Team Chat';
-      // Show preview when free (single unread); otherwise count so tray stays tidy.
-      // collapseId replaces the previous tray entry for this channel.
-      const preview =
-        unread === 1
-          ? truncatePushBody(latestText, 100) ||
-            (mediaType === 'VIDEO'
-              ? 'Sent a video'
-              : mediaType === 'IMAGE'
-                ? 'Sent a photo'
-                : mediaType === 'AUDIO'
-                  ? 'Sent a voice note'
-                  : null)
-          : null;
-      messages.push({
-        to: token,
-        title,
-        body: preview
-          ? `${senderLabel}: ${preview}`
-          : unread === 1
-            ? `${senderLabel}: 1 unread message`
-            : `${senderLabel}: ${unread} unread messages`,
-        data: { channelKey, unreadCount: unread, type: 'chat_unread' },
-        collapseId: `chat:${orgId}:${channelKey}`,
-        channelId: 'chat',
-        badge: unread,
-      });
+            ? fallbackLine
+            : `${channelKey === GUILD_CHANNEL ? 'Guild' : 'Team'}: ${fallbackLine}`;
+      for (const to of pushTokens) {
+        messages.push({
+          to,
+          title,
+          body,
+          data: {
+            channelKey,
+            unreadCount: unread,
+            type: 'chat_unread',
+            senderId,
+            senderName: senderLabel,
+          },
+          collapseId: `chat:${orgId}:${channelKey}:${senderId}`,
+          channelId: 'chat',
+          // Inline Reply on the notification shade (DM + group).
+          categoryId: 'chat_reply',
+          badge: unread,
+          priority: 'high',
+        });
+      }
     }
     await this.pushNotifications.send(messages);
+  }
+
+  /** Last N unread lines from one sender in a channel (oldest → newest). */
+  private async recentUnreadLines(
+    orgId: string,
+    channelKey: string,
+    viewerId: string,
+    senderId: string,
+    historyCutoff: Date | undefined,
+    limit: number,
+  ): Promise<string[]> {
+    const read = await this.prisma.chatReadState.findUnique({
+      where: {
+        userId_orgId_channelKey: { userId: viewerId, orgId, channelKey },
+      },
+      select: { lastReadAt: true },
+    });
+    const since = read?.lastReadAt ?? new Date(0);
+    const createdAt =
+      historyCutoff && historyCutoff > since
+        ? { gt: historyCutoff }
+        : { gt: since };
+    const rows = await this.prisma.chatMessage.findMany({
+      where: {
+        orgId,
+        channelKey,
+        senderId,
+        createdAt,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { text: true, mediaType: true },
+    });
+    return rows
+      .reverse()
+      .map((r) => {
+        const line =
+          truncatePushBody(r.text, 80) ||
+          (r.mediaType === 'VIDEO'
+            ? 'Sent a video'
+            : r.mediaType === 'IMAGE'
+              ? 'Sent a photo'
+              : r.mediaType === 'AUDIO'
+                ? 'Sent a voice note'
+                : 'New message');
+        return line;
+      });
   }
 
   // Batched role/isOwner lookup for a page of messages — keyed by userId so

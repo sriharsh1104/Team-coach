@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Screen } from '../../brand/Screen';
 import { GAME_CATALOG, GameKind, RoomView } from '../../api/games';
@@ -9,6 +9,8 @@ import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { emitToast } from '../../ui/toastBus';
+import { SkeletonList } from '../../ui/Skeleton';
+import { confirmAsync } from '../../ui/confirmAsync';
 
 /**
  * Games hub: pick a game to host a room, or jump into a teammate's open
@@ -23,6 +25,7 @@ export function GamesHubScreen() {
   const [mine, setMine] = useState<RoomView | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [playerPick, setPlayerPick] = useState<GameKind | null>(null);
 
   const refresh = useCallback(async () => {
     const [list, current] = await Promise.all([
@@ -67,16 +70,17 @@ export function GamesHubScreen() {
       return;
     }
     const playing = mine.status === 'playing';
-    Alert.alert(
+    void confirmAsync(
       playing ? 'Leave your running game?' : 'Leave your current room?',
       playing
         ? `You are in a ${mine.title} game. Leaving counts as a forfeit.`
         : `You are in a ${mine.title} room. You can only be in one room at a time.`,
-      [
-        { text: 'Stay', style: 'cancel' },
-        { text: 'Leave & continue', style: 'destructive', onPress: then },
-      ],
-    );
+      'Leave & continue',
+      'Stay',
+      true,
+    ).then((ok) => {
+      if (ok) then();
+    });
   };
 
   const join = async (roomId: string) => {
@@ -88,24 +92,26 @@ export function GamesHubScreen() {
 
   const create = (game: GameKind) => confirmSwitch(() => void createRoom(game));
 
-  const createRoom = async (game: GameKind) => {
+  const createRoom = async (game: GameKind, maxPlayers?: number) => {
     const spec = GAME_CATALOG.find((g) => g.id === game)!;
-    const go = async (maxPlayers: number) => {
+    if (spec.maxPlayers === spec.minPlayers) {
       setBusy(true);
-      const room = await tryGames(() => games.createRoom(game, maxPlayers), 'Could not create room');
+      const room = await tryGames(
+        () => games.createRoom(game, spec.maxPlayers),
+        'Could not create room',
+      );
       setBusy(false);
       if (room) openRoom(room);
-    };
-    if (spec.maxPlayers === spec.minPlayers) {
-      await go(spec.maxPlayers);
       return;
     }
-    Alert.alert('How many players?', 'Teammates join from this screen.', [
-      { text: '2', onPress: () => void go(2) },
-      { text: '3', onPress: () => void go(3) },
-      { text: '4', onPress: () => void go(4) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    if (maxPlayers == null) {
+      setPlayerPick(game);
+      return;
+    }
+    setBusy(true);
+    const room = await tryGames(() => games.createRoom(game, maxPlayers), 'Could not create room');
+    setBusy(false);
+    if (room) openRoom(room);
   };
 
   const openRooms = rooms.filter((r) => r.status === 'lobby' && !r.players.some((p) => p.userId === user?.id));
@@ -158,6 +164,9 @@ export function GamesHubScreen() {
             </View>
 
             <Text style={styles.section}>Open rooms</Text>
+            {loading && openRooms.length === 0 ? (
+              <SkeletonList count={3} avatarSize={32} />
+            ) : null}
             {!loading && openRooms.length === 0 ? (
               <Text style={styles.empty}>
                 No one is hosting right now. Create a room and your teammates will see it here.
@@ -201,6 +210,43 @@ export function GamesHubScreen() {
           ) : null
         }
       />
+
+      <Modal
+        visible={!!playerPick}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPlayerPick(null)}
+      >
+        <View style={staticStyles.modalBackdrop}>
+          <View style={[styles.modalCard]}>
+            <Text style={styles.modalTitle}>How many players?</Text>
+            <Text style={styles.modalSub}>Teammates join from this screen.</Text>
+            {([2, 3, 4] as const).map((n) => (
+              <Pressable
+                key={n}
+                style={styles.modalBtn}
+                onPress={() => {
+                  const game = playerPick;
+                  setPlayerPick(null);
+                  if (game) void createRoom(game, n);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`${n} players`}
+              >
+                <Text style={styles.modalBtnText}>{n}</Text>
+              </Pressable>
+            ))}
+            <Pressable
+              style={styles.modalCancel}
+              onPress={() => setPlayerPick(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -212,12 +258,58 @@ const staticStyles = StyleSheet.create({
   roomEmoji: { fontSize: 26, marginRight: 12 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e', marginRight: 10 },
   dim: { opacity: 0.5 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+  },
 });
 
 function hubStyles(c: ThemeColors) {
   return {
     eyebrow: { color: c.textDim, fontSize: 11, fontWeight: '800' as const, letterSpacing: 1, textTransform: 'uppercase' as const },
     title: { color: c.text, fontSize: 26, fontWeight: '800' as const, marginTop: 2 },
+    modalCard: {
+      width: '100%' as const,
+      maxWidth: 340,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.bg,
+      padding: 24,
+      gap: 10,
+    },
+    modalTitle: {
+      color: c.text,
+      fontSize: 18,
+      fontWeight: '800' as const,
+      textAlign: 'center' as const,
+    },
+    modalSub: {
+      color: c.textMuted,
+      fontSize: 13,
+      textAlign: 'center' as const,
+      marginBottom: 6,
+    },
+    modalBtn: {
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: c.chrome,
+      alignItems: 'center' as const,
+    },
+    modalBtnText: { color: c.chromeInk, fontWeight: '800' as const, fontSize: 16 },
+    modalCancel: {
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      alignItems: 'center' as const,
+      marginTop: 4,
+    },
+    modalCancelText: { color: c.text, fontWeight: '700' as const },
     mineCard: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,

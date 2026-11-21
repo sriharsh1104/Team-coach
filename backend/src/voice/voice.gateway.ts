@@ -538,11 +538,19 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   private buildVoiceState(roomKey: string, sockets: Array<{ data: unknown }>) {
     const mutedIds: string[] = [];
     const moderatorIds: string[] = [];
-    const users = new Set<string>();
+    const members: Array<{ id: string; name: string; avatarUrl: string | null }> = [];
+    const seen = new Set<string>();
     for (const s of sockets) {
       const d = s.data as Partial<VoiceSocketData>;
       if (!d?.userId) continue;
-      users.add(d.userId);
+      if (!seen.has(d.userId)) {
+        seen.add(d.userId);
+        members.push({
+          id: d.userId,
+          name: d.userName ?? 'Member',
+          avatarUrl: d.avatarUrl ?? null,
+        });
+      }
       if (d.canModerate) moderatorIds.push(d.userId);
       else if (this.isHostMuted(roomKey, d as VoiceSocketData)) mutedIds.push(d.userId);
     }
@@ -550,7 +558,8 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
       listenOnly: this.guildRooms.get(roomKey)?.listenOnly ?? false,
       mutedIds,
       moderatorIds,
-      count: users.size,
+      members,
+      count: members.length,
       max: GUILD_VOICE_MAX_PARTICIPANTS,
     };
   }

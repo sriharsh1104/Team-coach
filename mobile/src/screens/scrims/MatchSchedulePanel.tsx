@@ -9,7 +9,6 @@ import {
   Alert,
   StyleSheet,
   Modal,
-  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '../../ui/AppIcon';
 import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
 import * as mediaApi from '../../api/media';
 import * as scrimsApi from '../../api/scrims';
 import * as statsApi from '../../api/stats';
@@ -418,7 +418,10 @@ export function MatchSchedulePanel({
             <Image
               source={{ uri: viewingUrl }}
               style={staticStyles.viewerImage}
-              resizeMode="contain"
+              contentFit="contain"
+              cachePolicy="memory-disk"
+              transition={150}
+              placeholder={{ color: 'rgba(128,128,128,0.15)' }}
             />
           ) : null}
         </View>

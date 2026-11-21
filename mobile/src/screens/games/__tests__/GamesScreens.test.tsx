@@ -103,7 +103,9 @@ describe('GamesHubScreen', () => {
   });
 
   it('asks before leaving a running game to start or join another room', async () => {
-    const alertSpy = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+    const confirmSpy = jest
+      .spyOn(require('../../../ui/confirmAsync'), 'confirmAsync')
+      .mockResolvedValue(true);
     const createRoom = jest.fn().mockResolvedValue(lobbyRoom({ id: 'r2' }));
     mockedSocket.mockReturnValue(
       api({
@@ -115,17 +117,17 @@ describe('GamesHubScreen', () => {
     await screen.findByText(/Game in progress/);
 
     fireEvent.press(screen.getByLabelText('Create Stone Paper Scissors room'));
-    expect(createRoom).not.toHaveBeenCalled();
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Leave your running game?',
-      expect.stringContaining('forfeit'),
-      expect.any(Array),
+    await waitFor(() =>
+      expect(confirmSpy).toHaveBeenCalledWith(
+        'Leave your running game?',
+        expect.stringContaining('forfeit'),
+        'Leave & continue',
+        'Stay',
+        true,
+      ),
     );
-
-    const buttons = alertSpy.mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
-    buttons.find((b) => b.text === 'Leave & continue')!.onPress!();
     await waitFor(() => expect(createRoom).toHaveBeenCalledWith('rps', 2));
-    alertSpy.mockRestore();
+    confirmSpy.mockRestore();
   });
 
   it('creates an RPS room straight away (no player-count prompt for 2-player games)', async () => {
@@ -257,7 +259,7 @@ describe('GameRoomScreen', () => {
     });
     mockedSocket.mockReturnValue(api({ joinRoom: jest.fn().mockResolvedValue(playing), ludoRoll }));
     render(<GameRoomScreen />);
-    await screen.findByText('Your turn — roll the dice');
+    await screen.findByText('Your turn — roll (1 or 6 leaves base)');
     expect(screen.getByText('1/4')).toBeTruthy(); // one of my tokens is home
     fireEvent.press(screen.getByLabelText('Roll dice'));
     await waitFor(() => expect(ludoRoll).toHaveBeenCalledWith('r1'));

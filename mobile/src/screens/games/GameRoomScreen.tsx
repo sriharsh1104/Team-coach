@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Screen } from '../../brand/Screen';
 import { GAME_CATALOG, RoomView, RpsChoice } from '../../api/games';
@@ -13,6 +13,9 @@ import { AppIcon } from '../../ui/AppIcon';
 import { IconActionButton } from '../../ui/IconActionButton';
 import { shareGameInvite, ShareTarget } from '../../games/shareGameInvite';
 import { BrandShareIcon } from '../../ui/BrandShareIcon';
+import { ChannelAvatar } from '../chat/ChannelAvatar';
+import { resolveMediaUrl } from '../../api/client';
+import { confirmAsync } from '../../ui/confirmAsync';
 import { LudoBoard, ludoColorHex } from './LudoBoard';
 import { supports3D } from '../../games/three/GameCanvas';
 import { RpsBoard } from './RpsBoard';
@@ -117,10 +120,15 @@ export function GameRoomScreen() {
       navigation.goBack();
     };
     if (room?.status === 'playing') {
-      Alert.alert('Leave game?', 'Leaving now counts as a forfeit.', [
-        { text: 'Stay', style: 'cancel' },
-        { text: 'Leave', style: 'destructive', onPress: () => void doLeave() },
-      ]);
+      void confirmAsync(
+        'Leave game?',
+        'Leaving now counts as a forfeit.',
+        'Leave',
+        'Stay',
+        true,
+      ).then((ok) => {
+        if (ok) void doLeave();
+      });
     } else {
       void doLeave();
     }
@@ -273,10 +281,16 @@ export function GameRoomScreen() {
         <Text style={styles.section}>Players</Text>
         {room.players.map((p) => {
           const color = room.ludo?.colors[p.userId];
+          const uri = resolveMediaUrl(p.avatarUrl);
           return (
             <View key={p.userId} style={styles.playerRow}>
-              <View style={[styles.avatar, color ? { backgroundColor: ludoColorHex(color) } : null]}>
-                <Text style={styles.avatarText}>{p.name.slice(0, 1).toUpperCase()}</Text>
+              <View style={color ? { borderRadius: 18, borderWidth: 2, borderColor: ludoColorHex(color) } : undefined}>
+                <ChannelAvatar
+                  uri={uri}
+                  size={36}
+                  fallback={p.name.slice(0, 1).toUpperCase()}
+                  previewable={false}
+                />
               </View>
               <Text style={styles.playerName}>
                 {p.name}
@@ -289,7 +303,7 @@ export function GameRoomScreen() {
         })}
         {Array.from({ length: Math.max(0, room.maxPlayers - room.players.length) }).map((_, i) => (
           <View key={`empty-${i}`} style={[styles.playerRow, staticStyles.emptySeat]}>
-            <View style={[styles.avatar, styles.avatarEmpty]} />
+            <ChannelAvatar uri={null} size={36} fallback="·" previewable={false} />
             <Text style={styles.emptyText}>Waiting for a player…</Text>
           </View>
         ))}
@@ -376,9 +390,12 @@ export function GameRoomScreen() {
                   const mins = Math.ceil(leftMs / 60_000);
                   return (
                     <View key={m.userId} style={styles.playerRow}>
-                      <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{m.name.slice(0, 1).toUpperCase()}</Text>
-                      </View>
+                      <ChannelAvatar
+                        uri={resolveMediaUrl(m.avatarUrl)}
+                        size={36}
+                        fallback={m.name.slice(0, 1).toUpperCase()}
+                        previewable={false}
+                      />
                       <Text style={styles.playerName}>{m.name}</Text>
                       <IconActionButton
                         icon={cooling ? 'checkmark-circle' : 'notifications'}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as usersApi from '../../api/users';
@@ -14,6 +14,7 @@ import {
   SocialOpenPlatform,
 } from '../../lib/openSocialUrl';
 import { useTheme } from '../../theme/ThemeContext';
+import { usePullToRefresh } from '../../ui/usePullToRefresh';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'MemberProfile'>;
 
@@ -37,15 +38,28 @@ export function MemberProfileScreen({ route }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const load = useCallback(
+    () =>
+      usersApi
+        .getMemberProfile(userId)
+        .then((next) => {
+          setProfile(next);
+          setError(null);
+        })
+        .catch((err) =>
+          setError(err?.response?.data?.message ?? 'Could not load profile'),
+        )
+        .finally(() => setIsLoading(false)),
+    [userId],
+  );
+
   useEffect(() => {
-    usersApi
-      .getMemberProfile(userId)
-      .then(setProfile)
-      .catch((err) =>
-        setError(err?.response?.data?.message ?? 'Could not load profile'),
-      )
-      .finally(() => setIsLoading(false));
-  }, [userId]);
+    void load();
+  }, [load]);
+
+  // Declared before the loading/error early-returns below so the hook order
+  // stays the same on every render.
+  const refreshControl = usePullToRefresh(load);
 
   if (isLoading) {
     return (
@@ -74,6 +88,7 @@ export function MemberProfileScreen({ route }: Props) {
     <ScrollView
       style={{ flex: 1, backgroundColor: 'transparent' }}
       contentContainerStyle={{ padding: 24 }}
+      refreshControl={refreshControl}
     >
       <Text style={shared.title}>{name}</Text>
       {roleBadge && (

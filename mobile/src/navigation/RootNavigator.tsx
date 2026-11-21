@@ -143,9 +143,14 @@ function buildMainScreenOptions(themeId: 'black' | 'white' | 'lavender') {
     headerShadowVisible: false,
     headerBackButtonDisplayMode: 'minimal' as const,
     contentStyle: { backgroundColor: c.bg },
-    // Soft fade when pushing/popping sections from the drawer or system back.
-    animation: 'fade' as const,
-    animationDuration: 280,
+    // A 280ms cross-fade read as lag on every tap: with no directional cue
+    // the screen looks like it's waiting on the network rather than moving.
+    // iOS keeps its platform transition so the interactive swipe-back edge
+    // gesture stays intact; Android gets an explicit, shorter slide.
+    animation: (Platform.OS === 'ios' ? 'default' : 'slide_from_right') as
+      | 'default'
+      | 'slide_from_right',
+    animationDuration: 220,
   };
 }
 

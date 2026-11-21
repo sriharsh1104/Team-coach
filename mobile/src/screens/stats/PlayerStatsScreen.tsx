@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as statsApi from '../../api/stats';
 import { PlayerStatsResponse, STAT_MODES } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
+import { usePullToRefresh } from '../../ui/usePullToRefresh';
 import { useSharedStyles } from '../shared';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
@@ -26,9 +27,18 @@ export function PlayerStatsScreen({ route }: Props) {
     [data],
   );
 
+  // Also the pull-to-refresh handler — a day's stats change as matches are
+  // logged, and re-entering the screen was the only way to see them.
+  const load = useCallback(
+    () => statsApi.getPlayerStats(userId, mode).then(setData),
+    [userId, mode],
+  );
+
   useEffect(() => {
-    statsApi.getPlayerStats(userId, mode).then(setData);
-  }, [userId, mode]);
+    void load();
+  }, [load]);
+
+  const refreshControl = usePullToRefresh(load);
 
   const onLoadMore = async () => {
     if (!data?.nextCursor || isLoadingMore) return;
@@ -84,6 +94,7 @@ export function PlayerStatsScreen({ route }: Props) {
         <FlatList
           data={dayGroups}
           keyExtractor={(item) => item.dayKey}
+          refreshControl={refreshControl}
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.5}
           ListFooterComponent={

@@ -85,19 +85,22 @@ export class ScrimsReminderService implements OnModuleInit, OnModuleDestroy {
 
       const title = round.event.title;
       const body = `${title} — Round ${round.roundNumber} starts in ${minutesBefore} min`;
-      const messages: PushMessage[] = round.event.org.memberships
-        .filter((m) => this.push.isValidExpoPushToken(m.user.expoPushToken))
-        .map((m) => ({
-          to: m.user.expoPushToken!,
-          title: 'Upcoming Match',
-          body,
-          data: {
-            type: 'scrim_reminder',
-            eventId: round.eventId,
-            roundNumber: round.roundNumber,
-            minutesBefore,
-          },
-        }));
+      const messages: PushMessage[] = [];
+      for (const m of round.event.org.memberships) {
+        for (const to of this.push.tokensFor(m.user.expoPushToken)) {
+          messages.push({
+            to,
+            title: 'Upcoming Match',
+            body,
+            data: {
+              type: 'scrim_reminder',
+              eventId: round.eventId,
+              roundNumber: round.roundNumber,
+              minutesBefore,
+            },
+          });
+        }
+      }
 
       if (messages.length) {
         await this.push.send(messages);

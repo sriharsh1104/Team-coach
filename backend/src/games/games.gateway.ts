@@ -18,7 +18,10 @@ import { WsRateLimiter } from '../common/ws-rate-limiter';
 import { corsOrigin } from '../common/cors-origin';
 import { GAME_CATALOG, GameKind, GamesService, RoomView } from './games.service';
 
-/** One user may notify one specific teammate at most once per this window. */
+/**
+ * One user may notify one specific teammate for the *same room* at most once
+ * per this window. A different game / room is a fresh invite (no cooldown).
+ */
 const NOTIFY_COOLDOWN_MS = 5 * 60 * 1000;
 /** Hard cap on a single "notify all" blast. */
 const MAX_NOTIFY_ALL = 100;
@@ -48,7 +51,7 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   room:start {roomId}             → RoomView
  *   room:rematch {roomId}           → RoomView
  *   room:members                    → [{ userId, name, avatarUrl }] (invite pool)
- *   room:invite {roomId, userId}    → { ok }  (same sender→target: once per 5 min)
+ *   room:invite {roomId, userId}    → { ok }  (same room + sender→target: once per 5 min)
  *   room:invite-all {roomId}        → { sentIds, skippedIds, total }
  *   rps:pick {roomId, choice}       → RoomView
  *   ludo:roll {roomId}              → RoomView
@@ -72,7 +75,7 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
    * Delivered the moment they connect (the push notification covers the
    * "device is away" case; this covers the in-app alert on next open).
    */
-  /** `${fromUserId}:${targetUserId}` -> last notify time (ms), for the 5-min cooldown. */
+  /** `${fromUserId}:${targetUserId}:${roomId}` -> last notify time (ms). */
   private readonly lastNotified = new Map<string, number>();
   private readonly pendingInvites = new Map<
     string,
@@ -90,7 +93,13 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   afterInit(server: Server) {
     this.games.setListeners(
       (room, event) => {
-        server.to(this.roomChannel(room.id)).emit('room:update', { room, event: event ?? null });
+        const payload = { room, event: event ?? null };
+        server.to(this.roomChannel(room.id)).emit('room:update', payload);
+        // Also fan out on each player's user channel so a missed Socket.IO
+        // room join never leaves someone staring at a stale lobby.
+        for (const p of room.players) {
+          server.to(this.userChannel(p.userId)).emit('room:update', payload);
+        }
       },
       (orgId) => {
         server.to(this.orgChannel(orgId)).emit('rooms:changed');
@@ -218,12 +227,14 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   onJoin(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId?: string }) {
     return this.run(client, async (data) => {
       if (!body?.roomId) throw new Error('roomId is required');
+      // Join the Socket.IO room *before* the broadcast so this client (and
+      // any of their other tabs) hear the same room:update as everyone else.
+      await this.rejoinSocketsOf(data.userId, body.roomId);
       const room = this.games.joinRoom(body.roomId, data.orgId, {
         userId: data.userId,
         name: data.userName,
         avatarUrl: data.avatarUrl,
       });
-      await this.rejoinSocketsOf(data.userId, room.id);
       return room;
     });
   }
@@ -270,9 +281,9 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     return [...byId.values()];
   }
 
-  /** Remaining cooldown (ms) before `fromId` may notify `targetId` again; 0 = allowed now. */
-  private notifyCooldownLeft(fromId: string, targetId: string): number {
-    const last = this.lastNotified.get(`${fromId}:${targetId}`);
+  /** Remaining cooldown (ms) before `fromId` may notify `targetId` for this room again; 0 = allowed. */
+  private notifyCooldownLeft(fromId: string, targetId: string, roomId: string): number {
+    const last = this.lastNotified.get(`${fromId}:${targetId}:${roomId}`);
     if (!last) return 0;
     return Math.max(0, last + NOTIFY_COOLDOWN_MS - Date.now());
   }
@@ -289,7 +300,7 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     room: RoomView,
     target: { id: string; expoPushToken: string | null },
   ): PushMessage | null {
-    this.lastNotified.set(`${data.userId}:${target.id}`, Date.now());
+    this.lastNotified.set(`${data.userId}:${target.id}:${room.id}`, Date.now());
     this.server.to(this.userChannel(target.id)).emit('room:invite', {
       room,
       from: { userId: data.userId, name: data.userName },
@@ -305,20 +316,30 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
       });
       this.pendingInvites.set(target.id, queue.slice(-10));
     }
-    return this.push.isValidExpoPushToken(target.expoPushToken)
-      ? {
-          to: target.expoPushToken as string,
-          title: `${data.userName} invited you to play`,
-          body: `${room.title} — tap to join`,
-          data: { type: 'game_invite', roomId: room.id, game: room.game },
-          collapseId: `game-invite:${room.id}:${target.id}`,
-          channelId: 'chat',
-        }
-      : null;
+    const tokens = this.push.tokensFor(target.expoPushToken);
+    if (tokens.length === 0) return null;
+    return {
+      to: tokens[0],
+      title: `${data.userName} invited you to play`,
+      body: `${room.title} — tap to join`,
+      data: { type: 'game_invite', roomId: room.id, game: room.game },
+      collapseId: `game-invite:${room.id}:${target.id}`,
+      channelId: 'chat',
+      // Extra device tokens for the same user (multi-device).
+      _alsoTo: tokens.slice(1),
+    } as PushMessage & { _alsoTo?: string[] };
   }
 
   private sendPushes(messages: Array<PushMessage | null>) {
-    const list = messages.filter((m): m is PushMessage => !!m);
+    const expanded: PushMessage[] = [];
+    for (const m of messages) {
+      if (!m) continue;
+      const extra = (m as PushMessage & { _alsoTo?: string[] })._alsoTo;
+      const { _alsoTo: _, ...base } = m as PushMessage & { _alsoTo?: string[] };
+      expanded.push(base);
+      for (const to of extra ?? []) expanded.push({ ...base, to });
+    }
+    const list = expanded;
     if (!list.length) return Promise.resolve();
     return this.push
       .send(list)
@@ -354,7 +375,7 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
       const ctx = await this.chatService.getChatContext(targetId).catch(() => null);
       if (!ctx || ctx.orgId !== data.orgId) throw new Error('Teammate is not in your org');
 
-      const left = this.notifyCooldownLeft(data.userId, targetId);
+      const left = this.notifyCooldownLeft(data.userId, targetId, room.id);
       if (left > 0) {
         throw new Error(
           `You already notified ${target.name}. Try again in ${Math.ceil(left / 60_000)} min.`,
@@ -368,7 +389,7 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   /**
    * "Notify all": invite every teammate who isn't in the room yet, skipping
-   * anyone this user already notified within the cooldown window.
+   * anyone this user already notified for *this room* within the cooldown window.
    */
   @SubscribeMessage('room:invite-all')
   onInviteAll(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId?: string }) {
@@ -385,7 +406,7 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
       const skippedIds: string[] = [];
       const pushes: Array<PushMessage | null> = [];
       for (const u of candidates.slice(0, MAX_NOTIFY_ALL)) {
-        if (this.notifyCooldownLeft(data.userId, u.id) > 0) {
+        if (this.notifyCooldownLeft(data.userId, u.id, room.id) > 0) {
           skippedIds.push(u.id);
           continue;
         }

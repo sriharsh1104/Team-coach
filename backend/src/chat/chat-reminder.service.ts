@@ -95,11 +95,11 @@ export class ChatReminderService implements OnModuleInit, OnModuleDestroy {
       });
       if (marked.count === 0) continue;
 
-      const token = row.user.expoPushToken;
-      if (this.push.isValidExpoPushToken(token)) {
-        await this.push.send([
-          {
-            to: token,
+      const tokens = this.push.tokensFor(row.user.expoPushToken);
+      if (tokens.length > 0) {
+        await this.push.send(
+          tokens.map((to) => ({
+            to,
             title: 'Reminder',
             body: row.message,
             data: {
@@ -108,8 +108,8 @@ export class ChatReminderService implements OnModuleInit, OnModuleDestroy {
               reminderId: row.id,
             },
             channelId: 'chat',
-          },
-        ]);
+          })),
+        );
       }
       this.logger.log(
         `Fired chat reminder ${row.id} for user ${row.userId} channel=${row.channelKey}`,

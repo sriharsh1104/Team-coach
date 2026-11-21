@@ -208,14 +208,17 @@ export class MediaService {
       include: { user: true },
     });
 
-    const messages: PushMessage[] = coachMemberships
-      .filter((m) => this.pushNotifications.isValidExpoPushToken(m.user.expoPushToken))
-      .map((m) => ({
-        to: m.user.expoPushToken as string,
-        title: 'New upload',
-        body: `${uploaderName} uploaded a ${type.toLowerCase()}`,
-        data: { kind: 'media-upload' },
-      }));
+    const messages: PushMessage[] = [];
+    for (const m of coachMemberships) {
+      for (const to of this.pushNotifications.tokensFor(m.user.expoPushToken)) {
+        messages.push({
+          to,
+          title: 'New upload',
+          body: `${uploaderName} uploaded a ${type.toLowerCase()}`,
+          data: { kind: 'media-upload' },
+        });
+      }
+    }
 
     await this.pushNotifications.send(messages);
   }

@@ -225,6 +225,9 @@ export function useHostedVoiceChannel(
       roomRef.current = room;
 
       room.on(RoomEvent.ParticipantConnected, () => syncParticipants(room));
+      // Some Android devices populate remotes a tick after connect — keep the
+      // roster in sync when tracks arrive too.
+      room.on(RoomEvent.TrackSubscribed, () => syncParticipants(room));
       room.on(RoomEvent.ParticipantDisconnected, (p: RemoteParticipant) => {
         localVolumesRef.current.delete(p.identity);
         handRaisedIdsRef.current.delete(p.identity);
@@ -353,6 +356,14 @@ export function useHostedVoiceChannel(
       syncParticipants(room);
       setIsMuted(startMuted);
       setStatus('connected');
+      // Late roster sync: LiveKit can still be hydrating remoteParticipants
+      // right after connect on older phones.
+      setTimeout(() => {
+        if (roomRef.current === room) syncParticipants(room);
+      }, 250);
+      setTimeout(() => {
+        if (roomRef.current === room) syncParticipants(room);
+      }, 1000);
     } catch (err: any) {
       // Don't leave a half-connected Room holding the mic / audio session.
       const failed = roomRef.current;

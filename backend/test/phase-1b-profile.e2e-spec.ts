@@ -464,6 +464,27 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       expect(JSON.stringify(res.body)).not.toMatch(/9988776655/);
     });
 
+    it('lets a roster player view a guild-only peer in the same org', async () => {
+      const owner = await signup(server, { name: 'Owner' });
+      const org = await createOrgAs(server, owner.accessToken);
+      const rosterPlayer = await signup(server, { name: 'Roster Player' });
+      const guildOnly = await signup(server, { name: 'Guild Only' });
+
+      await joinOrgAs(server, rosterPlayer.accessToken, org.rosterCode);
+      await request(server)
+        .post('/orgs/guild/join')
+        .set('Authorization', `Bearer ${guildOnly.accessToken}`)
+        .send({ orgCode: org.orgCode })
+        .expect(201);
+
+      const res = await request(server)
+        .get(`/users/${guildOnly.user.id}/profile`)
+        .set('Authorization', `Bearer ${rosterPlayer.accessToken}`)
+        .expect(200);
+      expect(res.body.id).toBe(guildOnly.user.id);
+      expect(res.body.role).toBeNull();
+    });
+
     it('lets guild-only members view each other without roster seats', async () => {
       const owner = await signup(server, { name: 'Owner' });
       const org = await createOrgAs(server, owner.accessToken);

@@ -20,6 +20,7 @@ import { useVoiceContext } from '../../voice/VoiceContext';
 import { VoiceChannelController, VoiceParticipant, ConnectionQualityLevel } from '../../voice/types';
 import { Screen } from '../../brand/Screen';
 import { AppIcon } from '../../ui/AppIcon';
+import { haptic } from '../../ui/haptics';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { ChannelAvatar } from '../chat/ChannelAvatar';
 import { useSharedStyles } from '../shared';
@@ -323,16 +324,30 @@ function VoiceChannelBody({
   const themed = useThemedStyles(voiceStyles);
   const inChannel = voice.status === 'connected';
 
+  // Joining is asynchronous and the mic can take a second to come up — a
+  // pulse on the actual transition tells the user they're live without
+  // making them watch the status text.
+  const lastVoiceStatus = useRef(voice.status);
+  useEffect(() => {
+    const prev = lastVoiceStatus.current;
+    lastVoiceStatus.current = voice.status;
+    if (prev === voice.status) return;
+    if (voice.status === 'connected') haptic('success');
+    else if (prev === 'connected') haptic('light');
+    else if (voice.status === 'error') haptic('error');
+  }, [voice.status]);
+
   const isGuild = voice.room === 'guild';
   // Guild voice: the server decides who is a host (owner / coach / guild
   // leader) and enforces it; this flag only drives what the UI shows.
   const isAdmin = isGuild ? !!voice.canModerate : !!(org?.isOwner || org?.role === 'COACH');
   const canHostMute = isGuild && !!voice.canModerate;
 
+  const selfId = user?.id;
   const listData: ListItem[] = inChannel
     ? [
         {
-          id: user?.id ?? 'me',
+          id: selfId ?? 'me',
           name: `${user?.name ?? 'You'} (You)`,
           avatarUrl: user?.avatarUrl,
           isLocallyMuted: voice.isMuted,
@@ -344,7 +359,9 @@ function VoiceChannelBody({
           isModerator: isGuild && !!voice.canModerate,
           isSelf: true,
         },
-        ...voice.participants.map((p) => ({ ...p, isSelf: false as const })),
+        ...voice.participants
+          .filter((p) => !selfId || p.id !== selfId)
+          .map((p) => ({ ...p, isSelf: false as const })),
       ]
     : [];
 

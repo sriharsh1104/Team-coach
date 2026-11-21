@@ -3,6 +3,7 @@ import { Text, View, FlatList, RefreshControl, StyleSheet } from 'react-native';
 import { AppIcon } from '../ui/AppIcon';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
+import { CacheKeys, revalidate } from '../api/queryCache';
 import { useAuth } from '../auth/AuthContext';
 import { MembershipRole, OrgDetail, OrgMember } from '../api/types';
 import { roleLabel } from '../api/roles';
@@ -13,6 +14,7 @@ import { ThemeColors } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { SoftPressable } from '../ui/SoftPressable';
+import { SkeletonList } from '../ui/Skeleton';
 import { IconActionButton } from '../ui/IconActionButton';
 import { InviteQr } from '../ui/InviteQr';
 import { CopyButton } from './profile/CopyButton';
@@ -38,9 +40,13 @@ export function MembersScreen({ navigation }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const realtime = useOrgRealtimeOptional();
 
-  const load = useCallback(async () => {
-    const data = await orgApi.getMyOrg();
-    setDetail(data);
+  const load = useCallback(async (opts?: { force?: boolean }) => {
+    await revalidate(
+      CacheKeys.orgDetail(),
+      () => orgApi.getMyOrg(),
+      setDetail,
+      opts,
+    );
   }, []);
 
   useEffect(() => {
@@ -48,6 +54,8 @@ export function MembersScreen({ navigation }: Props) {
   }, [load]);
 
   useEffect(() => {
+    // Re-entering the roster shows the last known list instantly; the
+    // refetch behind it only re-renders if something actually changed.
     const unsub = navigation.addListener('focus', () => {
       void load();
     });
@@ -57,13 +65,13 @@ export function MembersScreen({ navigation }: Props) {
   useEffect(() => {
     if (!realtime) return;
     return realtime.subscribe((event) => {
-      if (event.type === 'members.changed') void load();
+      if (event.type === 'members.changed') void load({ force: true });
     });
   }, [realtime, load]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await load();
+    await load({ force: true });
     setIsRefreshing(false);
   };
 
@@ -84,7 +92,7 @@ export function MembersScreen({ navigation }: Props) {
         `${member.name} is now ${role.charAt(0)}${role.slice(1).toLowerCase()}`,
       );
       await refreshOrg();
-      await load();
+      await load({ force: true });
     } catch (err) {
       emitToast(apiErrorMessage(err, 'Could not change role'));
     } finally {
@@ -103,7 +111,7 @@ export function MembersScreen({ navigation }: Props) {
     try {
       await orgApi.removeMember(member.userId);
       emitToast(`${member.name} removed`);
-      await load();
+      await load({ force: true });
     } catch (err) {
       emitToast(apiErrorMessage(err, 'Could not remove member'));
     } finally {
@@ -176,6 +184,13 @@ export function MembersScreen({ navigation }: Props) {
           ) : null
         }
         contentContainerStyle={staticStyles.listContent}
+        ListEmptyComponent={
+          // `detail` is null until the first roster fetch lands — without
+          // this the screen is simply blank, which reads as "no members".
+          !detail ? (
+            <SkeletonList count={8} avatarSize={42} style={{ paddingHorizontal: 24 }} />
+          ) : null
+        }
         renderItem={({ item, index }) => {
           const inGameRoles = formatInGameRoles(item.inGameRoles);
           const showRemove =

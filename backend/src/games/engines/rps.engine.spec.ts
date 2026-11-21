@@ -25,7 +25,7 @@ describe('RPS engine', () => {
     expect(pub.phase).toBe('picking');
   });
 
-  it('scores a decisive round, replays a draw, and ends at 4 wins', () => {
+  it('scores a decisive round, replays a draw, and ends at 2 wins', () => {
     const s = createRpsState(['a', 'b']);
     // draw → no score, same round after next
     rpsPick(s, 'a', 'stone');
@@ -35,21 +35,20 @@ describe('RPS engine', () => {
     expect(s.round).toBe(1);
     expect(s.scores).toEqual({ a: 0, b: 0 });
 
-    for (let i = 0; i < 3; i++) {
-      rpsPick(s, 'a', 'paper');
-      rpsPick(s, 'b', 'stone');
-      expect(s.lastResult?.winnerId).toBe('a');
-      expect(s.phase).toBe('reveal');
-      rpsNextRound(s);
-      expect(s.round).toBe(i + 2);
-    }
-    expect(s.scores.a).toBe(3);
+    rpsPick(s, 'a', 'paper');
+    rpsPick(s, 'b', 'stone');
+    expect(s.lastResult?.winnerId).toBe('a');
+    expect(s.phase).toBe('reveal');
+    rpsNextRound(s);
+    expect(s.round).toBe(2);
+    expect(s.scores.a).toBe(1);
+
     rpsPick(s, 'a', 'scissors');
     rpsPick(s, 'b', 'paper');
-    expect(s.scores.a).toBe(4);
+    expect(s.scores.a).toBe(2);
     expect(s.winnerId).toBe('a');
     expect(s.phase).toBe('done');
-    expect(s.history).toHaveLength(5);
+    expect(s.history).toHaveLength(3);
   });
 
   it('rejects double picks, outsiders, and picks outside the picking phase', () => {

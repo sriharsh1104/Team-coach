@@ -3,7 +3,6 @@ import {
   View,
   Text,
   FlatList,
-  Image,
   RefreshControl,
   StyleSheet,
 } from 'react-native';
@@ -15,14 +14,16 @@ import { MediaPost, OrgMember } from '../../api/types';
 import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { SkeletonList } from '../../ui/Skeleton';
+import { Image } from 'expo-image';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import {
-  cacheGet,
-  cacheSet,
   CacheKeys,
   cacheInvalidate,
+  hasFreshEnough,
+  revalidate,
 } from '../../api/queryCache';
 import { useOrgRealtimeOptional } from '../../realtime/OrgRealtimeProvider';
 import { MediaViewerModal } from '../chat/MediaViewerModal';
@@ -38,6 +39,9 @@ export function MediaFeedScreen({ navigation }: Props) {
     null,
   );
   const [posts, setPosts] = useState<MediaPost[]>([]);
+  /** False until the first fetch for the current filter resolves — otherwise
+   * the list shows "No uploads yet" while the request is still in flight. */
+  const [postsReady, setPostsReady] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [viewer, setViewer] = useState<{
     type: 'IMAGE' | 'VIDEO';
@@ -45,32 +49,32 @@ export function MediaFeedScreen({ navigation }: Props) {
   } | null>(null);
 
   const loadMembers = useCallback(async (opts?: { force?: boolean }) => {
-    const key = 'org:members';
-    if (!opts?.force) {
-      const cached = cacheGet<OrgMember[]>(key);
-      if (cached) {
-        setMembers(cached);
-        return;
-      }
-    }
-    const org = await orgApi.getMyOrg();
-    cacheSet(key, org.members);
-    setMembers(org.members);
+    await revalidate(
+      CacheKeys.orgMembers(),
+      async () => (await orgApi.getMyOrg()).members,
+      setMembers,
+      opts,
+    );
   }, []);
 
   const loadPosts = useCallback(
     async (uploaderId: string | null, opts?: { force?: boolean }) => {
       const key = CacheKeys.mediaList(uploaderId);
-      if (!opts?.force) {
-        const cached = cacheGet<MediaPost[]>(key);
-        if (cached) {
-          setPosts(cached);
-          return;
-        }
+      // Only an uncached filter gets skeletons; switching back to one we've
+      // already seen paints from cache and refreshes behind the content.
+      if (!opts?.force && !hasFreshEnough(key)) setPostsReady(false);
+      try {
+        await revalidate(
+          key,
+          () => mediaApi.listMedia(uploaderId ?? undefined),
+          setPosts,
+          opts,
+        );
+      } finally {
+        // A failed fetch still ends the loading state — the axios
+        // interceptor toasts the error; the list shouldn't pulse forever.
+        setPostsReady(true);
       }
-      const data = await mediaApi.listMedia(uploaderId ?? undefined);
-      cacheSet(key, data);
-      setPosts(data);
     },
     [],
   );
@@ -140,7 +144,11 @@ export function MediaFeedScreen({ navigation }: Props) {
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
           }
           ListEmptyComponent={
-            <Text style={styles.empty}>No uploads yet.</Text>
+            postsReady ? (
+              <Text style={styles.empty}>No uploads yet.</Text>
+            ) : (
+              <SkeletonList count={5} avatarSize={56} />
+            )
           }
           renderItem={({ item }) => {
             const uri = resolveMediaUrl(item.url) ?? '';
@@ -155,7 +163,16 @@ export function MediaFeedScreen({ navigation }: Props) {
                 pressScale={0.985}
               >
                 {item.type === 'IMAGE' ? (
-                  <Image source={{ uri }} style={staticStyles.thumb} />
+                  <Image
+                    source={{ uri }}
+                    style={staticStyles.thumb}
+                    contentFit="cover"
+                    // Thumbnails re-download on every scroll back without this.
+                    cachePolicy="memory-disk"
+                    recyclingKey={item.id}
+                    transition={150}
+                    placeholder={{ color: 'rgba(128,128,128,0.15)' }}
+                  />
                 ) : (
                   <View style={[staticStyles.thumb, staticStyles.videoThumb]}>
                     <Text style={{ color: colors.text }}>▶</Text>

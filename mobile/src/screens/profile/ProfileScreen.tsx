@@ -20,6 +20,7 @@ import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { usePullToRefresh } from '../../ui/usePullToRefresh';
 import { IconActionButton } from '../../ui/IconActionButton';
 import { useBookTabs } from '../../ui/BookTabs';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
@@ -68,6 +69,8 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
   useEffect(() => {
     load();
   }, [load]);
+
+  const refreshControl = usePullToRefresh(load);
 
   const onProfileUpdated = async (updated: Profile) => {
     setProfile(updated);
@@ -163,6 +166,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
         style={{ flex: 1, backgroundColor: 'transparent' }}
         contentContainerStyle={{ padding: 24 }}
         keyboardShouldPersistTaps="handled"
+        refreshControl={refreshControl}
       >
         <View style={staticStyles.headerRow}>
           <SoftPressable

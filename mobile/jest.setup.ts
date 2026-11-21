@@ -159,6 +159,20 @@ jest.mock('expo-av', () => {
   };
 });
 
+// NetInfo has no native backing under Jest. Default to online so screens
+// behave the way they do on a healthy device; tests that care about the
+// offline path drive `networkStatus` directly.
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: jest.fn(() => jest.fn()),
+    fetch: jest.fn().mockResolvedValue({
+      isConnected: true,
+      isInternetReachable: true,
+    }),
+  },
+}));
+
 jest.mock('socket.io-client', () => ({
   io: jest.fn(() => ({
     on: jest.fn(),
@@ -174,6 +188,13 @@ jest.mock('socket.io-client', () => ({
 beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   require('./src/api/queryCache').cacheInvalidate();
+  // A test that drove the app offline must not leak that into the next one.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require('./src/net/networkStatus').resetNetworkStatus();
+  // Same for the cold-start warm-up: one test's "already warm" would make
+  // the next one's notice silently never appear.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require('./src/perf/serverWarmup').resetWarmup();
 });
 
 jest.mock('expo-image-manipulator', () => ({

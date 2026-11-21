@@ -37,6 +37,10 @@ describe('PushNotificationService', () => {
     fetchMock.mockResolvedValue(res(200, '{"data":[]}'));
     await new PushNotificationService().send([msg(A), msg(B)]);
     expect(sentTokens()).toEqual([[A, B]]);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0][1] as RequestInit).body as string,
+    ) as Array<{ priority?: string }>;
+    expect(body[0].priority).toBe('high');
   });
 
   it('splits a mixed-project request by project so every device still gets its push', async () => {
@@ -69,5 +73,29 @@ describe('PushNotificationService', () => {
   it('still throws for other Expo errors', async () => {
     fetchMock.mockResolvedValue(res(500, 'boom'));
     await expect(new PushNotificationService().send([msg(A)])).rejects.toThrow(/500/);
+  });
+
+  it('drops DeviceNotRegistered tokens so a dead phone stops receiving later sends', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        res(
+          200,
+          JSON.stringify({
+            data: [
+              { status: 'ok' },
+              {
+                status: 'error',
+                details: { error: 'DeviceNotRegistered' },
+              },
+            ],
+          }),
+        ),
+      )
+      .mockResolvedValue(res(200, '{"data":[{"status":"ok"}]}'));
+    const svc = new PushNotificationService();
+    await svc.send([msg(A), msg(B)]);
+    fetchMock.mockClear();
+    await svc.send([msg(A), msg(B)]);
+    expect(sentTokens()).toEqual([[A]]);
   });
 });

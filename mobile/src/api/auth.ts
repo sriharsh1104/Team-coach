@@ -8,11 +8,22 @@ import {
   SignupResult,
 } from './types';
 
+/**
+ * First contact with the backend, so these are the calls that pay for a
+ * cold start on the free tier — the default 15s client timeout would fail
+ * before the server had even finished booting.
+ */
+const COLD_START_TIMEOUT_MS = 60_000;
+
 // A brand-new signup is never usable immediately — it comes back as an
 // email-verification challenge instead of a session (see verifyEmailSignup).
 export function signup(email: string, password: string, name: string) {
   return apiClient
-    .post<SignupResult>('/auth/signup', { email, password, name })
+    .post<SignupResult>(
+      '/auth/signup',
+      { email, password, name },
+      { timeout: COLD_START_TIMEOUT_MS },
+    )
     .then((res) => res.data);
 }
 
@@ -30,7 +41,11 @@ export function resendEmailVerification(challengeToken: string) {
 
 export function login(email: string, password: string) {
   return apiClient
-    .post<LoginResult>('/auth/login', { email, password })
+    .post<LoginResult>(
+      '/auth/login',
+      { email, password },
+      { timeout: COLD_START_TIMEOUT_MS },
+    )
     .then((res) => res.data);
 }
 

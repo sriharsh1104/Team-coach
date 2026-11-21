@@ -7,12 +7,20 @@ import {
   StyleSheet,
   ViewStyle,
 } from 'react-native';
+import { HapticKind, haptic } from './haptics';
 
 type Props = Omit<PressableProps, 'style' | 'children'> & {
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
   /** How far the press scales down (default 0.97). */
   pressScale?: number;
+  /**
+   * Tap feedback fired with the scale-down. Defaults to the light
+   * `selection` tick; pass a heavier kind for weighty actions, or `false`
+   * for controls that fire repeatedly (sliders, long-press repeats) where a
+   * buzz per tick would be noise.
+   */
+  haptic?: HapticKind | false;
 };
 
 const LAYOUT_KEYS = [
@@ -71,6 +79,7 @@ export function SoftPressable({
   style,
   disabled,
   pressScale = 0.97,
+  haptic: hapticKind = 'selection',
   onPressIn,
   onPressOut,
   ...rest
@@ -97,7 +106,10 @@ export function SoftPressable({
       disabled={disabled}
       style={layoutFromStyle(style)}
       onPressIn={(e) => {
-        if (!disabled) animateTo(pressScale);
+        if (!disabled) {
+          animateTo(pressScale);
+          if (hapticKind) haptic(hapticKind);
+        }
         onPressIn?.(e);
       }}
       onPressOut={(e) => {
@@ -107,6 +119,8 @@ export function SoftPressable({
       {...rest}
     >
       <Animated.View
+        // No pressed-background flash — only a light scale so close/X icons
+        // don't look like a highlighted blob over the sheet chrome.
         style={[visualFromStyle(style), { alignSelf: 'stretch', transform: [{ scale }] }]}
       >
         {children}

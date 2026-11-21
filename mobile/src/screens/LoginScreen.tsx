@@ -10,6 +10,7 @@ import { FormScreen } from './FormScreen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { PasswordField } from '../ui/PasswordField';
 import { SoftPressable } from '../ui/SoftPressable';
+import { ServerWakingNotice } from '../ui/ServerWakingNotice';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -56,6 +57,7 @@ export function LoginScreen({ navigation }: Props) {
       >
         Forgot password?
       </Text>
+      <ServerWakingNotice />
       <SoftPressable
         style={[
           shared.button,

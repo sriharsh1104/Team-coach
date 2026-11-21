@@ -1,14 +1,14 @@
 /**
  * Stone · Paper · Scissors — pure game logic, no I/O.
  *
- * Best-of-7 between two players: the first to 4 round wins takes the match.
- * A drawn round is replayed and does not count towards the 7.
+ * Best-of-3 between two players: the first to 2 round wins takes the match.
+ * A drawn round is replayed and does not count towards the 3.
  */
 export type RpsChoice = 'stone' | 'paper' | 'scissors';
 
 export const RPS_CHOICES: readonly RpsChoice[] = ['stone', 'paper', 'scissors'];
-export const RPS_MAX_ROUNDS = 7;
-export const RPS_WINS_NEEDED = 4;
+export const RPS_MAX_ROUNDS = 3;
+export const RPS_WINS_NEEDED = 2;
 
 export interface RpsRoundResult {
   round: number;
@@ -120,7 +120,7 @@ function matchWinnerOf(state: RpsState): string | null {
   const [a, b] = state.playerIds;
   if (state.scores[a] >= state.winsNeeded) return a;
   if (state.scores[b] >= state.winsNeeded) return b;
-  // All 7 decisive rounds played without reaching 4 can't happen (4+3), but
+  // All 3 decisive rounds without reaching 2 can't happen (2+1), but
   // guard anyway: whoever leads after the last round wins.
   if (state.round >= state.maxRounds && state.lastResult?.winnerId) {
     if (state.scores[a] !== state.scores[b]) {

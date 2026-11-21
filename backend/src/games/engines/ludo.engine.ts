@@ -2,12 +2,12 @@
  * Ludo — pure game logic, no I/O. 2–4 players, 4 tokens each.
  *
  * Token position = steps travelled from that player's start square:
- *   -1        in base (needs a 6 to come out)
+ *   -1        in base (needs a 1 or 6 to come out)
  *   0..50     on the shared 52-square track (absolute square = start + s)
  *   51..56    the player's private home column
  *   57        home (finished)
  *
- * Rules: 6 to leave base; a 6 (or a capture, or reaching home) grants an
+ * Rules: 1 or 6 to leave base; a 6 (or a capture, or reaching home) grants an
  * extra turn; three 6s in a row forfeit the turn; landing on an opponent on
  * a non-safe square sends it back to base; exact roll needed to reach 57.
  * First player with all four tokens home wins the game.
@@ -82,12 +82,17 @@ export function absoluteSquare(color: LudoColor, step: number): number | null {
   return (LUDO_START[color] + step) % LUDO_TRACK_LEN;
 }
 
+/** House rule: a 1 or a 6 brings a token out of base. */
+export function canLeaveBase(dice: number): boolean {
+  return dice === 1 || dice === 6;
+}
+
 export function movableTokens(state: LudoState, userId: string, dice: number): number[] {
   const out: number[] = [];
   state.tokens[userId].forEach((step, i) => {
     if (step === LUDO_HOME_STEP) return;
     if (step === -1) {
-      if (dice === 6) out.push(i);
+      if (canLeaveBase(dice)) out.push(i);
       return;
     }
     if (step + dice <= LUDO_HOME_STEP) out.push(i);
@@ -187,7 +192,8 @@ export function ludoMove(state: LudoState, userId: string, tokenIndex: number): 
         : null;
 
   state.movable = [];
-  state.dice = null;
+  // Keep `dice` so the board still shows the number that was just played;
+  // the next `ludoRoll` overwrites it.
   if (result.extraTurn) {
     state.phase = 'roll';
   } else {
@@ -199,7 +205,7 @@ export function ludoMove(state: LudoState, userId: string, tokenIndex: number): 
 function advanceTurn(state: LudoState): void {
   state.turnIndex = (state.turnIndex + 1) % state.turnOrder.length;
   state.phase = 'roll';
-  state.dice = null;
+  // Leave `dice` set — UI needs to show what was rolled when nothing could move.
   state.movable = [];
   state.sixStreak = 0;
 }
@@ -225,7 +231,6 @@ export function ludoRemovePlayer(state: LudoState, userId: string): void {
   if (wasCurrent) {
     state.turnIndex = state.turnIndex % state.turnOrder.length;
     state.phase = 'roll';
-    state.dice = null;
     state.movable = [];
     state.sixStreak = 0;
   }

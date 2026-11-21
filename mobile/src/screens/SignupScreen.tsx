@@ -8,6 +8,7 @@ import { AuthStackParamList } from '../navigation/types';
 import { useSharedStyles } from './shared';
 import { FormScreen } from './FormScreen';
 import { AuthBackButton } from '../ui/AuthBackButton';
+import { ServerWakingNotice } from '../ui/ServerWakingNotice';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { PasswordField } from '../ui/PasswordField';
 import { SoftPressable } from '../ui/SoftPressable';
@@ -97,6 +98,7 @@ export function SignupScreen({ navigation }: Props) {
           Passwords do not match.
         </Text>
       ) : null}
+      <ServerWakingNotice />
       <SoftPressable
         style={[
           shared.button,

@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  forwardRef,
   Get,
+  Inject,
   Logger,
   NotFoundException,
   Param,
@@ -22,7 +24,9 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MediaService } from '../media/media.service';
 import { MediaStorageService, localMediaType } from '../media/media-storage.service';
 import { mediaFileInterceptorOptions } from '../media/multer-options';
+import { PrismaService } from '../prisma/prisma.service';
 import { ChatService, ORG_CHANNEL } from './chat.service';
+import { ChatGateway } from './chat.gateway';
 import { MarkReadDto } from './dto/mark-read.dto';
 import { DeleteMessagesDto } from './dto/delete-messages.dto';
 import { EditMessageDto } from './dto/edit-message.dto';
@@ -32,6 +36,7 @@ import { StarMessageDto } from './dto/star-message.dto';
 import { ClearChatDto } from './dto/clear-chat.dto';
 import { UpdateChannelMetaDto } from './dto/update-channel-meta.dto';
 import { CreateReminderDto } from './dto/create-reminder.dto';
+import { SendMessageDto } from './dto/send-message.dto';
 import { ChatReminderService } from './chat-reminder.service';
 import { LinkPreviewService } from './link-preview.service';
 
@@ -46,6 +51,9 @@ export class ChatController {
     private readonly mediaService: MediaService,
     private readonly storage: MediaStorageService,
     private readonly linkPreview: LinkPreviewService,
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => ChatGateway))
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   /**
@@ -102,6 +110,44 @@ export class ChatController {
       before,
       { starredOnly: starred === '1' || starred === 'true' },
     );
+  }
+
+  /**
+   * REST send — used by the Android/iOS notification Reply action when the
+   * chat socket may not be connected yet. Same create + broadcast path as
+   * the socket `message:send` handler.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('messages')
+  async sendMessage(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: SendMessageDto,
+  ) {
+    const text = (dto.text ?? '').trim();
+    if (!text && !dto.mediaUrl) {
+      throw new BadRequestException('Message text or media is required');
+    }
+    if (text.length > 2000) {
+      throw new BadRequestException('Message too long');
+    }
+    const profile = await this.prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { name: true },
+    });
+    const channelKey = dto.channelKey?.trim() || ORG_CHANNEL;
+    const { orgId, message } = await this.chatService.createMessage(
+      user.userId,
+      profile?.name?.trim() || 'Someone',
+      {
+        channelKey,
+        text: text || undefined,
+        mediaUrl: dto.mediaUrl,
+        mediaType: dto.mediaType,
+        replyToId: dto.replyToId,
+      },
+    );
+    this.chatGateway.broadcastNewMessage(orgId, channelKey, message);
+    return { ok: true as const, id: message.id, message };
   }
 
   @UseGuards(JwtAuthGuard)

@@ -208,10 +208,11 @@ describe('Games (/games namespace) (e2e)', () => {
     const refused = await emitAck<Ack>(host, 'room:invite', { userId: outsider.user.id });
     expect(refused.ok).toBe(false);
   });
-  it('notify cooldown: same teammate only once per 5 min; room:members lists the pool; notify-all skips cooled-down users', async () => {
+  it('notify cooldown: same teammate only once per 5 min per room; a new game is allowed; notify-all skips cooled-down users', async () => {
     const { players, sockets } = await setUp(3);
     const [host] = sockets;
-    await emitAck<Ack>(host, 'room:create', { game: 'ludo' });
+    const created = await emitAck<Ack>(host, 'room:create', { game: 'ludo' });
+    expect(created.ok).toBe(true);
 
     const members = await emitAck<Ack>(host, 'room:members');
     expect(members.ok).toBe(true);
@@ -229,5 +230,12 @@ describe('Games (/games namespace) (e2e)', () => {
     expect(all).toMatchObject({ ok: true });
     expect(all.room.sentIds).toEqual([players[2].user.id]);
     expect(all.room.skippedIds).toEqual([players[1].user.id]);
+
+    // Different room / game → cooldown does not apply.
+    await emitAck<Ack>(host, 'room:leave', {});
+    const other = await emitAck<Ack>(host, 'room:create', { game: 'rps' });
+    expect(other.ok).toBe(true);
+    const crossGame = await emitAck<Ack>(host, 'room:invite', { userId: players[1].user.id });
+    expect(crossGame).toMatchObject({ ok: true });
   });
 });

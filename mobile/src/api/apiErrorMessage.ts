@@ -1,3 +1,5 @@
+import { OFFLINE_ERROR_CODE } from '../net/networkStatus';
+
 /**
  * NestJS ValidationPipe / HttpException payloads use `message` as a string
  * or string[]. Proxy errors (nginx 413 / 502 / 504 HTML pages) and axios
@@ -10,6 +12,9 @@ export function apiErrorMessage(err: unknown, fallback = 'Something went wrong')
     message?: string;
     code?: string;
   };
+  if (ax?.code === OFFLINE_ERROR_CODE) {
+    return "You're offline. Reconnect and try again.";
+  }
   const msg = ax?.response?.data?.message;
   if (Array.isArray(msg)) {
     const joined = msg.filter(Boolean).join(', ').trim();

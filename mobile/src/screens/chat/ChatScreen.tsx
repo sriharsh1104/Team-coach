@@ -7,13 +7,11 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  StyleSheet,
   Alert,
   ActivityIndicator,
   AppState,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { ResizeMode, Video } from 'expo-av';
 import { AppIcon } from '../../ui/AppIcon';
 import { IconActionButton } from '../../ui/IconActionButton';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,114 +22,45 @@ import { ReadReceipt, DeliveryReceipt } from '../../api/chat';
 import { ChatMessage, ChatReaction, ChatTeammate, UserPresence } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { Screen } from '../../brand/Screen';
-import { useSharedStyles, formatRoleBadge } from '../shared';
+import { useSharedStyles } from '../shared';
 import { AttachMenu, AttachOption } from './AttachMenu';
 import { CameraPreviewModal } from './CameraPreviewModal';
 import { PointsCalculatorModal } from './PointsCalculatorModal';
 import { ParsedSummary, parsePointsSummary } from '../../data/pointsCalculator';
 import { ReminderComposer } from './ReminderComposer';
 import { MediaViewerModal } from './MediaViewerModal';
-import { PendingMediaOverlay, PendingUploadStatus } from './PendingMediaOverlay';
 import { MessageInfoModal } from './MessageInfoModal';
 import { CustomSticker } from './stickerStorage';
-import { MessageReactionPills } from './MessageReactionPills';
 import { ReactionPicker } from './ReactionPicker';
 import { ForwardSheet } from './ForwardSheet';
 import { saveMediaToGallery } from './saveMediaToGallery';
-import { LinkPreviewCard } from './LinkPreviewCard';
 import { VoiceRecorderButton } from './VoiceRecorderButton';
-import { VoiceNoteBubble } from './VoiceNoteBubble';
-import { ChannelAvatar } from './ChannelAvatar';
 import { ChatStatusLine, presenceLabel, typingLabel } from './ChatStatusLine';
 import {
   activeMentionQuery,
   filterMentionables,
   insertMention,
-  splitMentionParts,
 } from './chatMentions';
-import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
+import { isOnline } from '../../net/networkStatus';
+import { haptic } from '../../ui/haptics';
 import { emitToast } from '../../ui/toastBus';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
 import { useRecording } from '../../recording/RecordingContext';
 import { setActiveChatChannel } from '../../notifications/activeChatChannel';
 
-/** Single / short emoji-only body → render as a sticker-sized glyph. */
-function isStickerEmoji(text: string | null | undefined) {
-  if (!text) return false;
-  const trimmed = text.trim();
-  if (trimmed.length === 0 || trimmed.length > 8) return false;
-  // Reject if it contains letters/digits (plain text), allow emoji + ZWJ/variation.
-  return !/[\p{L}\p{N}]/u.test(trimmed);
-}
+import { chatStyles } from './chatStyles';
+import { MessageBubble } from './MessageBubble';
+import { formatMessageTime } from './messageFormat';
+import { PendingUpload } from './pendingUpload';
 
-function MessageText({
-  text,
-  knownIgns,
-  mine,
-}: {
-  text: string;
-  knownIgns: string[];
-  mine: boolean;
-}) {
-  const styles = useThemedStyles(chatStyles);
-  if (isStickerEmoji(text)) {
-    return <Text style={styles.stickerEmoji}>{text.trim()}</Text>;
-  }
-  const parts = splitMentionParts(text, knownIgns);
-  return (
-    <Text style={mine ? styles.textMine : styles.text}>
-      {parts.map((p, i) =>
-        p.type === 'mention' ? (
-          <Text key={i} style={mine ? styles.mentionMine : styles.mention}>
-            {p.value}
-          </Text>
-        ) : (
-          <Text key={i}>{p.value}</Text>
-        ),
-      )}
-    </Text>
-  );
-}
-
-// "Teammate · Coach" / "Owner Coach · Coach (Owner)" — role badge is shown
-// next to the name for everyone but yourself (you already know your own role).
-/** "4:49 pm" — local time the message was sent/received, same on every platform. */
-export function formatMessageTime(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const h = d.getHours();
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  return `${h % 12 || 12}:${minutes} ${h >= 12 ? 'pm' : 'am'}`;
-}
-
-function formatSenderLabel(message: ChatMessage): string {
-  const badge = formatRoleBadge(message.senderRole, message.senderIsOwner);
-  return badge ? `${message.senderName} · ${badge}` : message.senderName;
-}
+// Re-exported from its own module so the message bubble can import it
+// without pulling this whole screen in.
+export { formatMessageTime };
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-type PendingUpload = {
-  asset: {
-    uri: string;
-    fileName: string;
-    mimeType: string;
-    width?: number | null;
-    height?: number | null;
-  };
-  mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO';
-  text?: string;
-  replyToId: string | null;
-  sizeLabel: string | null;
-  status: PendingUploadStatus;
-  /** 0..1 */
-  progress: number;
-  label?: string;
-  error?: string;
-};
 
 export function ChatScreen({
   embedded = false,
@@ -848,6 +777,19 @@ export function ChatScreen({
     return 'sent';
   }, [isGroup, mentionables, seenByForLastMine, deliveredForLastMine]);
 
+  // Same for every bubble, so it's computed once here rather than per row.
+  const tickLabel = useMemo(() => {
+    if (tickState === 'seen') {
+      return isGroup ? `Seen by ${seenByForLastMine.length}` : 'Seen';
+    }
+    if (tickState === 'delivered') {
+      return isGroup
+        ? `Delivered to ${deliveredForLastMine.length}`
+        : 'Delivered';
+    }
+    return 'Sent';
+  }, [tickState, isGroup, seenByForLastMine.length, deliveredForLastMine.length]);
+
   // `messages` is already chronological (oldest -> newest) — same order the
   // pinned banner cycles through.
   const pinnedMessages = useMemo(
@@ -1087,6 +1029,10 @@ export function ChatScreen({
     const socket = socketRef.current;
     if (!socket) return null;
     if (socket.connected) return socket;
+    // With no data connection the 8s reconnect window below can only ever
+    // time out — give up now so the bubble flips to "failed" (and offers
+    // retry) immediately instead of after an eight-second stall.
+    if (!isOnline()) return null;
     return new Promise<typeof socket | null>((resolve) => {
       const timer = setTimeout(() => {
         socket.off('connect', onConnect);
@@ -1117,7 +1063,11 @@ export function ChatScreen({
     }) => {
       const socket = await waitForSocket();
       if (!socket?.connected) {
-        emitToast('Chat disconnected — try again in a moment');
+        emitToast(
+          isOnline()
+            ? 'Chat disconnected — try again in a moment'
+            : "You're offline — tap the message to retry once you reconnect",
+        );
         return false;
       }
       // Server acks { ok, id } (or { ok: false, error }). A dropped socket or
@@ -1238,6 +1188,9 @@ export function ChatScreen({
   const onSend = useCallback(() => {
     const text = draft.trim();
     if (!text || !user) return;
+    // Confirms the tap landed before the bubble animates in — the send
+    // button sits under the thumb, where the eye usually isn't.
+    haptic('light');
 
     // Edit path — update in place instead of sending a new bubble.
     if (editingId) {
@@ -1512,6 +1465,12 @@ export function ChatScreen({
   const [pointsOpen, setPointsOpen] = useState(false);
   // Set when continuing a table that is already posted in this chat.
   const [pointsSeed, setPointsSeed] = useState<ParsedSummary | null>(null);
+
+  /** "Add match" on the latest points-table bubble reopens the calculator. */
+  const onAddMatch = useCallback((parsed: ParsedSummary) => {
+    setPointsSeed(parsed);
+    setPointsOpen(true);
+  }, []);
 
   // Each points series (by title) keeps "Add match" on its newest bubble so a
   // freshly posted second table does not steal continue from the previous one.
@@ -1865,309 +1824,40 @@ export function ChatScreen({
             <ActivityIndicator color={colors.chrome} style={{ marginBottom: 8 }} />
           ) : null
         }
-        renderItem={({ item }) => {
-          const isMine = item.senderId === user?.id;
-          const mediaUri = chatApi.resolveChatMediaUrl(item.mediaUrl);
-          const pending = uploads[item.id];
-          const showSeen = isMine && item.id === lastMineId;
-          const isHit = highlightId === item.id;
-          const isSelected = selectedIds.has(item.id);
-          const tickLabel =
-            tickState === 'seen'
-              ? isGroup
-                ? `Seen by ${seenByForLastMine.length}`
-                : 'Seen'
-              : tickState === 'delivered'
-                ? isGroup
-                  ? `Delivered to ${deliveredForLastMine.length}`
-                  : 'Delivered'
-                : 'Sent';
-          return (
-            <Pressable
-              onPress={() => onPressMessage(item)}
-              onLongPress={() => onLongPressMessage(item)}
-              delayLongPress={350}
-              style={[
-                styles.bubbleRow,
-                isMine ? styles.bubbleRowMine : styles.bubbleRowTheirs,
-                isSelected && styles.bubbleRowSelected,
-              ]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isSelected }}
-              accessibilityLabel={
-                isMine ? 'Your message' : `Message from ${item.senderName}`
-              }
-            >
-              {!isMine ? (
-                <View style={styles.bubbleAvatar}>
-                  <ChannelAvatar
-                    uri={avatarByUserId.get(item.senderId)}
-                    size={28}
-                    fallback={(item.senderName[0] ?? '?').toUpperCase()}
-                    previewable={false}
-                  />
-                </View>
-              ) : null}
-              {selectMode ? (
-                <View
-                  style={[
-                    styles.selectCheck,
-                    isSelected && styles.selectCheckOn,
-                  ]}
-                >
-                  {isSelected ? (
-                    <Text style={styles.selectCheckMark}>✓</Text>
-                  ) : null}
-                </View>
-              ) : null}
-              <View style={styles.bubbleCol}>
-                <View
-                  style={[
-                    styles.bubble,
-                    isMine && styles.bubbleMine,
-                    isHit && styles.bubbleHit,
-                    isSelected && styles.bubbleSelected,
-                  ]}
-                >
-                  {!isMine && (
-                    <Text style={styles.sender}>{formatSenderLabel(item)}</Text>
-                  )}
-                  {item.forwarded ? (
-                    <Text style={[styles.forwardedLabel, isMine && styles.forwardedLabelMine]}>
-                      ↪ Forwarded
-                    </Text>
-                  ) : null}
-                  {item.replyTo ? (
-                    <View
-                      style={[
-                        styles.replyQuote,
-                        isMine && styles.replyQuoteMine,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.replyQuoteName,
-                          isMine && styles.replyQuoteNameMine,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {item.replyTo.senderName}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.replyQuoteText,
-                          isMine && styles.replyQuoteTextMine,
-                        ]}
-                        numberOfLines={2}
-                      >
-                        {item.replyTo.text?.trim() ||
-                          (item.replyTo.mediaType === 'VIDEO'
-                            ? 'Video'
-                            : 'Photo')}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {item.mediaType === 'IMAGE' && mediaUri ? (
-                    <Pressable
-                      onPress={() => {
-                        if (pending || selectMode) {
-                          onPressMessage(item);
-                          return;
-                        }
-                        setViewerMedia({ type: 'IMAGE', uri: mediaUri });
-                      }}
-                      accessibilityLabel={
-                        pending?.status === 'failed'
-                          ? 'Upload failed, tap to try again'
-                          : pending
-                            ? 'Image upload in progress'
-                            : 'View image'
-                      }
-                    >
-                      <Image
-                        source={{ uri: mediaUri }}
-                        style={styles.media}
-                        contentFit="cover"
-                        // Disk cache: first open hits the URL; later opens
-                        // (and other chats reusing the same file) read cache.
-                        // Pending bubbles use file:/content: URIs — shown
-                        // straight from the device, never re-downloaded.
-                        cachePolicy="memory-disk"
-                        recyclingKey={item.id}
-                        // Dark placeholder so a failed CDN/proxy load is
-                        // obvious instead of looking like a missing bubble.
-                        placeholder={{ color: 'rgba(255,255,255,0.08)' }}
-                        transition={pending ? 0 : 200}
-                      />
-                      {pending ? (
-                        <PendingMediaOverlay
-                          status={pending.status}
-                          progress={pending.progress}
-                          label={pending.label}
-                        />
-                      ) : null}
-                    </Pressable>
-                  ) : null}
-                  {item.mediaType === 'VIDEO' && mediaUri ? (
-                    <Pressable
-                      style={styles.videoThumb}
-                      onPress={() => {
-                        if (pending || selectMode) {
-                          onPressMessage(item);
-                          return;
-                        }
-                        setViewerMedia({ type: 'VIDEO', uri: mediaUri });
-                      }}
-                      accessibilityLabel={
-                        pending?.status === 'failed'
-                          ? 'Upload failed, tap to try again'
-                          : pending
-                            ? 'Video upload in progress'
-                            : 'Play video'
-                      }
-                    >
-                      {pending ? (
-                        // First frame of the picked video as the thumbnail
-                        // while it uploads (paused, muted, no controls).
-                        <Video
-                          source={{ uri: mediaUri }}
-                          style={styles.videoFrame}
-                          resizeMode={ResizeMode.COVER}
-                          shouldPlay={false}
-                          isMuted
-                          useNativeControls={false}
-                        />
-                      ) : (
-                        <Text style={styles.playIcon}>▶</Text>
-                      )}
-                      {pending ? (
-                        <PendingMediaOverlay
-                          status={pending.status}
-                          progress={pending.progress}
-                          label={pending.label}
-                        />
-                      ) : null}
-                    </Pressable>
-                  ) : null}
-                  {item.mediaType === 'AUDIO' && mediaUri ? (
-                    pending ? (
-                      <View style={styles.voiceUploading}>
-                        <ActivityIndicator
-                          color={isMine ? colors.chromeInk : colors.chrome}
-                          size="small"
-                        />
-                        <Text
-                          style={[
-                            styles.voiceUploadingText,
-                            isMine && styles.voiceUploadingTextMine,
-                          ]}
-                        >
-                          {pending.label ?? 'Uploading…'}
-                        </Text>
-                      </View>
-                    ) : (
-                      <VoiceNoteBubble uri={mediaUri} isMine={isMine} />
-                    )
-                  ) : null}
-                  {item.text ? (
-                    <MessageText
-                      text={item.text}
-                      knownIgns={knownIgns}
-                      mine={isMine}
-                    />
-                  ) : null}
-                  {!item.mediaType && item.text && !pending
-                    ? (() => {
-                        const url = chatApi.extractFirstUrl(item.text);
-                        return url ? <LinkPreviewCard url={url} isMine={isMine} /> : null;
-                      })()
-                    : null}
-                  {latestPointsIds.has(item.id) && !selectMode && !pending
-                    ? (() => {
-                        const parsed = parsePointsSummary(item.text);
-                        if (!parsed) return null;
-                        return (
-                          <Pressable
-                            style={[styles.addMatchBtn, isMine && styles.addMatchBtnMine]}
-                            onPress={() => {
-                              setPointsSeed(parsed);
-                              setPointsOpen(true);
-                            }}
-                            accessibilityRole="button"
-                            accessibilityLabel="Add next match to this points table"
-                          >
-                            <AppIcon
-                              name="add-circle-outline"
-                              size={16}
-                              color={isMine ? colors.chromeInk : colors.link}
-                            />
-                            <Text style={[styles.addMatchText, isMine && styles.addMatchTextMine]}>
-                              Add match {parsed.matches.length + 1}
-                            </Text>
-                          </Pressable>
-                        );
-                      })()
-                    : null}
-                  {!selectMode ? (
-                    <MessageReactionPills
-                      reactions={item.reactions ?? []}
-                      onToggle={(emoji) => onToggleReaction(item.id, emoji)}
-                    />
-                  ) : null}
-                  <View style={styles.metaRow}>
-                    {item.pinned ? (
-                      <AppIcon
-                        name="pin"
-                        size={12}
-                        color={isMine ? colors.chromeInk : colors.textDim}
-                      />
-                    ) : null}
-                    {item.starred ? (
-                      <AppIcon
-                        name="star"
-                        size={12}
-                        color={isMine ? colors.chromeInk : colors.textDim}
-                      />
-                    ) : null}
-                    {item.editedAt ? (
-                      <Text
-                        style={[
-                          styles.editedLabel,
-                          isMine && styles.editedLabelMine,
-                        ]}
-                      >
-                        edited
-                      </Text>
-                    ) : null}
-                    <Text
-                      style={[styles.timeLabel, isMine && styles.timeLabelMine]}
-                      accessibilityLabel={`Sent at ${formatMessageTime(item.createdAt)}`}
-                    >
-                      {formatMessageTime(item.createdAt)}
-                    </Text>
-                  </View>
-                </View>
-                {showSeen && !selectMode && (
-                  <Pressable
-                    onLongPress={() => setInfoMessageId(item.id)}
-                    delayLongPress={350}
-                    style={styles.seenRow}
-                    accessibilityLabel={tickLabel}
-                  >
-                    <Text
-                      style={[
-                        styles.tick,
-                        tickState === 'seen' && styles.tickSeen,
-                      ]}
-                    >
-                      {tickState === 'sent' ? '✓' : '✓✓'}
-                    </Text>
-                  </Pressable>
-                )}
-              </View>
-            </Pressable>
-          );
-        }}
+        // Batched rendering: the defaults mount roughly a screenful at a
+        // time either side of the viewport, which on a long backlog meant
+        // long blocking commits mid-scroll.
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        windowSize={11}
+        renderItem={({ item }) => (
+          // Every prop here is a primitive or an already-memoized value, so
+          // the memoized bubble re-renders only when its own row changes —
+          // not on every composer keystroke.
+          <MessageBubble
+            message={item}
+            styles={styles}
+            colors={colors}
+            isMine={item.senderId === user?.id}
+            isSelected={selectedIds.has(item.id)}
+            isHighlighted={highlightId === item.id}
+            selectMode={selectMode}
+            pending={uploads[item.id]}
+            avatarUri={avatarByUserId.get(item.senderId)}
+            knownIgns={knownIgns}
+            showSeen={item.senderId === user?.id && item.id === lastMineId}
+            tickState={tickState}
+            tickLabel={tickLabel}
+            showAddMatch={latestPointsIds.has(item.id)}
+            onPress={onPressMessage}
+            onLongPress={onLongPressMessage}
+            onOpenMedia={setViewerMedia}
+            onToggleReaction={onToggleReaction}
+            onShowInfo={setInfoMessageId}
+            onAddMatch={onAddMatch}
+          />
+        )}
       />
       {!isConnected && (
         <Text style={styles.connecting}>
@@ -2358,7 +2048,7 @@ export function ChatScreen({
             }
             style={styles.sendIconBtn}
           >
-            <AppIcon name="mic-outline" size={24} color={colors.icon} />
+            <AppIcon name="headset" size={24} color={colors.icon} />
           </Pressable>
         ) : null}
         <Pressable
@@ -2403,331 +2093,3 @@ export function ChatScreen({
   return <Screen>{body}</Screen>;
 }
 
-const chatStyles = (c: ThemeColors) => ({
-  searchBar: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
-    backgroundColor: c.bg,
-  },
-  searchGlyph: { color: c.textDim, fontSize: 16, fontWeight: '700' as const },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    color: c.text,
-    fontSize: 15,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-  },
-  searchCount: {
-    color: c.textMuted,
-    fontSize: 12,
-    fontWeight: '600' as const,
-    minWidth: 28,
-    textAlign: 'center' as const,
-  },
-  searchNavBtn: {
-    width: 28,
-    height: 28,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  searchNavDisabled: { opacity: 0.3 },
-  searchNavText: { color: c.chrome, fontSize: 16, fontWeight: '700' as const },
-  searchClose: {
-    color: c.link,
-    fontSize: 16,
-    fontWeight: '700' as const,
-    paddingHorizontal: 4,
-  },
-  pinnedBar: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
-    backgroundColor: c.surface,
-  },
-  pinnedBody: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-  },
-  pinnedTextCol: { flex: 1, minWidth: 0 },
-  pinnedLabel: {
-    color: c.link,
-    fontSize: 11,
-    fontWeight: '700' as const,
-    textTransform: 'uppercase' as const,
-  },
-  pinnedPreview: { color: c.text, fontSize: 13, marginTop: 1 },
-  pinnedNextBtn: {
-    width: 28,
-    height: 28,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  pinnedNextGlyph: { color: c.textMuted, fontSize: 20, fontWeight: '700' as const },
-  // Overlay on top of the list — don't push messages down (that left a
-  // blank gap under the hub header when long-press selection opened).
-  selectBar: {
-    position: 'absolute' as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 20,
-    elevation: 8,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
-    backgroundColor: c.bg,
-  },
-  selectBarCount: {
-    flex: 1,
-    color: c.text,
-    fontSize: 15,
-    fontWeight: '700' as const,
-  },
-  selectBarActions: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-  },
-  selectBarBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  selectBarAction: {
-    color: c.link,
-    fontSize: 15,
-    fontWeight: '700' as const,
-  },
-  composeBanner: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: c.link,
-    backgroundColor: c.surface,
-  },
-  composeBannerBody: { flex: 1, minWidth: 0 },
-  composeBannerTitle: {
-    color: c.link,
-    fontSize: 12,
-    fontWeight: '700' as const,
-    marginBottom: 2,
-  },
-  composeBannerPreview: { color: c.textMuted, fontSize: 13 },
-  composeBannerClose: {
-    color: c.textDim,
-    fontSize: 16,
-    fontWeight: '700' as const,
-    paddingHorizontal: 4,
-  },
-  replyQuote: {
-    borderLeftWidth: 3,
-    borderLeftColor: c.link,
-    backgroundColor: c.surface,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    marginBottom: 6,
-  },
-  replyQuoteMine: {
-    backgroundColor: 'rgba(0,0,0,0.12)',
-    borderLeftColor: c.chromeInk,
-  },
-  replyQuoteName: {
-    color: c.link,
-    fontSize: 11,
-    fontWeight: '700' as const,
-    marginBottom: 1,
-  },
-  replyQuoteNameMine: { color: c.chromeInk },
-  replyQuoteText: { color: c.textMuted, fontSize: 12 },
-  replyQuoteTextMine: { color: c.chromeInk, opacity: 0.75 },
-  metaRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    alignSelf: 'flex-end' as const,
-    gap: 6,
-    marginTop: 4,
-  },
-  editedLabel: {
-    fontSize: 10,
-    color: c.textDim,
-    fontStyle: 'italic' as const,
-  },
-  editedLabelMine: { color: c.chromeInk, opacity: 0.55 },
-  forwardedLabel: {
-    fontSize: 11,
-    color: c.textDim,
-    fontStyle: 'italic' as const,
-    marginBottom: 2,
-  },
-  forwardedLabelMine: { color: c.chromeInk, opacity: 0.6 },
-  voiceUploading: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-    minWidth: 160,
-    paddingVertical: 6,
-  },
-  voiceUploadingText: { fontSize: 12, color: c.textMuted },
-  voiceUploadingTextMine: { color: c.chromeInk, opacity: 0.8 },
-  timeLabel: { fontSize: 10, color: c.textDim },
-  addMatchBtn: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    alignSelf: 'flex-start' as const,
-    gap: 6,
-    marginTop: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: c.border,
-    backgroundColor: c.surface,
-  },
-  addMatchBtnMine: { borderColor: c.chromeInk, backgroundColor: 'transparent' },
-  addMatchText: { fontSize: 12, fontWeight: '700' as const, color: c.link },
-  addMatchTextMine: { color: c.chromeInk },
-  timeLabelMine: { color: c.chromeInk, opacity: 0.6 },
-  bubbleRow: {
-    flexDirection: 'row' as const,
-    marginBottom: 10,
-    maxWidth: '100%' as const,
-    alignItems: 'center' as const,
-  },
-  bubbleRowMine: { justifyContent: 'flex-end' as const },
-  bubbleRowTheirs: { justifyContent: 'flex-start' as const, alignItems: 'flex-end' as const },
-  bubbleRowSelected: {
-    backgroundColor: 'rgba(139, 156, 255, 0.12)',
-    borderRadius: 8,
-  },
-  bubbleAvatar: { marginRight: 8, marginBottom: 2 },
-  selectCheck: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: c.border,
-    marginHorizontal: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  selectCheckOn: {
-    borderColor: c.link,
-    backgroundColor: c.link,
-  },
-  selectCheckMark: { color: c.chromeInk, fontSize: 12, fontWeight: '800' as const },
-  bubbleCol: { maxWidth: '80%' as const, minWidth: 0, alignItems: 'flex-end' as const },
-  bubble: {
-    backgroundColor: c.bubbleTheirs,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    alignSelf: 'stretch' as const,
-    maxWidth: '100%' as const,
-  },
-  bubbleMine: { backgroundColor: c.bubbleMine },
-  bubbleHit: {
-    borderWidth: 2,
-    borderColor: c.link,
-    backgroundColor: 'rgba(139, 156, 255, 0.22)',
-  },
-  bubbleSelected: {
-    borderWidth: 1.5,
-    borderColor: c.link,
-  },
-  sender: { fontSize: 11, color: c.textMuted, marginBottom: 2 },
-  text: { color: c.text, flexShrink: 1 },
-  textMine: { color: c.bubbleTextMine, flexShrink: 1 },
-  stickerEmoji: { fontSize: 56, lineHeight: 64 },
-  // A tinted chip behind the @name, not just bold colored text — same hue as
-  // the link color so it reads as "highlighted" in all three themes without
-  // fighting the bubble's own background.
-  mention: { color: c.link, fontWeight: '700' as const, backgroundColor: `${c.link}33` },
-  mentionMine: {
-    color: c.bubbleTextMine,
-    fontWeight: '700' as const,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  mentionMenu: {
-    marginHorizontal: 12,
-    marginBottom: 4,
-    borderRadius: 10,
-    backgroundColor: c.bg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.border,
-    overflow: 'hidden' as const,
-  },
-  mentionOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row' as const,
-    alignItems: 'baseline' as const,
-    gap: 10,
-  },
-  mentionIgn: { color: c.link, fontWeight: '700' as const, fontSize: 14 },
-  mentionName: { color: c.textMuted, fontSize: 12 },
-  media: { width: 200, height: 160, borderRadius: 8, marginBottom: 6 },
-  videoThumb: {
-    width: 200,
-    height: 160,
-    borderRadius: 8,
-    marginBottom: 6,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  playIcon: { color: '#fff', fontSize: 32 },
-  videoFrame: { ...StyleSheet.absoluteFillObject, borderRadius: 8 },
-  seenRow: { marginTop: 2, paddingHorizontal: 4 },
-  tick: { color: c.textMuted, fontSize: 13 },
-  tickSeen: { color: c.link },
-  connecting: { textAlign: 'center' as const, color: c.textMuted, paddingBottom: 4 },
-  composeInput: {
-    backgroundColor: c.surface,
-    borderColor: c.border,
-    color: c.text,
-  },
-  attachBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  inputRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-    padding: 16,
-    paddingTop: 0,
-    maxWidth: '100%' as const,
-  },
-  sendIconBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  sendIconDisabled: { opacity: 0.35 },
-});

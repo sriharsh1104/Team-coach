@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { parsePushTokens, removePushToken } from './push-tokens';
 
 export interface PushMessage {
   to: string;
@@ -9,8 +11,12 @@ export interface PushMessage {
   collapseId?: string;
   /** Android notification channel (must match client setNotificationChannelAsync). */
   channelId?: string;
+  /** iOS / Android action category (e.g. reply-from-shade). */
+  categoryId?: string;
   /** iOS app icon badge. */
   badge?: number;
+  /** Android delivery priority — high wakes Doze promptly. */
+  priority?: 'default' | 'normal' | 'high';
 }
 
 type ExpoMessage = {
@@ -21,7 +27,15 @@ type ExpoMessage = {
   sound: 'default';
   collapseId?: string;
   channelId?: string;
+  categoryId?: string;
   badge?: number;
+  priority?: 'default' | 'normal' | 'high';
+};
+
+type ExpoTicket = {
+  status?: string;
+  message?: string;
+  details?: { error?: string };
 };
 
 // Talks to Expo's push API directly over HTTP instead of using the
@@ -38,14 +52,27 @@ const MAX_MESSAGES_PER_REQUEST = 100;
 // projects (e.g. phones still running an APK built under an older EAS
 // account/owner next to phones on the current one).
 const MIXED_PROJECTS_CODE = 'PUSH_TOO_MANY_EXPERIENCE_IDS';
+const DEAD_TOKEN_ERRORS = new Set(['DeviceNotRegistered', 'InvalidCredentials']);
 
 @Injectable()
 export class PushNotificationService {
+  private readonly logger = new Logger(PushNotificationService.name);
   /** token → Expo project ("@owner/slug"), learned from Expo's mixed-project errors. */
   private readonly projectByToken = new Map<string, string>();
+  /** Tokens Expo already said are dead — skip until the process restarts. */
+  private readonly deadTokens = new Set<string>();
+
+  constructor(@Optional() private readonly prisma?: PrismaService) {}
 
   isValidExpoPushToken(token: string | null | undefined): token is string {
     return typeof token === 'string' && EXPO_PUSH_TOKEN_REGEX.test(token);
+  }
+
+  /** Expand a user's stored token field (may be pipe-separated multi-device). */
+  tokensFor(raw: string | null | undefined): string[] {
+    return parsePushTokens(raw).filter(
+      (t) => this.isValidExpoPushToken(t) && !this.deadTokens.has(t),
+    );
   }
 
   async send(messages: PushMessage[]): Promise<void> {
@@ -55,6 +82,7 @@ export class PushNotificationService {
     // after the first mixed-project rejection we stop paying for it.
     const byProject = new Map<string, ExpoMessage[]>();
     for (const m of messages) {
+      if (this.deadTokens.has(m.to)) continue;
       const key = this.projectByToken.get(m.to) ?? '';
       const list = byProject.get(key) ?? [];
       list.push({
@@ -63,8 +91,10 @@ export class PushNotificationService {
         body: m.body,
         data: m.data,
         sound: 'default' as const,
+        priority: m.priority ?? 'high',
         ...(m.collapseId ? { collapseId: m.collapseId } : {}),
         ...(m.channelId ? { channelId: m.channelId } : {}),
+        ...(m.categoryId ? { categoryId: m.categoryId } : {}),
         ...(typeof m.badge === 'number' ? { badge: m.badge } : {}),
       });
       byProject.set(key, list);
@@ -103,7 +133,10 @@ export class PushNotificationService {
       `[push] to=${chunk.map((m) => m.to).join(',')} status=${res.status} response=${text}`,
     );
 
-    if (res.ok) return;
+    if (res.ok) {
+      await this.pruneFromTickets(chunk, text);
+      return;
+    }
 
     if (res.status === 400 && chunk.length > 1 && text.includes(MIXED_PROJECTS_CODE)) {
       const groups = this.splitByProject(chunk, text);
@@ -120,6 +153,48 @@ export class PushNotificationService {
     }
 
     throw new Error(`Expo push API returned ${res.status}: ${text}`);
+  }
+
+  /**
+   * Drop DeviceNotRegistered / InvalidCredentials tokens so a dead phone
+   * (old APK, uninstalled, FCM revoked) does not keep filling the multi-device
+   * list and crowd out a working device.
+   */
+  private async pruneFromTickets(chunk: ExpoMessage[], body: string): Promise<void> {
+    let tickets: ExpoTicket[] = [];
+    try {
+      const parsed = JSON.parse(body) as { data?: ExpoTicket[] };
+      tickets = Array.isArray(parsed.data) ? parsed.data : [];
+    } catch {
+      return;
+    }
+    const dead: string[] = [];
+    for (let i = 0; i < tickets.length; i++) {
+      const ticket = tickets[i];
+      const token = chunk[i]?.to;
+      if (!token || ticket?.status !== 'error') continue;
+      const code = ticket.details?.error;
+      if (code && DEAD_TOKEN_ERRORS.has(code)) dead.push(token);
+    }
+    if (dead.length === 0) return;
+    for (const t of dead) this.deadTokens.add(t);
+    if (!this.prisma) return;
+    for (const token of dead) {
+      try {
+        const users = await this.prisma.user.findMany({
+          where: { expoPushToken: { contains: token } },
+          select: { id: true, expoPushToken: true },
+        });
+        for (const u of users) {
+          await this.prisma.user.update({
+            where: { id: u.id },
+            data: { expoPushToken: removePushToken(u.expoPushToken, token) },
+          });
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to prune dead push token: ${(err as Error).message}`);
+      }
+    }
   }
 
   /**

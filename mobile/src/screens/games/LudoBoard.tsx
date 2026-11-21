@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { haptic } from '../../ui/haptics';
 import Svg, { Circle, G, Line, Path, Polygon, Rect } from 'react-native-svg';
 import { LudoColor, RoomView } from '../../api/games';
 import { ThemeColors } from '../../theme';
@@ -241,7 +242,7 @@ export function LudoBoard({ room, meId, onRoll, onMove, busy, mode = '2d', onFal
                 : `${nameOf(st.winnerId ?? '')} won the game`
               : myTurn
                 ? st.phase === 'roll'
-                  ? 'Your turn — roll the dice'
+                  ? 'Your turn — roll (1 or 6 leaves base)'
                   : 'Tap a highlighted token to move'
                 : `${nameOf(current)}'s turn`}
           </Text>
@@ -251,7 +252,11 @@ export function LudoBoard({ room, meId, onRoll, onMove, busy, mode = '2d', onFal
           ) : null}
         </View>
         <Pressable
-          onPress={onRoll}
+          onPress={() => {
+            // Weightier than a button tick — the dice should feel thrown.
+            haptic('medium');
+            onRoll();
+          }}
           disabled={!myTurn || st.phase !== 'roll' || busy}
           style={[
             styles.dice,
@@ -259,11 +264,16 @@ export function LudoBoard({ room, meId, onRoll, onMove, busy, mode = '2d', onFal
             (!myTurn || st.phase !== 'roll') && styles.diceDim,
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Roll dice"
+          accessibilityLabel={st.dice ? `Dice showing ${st.dice}` : 'Roll dice'}
         >
           <Animated.View style={{ transform: [{ rotate }] }}>
             <DiceFace value={st.dice} size={54} />
           </Animated.View>
+          {st.dice != null ? (
+            <Text style={styles.diceNumber} accessibilityElementsHidden>
+              {st.dice}
+            </Text>
+          ) : null}
         </Pressable>
       </View>
     </View>
@@ -406,6 +416,24 @@ function ludoStyles(c: ThemeColors) {
       backgroundColor: 'rgba(255,255,255,0.06)',
     },
     diceDim: { opacity: 0.5 },
+    diceNumber: {
+      position: 'absolute' as const,
+      right: -4,
+      top: -8,
+      minWidth: 22,
+      height: 22,
+      borderRadius: 11,
+      paddingHorizontal: 5,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      textAlign: 'center' as const,
+      overflow: 'hidden' as const,
+      backgroundColor: c.chrome,
+      color: c.chromeInk,
+      fontSize: 13,
+      fontWeight: '800' as const,
+      lineHeight: 22,
+    },
   };
 }
 

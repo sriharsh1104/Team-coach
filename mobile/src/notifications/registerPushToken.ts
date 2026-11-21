@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as usersApi from '../api/users';
 import * as chatApi from '../api/chat';
@@ -8,12 +8,21 @@ const CHAT_REPLY_CATEGORY = 'chat_reply';
 const CHAT_REPLY_ACTION = 'REPLY';
 
 let replyListenerAttached = false;
+let appStateListenerAttached = false;
+let registerInFlight: Promise<void> | null = null;
 
 // Best-effort: push notifications need a real device and an EAS project id.
 // Any failure here should never block the app.
 export async function registerPushTokenWithBackend() {
   if (Platform.OS === 'web') return;
+  if (registerInFlight) return registerInFlight;
+  registerInFlight = doRegister().finally(() => {
+    registerInFlight = null;
+  });
+  return registerInFlight;
+}
 
+async function doRegister() {
   try {
     // require (not dynamic import) — Metro/tsc module settings vary across CI.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -43,12 +52,22 @@ export async function registerPushTokenWithBackend() {
     });
 
     if (Platform.OS === 'android') {
+      // MAX helps Xiaomi / older Androids that demote HIGH channels in the tray.
+      const channel = {
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250] as number[],
+        lightColor: '#c9ccd1',
+        sound: 'default' as const,
+        enableVibrate: true,
+        showBadge: true,
+      };
       await Notifications.setNotificationChannelAsync('chat', {
         name: 'Chat',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#c9ccd1',
-        sound: 'default',
+        ...channel,
+      });
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'General',
+        ...channel,
       });
     }
 
@@ -84,9 +103,19 @@ export async function registerPushTokenWithBackend() {
     );
 
     await usersApi.setPushToken(tokenResponse.data);
+    ensureAppStateReregister();
   } catch (err) {
     console.warn('Push notification registration skipped:', err);
   }
+}
+
+/** Old Android (MIUI etc.) often drops FCM until the app is foregrounded again. */
+function ensureAppStateReregister() {
+  if (appStateListenerAttached || Platform.OS === 'web') return;
+  appStateListenerAttached = true;
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active') void registerPushTokenWithBackend();
+  });
 }
 
 function attachReplyListener(

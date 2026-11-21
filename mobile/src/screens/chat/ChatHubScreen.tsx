@@ -9,9 +9,11 @@ import {
 import { NavigationContext } from '@react-navigation/native';
 import { AppIcon } from '../../ui/AppIcon';
 import * as chatApi from '../../api/chat';
+import { CacheKeys, hasFreshEnough, revalidate } from '../../api/queryCache';
 import { ChatChannel, ChatTeammate } from '../../api/types';
 import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { SkeletonList } from '../../ui/Skeleton';
 import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
 import { ChatMembersPanel } from './ChatMembersPanel';
@@ -60,16 +62,29 @@ export function ChatHubScreen({ onLoadError }: Props) {
   const [starredOnly, setStarredOnly] = useState(false);
   const [chatEpoch, setChatEpoch] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingInbox, setIsLoadingInbox] = useState(true);
   const [peerOnline, setPeerOnline] = useState(false);
 
-  const load = useCallback(async () => {
-    const data = await chatApi.getChatChannels();
-    setChannels(data.channels);
-    setTeammates(data.teammates);
+  const load = useCallback(async (opts?: { force?: boolean }) => {
+    await revalidate(
+      CacheKeys.chatInbox(),
+      () => chatApi.getChatChannels(),
+      (data) => {
+        setChannels(data.channels);
+        setTeammates(data.teammates);
+        setIsLoadingInbox(false);
+      },
+      opts,
+    );
   }, []);
 
   useEffect(() => {
-    load().catch((err) => onLoadError?.(err));
+    // Returning to the inbox from a conversation shouldn't blank it out —
+    // a cached list paints first and the refetch swaps in behind it.
+    setIsLoadingInbox(!hasFreshEnough(CacheKeys.chatInbox()));
+    load()
+      .catch((err) => onLoadError?.(err))
+      .finally(() => setIsLoadingInbox(false));
   }, [load, onLoadError]);
 
   // Live unread badges / previews: refetch the inbox when the shared chat
@@ -79,7 +94,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
     const unsubscribe = chatApi.subscribeChatInbox(() => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        load().catch(() => undefined);
+        load({ force: true }).catch(() => undefined);
       }, 400);
     });
     return () => {
@@ -90,7 +105,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await load().catch((err) => onLoadError?.(err));
+    await load({ force: true }).catch((err) => onLoadError?.(err));
     setIsRefreshing(false);
   };
 
@@ -223,7 +238,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
     // The inbox was loaded once on mount — without this, returning from a
     // conversation you just sent a message in still shows the stale
     // "No messages yet" preview until a manual pull-to-refresh.
-    load().catch((err) => onLoadError?.(err));
+    load({ force: true }).catch((err) => onLoadError?.(err));
   };
 
   const openHeaderInfo = () => {
@@ -554,7 +569,15 @@ export function ChatHubScreen({ onLoadError }: Props) {
               </>
             )}
 
-            {teammates.length === 0 ? (
+            {isLoadingInbox ? (
+              // Placeholder rows rather than a spinner: the inbox keeps its
+              // shape while loading, so content swapping in doesn't jump.
+              <SkeletonList
+                count={6}
+                avatarSize={40}
+                style={{ paddingHorizontal: 26 }}
+              />
+            ) : teammates.length === 0 ? (
               <Text style={[styles.empty, { color: theme.textMuted }]}>
                 No teammates yet.
               </Text>

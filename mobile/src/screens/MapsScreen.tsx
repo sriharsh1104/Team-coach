@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   LayoutChangeEvent,
   Modal,
   Pressable,
@@ -14,6 +13,8 @@ import {
 } from 'react-native';
 import { AppIcon, AppIconName } from '../ui/AppIcon';
 import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
+import { usePullToRefresh } from '../ui/usePullToRefresh';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as mapsApi from '../api/maps';
@@ -133,6 +134,8 @@ export function MapsScreen(_props: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const refreshControl = usePullToRefresh(load);
 
   const openViewer = useCallback((target: ViewerTarget) => {
     setPinFilter('all');
@@ -278,6 +281,7 @@ export function MapsScreen(_props: Props) {
         data={maps}
         keyExtractor={(item) => item.id}
         contentContainerStyle={staticStyles.content}
+        refreshControl={refreshControl}
         ListHeaderComponent={
           <>
             <Text style={styles.hint}>
@@ -329,7 +333,12 @@ export function MapsScreen(_props: Props) {
                   <Image
                     source={{ uri: map.imageUrl }}
                     style={staticStyles.overviewImage}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    // Map art is large and re-opened constantly — disk cache
+                    // means the second visit paints from storage, not the CDN.
+                    cachePolicy="memory-disk"
+                    transition={150}
+                    placeholder={{ color: 'rgba(128,128,128,0.15)' }}
                   />
                 </SoftPressable>
                 {map.canUpload ? (
@@ -427,7 +436,10 @@ export function MapsScreen(_props: Props) {
                         <Image
                           source={{ uri: drop.imageUrl }}
                           style={staticStyles.dropImage}
-                          resizeMode="cover"
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={150}
+                          placeholder={{ color: 'rgba(128,128,128,0.15)' }}
                         />
                         <Text style={styles.dropName}>{drop.name}</Text>
                         <Text style={styles.dropNote}>{drop.note}</Text>
@@ -607,7 +619,11 @@ export function MapsScreen(_props: Props) {
                         <Image
                           source={{ uri: viewer.map.imageUrl }}
                           style={staticStyles.viewerImage}
-                          resizeMode="cover"
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          // The thumbnail already warmed the cache, so the
+                          // full-screen view opens with no download at all.
+                          transition={0}
                           accessibilityLabel={viewerTitle}
                         />
                         {visiblePins.map((pin) => (
@@ -645,7 +661,9 @@ export function MapsScreen(_props: Props) {
                   <Image
                     source={{ uri: viewerSrc }}
                     style={[staticStyles.viewerImage, staticStyles.viewerImageWide]}
-                    resizeMode="contain"
+                    contentFit="contain"
+                    cachePolicy="memory-disk"
+                    transition={0}
                     accessibilityLabel={viewerTitle}
                   />
                 )}

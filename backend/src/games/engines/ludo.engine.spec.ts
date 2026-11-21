@@ -18,12 +18,25 @@ describe('Ludo engine', () => {
     expect(() => createLudoState(['a'])).toThrow();
   });
 
-  it('needs a 6 to leave base; a non-6 with everything in base passes the turn', () => {
+  it('needs a 1 or 6 to leave base; other rolls with everything in base pass the turn but keep the dice face', () => {
     const s = createLudoState(['a', 'b']);
     expect(movableTokens(s, 'a', 3)).toEqual([]);
     ludoRoll(s, 'a', 3);
     expect(currentPlayer(s)).toBe('b');
     expect(s.phase).toBe('roll');
+    expect(s.dice).toBe(3);
+  });
+
+  it('a 1 brings a token out (no extra turn unless it was a 6)', () => {
+    const s = createLudoState(['a', 'b']);
+    ludoRoll(s, 'a', 1);
+    expect(s.phase).toBe('move');
+    expect(s.movable).toEqual([0, 1, 2, 3]);
+    const r = ludoMove(s, 'a', 0);
+    expect(s.tokens.a[0]).toBe(0);
+    expect(r.extraTurn).toBe(false);
+    expect(currentPlayer(s)).toBe('b');
+    expect(s.dice).toBe(1);
   });
 
   it('a 6 brings a token out and grants another roll', () => {

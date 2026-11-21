@@ -45,11 +45,13 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
 
   enum class Preset(val semitones: Double, val ringModHz: Double, val ringMix: Double) {
     OFF(0.0, 0.0, 0.0),
-    MAN(-5.0, 0.0, 0.0),
-    WOMAN(5.0, 0.0, 0.0),
-    GIRL(8.0, 0.0, 0.0),
-    CHILD(11.0, 0.0, 0.0),
-    ROBOT(-2.0, 45.0, 0.8);
+    // Stronger relative shifts so the change is obvious while speaking
+    // (old ±5 / +8 / +11 still sounded close to the raw voice on many mics).
+    MAN(-8.0, 0.0, 0.0),
+    WOMAN(8.0, 0.0, 0.0),
+    GIRL(12.0, 0.0, 0.0),
+    CHILD(16.0, 0.0, 0.0),
+    ROBOT(-3.0, 55.0, 0.85);
 
     companion object {
       fun fromName(name: String): Preset? =

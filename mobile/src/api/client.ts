@@ -1,6 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { OFFLINE_ERROR_CODE, isOnline } from '../net/networkStatus';
+import { haptic } from '../ui/haptics';
 import { beginLoader, endLoader } from '../ui/loaderBus';
 import { emitToast } from '../ui/toastBus';
 import { getToken, TOKEN_STORAGE_KEY } from '../storage/tokenStorage';
@@ -21,6 +23,9 @@ function requestUrl(cfg?: RequestConfigWithFlags): string {
 function shouldSkipErrorToast(error: AxiosError): boolean {
   const cfg = error.config as RequestConfigWithFlags | undefined;
   if (cfg?.skipErrorToast) return true;
+  // The offline banner is already on screen saying exactly this — one
+  // toast per blocked request on top of it would just be noise.
+  if (error.code === OFFLINE_ERROR_CODE) return true;
   // Bootstrapping session refresh — don't spam the UI on cold start / 401.
   if (requestUrl(cfg).includes('/auth/me')) return true;
   return false;
@@ -106,6 +111,12 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(async (requestConfig) => {
   const cfg = requestConfig as RequestConfigWithFlags;
+  if (!isOnline()) {
+    // Fail now rather than sit on the 15s timeout: with no data connection
+    // the request cannot succeed, and a tap that does nothing for fifteen
+    // seconds reads as the app being broken rather than the network.
+    throw new AxiosError('Offline', OFFLINE_ERROR_CODE, cfg, null);
+  }
   const token = await getToken();
   if (token) {
     cfg.headers.Authorization = `Bearer ${token}`;
@@ -128,6 +139,9 @@ apiClient.interceptors.response.use(
     if (cfg?.__loaderStarted) endLoader();
     if (!shouldSkipErrorToast(error)) {
       emitToast(apiErrorMessage(error));
+      // A failed action should feel different from a successful one even if
+      // the user's eyes are on the keyboard rather than the toast.
+      haptic('error');
     }
     return Promise.reject(error);
   },

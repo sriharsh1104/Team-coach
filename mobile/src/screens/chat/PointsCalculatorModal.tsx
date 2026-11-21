@@ -118,7 +118,7 @@ export function PointsCalculatorModal({ visible, onClose, onSendToChat, seed = n
                   : `Placement points + ${ELIMINATION_POINTS} pt per kill (official Points Table)`}
               </Text>
             </View>
-            <IconActionButton icon="close" label="Close calculator" onPress={onClose} />
+            <IconActionButton plain icon="close" label="Close calculator" onPress={onClose} />
           </View>
 
           <ScrollView

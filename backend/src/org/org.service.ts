@@ -637,7 +637,9 @@ export class OrgService {
       this.prisma.guildMembership.findMany({
         where: { orgId },
         include: {
-          user: { select: { id: true, name: true, inGameName: true } },
+          user: {
+            select: { id: true, name: true, avatarUrl: true, inGameName: true },
+          },
         },
         orderBy: { createdAt: 'asc' },
       }),
@@ -680,6 +682,7 @@ export class OrgService {
         return {
           userId: m.user.id,
           name: m.user.name,
+          avatarUrl: m.user.avatarUrl,
           inGameName: m.user.inGameName,
           guildRole: m.role,
           onRoster: !!seat,

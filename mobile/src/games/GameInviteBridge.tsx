@@ -1,8 +1,9 @@
 import { useCallback, useEffect } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useGamesSocket } from './useGamesSocket';
 import { parseGameRoomLink } from './gameLinks';
+import { confirmAsync } from '../ui/confirmAsync';
 
 /** Process-wide so a remount (account switch, phase change) never re-opens the same invite. */
 const handledKeys = new Set<string>();
@@ -68,10 +69,15 @@ export function GameInviteBridge() {
       const key = `invite:${room.id}:${from.userId}`;
       if (handledKeys.has(key)) return;
       handledKeys.add(key);
-      Alert.alert(`${from.name} invited you`, `Join their ${room.title} room?`, [
-        { text: 'Not now', style: 'cancel' },
-        { text: 'Join', onPress: () => openRoom(room.id, room.game) },
-      ]);
+      void confirmAsync(
+        `${from.name} invited you`,
+        `Join their ${room.title} room?`,
+        'Join',
+        'Not now',
+        false,
+      ).then((ok) => {
+        if (ok) openRoom(room.id, room.game);
+      });
     },
   });
 
