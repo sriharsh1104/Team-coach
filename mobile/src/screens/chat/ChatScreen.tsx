@@ -40,6 +40,7 @@ import { ForwardSheet } from './ForwardSheet';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { VoiceRecorderButton } from './VoiceRecorderButton';
 import { VoiceNoteBubble } from './VoiceNoteBubble';
+import { ChannelAvatar } from './ChannelAvatar';
 import { ChatStatusLine, presenceLabel, typingLabel } from './ChatStatusLine';
 import {
   activeMentionQuery,
@@ -137,6 +138,7 @@ export function ChatScreen({
   searchActive = false,
   onCloseSearch,
   starredOnly = false,
+  onPeerPresenceChange,
 }: {
   embedded?: boolean;
   channelKey?: string;
@@ -145,6 +147,8 @@ export function ChatScreen({
   onCloseSearch?: () => void;
   /** When true, only starred / favourite messages are loaded. */
   starredOnly?: boolean;
+  /** DM peer online/last-seen — hub uses this for the header avatar pip. */
+  onPeerPresenceChange?: (presence: UserPresence | null) => void;
 } = {}) {
   const shared = useSharedStyles();
   const { user } = useAuth();
@@ -220,6 +224,14 @@ export function ChatScreen({
   // userId -> userName, for everyone currently typing in this channel.
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
   const [peerPresence, setPeerPresence] = useState<UserPresence | null>(null);
+  const onPeerPresenceChangeRef = useRef(onPeerPresenceChange);
+  onPeerPresenceChangeRef.current = onPeerPresenceChange;
+  useEffect(() => {
+    onPeerPresenceChangeRef.current?.(peerPresence);
+  }, [peerPresence]);
+  useEffect(() => {
+    return () => onPeerPresenceChangeRef.current?.(null);
+  }, [channelKey]);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
   const [forwardTarget, setForwardTarget] = useState<ChatMessage | null>(null);
   // Which pinned message the top banner currently shows, when more than one
@@ -265,6 +277,14 @@ export function ChatScreen({
     // DM: only the peer (their channelKey matches this DM room).
     return rosterMentionables.filter((m) => m.channelKey === channelKey);
   }, [channelKey, guildMentionables, rosterMentionables]);
+
+  const avatarByUserId = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const m of [...rosterMentionables, ...guildMentionables]) {
+      if (!map.has(m.userId)) map.set(m.userId, m.avatarUrl);
+    }
+    return map;
+  }, [rosterMentionables, guildMentionables]);
 
   // @all is only a thing in a group chat (team roster / guild) — a DM
   // already has just the one other person.
@@ -1464,15 +1484,19 @@ export function ChatScreen({
   // Set when continuing a table that is already posted in this chat.
   const [pointsSeed, setPointsSeed] = useState<ParsedSummary | null>(null);
 
-  // Only the newest points table in the chat offers "Add match" — that is the
-  // one still being played; older ones stay as plain history.
-  const latestPointsId = useMemo(() => {
-    let best: ChatMessage | null = null;
+  // Each points series (by title) keeps "Add match" on its newest bubble so a
+  // freshly posted second table does not steal continue from the previous one.
+  const latestPointsIds = useMemo(() => {
+    const bestByTitle = new Map<string, ChatMessage>();
     for (const m of messages) {
-      if (!parsePointsSummary(m.text)) continue;
-      if (!best || new Date(m.createdAt).getTime() >= new Date(best.createdAt).getTime()) best = m;
+      const parsed = parsePointsSummary(m.text);
+      if (!parsed) continue;
+      const prev = bestByTitle.get(parsed.title);
+      if (!prev || new Date(m.createdAt).getTime() >= new Date(prev.createdAt).getTime()) {
+        bestByTitle.set(parsed.title, m);
+      }
     }
-    return best?.id ?? null;
+    return new Set([...bestByTitle.values()].map((m) => m.id));
   }, [messages]);
 
   const onPickMedia = async (option: AttachOption) => {
@@ -1573,7 +1597,7 @@ export function ChatScreen({
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {selectMode ? (
-        <View style={styles.selectBar} accessibilityRole="toolbar">
+        <View style={styles.selectBar} accessibilityRole="toolbar" pointerEvents="box-none">
           <Pressable
             onPress={exitSelectMode}
             hitSlop={8}
@@ -1836,6 +1860,16 @@ export function ChatScreen({
                 isMine ? 'Your message' : `Message from ${item.senderName}`
               }
             >
+              {!isMine ? (
+                <View style={styles.bubbleAvatar}>
+                  <ChannelAvatar
+                    uri={avatarByUserId.get(item.senderId)}
+                    size={28}
+                    fallback={(item.senderName[0] ?? '?').toUpperCase()}
+                    previewable={false}
+                  />
+                </View>
+              ) : null}
               {selectMode ? (
                 <View
                   style={[
@@ -2010,7 +2044,7 @@ export function ChatScreen({
                         return url ? <LinkPreviewCard url={url} isMine={isMine} /> : null;
                       })()
                     : null}
-                  {item.id === latestPointsId && !selectMode && !pending
+                  {latestPointsIds.has(item.id) && !selectMode && !pending
                     ? (() => {
                         const parsed = parsePointsSummary(item.text);
                         if (!parsed) return null;
@@ -2119,6 +2153,15 @@ export function ChatScreen({
         />
       )}
       <PointsCalculatorModal
+        // Remount on each open so a chat "Add match" seed never inherits
+        // leftover matches from the last calculator session.
+        key={
+          pointsOpen
+            ? pointsSeed
+              ? `seed:${pointsSeed.title}:${pointsSeed.matches.map((m) => `${m.rank}-${m.kills}`).join(',')}`
+              : 'open'
+            : 'closed'
+        }
         visible={pointsOpen}
         seed={pointsSeed}
         onClose={() => {
@@ -2254,22 +2297,7 @@ export function ChatScreen({
           }}
           onSubmitEditing={onSend}
         />
-        {draft.trim() || editingId ? (
-          <Pressable
-            style={[styles.sendIconBtn, !draft.trim() && styles.sendIconDisabled]}
-            disabled={!draft.trim()}
-            onPress={onSend}
-            accessibilityRole="button"
-            accessibilityLabel={editingId ? 'Save edit' : 'Send'}
-            hitSlop={8}
-          >
-            <AppIcon
-              name={editingId ? 'checkmark-circle' : 'send'}
-              size={24}
-              color={colors.icon}
-            />
-          </Pressable>
-        ) : (
+        {!draft.trim() && !editingId ? (
           <VoiceRecorderButton
             onRecorded={(note) => {
               const parent = replyTo;
@@ -2281,7 +2309,21 @@ export function ChatScreen({
               );
             }}
           />
-        )}
+        ) : null}
+        <Pressable
+          style={[styles.sendIconBtn, !draft.trim() && styles.sendIconDisabled]}
+          disabled={!draft.trim()}
+          onPress={onSend}
+          accessibilityRole="button"
+          accessibilityLabel={editingId ? 'Save edit' : 'Send'}
+          hitSlop={8}
+        >
+          <AppIcon
+            name={editingId ? 'checkmark-circle' : 'send'}
+            size={24}
+            color={colors.icon}
+          />
+        </Pressable>
       </View>
 
       <MediaViewerModal
@@ -2383,7 +2425,15 @@ const chatStyles = (c: ThemeColors) => ({
     justifyContent: 'center' as const,
   },
   pinnedNextGlyph: { color: c.textMuted, fontSize: 20, fontWeight: '700' as const },
+  // Overlay on top of the list — don't push messages down (that left a
+  // blank gap under the hub header when long-press selection opened).
   selectBar: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    elevation: 8,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: 8,
@@ -2516,11 +2566,12 @@ const chatStyles = (c: ThemeColors) => ({
     alignItems: 'center' as const,
   },
   bubbleRowMine: { justifyContent: 'flex-end' as const },
-  bubbleRowTheirs: { justifyContent: 'flex-start' as const },
+  bubbleRowTheirs: { justifyContent: 'flex-start' as const, alignItems: 'flex-end' as const },
   bubbleRowSelected: {
     backgroundColor: 'rgba(139, 156, 255, 0.12)',
     borderRadius: 8,
   },
+  bubbleAvatar: { marginRight: 8, marginBottom: 2 },
   selectCheck: {
     width: 22,
     height: 22,

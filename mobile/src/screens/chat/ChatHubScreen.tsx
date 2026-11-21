@@ -16,6 +16,8 @@ import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
 import { ChatMembersPanel } from './ChatMembersPanel';
 import { ChatMemberProfilePanel } from './ChatMemberProfilePanel';
+import { UserPresence } from '../../api/types';
+import { subscribeOpenChat } from '../../notifications/openChatChannel';
 import { ChatSettingsSheet } from './ChatSettingsSheet';
 import { ChatFlowHeader } from './ChatFlowHeader';
 import { ChannelAvatar } from './ChannelAvatar';
@@ -58,6 +60,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
   const [starredOnly, setStarredOnly] = useState(false);
   const [chatEpoch, setChatEpoch] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [peerOnline, setPeerOnline] = useState(false);
 
   const load = useCallback(async () => {
     const data = await chatApi.getChatChannels();
@@ -116,7 +119,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
     setOverlayStack((prev) => prev.slice(0, -1));
   };
 
-  const openChannel = (channel: {
+  const openChannel = useCallback((channel: {
     channelKey: string;
     title: string;
     type: 'ORG' | 'DM';
@@ -127,6 +130,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
     avatarUrl?: string | null;
   }) => {
     setOverlayStack([]);
+    setPeerOnline(false);
     setActive({
       channelKey: channel.channelKey,
       title: channel.title,
@@ -136,7 +140,57 @@ export function ChatHubScreen({ onLoadError }: Props) {
       muted: !!channel.muted,
       avatarUrl: channel.peerAvatarUrl ?? channel.avatarUrl ?? null,
     });
-  };
+  }, []);
+
+  // Notification tap → open that exact thread (DM / team / guild).
+  useEffect(() => {
+    return subscribeOpenChat((req) => {
+      const apply = (channelRows: ChatChannel[], mateRows: ChatTeammate[]) => {
+        const existing = channelRows.find((c) => c.channelKey === req.channelKey);
+        if (existing) {
+          openChannel(existing);
+          return;
+        }
+        const mate = mateRows.find((t) => t.channelKey === req.channelKey);
+        if (mate) {
+          openChannel({
+            channelKey: mate.channelKey,
+            title: mate.name,
+            type: 'DM',
+            peerUserId: mate.userId,
+            peerAvatarUrl: mate.avatarUrl,
+          });
+          return;
+        }
+        const isDm = req.channelKey.startsWith('dm:');
+        openChannel({
+          channelKey: req.channelKey,
+          title:
+            req.title ||
+            (req.channelKey === 'guild'
+              ? 'Guild Chat'
+              : req.channelKey === 'org'
+                ? 'Team Chat'
+                : 'Chat'),
+          type: isDm ? 'DM' : 'ORG',
+          peerUserId: req.senderId ?? null,
+        });
+      };
+
+      if (channels.length > 0 || teammates.length > 0) {
+        apply(channels, teammates);
+        return;
+      }
+      void chatApi
+        .getChatChannels()
+        .then((data) => {
+          setChannels(data.channels);
+          setTeammates(data.teammates);
+          apply(data.channels, data.teammates);
+        })
+        .catch(() => apply([], []));
+    });
+  }, [channels, teammates, openChannel]);
 
   const toggleMute = async () => {
     if (!active) return;
@@ -164,6 +218,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
     setSearchOpen(false);
     setSettingsOpen(false);
     setStarredOnly(false);
+    setPeerOnline(false);
     setActive(null);
     // The inbox was loaded once on mount — without this, returning from a
     // conversation you just sent a message in still shows the stale
@@ -222,7 +277,9 @@ export function ChatHubScreen({ onLoadError }: Props) {
         ? active.memberCount
           ? `${active.memberCount} member${active.memberCount === 1 ? '' : 's'} · Tap for list`
           : 'Group chat · Tap for members'
-        : 'Direct message · Tap for profile';
+        : peerOnline
+          ? 'Tap for profile'
+          : 'Direct message · Tap for profile';
 
     return (
       <View style={[styles.flex, { backgroundColor: theme.bg }]}>
@@ -239,6 +296,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
               uri={active.avatarUrl}
               size={34}
               fallback={active.type === 'ORG' ? '◈' : active.title.slice(0, 1)}
+              online={active.type === 'DM' && peerOnline}
             />
           }
           trailing={
@@ -348,6 +406,9 @@ export function ChatHubScreen({ onLoadError }: Props) {
           searchActive={searchOpen}
           onCloseSearch={() => setSearchOpen(false)}
           starredOnly={starredOnly}
+          onPeerPresenceChange={(p: UserPresence | null) =>
+            setPeerOnline(!!p?.online)
+          }
         />
         <ChatMediaModal
           visible={mediaOpen}

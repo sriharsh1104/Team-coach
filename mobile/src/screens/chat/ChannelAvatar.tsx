@@ -12,6 +12,8 @@ type Props = {
   fallback?: string;
   /** When true, tap opens a full-screen preview (group banner / photo). */
   previewable?: boolean;
+  /** Live presence — small green pip on the bottom-right (DM / member rows). */
+  online?: boolean;
 };
 
 /** Circular channel / group avatar with optional full-screen preview. */
@@ -20,34 +22,53 @@ export function ChannelAvatar({
   size = 36,
   fallback = '◈',
   previewable = true,
+  online = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const styles = useThemedStyles(avatarStyles);
   const resolved = resolveMediaUrl(uri);
   const radius = size / 2;
+  const dot = Math.max(8, Math.round(size * 0.28));
 
   const body = (
-    <View
-      style={[
-        staticStyles.circle,
-        {
-          width: size,
-          height: size,
-          borderRadius: radius,
-        },
-      ]}
-    >
-      {resolved ? (
-        <Image
-          source={{ uri: resolved }}
-          style={staticStyles.img}
-          contentFit="cover"
+    <View style={{ width: size, height: size }}>
+      <View
+        style={[
+          staticStyles.circle,
+          {
+            width: size,
+            height: size,
+            borderRadius: radius,
+          },
+        ]}
+      >
+        {resolved ? (
+          <Image
+            source={{ uri: resolved }}
+            style={staticStyles.img}
+            contentFit="cover"
+          />
+        ) : (
+          <Text style={[styles.fallback, { fontSize: size * 0.38 }]}>
+            {fallback}
+          </Text>
+        )}
+      </View>
+      {online ? (
+        <View
+          style={[
+            staticStyles.onlineDot,
+            {
+              width: dot,
+              height: dot,
+              borderRadius: dot / 2,
+              right: -1,
+              bottom: -1,
+            },
+          ]}
+          accessibilityLabel="Online"
         />
-      ) : (
-        <Text style={[styles.fallback, { fontSize: size * 0.38 }]}>
-          {fallback}
-        </Text>
-      )}
+      ) : null}
     </View>
   );
 
@@ -103,6 +124,12 @@ const staticStyles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
   },
   img: { width: '100%', height: '100%' },
+  onlineDot: {
+    position: 'absolute',
+    backgroundColor: '#22c55e',
+    borderWidth: 2,
+    borderColor: '#0a0a0c',
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.92)',

@@ -43,30 +43,50 @@ type Props = {
  * table; "New points table" starts a separate one that never mixes with the
  * previous tables.
  */
+function tableFromSeed(seed: ParsedSummary): CalcTable {
+  return {
+    id: `seed:${Date.now()}`,
+    // Keep every prior match from the chat bubble, then append one empty slot
+    // for the next match the user is about to fill.
+    matches: [...seed.matches, newMatch()].slice(0, MAX_CALC_MATCHES),
+  };
+}
+
 export function PointsCalculatorModal({ visible, onClose, onSendToChat, seed = null }: Props) {
   const { colors } = useTheme();
   const styles = useThemedStyles(calcStyles);
-  const [tables, setTables] = useState<CalcTable[]>(() => [newTable()]);
+  // Seeded opens start with prior matches already present so Match 1 is never
+  // wiped by leftover saved tables from a previous session.
+  const [tables, setTables] = useState<CalcTable[]>(() =>
+    seed ? [tableFromSeed(seed)] : [newTable()],
+  );
   // If the user taps before the saved tables finish loading, keep their edits.
-  const edited = useRef(false);
+  const edited = useRef(!!seed);
+  const loadGen = useRef(0);
   const seeded = !!seed;
   const scrollRef = useRef<ScrollView>(null);
   // Jump to the bottom (newest match + Send) once the next layout pass happens.
-  const stickToEnd = useRef(false);
+  const stickToEnd = useRef(!!seed);
 
   // Every time the sheet opens: either continue the table from the chat, or
   // restore the saved tables so a match can be added later.
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      loadGen.current += 1;
+      return;
+    }
+    const gen = ++loadGen.current;
     if (seed) {
       edited.current = true;
       stickToEnd.current = true;
-      setTables([{ id: `seed:${Date.now()}`, matches: [...seed.matches, newMatch()].slice(0, MAX_CALC_MATCHES) }]);
+      setTables([tableFromSeed(seed)]);
       return;
     }
     edited.current = false;
     void loadCalcTables().then((saved) => {
-      if (!edited.current) setTables(saved);
+      // Ignore stale loads from a previous open / a seed open that replaced this one.
+      if (gen !== loadGen.current || edited.current) return;
+      setTables(saved);
     });
   }, [visible, seed]);
 

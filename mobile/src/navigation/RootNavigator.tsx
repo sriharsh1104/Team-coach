@@ -41,6 +41,7 @@ import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
 import { GamesHubScreen } from '../screens/games/GamesHubScreen';
 import { GameRoomScreen } from '../screens/games/GameRoomScreen';
 import { GameInviteBridge } from '../games/GameInviteBridge';
+import { ChatNotificationBridge } from '../notifications/ChatNotificationBridge';
 import { InviteLinkBridge } from '../invite/InviteLinkBridge';
 import { MenuButton, SideDrawer } from '../ui/SideDrawer';
 import { HeaderBackButton } from '../ui/HeaderBackButton';
@@ -379,6 +380,7 @@ export function RootNavigator() {
             sections={guildDrawer.sections}
           />
           <GameInviteBridge />
+          <ChatNotificationBridge />
           <InviteLinkBridge />
         </>
       ) : (
@@ -550,6 +552,7 @@ export function RootNavigator() {
             sections={orgDrawer.sections}
           />
           <GameInviteBridge />
+          <ChatNotificationBridge />
           <InviteLinkBridge />
         </>
       )}

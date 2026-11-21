@@ -1,8 +1,14 @@
 import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as usersApi from '../api/users';
+import * as chatApi from '../api/chat';
 import { getActiveChatChannel } from './activeChatChannel';
 import { isChatSocketConnected } from '../api/chat';
+
+const CHAT_REPLY_CATEGORY = 'chat_reply';
+const CHAT_REPLY_ACTION = 'REPLY';
+
+let replyListenerAttached = false;
 
 // Best-effort: push notifications need a real device and an EAS project id.
 // Any failure here should never block the app.
@@ -57,6 +63,22 @@ export async function registerPushTokenWithBackend() {
       });
     }
 
+    // Inline Reply on the notification shade (DM pushes set categoryId).
+    await Notifications.setNotificationCategoryAsync(CHAT_REPLY_CATEGORY, [
+      {
+        identifier: CHAT_REPLY_ACTION,
+        buttonTitle: 'Reply',
+        textInput: {
+          submitButtonTitle: 'Send',
+          placeholder: 'Message…',
+        },
+        options: {
+          opensAppToForeground: false,
+        },
+      },
+    ]);
+    attachReplyListener(Notifications);
+
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
@@ -76,4 +98,27 @@ export async function registerPushTokenWithBackend() {
   } catch (err) {
     console.warn('Push notification registration skipped:', err);
   }
+}
+
+function attachReplyListener(
+  Notifications: typeof import('expo-notifications'),
+) {
+  if (replyListenerAttached) return;
+  replyListenerAttached = true;
+  Notifications.addNotificationResponseReceivedListener((response) => {
+    const actionId = response.actionIdentifier;
+    if (actionId !== CHAT_REPLY_ACTION) return;
+    const data = response.notification.request.content.data as
+      | { channelKey?: string; type?: string }
+      | undefined;
+    const channelKey =
+      typeof data?.channelKey === 'string' ? data.channelKey : null;
+    const userText =
+      // expo-notifications types this as `userText` on the response.
+      (response as { userText?: string }).userText?.trim() || '';
+    if (!channelKey || !userText) return;
+    void chatApi
+      .sendChatMessage({ channelKey, text: userText })
+      .catch((err) => console.warn('Notification reply failed:', err));
+  });
 }

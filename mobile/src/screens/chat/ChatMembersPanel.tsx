@@ -13,10 +13,12 @@ import { useThemedStyles } from '../../theme/useThemedStyles';
 import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { ChatFlowHeader } from './ChatFlowHeader';
+import { ChannelAvatar } from './ChannelAvatar';
 
 type MemberRow = {
   userId: string;
   name: string;
+  avatarUrl?: string | null;
   roleLabel: string;
   meta: string | null;
 };
@@ -56,6 +58,7 @@ export function ChatMembersPanel({
             guild.members.map((m) => ({
               userId: m.userId,
               name: m.name,
+              avatarUrl: m.avatarUrl,
               roleLabel: m.onRoster
                 ? String(m.rosterRole ?? 'Roster')
                 : String(m.guildRole),
@@ -70,6 +73,7 @@ export function ChatMembersPanel({
             org.members.map((m) => ({
               userId: m.userId,
               name: m.name,
+              avatarUrl: m.avatarUrl,
               roleLabel: String(m.role),
               meta: formatInGameRoles(m.inGameRoles),
             })),
@@ -126,6 +130,12 @@ export function ChatMembersPanel({
               accessibilityLabel={item.name}
               pressScale={0.985}
             >
+              <ChannelAvatar
+                uri={item.avatarUrl}
+                size={36}
+                fallback={(item.name[0] ?? '?').toUpperCase()}
+                previewable={false}
+              />
               <View style={staticStyles.rowMain}>
                 <Text style={styles.name}>
                   {index + 1}. {item.name}

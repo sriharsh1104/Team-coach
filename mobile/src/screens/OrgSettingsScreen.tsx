@@ -242,6 +242,13 @@ export function OrgSettingsScreen({ navigation }: Props) {
                     tooltip="Add to Roster"
                     color={colors.link}
                     onPress={() => void onAddToRoster(item)}
+                    style={{
+                      width: undefined,
+                      minWidth: 44,
+                      paddingHorizontal: 12,
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    }}
                   />
                 ) : null}
                 {canRemove ? (

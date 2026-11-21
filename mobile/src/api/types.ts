@@ -244,6 +244,7 @@ export interface GuildRosterMember {
 export interface GuildMemberRow {
   userId: string;
   name: string;
+  avatarUrl?: string | null;
   inGameName: string | null;
   guildRole: GuildRole;
   onRoster: boolean;

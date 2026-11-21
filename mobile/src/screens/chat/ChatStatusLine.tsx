@@ -38,7 +38,9 @@ function timeAgo(iso: string): string {
 
 export function presenceLabel(presence: { online: boolean; lastSeenAt: string | null } | null): string | null {
   if (!presence) return null;
-  if (presence.online) return 'Online';
+  // Online is shown as a green pip on the header avatar — don't also print
+  // "Online" under the composer. Keep last-seen when they're away.
+  if (presence.online) return null;
   if (presence.lastSeenAt) return `Last seen ${timeAgo(presence.lastSeenAt)}`;
   return null;
 }

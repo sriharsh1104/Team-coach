@@ -80,6 +80,21 @@ export function deleteMessages(ids: string[]) {
     .then((res) => res.data);
 }
 
+/** REST send — used by the notification Reply action (socket may be down). */
+export function sendChatMessage(input: {
+  channelKey: string;
+  text: string;
+  replyToId?: string;
+}) {
+  return apiClient
+    .post<{ ok: boolean; id: string }>('/chat/messages', {
+      channelKey: input.channelKey,
+      text: input.text,
+      replyToId: input.replyToId,
+    })
+    .then((res) => res.data);
+}
+
 export function editMessage(id: string, text: string) {
   return apiClient
     .post<{ channelKey: string; message: ChatMessage }>('/chat/messages/edit', {

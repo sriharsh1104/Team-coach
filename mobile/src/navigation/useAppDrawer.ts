@@ -111,6 +111,7 @@ export function useOrgDrawer() {
           {
             key: 'teamChat',
             label: 'Chat',
+            icon: 'chatbubble-outline' as const,
             onPress: () => goToSection(navigation, 'OrgHome'),
           },
         ],
@@ -135,6 +136,7 @@ export function useOrgDrawer() {
               {
                 key: 'guildHome',
                 label: 'Guild Roster',
+                icon: 'people-outline' as const,
                 onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
               },
             ]
@@ -142,6 +144,7 @@ export function useOrgDrawer() {
         {
           key: 'games',
           label: 'Games',
+          icon: 'game-controller-outline' as const,
           onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Games' }),
         },
       ],
@@ -155,11 +158,13 @@ export function useOrgDrawer() {
         {
           key: 'profile',
           label: 'Profile',
+          icon: 'person-outline' as const,
           onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Profile' }),
         },
         {
           key: 'socialHandles',
           label: 'Social Handles',
+          icon: 'share-social-outline' as const,
           onPress: () =>
             goToSection(navigation, 'OrgHome', { screen: 'SocialHandles' }),
         },
@@ -190,6 +195,7 @@ export function useGuildDrawer() {
           {
             key: 'guildChat',
             label: 'Guild Chat',
+            icon: 'chatbubble-outline' as const,
             onPress: () => goToSection(navigation, 'GuildHome'),
           },
         ],
@@ -202,11 +208,13 @@ export function useGuildDrawer() {
           {
             key: 'guildHome',
             label: 'Guild Roster',
+            icon: 'people-outline' as const,
             onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Guild' }),
           },
           {
             key: 'games',
             label: 'Games',
+            icon: 'game-controller-outline' as const,
             onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Games' }),
           },
         ],
@@ -219,11 +227,13 @@ export function useGuildDrawer() {
           {
             key: 'profile',
             label: 'Profile',
+            icon: 'person-outline' as const,
             onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Profile' }),
           },
           {
             key: 'socialHandles',
             label: 'Social Handles',
+            icon: 'share-social-outline' as const,
             onPress: () =>
               goToSection(navigation, 'GuildHome', { screen: 'SocialHandles' }),
           },

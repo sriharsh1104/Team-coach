@@ -39,6 +39,36 @@ describe('PointsCalculatorModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('chat "Add match" seed keeps prior matches and only appends the next empty slot', async () => {
+    const onSendToChat = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <PointsCalculatorModal
+        visible
+        onClose={onClose}
+        onSendToChat={onSendToChat}
+        seed={{ title: 'Scrim A', matches: [{ rank: 3, kills: 5 }] }}
+      />,
+    );
+
+    // Match 1 from the chat bubble is already filled; Match 2 is the empty slot.
+    await waitFor(() => expect(screen.getByLabelText('Table 1 total 13 points')).toBeTruthy());
+    expect(screen.getByLabelText('Table 1 match 1 placement 3')).toBeTruthy();
+    expect(screen.getByLabelText('Table 1 match 2 placement 1')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Table 1 match 2 placement 1'));
+    fireEvent.press(screen.getByLabelText('More kills table 1 match 2'));
+    fireEvent.press(screen.getByLabelText('More kills table 1 match 2'));
+    await waitFor(() => expect(screen.getByLabelText('Table 1 total 27 points')).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText('Send table 1 to chat'));
+    const text = onSendToChat.mock.calls[0][0] as string;
+    expect(text).toContain('Scrim A');
+    expect(text).toContain('Match 1: 3rd · 5 kills = 13 pts');
+    expect(text).toContain('Match 2: 1st · 2 kills = 14 pts');
+    expect(text).toContain('Total: 27 pts');
+  });
+
   it('"New points table" starts a separate table that never joins the previous total', async () => {
     setup();
 

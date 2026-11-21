@@ -25,6 +25,7 @@ import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { SoftPressable } from '../ui/SoftPressable';
 import { emitToast } from '../ui/toastBus';
 import { confirmAsync } from '../ui/confirmAsync';
+import { ChannelAvatar } from './chat/ChannelAvatar';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Guild'>;
 
@@ -321,18 +322,19 @@ function RosterActionIcons({
       {canAdd ? (
         <SoftPressable
           style={[
-            staticStyles.iconBtn,
-            styles.iconBtnAdd,
+            staticStyles.addChip,
+            styles.addChip,
             busy && staticStyles.iconBtnDisabled,
           ]}
           disabled={busy}
           onPress={onAdd}
-          pressScale={0.92}
+          pressScale={0.96}
           accessibilityRole="button"
           accessibilityState={{ disabled: busy }}
           accessibilityLabel={`Add ${name} to roster`}
         >
-          <AppIcon name="person-add" size={22} color={colors.chromeInk} />
+          <AppIcon name="person-add" size={16} color={colors.link} />
+          <Text style={styles.addChipText}>Add</Text>
         </SoftPressable>
       ) : null}
       {canRemove ? (
@@ -380,6 +382,12 @@ function MemberRow({
   return (
     <View style={staticStyles.row}>
       <View style={staticStyles.rosterMain}>
+        <ChannelAvatar
+          uri={member.avatarUrl}
+          size={40}
+          fallback={(member.name[0] ?? '?').toUpperCase()}
+          previewable={false}
+        />
         <SoftPressable
           style={staticStyles.rosterTextCol}
           onPress={onPress}
@@ -502,6 +510,15 @@ const staticStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  addChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
   iconBtnDisabled: { opacity: 0.55 },
 });
 
@@ -542,10 +559,14 @@ function guildStyles(c: ThemeColors) {
     inviteValue: { color: c.text, fontWeight: '600' as const, marginTop: 2 },
     rowName: { fontSize: 16, color: c.text, fontWeight: '700' as const },
     rowMeta: { fontSize: 12, color: c.textMuted },
-    // Chrome / danger fills so the glyph reads clearly on the dark card —
-    // the old translucent chip + dim glyph was nearly invisible.
-    iconBtnAdd: {
-      backgroundColor: c.chrome,
+    addChip: {
+      backgroundColor: c.surface,
+      borderColor: c.border,
+    },
+    addChipText: {
+      color: c.link,
+      fontSize: 13,
+      fontWeight: '700' as const,
     },
     iconBtnRemove: {
       backgroundColor: c.danger,

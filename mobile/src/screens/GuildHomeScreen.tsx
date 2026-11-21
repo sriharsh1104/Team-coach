@@ -80,7 +80,8 @@ export function GuildHomeScreen({ navigation }: Props) {
           items: [
             {
               key: 'recorder',
-              label: '⏺  Recorder',
+              label: 'Recorder',
+              icon: 'videocam-outline' as const,
               onPress: () => startRecording(),
             },
           ],
