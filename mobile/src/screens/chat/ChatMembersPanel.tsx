@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
@@ -10,8 +9,8 @@ import * as orgApi from '../../api/org';
 import { roleLabel } from '../../api/roles';
 import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
-import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { SkeletonList } from '../../ui/Skeleton';
 import { ChatFlowHeader } from './ChatFlowHeader';
 import { ChannelAvatar } from './ChannelAvatar';
 
@@ -41,7 +40,6 @@ export function ChatMembersPanel({
   onBack: () => void;
   onSelectMember: (member: { userId: string; name: string }) => void;
 }) {
-  const { colors } = useTheme();
   const styles = useThemedStyles(membersPanelStyles);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,9 +106,11 @@ export function ChatMembersPanel({
       />
 
       {isLoading ? (
-        <View style={staticStyles.center}>
-          <ActivityIndicator color={colors.chrome} />
-        </View>
+        <SkeletonList
+          count={8}
+          avatarSize={40}
+          style={{ paddingHorizontal: 16, paddingTop: 8 }}
+        />
       ) : error ? (
         <View style={staticStyles.center}>
           <Text style={styles.error}>{error}</Text>
@@ -129,6 +129,7 @@ export function ChatMembersPanel({
               accessibilityRole="button"
               accessibilityLabel={item.name}
               pressScale={0.985}
+              haptic={false}
             >
               <ChannelAvatar
                 uri={item.avatarUrl}

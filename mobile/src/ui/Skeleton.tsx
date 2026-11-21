@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { Animated, StyleProp, View, ViewStyle } from 'react-native';
 import { ThemeColors } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
@@ -7,8 +7,39 @@ import { useThemedStyles } from '../theme/useThemedStyles';
 const SKIP_MOTION =
   typeof jest !== 'undefined' || process.env.NODE_ENV === 'test';
 
+const PulseContext = createContext<Animated.Value | null>(null);
+
 /** Shared clock so every block on a screen pulses in step, not in a shimmer mob. */
 function usePulse(): Animated.Value {
+  const shared = useContext(PulseContext);
+  const local = useRef(new Animated.Value(0.45)).current;
+  const pulse = shared ?? local;
+  useEffect(() => {
+    if (shared || SKIP_MOTION) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(local, {
+          toValue: 0.9,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(local, {
+          toValue: 0.45,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      local.stopAnimation();
+    };
+  }, [shared, local]);
+  return pulse;
+}
+
+function PulseProvider({ children }: { children: React.ReactNode }) {
   const pulse = useRef(new Animated.Value(0.45)).current;
   useEffect(() => {
     if (SKIP_MOTION) return;
@@ -32,7 +63,7 @@ function usePulse(): Animated.Value {
       pulse.stopAnimation();
     };
   }, [pulse]);
-  return pulse;
+  return <PulseContext.Provider value={pulse}>{children}</PulseContext.Provider>;
 }
 
 type BlockProps = {
@@ -112,11 +143,13 @@ export function SkeletonList({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <View style={style} testID="skeleton-list">
-      {Array.from({ length: count }, (_, i) => (
-        <SkeletonRow key={i} avatar={avatar} avatarSize={avatarSize} />
-      ))}
-    </View>
+    <PulseProvider>
+      <View style={style} testID="skeleton-list">
+        {Array.from({ length: count }, (_, i) => (
+          <SkeletonRow key={i} avatar={avatar} avatarSize={avatarSize} />
+        ))}
+      </View>
+    </PulseProvider>
   );
 }
 
@@ -136,16 +169,21 @@ export function SkeletonGrid({
 }) {
   const widthPct = `${(100 - (columns - 1) * 2) / columns}%` as `${number}%`;
   return (
-    <View style={[{ flexDirection: 'row', flexWrap: 'wrap', gap }, style]} testID="skeleton-grid">
-      {Array.from({ length: count }, (_, i) => (
-        <Skeleton
-          key={i}
-          width={widthPct}
-          height={110 / aspect}
-          radius={10}
-        />
-      ))}
-    </View>
+    <PulseProvider>
+      <View
+        style={[{ flexDirection: 'row', flexWrap: 'wrap', gap }, style]}
+        testID="skeleton-grid"
+      >
+        {Array.from({ length: count }, (_, i) => (
+          <Skeleton
+            key={i}
+            width={widthPct}
+            height={110 / aspect}
+            radius={10}
+          />
+        ))}
+      </View>
+    </PulseProvider>
   );
 }
 

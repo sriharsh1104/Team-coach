@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -20,6 +19,7 @@ import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { SkeletonList } from '../../ui/Skeleton';
 import { usePullToRefresh } from '../../ui/usePullToRefresh';
 import { IconActionButton } from '../../ui/IconActionButton';
 import { useBookTabs } from '../../ui/BookTabs';
@@ -121,8 +121,8 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
   if (isLoading || !profile) {
     return (
       <Screen>
-        <View style={shared.container}>
-          <ActivityIndicator color={colors.chrome} />
+        <View style={[shared.container, { justifyContent: 'flex-start', paddingTop: 24 }]}>
+          <SkeletonList count={6} avatarSize={64} />
         </View>
       </Screen>
     );

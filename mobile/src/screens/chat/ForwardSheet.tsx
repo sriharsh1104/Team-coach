@@ -14,6 +14,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
 import { emitToast } from '../../ui/toastBus';
+import { SkeletonList } from '../../ui/Skeleton';
 
 type Target = { channelKey: string; title: string; subtitle?: string };
 
@@ -87,7 +88,7 @@ export function ForwardSheet({ visible, excludeChannelKey, onClose, onForward }:
         <Pressable style={styles.sheet} onPress={() => undefined}>
           <Text style={styles.title}>Forward to…</Text>
           {loading ? (
-            <ActivityIndicator color={colors.chrome} style={staticStyles.loader} />
+            <SkeletonList count={5} avatarSize={36} style={staticStyles.loader} />
           ) : (
             <FlatList
               data={targets}

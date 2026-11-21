@@ -14,6 +14,7 @@ import { ChatChannel, ChatTeammate } from '../../api/types';
 import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { SkeletonList } from '../../ui/Skeleton';
+import { FadeIn } from '../../ui/FadeIn';
 import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
 import { ChatMembersPanel } from './ChatMembersPanel';
@@ -39,6 +40,14 @@ type ActiveChat = {
   muted: boolean;
   avatarUrl: string | null;
 };
+
+type InboxRow =
+  | { key: string; kind: 'section'; label: string; soft?: boolean }
+  | { key: string; kind: 'group'; channel: ChatChannel }
+  | { key: string; kind: 'dm'; channel: ChatChannel }
+  | { key: string; kind: 'start'; mate: ChatTeammate }
+  | { key: string; kind: 'skeleton' }
+  | { key: string; kind: 'empty' };
 
 /** Local steps on top of an open chat — back pops in reverse order. */
 type ChatOverlay =
@@ -256,6 +265,47 @@ export function ChatHubScreen({ onLoadError }: Props) {
     }
   };
 
+  const inboxRows = useMemo((): InboxRow[] => {
+    const rows: InboxRow[] = [];
+    if (groupChannels.length > 0) {
+      rows.push({ key: 'sec-group', kind: 'section', label: 'Group Chats' });
+      for (const ch of groupChannels) {
+        rows.push({ key: `g:${ch.channelKey}`, kind: 'group', channel: ch });
+      }
+    }
+    if (dmChannels.length > 0 || startDmTeammates.length > 0) {
+      rows.push({ key: 'sec-dm', kind: 'section', label: 'Direct Messages' });
+    }
+    for (const ch of dmChannels) {
+      rows.push({ key: `d:${ch.channelKey}`, kind: 'dm', channel: ch });
+    }
+    if (startDmTeammates.length > 0) {
+      if (dmChannels.length > 0) {
+        rows.push({
+          key: 'sec-start',
+          kind: 'section',
+          label: 'Start new',
+          soft: true,
+        });
+      }
+      for (const mate of startDmTeammates) {
+        rows.push({ key: `s:${mate.userId}`, kind: 'start', mate });
+      }
+    }
+    if (isLoadingInbox) {
+      rows.push({ key: 'skeleton', kind: 'skeleton' });
+    } else if (teammates.length === 0) {
+      rows.push({ key: 'empty', kind: 'empty' });
+    }
+    return rows;
+  }, [
+    groupChannels,
+    dmChannels,
+    startDmTeammates,
+    isLoadingInbox,
+    teammates.length,
+  ]);
+
   if (active) {
     const top = overlayStack[overlayStack.length - 1] ?? null;
     const mediaOpen = top?.kind === 'media';
@@ -297,7 +347,11 @@ export function ChatHubScreen({ onLoadError }: Props) {
           : 'Direct message · Tap for profile';
 
     return (
-      <View style={[styles.flex, { backgroundColor: theme.bg }]}>
+      <FadeIn
+        animKey={active.channelKey}
+        duration={120}
+        style={[styles.flex, { backgroundColor: theme.bg }]}
+      >
         <ChatFlowHeader
           title={active.title}
           subtitle={subtitle}
@@ -408,7 +462,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
             );
           }}
         />
-      </View>
+      </FadeIn>
     );
   }
 
@@ -416,8 +470,12 @@ export function ChatHubScreen({ onLoadError }: Props) {
     <View style={[styles.flex, { backgroundColor: theme.bg }]}>
       <Text style={[styles.inboxTitle, { color: theme.text }]}>Chats</Text>
       <FlatList
-        data={[{ key: 'inbox' }]}
+        data={inboxRows}
         keyExtractor={(item) => item.key}
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        windowSize={7}
+        removeClippedSubviews
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -425,16 +483,39 @@ export function ChatHubScreen({ onLoadError }: Props) {
             tintColor={theme.chrome}
           />
         }
-        renderItem={() => (
-          <View>
-            {groupChannels.length > 0 ? (
-              <Text style={[styles.section, { color: theme.textMuted }]}>
-                Group Chats
+        renderItem={({ item }) => {
+          if (item.kind === 'section') {
+            return (
+              <Text
+                style={[
+                  item.soft ? styles.sectionSoft : styles.section,
+                  { color: item.soft ? theme.textDim : theme.textMuted },
+                ]}
+              >
+                {item.label}
               </Text>
-            ) : null}
-            {groupChannels.map((ch) => (
+            );
+          }
+          if (item.kind === 'skeleton') {
+            return (
+              <SkeletonList
+                count={6}
+                avatarSize={40}
+                style={{ paddingHorizontal: 26 }}
+              />
+            );
+          }
+          if (item.kind === 'empty') {
+            return (
+              <Text style={[styles.empty, { color: theme.textMuted }]}>
+                No teammates yet.
+              </Text>
+            );
+          }
+          if (item.kind === 'group') {
+            const ch = item.channel;
+            return (
               <View
-                key={ch.channelKey}
                 style={[
                   styles.row,
                   styles.teamRow,
@@ -446,6 +527,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
                   style={styles.rowMain}
                   onPress={() => openChannel(ch)}
                   pressScale={0.985}
+                  haptic={false}
                   accessibilityRole="button"
                   accessibilityLabel={ch.title}
                 >
@@ -470,45 +552,41 @@ export function ChatHubScreen({ onLoadError }: Props) {
                   </View>
                 ) : null}
               </View>
-            ))}
-
-            {(dmChannels.length > 0 || startDmTeammates.length > 0) && (
-              <Text style={[styles.section, { color: theme.textMuted }]}>
-                Direct Messages
-              </Text>
-            )}
-
-            {dmChannels.map((item) => (
+            );
+          }
+          if (item.kind === 'dm') {
+            const channel = item.channel;
+            return (
               <SoftPressable
-                key={item.channelKey}
                 style={[
                   styles.row,
                   { backgroundColor: theme.surface, borderColor: theme.border },
                 ]}
                 onPress={() =>
                   openChannel({
-                    ...item,
-                    peerUserId: item.peerUserId,
+                    ...channel,
+                    peerUserId: channel.peerUserId,
                   })
                 }
                 pressScale={0.985}
+                haptic={false}
               >
                 <ChannelAvatar
-                  uri={item.peerAvatarUrl}
+                  uri={channel.peerAvatarUrl}
                   size={40}
-                  fallback={(item.title || '?').slice(0, 1).toUpperCase()}
-                  previewable={!!item.peerAvatarUrl}
+                  fallback={(channel.title || '?').slice(0, 1).toUpperCase()}
+                  previewable={!!channel.peerAvatarUrl}
                 />
                 <View style={styles.rowMain}>
                   <Text style={[styles.rowTitle, { color: theme.text }]}>
-                    {item.title}
+                    {channel.title}
                   </Text>
-                  {item.lastPreview ? (
+                  {channel.lastPreview ? (
                     <Text
                       style={[styles.preview, { color: theme.textMuted }]}
                       numberOfLines={1}
                     >
-                      {item.lastPreview}
+                      {channel.lastPreview}
                     </Text>
                   ) : (
                     <Text style={[styles.preview, { color: theme.textMuted }]}>
@@ -516,74 +594,51 @@ export function ChatHubScreen({ onLoadError }: Props) {
                     </Text>
                   )}
                 </View>
-                {item.unreadCount > 0 ? (
+                {channel.unreadCount > 0 ? (
                   <View style={[styles.badge, { backgroundColor: theme.chrome }]}>
                     <Text style={[styles.badgeText, { color: theme.chromeInk }]}>
-                      {item.unreadCount}
+                      {channel.unreadCount}
                     </Text>
                   </View>
                 ) : null}
               </SoftPressable>
-            ))}
-
-            {startDmTeammates.length > 0 && (
-              <>
-                {dmChannels.length > 0 ? (
-                  <Text style={[styles.sectionSoft, { color: theme.textDim }]}>
-                    Start new
-                  </Text>
-                ) : null}
-                {startDmTeammates.map((mate) => (
-                  <SoftPressable
-                    key={mate.userId}
-                    style={[
-                      styles.row,
-                      {
-                        backgroundColor: theme.surface,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                    onPress={() =>
-                      openChannel({
-                        channelKey: mate.channelKey,
-                        title: mate.name,
-                        type: 'DM',
-                        memberCount: null,
-                        peerUserId: mate.userId,
-                        avatarUrl: mate.avatarUrl,
-                      })
-                    }
-                    pressScale={0.985}
-                  >
-                    <ChannelAvatar
-                      uri={mate.avatarUrl}
-                      size={40}
-                      fallback={(mate.name || '?').slice(0, 1).toUpperCase()}
-                      previewable={!!mate.avatarUrl}
-                    />
-                    <Text style={[styles.rowTitle, { color: theme.text }]}>
-                      {mate.name}
-                    </Text>
-                  </SoftPressable>
-                ))}
-              </>
-            )}
-
-            {isLoadingInbox ? (
-              // Placeholder rows rather than a spinner: the inbox keeps its
-              // shape while loading, so content swapping in doesn't jump.
-              <SkeletonList
-                count={6}
-                avatarSize={40}
-                style={{ paddingHorizontal: 26 }}
+            );
+          }
+          const mate = item.mate;
+          return (
+            <SoftPressable
+              style={[
+                styles.row,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ]}
+              onPress={() =>
+                openChannel({
+                  channelKey: mate.channelKey,
+                  title: mate.name,
+                  type: 'DM',
+                  memberCount: null,
+                  peerUserId: mate.userId,
+                  avatarUrl: mate.avatarUrl,
+                })
+              }
+              pressScale={0.985}
+              haptic={false}
+            >
+              <ChannelAvatar
+                uri={mate.avatarUrl}
+                size={40}
+                fallback={(mate.name || '?').slice(0, 1).toUpperCase()}
+                previewable={!!mate.avatarUrl}
               />
-            ) : teammates.length === 0 ? (
-              <Text style={[styles.empty, { color: theme.textMuted }]}>
-                No teammates yet.
+              <Text style={[styles.rowTitle, { color: theme.text }]}>
+                {mate.name}
               </Text>
-            ) : null}
-          </View>
-        )}
+            </SoftPressable>
+          );
+        }}
       />
     </View>
   );

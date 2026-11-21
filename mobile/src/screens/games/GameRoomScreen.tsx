@@ -16,8 +16,9 @@ import { BrandShareIcon } from '../../ui/BrandShareIcon';
 import { ChannelAvatar } from '../chat/ChannelAvatar';
 import { resolveMediaUrl } from '../../api/client';
 import { confirmAsync } from '../../ui/confirmAsync';
+import { FadeIn } from '../../ui/FadeIn';
 import { LudoBoard, ludoColorHex } from './LudoBoard';
-import { supports3D } from '../../games/three/GameCanvas';
+import { prefer3DByDefault, supports3D } from '../../games/three/GameCanvas';
 import { RpsBoard } from './RpsBoard';
 
 const NOTIFY_COOLDOWN_MS = 5 * 60 * 1000;
@@ -41,8 +42,8 @@ export function GameRoomScreen() {
   // userId -> when I last notified them (server enforces 1 per 5 min per pair).
   const [notifiedAt, setNotifiedAt] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
-  // Animation games default to 3D; fall back to 2D only if GL isn't available.
-  const [mode, setMode] = useState<'2d' | '3d'>(() => (supports3D() ? '3d' : '2d'));
+  // Android mid-range defaults to 2D (smoother); iOS / strong devices start in 3D.
+  const [mode, setMode] = useState<'2d' | '3d'>(() => (prefer3DByDefault() ? '3d' : '2d'));
   const meId = user?.id ?? '';
 
   const games = useGamesSocket({
@@ -283,22 +284,24 @@ export function GameRoomScreen() {
           const color = room.ludo?.colors[p.userId];
           const uri = resolveMediaUrl(p.avatarUrl);
           return (
-            <View key={p.userId} style={styles.playerRow}>
-              <View style={color ? { borderRadius: 18, borderWidth: 2, borderColor: ludoColorHex(color) } : undefined}>
-                <ChannelAvatar
-                  uri={uri}
-                  size={36}
-                  fallback={p.name.slice(0, 1).toUpperCase()}
-                  previewable={false}
-                />
+            <FadeIn key={p.userId} animKey={p.userId} duration={160}>
+              <View style={styles.playerRow}>
+                <View style={color ? { borderRadius: 18, borderWidth: 2, borderColor: ludoColorHex(color) } : undefined}>
+                  <ChannelAvatar
+                    uri={uri}
+                    size={36}
+                    fallback={p.name.slice(0, 1).toUpperCase()}
+                    previewable={false}
+                  />
+                </View>
+                <Text style={styles.playerName}>
+                  {p.name}
+                  {p.userId === meId ? ' (You)' : ''}
+                </Text>
+                {p.userId === room.hostId ? <Text style={styles.hostPill}>HOST</Text> : null}
+                {!p.connected ? <Text style={styles.offline}>offline</Text> : null}
               </View>
-              <Text style={styles.playerName}>
-                {p.name}
-                {p.userId === meId ? ' (You)' : ''}
-              </Text>
-              {p.userId === room.hostId ? <Text style={styles.hostPill}>HOST</Text> : null}
-              {!p.connected ? <Text style={styles.offline}>offline</Text> : null}
-            </View>
+            </FadeIn>
           );
         })}
         {Array.from({ length: Math.max(0, room.maxPlayers - room.players.length) }).map((_, i) => (

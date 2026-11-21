@@ -44,8 +44,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   image: {
-    width: '88%',
-    maxWidth: 420,
+    // Slightly smaller than full-bleed so mid-range GPUs spend less on the
+    // always-on backdrop while the mark still reads as Sacred branding.
+    width: '72%',
+    maxWidth: 340,
     aspectRatio: 1,
   },
 });

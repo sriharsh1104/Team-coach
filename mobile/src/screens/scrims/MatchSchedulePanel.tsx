@@ -371,6 +371,7 @@ export function MatchSchedulePanel({
                     })
                   }
                   pressScale={0.985}
+                  haptic={false}
                 >
                   <Text style={staticStyles.dayName}>{entry.name}</Text>
                   <Text style={styles.dayStats}>

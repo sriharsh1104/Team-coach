@@ -1,6 +1,101 @@
+import { Platform } from 'react-native';
+
 type CacheEntry<T> = { value: T; at: number };
 
 const store = new Map<string, CacheEntry<unknown>>();
+
+/** Keys worth keeping across process death so reopen paints instantly. */
+const PERSIST_PREFIXES = [
+  'chat:inbox',
+  'org:detail',
+  'org:members',
+  'media:list:',
+  'scrims:list',
+] as const;
+
+const DISK_FILE = 'team-coach.query-cache.json';
+const MAX_DISK_ENTRIES = 40;
+let hydrateStarted = false;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function shouldPersist(key: string): boolean {
+  return PERSIST_PREFIXES.some(
+    (p) => key === p || (p.endsWith(':') ? key.startsWith(p) : key === p),
+  );
+}
+
+async function diskRead(): Promise<Record<string, CacheEntry<unknown>>> {
+  try {
+    if (Platform.OS === 'web') {
+      const raw = localStorage.getItem(DISK_FILE);
+      if (!raw) return {};
+      return JSON.parse(raw) as Record<string, CacheEntry<unknown>>;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const FileSystem = require('expo-file-system') as typeof import('expo-file-system');
+    const path = `${FileSystem.documentDirectory}${DISK_FILE}`;
+    const info = await FileSystem.getInfoAsync(path);
+    if (!info.exists) return {};
+    const raw = await FileSystem.readAsStringAsync(path);
+    return JSON.parse(raw) as Record<string, CacheEntry<unknown>>;
+  } catch {
+    return {};
+  }
+}
+
+async function diskWrite(payload: Record<string, CacheEntry<unknown>>) {
+  try {
+    const body = JSON.stringify(payload);
+    if (Platform.OS === 'web') {
+      localStorage.setItem(DISK_FILE, body);
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const FileSystem = require('expo-file-system') as typeof import('expo-file-system');
+    const path = `${FileSystem.documentDirectory}${DISK_FILE}`;
+    await FileSystem.writeAsStringAsync(path, body);
+  } catch {
+    /* disk full / private mode — RAM cache still works */
+  }
+}
+
+function schedulePersist() {
+  // Jest / NODE_ENV=test: keep RAM only — disk timers outlive the suite.
+  if (
+    typeof jest !== 'undefined' ||
+    process.env.NODE_ENV === 'test' ||
+    Platform.OS === 'web' && typeof localStorage === 'undefined'
+  ) {
+    return;
+  }
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    const payload: Record<string, CacheEntry<unknown>> = {};
+    const entries = [...store.entries()]
+      .filter(([k]) => shouldPersist(k))
+      .sort((a, b) => b[1].at - a[1].at)
+      .slice(0, MAX_DISK_ENTRIES);
+    for (const [k, v] of entries) payload[k] = v;
+    void diskWrite(payload);
+  }, 400);
+}
+
+/**
+ * Pull durable cache into memory once on boot. Safe to call multiple times.
+ * Screens that mount before this finishes still fall through to network.
+ */
+export function hydrateQueryCache(): Promise<void> {
+  if (hydrateStarted) return Promise.resolve();
+  hydrateStarted = true;
+  return diskRead().then((disk) => {
+    for (const [key, entry] of Object.entries(disk)) {
+      if (!entry || typeof entry.at !== 'number') continue;
+      if (store.has(key)) continue; // live write wins
+      store.set(key, entry);
+    }
+  });
+}
 
 /** In-memory response cache keyed like a URL (`stats:board:BR`). */
 export function cacheGet<T>(key: string): T | undefined {
@@ -10,6 +105,7 @@ export function cacheGet<T>(key: string): T | undefined {
 
 export function cacheSet<T>(key: string, value: T) {
   store.set(key, { value, at: Date.now() });
+  if (shouldPersist(key)) schedulePersist();
 }
 
 export function cacheHas(key: string): boolean {
@@ -19,11 +115,13 @@ export function cacheHas(key: string): boolean {
 export function cacheInvalidate(prefix?: string) {
   if (!prefix) {
     store.clear();
+    schedulePersist();
     return;
   }
   for (const key of [...store.keys()]) {
     if (key === prefix || key.startsWith(prefix)) store.delete(key);
   }
+  schedulePersist();
 }
 
 /**

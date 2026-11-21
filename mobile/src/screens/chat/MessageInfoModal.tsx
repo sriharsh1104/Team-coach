@@ -12,19 +12,20 @@ interface Props {
   visible: boolean;
   deliveredTo: ReceiptEntry[];
   readBy: ReceiptEntry[];
-  /** Group-chat members this message hasn't reached yet (not delivered, not read). */
+  /** Members this message hasn't reached yet (not delivered, not read). */
   pending?: ReceiptEntry[];
   onClose: () => void;
 }
 
-/** WhatsApp-style "Message info" sheet — opened via a long-press on the tick
- * row rather than a plain tap on a visible count. A group chat also gets a
- * "Pending" section so it's obvious who's holding the double-tick back. */
+/** WhatsApp-style "Message info" — who read, who got it but hasn't opened,
+ * and who still hasn't received it. Sections stay visible so empty states
+ * make the gaps obvious. */
 export function MessageInfoModal({ visible, deliveredTo, readBy, pending = [], onClose }: Props) {
   const styles = useThemedStyles(messageInfoStyles);
   const readIds = new Set(readBy.map((r) => r.userId));
   // Everyone who's read it has also, by definition, received it — but a
   // member can be delivered-only if they haven't opened the chat yet.
+  // "Not opened" + "Not delivered" together answer who hasn't read.
   const deliveredOnly = deliveredTo.filter((d) => !readIds.has(d.userId));
 
   return (
@@ -49,7 +50,7 @@ export function MessageInfoModal({ visible, deliveredTo, readBy, pending = [], o
             />
           )}
 
-          <Text style={styles.sectionLabel}>Delivered to</Text>
+          <Text style={styles.sectionLabel}>Delivered · not opened</Text>
           {deliveredOnly.length === 0 ? (
             <Text style={styles.empty}>No one yet.</Text>
           ) : (
@@ -65,21 +66,21 @@ export function MessageInfoModal({ visible, deliveredTo, readBy, pending = [], o
             />
           )}
 
-          {pending.length > 0 ? (
-            <>
-              <Text style={styles.sectionLabel}>Pending</Text>
-              <FlatList
-                data={pending}
-                keyExtractor={(item) => item.userId}
-                renderItem={({ item }) => (
-                  <View style={styles.row}>
-                    <Text style={styles.name}>{item.name}</Text>
-                    <Text style={styles.checkPending}>✓</Text>
-                  </View>
-                )}
-              />
-            </>
-          ) : null}
+          <Text style={styles.sectionLabel}>Not delivered</Text>
+          {pending.length === 0 ? (
+            <Text style={styles.empty}>Everyone has it.</Text>
+          ) : (
+            <FlatList
+              data={pending}
+              keyExtractor={(item) => item.userId}
+              renderItem={({ item }) => (
+                <View style={styles.row}>
+                  <Text style={styles.name}>{item.name}</Text>
+                  <Text style={styles.checkPending}>✓</Text>
+                </View>
+              )}
+            />
+          )}
 
           <Pressable style={staticStyles.closeBtn} onPress={onClose}>
             <Text style={styles.closeText}>Close</Text>

@@ -18,7 +18,7 @@ import { SoftPressable } from './SoftPressable';
 
 const WINDOW = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(300, WINDOW.width * 0.82);
-const DRAWER_MS = 260;
+const DRAWER_MS = 180;
 /** Babel often inlines NODE_ENV away from 'test' under Jest — detect jest itself. */
 const SKIP_MOTION =
   typeof jest !== 'undefined' || process.env.NODE_ENV === 'test';

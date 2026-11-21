@@ -22,6 +22,7 @@ import { Screen } from '../../brand/Screen';
 import { AppIcon } from '../../ui/AppIcon';
 import { haptic } from '../../ui/haptics';
 import { ButtonLabel } from '../../ui/ButtonLabel';
+import { SkeletonList } from '../../ui/Skeleton';
 import { ChannelAvatar } from '../chat/ChannelAvatar';
 import { useSharedStyles } from '../shared';
 import { ThemeColors } from '../../theme';
@@ -728,8 +729,8 @@ function HostedVoiceChannel({
   if (!controller || (controller.room ?? 'team') !== room) {
     return (
       <Screen>
-        <View style={shared.container}>
-          <ActivityIndicator color={colors.chrome} />
+        <View style={[shared.container, { justifyContent: 'flex-start', paddingTop: 24 }]}>
+          <SkeletonList count={5} avatarSize={40} />
         </View>
       </Screen>
     );
@@ -787,8 +788,8 @@ function SelfHostedVoiceChannel({
   if (!controller || (controller.room ?? 'team') !== room) {
     return (
       <Screen>
-        <View style={shared.container}>
-          <ActivityIndicator color={colors.chrome} />
+        <View style={[shared.container, { justifyContent: 'flex-start', paddingTop: 24 }]}>
+          <SkeletonList count={5} avatarSize={40} />
         </View>
       </Screen>
     );
@@ -865,8 +866,8 @@ function VoiceChannelScreenInner({ room }: { room: VoiceRoomKind }) {
   if (!config || !authToken || !hooks) {
     return (
       <Screen>
-        <View style={shared.container}>
-          <ActivityIndicator color={colors.chrome} />
+        <View style={[shared.container, { justifyContent: 'flex-start', paddingTop: 24 }]}>
+          <SkeletonList count={5} avatarSize={40} />
         </View>
       </Screen>
     );

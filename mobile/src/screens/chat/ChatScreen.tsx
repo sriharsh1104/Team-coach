@@ -187,16 +187,19 @@ export function ChatScreen({
   messagesRef.current = messages;
   hasOlderRef.current = hasOlderMessages;
 
+  // Newest first for the inverted list (index 0 = visual bottom).
+  const listDataNewestFirst = useMemo(() => {
+    if (messages.length <= 1) return messages;
+    const next = messages.slice();
+    next.reverse();
+    return next;
+  }, [messages]);
+
   const scrollToLatest = useCallback((animated = false) => {
-    // Never animate until the first pin finished — opening must not "fly" to bottom.
+    // inverted FlatList: offset 0 is the newest messages (visual bottom).
     const useAnim = animated && initialScrollDoneRef.current;
     requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: useAnim });
-      if (!useAnim) {
-        requestAnimationFrame(() => {
-          listRef.current?.scrollToEnd({ animated: false });
-        });
-      }
+      listRef.current?.scrollToOffset({ offset: 0, animated: useAnim });
     });
   }, []);
 
@@ -316,13 +319,11 @@ export function ChatScreen({
 
   useEffect(() => {
     let cancelled = false;
-    const scrollTimers: ReturnType<typeof setTimeout>[] = [];
     // Listener removers for the shared socket; run on unmount / channel change.
     const detach: Array<() => void> = [];
 
     const revealList = () => {
       if (cancelled) return;
-      pinToBottom();
       initialScrollDoneRef.current = true;
       setListReady(true);
     };
@@ -346,14 +347,8 @@ export function ChatScreen({
         /* keep empty — still reveal */
       }
       if (cancelled) return;
-      // Pin to bottom without animation, then reveal once settled.
-      pinToBottom();
-      scrollTimers.push(
-        setTimeout(() => {
-          if (!cancelled) pinToBottom();
-        }, 50),
-      );
-      scrollTimers.push(setTimeout(revealList, 120));
+      // inverted list already shows newest at the bottom — no scroll-to-end flash.
+      revealList();
 
       const token = await getToken();
       if (!token || cancelled) return;
@@ -519,7 +514,6 @@ export function ChatScreen({
 
     return () => {
       cancelled = true;
-      for (const t of scrollTimers) clearTimeout(t);
       const sock = socketRef.current;
       // Leaving the channel while still "typing" would otherwise leave
       // everyone else stuck seeing "X is typing…" forever.
@@ -607,8 +601,10 @@ export function ChatScreen({
   }, [searchDraft, searchActive]);
 
   const scrollToMessageId = useCallback((messageId: string) => {
-    const index = messagesRef.current.findIndex((m) => m.id === messageId);
-    if (index < 0) return false;
+    const chronological = messagesRef.current.findIndex((m) => m.id === messageId);
+    if (chronological < 0) return false;
+    // inverted + newest-first data: visual index is reversed.
+    const index = messagesRef.current.length - 1 - chronological;
     setHighlightId(messageId);
     requestAnimationFrame(() => {
       try {
@@ -750,20 +746,50 @@ export function ChatScreen({
     [receiptsForMessage, infoMessageId],
   );
 
-  // Group-chat members this message hasn't reached yet — "all members" minus
-  // whoever already shows up as delivered or read. DM-only limitation: the
-  // single other party isn't always resolvable to a name outside the roster/
-  // guild mentionable lists, so this stays group-only (matches the complaint).
+  // Members this message hasn't reached yet — everyone expected in the
+  // channel minus whoever already shows as delivered or read. Groups use
+  // mentionables; DMs fall back to the peer id + best-known name.
   const infoPending = useMemo(() => {
-    if (!isGroup) return [] as { userId: string; name: string }[];
     const accountedFor = new Set([
       ...infoReceipts.deliveredTo.map((d) => d.userId),
       ...infoReceipts.seenBy.map((r) => r.userId),
     ]);
-    return mentionables
-      .filter((m) => !accountedFor.has(m.userId))
-      .map((m) => ({ userId: m.userId, name: m.name }));
-  }, [isGroup, mentionables, infoReceipts]);
+    let candidates = mentionables.map((m) => ({
+      userId: m.userId,
+      name: m.name,
+    }));
+    if (!isGroup && candidates.length === 0 && dmPeerId) {
+      const fromMsg = messages.find((m) => m.senderId === dmPeerId)?.senderName;
+      candidates = [{ userId: dmPeerId, name: fromMsg || 'Member' }];
+    }
+    return candidates.filter((m) => !accountedFor.has(m.userId));
+  }, [isGroup, mentionables, infoReceipts, dmPeerId, messages]);
+
+  // Fresh receipts whenever Message Info opens (and every few seconds while
+  // open) so the sheet doesn't show stale delivered/read after a peer ACKed
+  // while this screen was idle.
+  useEffect(() => {
+    if (!infoMessageId) return;
+    let cancelled = false;
+    const refresh = () => {
+      void Promise.all([
+        chatApi.getReadReceipts(channelKey),
+        chatApi.getDeliveryReceipts(channelKey),
+      ])
+        .then(([r, d]) => {
+          if (cancelled) return;
+          setReceipts(r);
+          setDeliveries(d);
+        })
+        .catch(() => undefined);
+    };
+    refresh();
+    const timer = setInterval(refresh, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [infoMessageId, channelKey]);
 
   // single tick (sent) -> double grey (delivered) -> double blue (seen).
   // In a group (org/guild) chat this must mean ALL other members, not just
@@ -1776,32 +1802,23 @@ export function ChatScreen({
       <FlatList
         ref={listRef}
         style={{ flex: 1, minWidth: 0, opacity: listReady ? 1 : 0 }}
-        contentContainerStyle={{ padding: 16, flexGrow: 1 }}
-        data={messages}
+        contentContainerStyle={{ padding: 16 }}
+        // Newest-first + inverted → latest sits at the bottom with no
+        // scrollToEnd flash on open (big win on mid-range Android).
+        inverted
+        data={listDataNewestFirst}
         keyExtractor={(item) => item.id}
-        // Android + maintainVisibleContentPosition regularly corrupts list
-        // layout after the first mount; iOS still benefits for prepend loads.
-        maintainVisibleContentPosition={
-          Platform.OS === 'ios' ? { minIndexForVisible: 0 } : undefined
-        }
         onScroll={(e) => {
-          const { contentOffset, contentSize, layoutMeasurement } =
-            e.nativeEvent;
-          const distanceFromBottom =
-            contentSize.height - layoutMeasurement.height - contentOffset.y;
-          stickToBottomRef.current = distanceFromBottom < 100;
+          // With inverted + newest-first, offset 0 is the visual bottom.
+          stickToBottomRef.current = e.nativeEvent.contentOffset.y < 100;
         }}
         scrollEventThrottle={16}
         onContentSizeChange={() => {
           if (!stickToBottomRef.current) return;
-          if (!initialScrollDoneRef.current) {
-            pinToBottom();
-            return;
-          }
           scrollToLatest(false);
         }}
-        onStartReached={onLoadOlder}
-        onStartReachedThreshold={0.3}
+        onEndReached={onLoadOlder}
+        onEndReachedThreshold={0.3}
         onScrollToIndexFailed={({ index }) => {
           listRef.current?.scrollToOffset({
             offset: Math.max(0, index * 72),
@@ -1819,18 +1836,17 @@ export function ChatScreen({
             }
           }, 80);
         }}
-        ListHeaderComponent={
+        // inverted flips footer to the visual top (older history side).
+        ListFooterComponent={
           isLoadingOlder ? (
-            <ActivityIndicator color={colors.chrome} style={{ marginBottom: 8 }} />
+            <ActivityIndicator color={colors.chrome} style={{ marginVertical: 8 }} />
           ) : null
         }
-        // Batched rendering: the defaults mount roughly a screenful at a
-        // time either side of the viewport, which on a long backlog meant
-        // long blocking commits mid-scroll.
-        initialNumToRender={15}
-        maxToRenderPerBatch={10}
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
         updateCellsBatchingPeriod={50}
-        windowSize={11}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
         renderItem={({ item }) => (
           // Every prop here is a primitive or an already-memoized value, so
           // the memoized bubble re-renders only when its own row changes —

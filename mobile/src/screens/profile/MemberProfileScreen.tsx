@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable } from 'react-native';
+import { SkeletonList } from '../../ui/Skeleton';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
@@ -64,8 +65,8 @@ export function MemberProfileScreen({ route }: Props) {
   if (isLoading) {
     return (
       <Screen>
-        <View style={shared.container}>
-          <ActivityIndicator color={colors.chrome} />
+        <View style={[shared.container, { justifyContent: 'flex-start', paddingTop: 24 }]}>
+          <SkeletonList count={5} avatarSize={48} />
         </View>
       </Screen>
     );

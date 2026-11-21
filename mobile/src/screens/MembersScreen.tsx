@@ -206,6 +206,7 @@ export function MembersScreen({ navigation }: Props) {
                   })
                 }
                 pressScale={0.985}
+                haptic={false}
               >
                 <View style={staticStyles.memberInfo}>
                   <Text style={styles.memberName}>

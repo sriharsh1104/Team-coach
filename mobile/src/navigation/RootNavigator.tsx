@@ -1,8 +1,9 @@
 import React from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
-import { DarkTheme, DefaultTheme, NavigationContainer, NavigationState } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
+import { loadPersistedNavState, persistNavState } from './navPersist';
 import { useTheme } from '../theme/ThemeContext';
 import { getThemeColors } from '../theme';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -24,22 +25,10 @@ import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
 import { TwoFactorSetupScreen } from '../screens/TwoFactorSetupScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
-import { MediaFeedScreen } from '../screens/media/MediaFeedScreen';
 import { ChatScreenWithMedia } from '../screens/chat/ChatScreenWithMedia';
-import { ScrimsListScreen } from '../screens/scrims/ScrimsListScreen';
-import { AddEditScrimScreen } from '../screens/scrims/AddEditScrimScreen';
-import { StatsHomeScreen } from '../screens/stats/StatsHomeScreen';
-import { ExtractionReviewScreen } from '../screens/stats/ExtractionReviewScreen';
-import { PlayerStatsScreen } from '../screens/stats/PlayerStatsScreen';
-import { MapsScreen } from '../screens/MapsScreen';
-// Voice pulls LiveKit/WebRTC native modules — load only when opened so a
-// broken voice native link cannot crash cold start of the whole APK.
-
-import { RuleBookScreen } from '../screens/RuleBookScreen';
-import { PointsTableScreen } from '../screens/PointsTableScreen';
 import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
-import { GamesHubScreen } from '../screens/games/GamesHubScreen';
-import { GameRoomScreen } from '../screens/games/GameRoomScreen';
+// Heavy / rarely-opened screens (GL games, stats OCR, maps, media, voice)
+// load on first navigate so cold start stays light on mid-range Android.
 import { GameInviteBridge } from '../games/GameInviteBridge';
 import { ChatNotificationBridge } from '../notifications/ChatNotificationBridge';
 import { InviteLinkBridge } from '../invite/InviteLinkBridge';
@@ -154,14 +143,10 @@ function buildMainScreenOptions(themeId: 'black' | 'white' | 'lavender') {
   };
 }
 
-// On a web page refresh, React Navigation has nothing to restore from and
-// always boots back at the default route — this persists/restores the
-// current screen across a refresh so an F5 doesn't throw the user back to
-// OrgHome. Native builds don't need this ("refresh" isn't really a native
-// concept the same way), so it's web-only.
+// Persist/restore the current stack so web refresh and native process death
+// don't drop the user back on Home. Phase-tagged in navPersist so a stale
+// Auth route never gets handed to the Main navigator.
 type NavPhase = 'auth' | 'profileSetup' | 'orgSetup' | 'guild' | 'main';
-const NAV_STATE_KEY = 'team-coach.navState';
-
 function computeNavPhase(
   user: { profileComplete: boolean } | null,
   org: unknown,
@@ -172,32 +157,6 @@ function computeNavPhase(
   if (org) return 'main';
   if (guild) return 'guild';
   return 'orgSetup';
-}
-
-// Persisted state is only valid for the navigator tree it was captured
-// under (Auth/ProfileSetup/OrgSetup/Main each register different route
-// names) — tagging it with the phase and only restoring on a phase match
-// avoids handing React Navigation a route name it doesn't recognize.
-function loadPersistedNavState(phase: NavPhase): NavigationState | undefined {
-  if (Platform.OS !== 'web') return undefined;
-  try {
-    const raw = localStorage.getItem(NAV_STATE_KEY);
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw);
-    return parsed.phase === phase ? parsed.state : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function persistNavState(phase: NavPhase, state: NavigationState | undefined) {
-  if (Platform.OS !== 'web' || !state) return;
-  try {
-    localStorage.setItem(NAV_STATE_KEY, JSON.stringify({ phase, state }));
-  } catch {
-    // Private browsing / storage full — losing refresh-persistence isn't
-    // worth surfacing an error for.
-  }
 }
 
 export function RootNavigator() {
@@ -359,12 +318,16 @@ export function RootNavigator() {
             />
             <MainStack.Screen
               name="Games"
-              component={GamesHubScreen}
+              getComponent={() =>
+                require('../screens/games/GamesHubScreen').GamesHubScreen
+              }
               options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Games' }))}
             />
             <MainStack.Screen
               name="GameRoom"
-              component={GameRoomScreen}
+              getComponent={() =>
+                require('../screens/games/GameRoomScreen').GameRoomScreen
+              }
               options={detailOptions(({ route }) => ({
                 title: route.params?.game === 'ludo' ? 'Ludo' : route.params?.game === 'rps' ? 'Stone Paper Scissors' : 'Game',
               }))}
@@ -441,7 +404,9 @@ export function RootNavigator() {
             />
             <MainStack.Screen
               name="MediaFeed"
-              component={MediaFeedScreen}
+              getComponent={() =>
+                require('../screens/media/MediaFeedScreen').MediaFeedScreen
+              }
               options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Media' }))}
             />
             <MainStack.Screen
@@ -460,33 +425,43 @@ export function RootNavigator() {
             </MainStack.Screen>
             <MainStack.Screen
               name="Scrims"
-              component={ScrimsListScreen}
+              getComponent={() =>
+                require('../screens/scrims/ScrimsListScreen').ScrimsListScreen
+              }
               options={sectionOptions(orgDrawer.openWith, () => ({
                 title: 'Scrims & Tournaments',
               }))}
             />
             <MainStack.Screen
               name="AddEditScrim"
-              component={AddEditScrimScreen}
+              getComponent={() =>
+                require('../screens/scrims/AddEditScrimScreen').AddEditScrimScreen
+              }
               options={detailOptions(() => ({
                 title: 'Scrim / Tournament',
               }))}
             />
             <MainStack.Screen
               name="Stats"
-              component={StatsHomeScreen}
+              getComponent={() =>
+                require('../screens/stats/StatsHomeScreen').StatsHomeScreen
+              }
               options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Stats' }))}
             />
             <MainStack.Screen
               name="ExtractionReview"
-              component={ExtractionReviewScreen}
+              getComponent={() =>
+                require('../screens/stats/ExtractionReviewScreen').ExtractionReviewScreen
+              }
               options={detailOptions(() => ({
                 title: 'Review Stats',
               }))}
             />
             <MainStack.Screen
               name="PlayerStats"
-              component={PlayerStatsScreen}
+              getComponent={() =>
+                require('../screens/stats/PlayerStatsScreen').PlayerStatsScreen
+              }
               options={detailOptions(({ route }) => ({
                 title: titleCase(route.params.name),
               }))}
@@ -502,19 +477,23 @@ export function RootNavigator() {
             />
             <MainStack.Screen
               name="Maps"
-              component={MapsScreen}
+              getComponent={() => require('../screens/MapsScreen').MapsScreen}
               options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Maps' }))}
             />
             <MainStack.Screen
               name="RuleBook"
-              component={RuleBookScreen}
+              getComponent={() =>
+                require('../screens/RuleBookScreen').RuleBookScreen
+              }
               options={sectionOptions(orgDrawer.openWith, () => ({
                 title: 'Rule Book',
               }))}
             />
             <MainStack.Screen
               name="PointsTable"
-              component={PointsTableScreen}
+              getComponent={() =>
+                require('../screens/PointsTableScreen').PointsTableScreen
+              }
               options={sectionOptions(orgDrawer.openWith, () => ({
                 title: 'Points Table',
               }))}
@@ -538,12 +517,16 @@ export function RootNavigator() {
             />
             <MainStack.Screen
               name="Games"
-              component={GamesHubScreen}
+              getComponent={() =>
+                require('../screens/games/GamesHubScreen').GamesHubScreen
+              }
               options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Games' }))}
             />
             <MainStack.Screen
               name="GameRoom"
-              component={GameRoomScreen}
+              getComponent={() =>
+                require('../screens/games/GameRoomScreen').GameRoomScreen
+              }
               options={detailOptions(({ route }) => ({
                 title: route.params?.game === 'ludo' ? 'Ludo' : route.params?.game === 'rps' ? 'Stone Paper Scissors' : 'Game',
               }))}

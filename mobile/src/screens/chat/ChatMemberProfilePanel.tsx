@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,10 +10,10 @@ import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
 import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
-import { useTheme } from '../../theme/ThemeContext';
 import { RoleChips } from '../profile/RoleChips';
 import { CopyableField } from '../profile/CopyableField';
 import { CopyButton } from '../profile/CopyButton';
+import { SkeletonList } from '../../ui/Skeleton';
 import { formatRoleBadge } from '../shared';
 import {
   openSocialUrl,
@@ -44,7 +43,6 @@ export function ChatMemberProfilePanel({
   name: string;
   onBack: () => void;
 }) {
-  const { colors } = useTheme();
   const styles = useThemedStyles(memberProfileStyles);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,9 +69,11 @@ export function ChatMemberProfilePanel({
       <ChatFlowHeader title={name} onBack={onBack} />
 
       {isLoading ? (
-        <View style={staticStyles.center}>
-          <ActivityIndicator color={colors.chrome} />
-        </View>
+        <SkeletonList
+          count={5}
+          avatarSize={48}
+          style={{ paddingHorizontal: 16, paddingTop: 12 }}
+        />
       ) : error || !profile ? (
         <View style={staticStyles.center}>
           <Text style={styles.error}>{error ?? 'Profile unavailable'}</Text>

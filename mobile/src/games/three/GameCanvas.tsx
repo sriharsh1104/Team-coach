@@ -12,6 +12,16 @@ export function supports3D(): boolean {
   return true;
 }
 
+/**
+ * Default board mode. Mid/low Android (Redmi etc.) pays a heavy frame cost for
+ * GL + antialias; 2D is the butter default and users can flip to 3D in-room.
+ */
+export function prefer3DByDefault(): boolean {
+  if (!supports3D()) return false;
+  // iOS generally handles GL fine; Android mid-range often does not.
+  return Platform.OS === 'ios';
+}
+
 type BoundaryProps = { fallback: ReactNode; children: ReactNode; onError?: () => void };
 
 class SceneErrorBoundary extends Component<BoundaryProps, { failed: boolean }> {
@@ -50,7 +60,8 @@ export function GameCanvas({ style, fallback, onFallback, camera, children }: Pr
         <Canvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           camera={camera}
-          gl={{ antialias: true }}
+          // Antialias is expensive on Mali/Adreno mid-range; drop it on Android.
+          gl={{ antialias: Platform.OS === 'ios', powerPreference: 'high-performance' }}
         >
           {children}
         </Canvas>

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
+import { SkeletonList } from '../../ui/Skeleton';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as statsApi from '../../api/stats';
 import { PlayerStatsResponse, STAT_MODES } from '../../api/types';
@@ -60,8 +61,8 @@ export function PlayerStatsScreen({ route }: Props) {
   if (!data) {
     return (
       <Screen>
-        <View style={shared.container}>
-          <ActivityIndicator color={colors.chrome} />
+        <View style={[shared.container, { justifyContent: 'flex-start', paddingTop: 24 }]}>
+          <SkeletonList count={6} avatar={false} />
         </View>
       </Screen>
     );

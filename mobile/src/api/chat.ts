@@ -217,7 +217,9 @@ export async function uploadChannelAvatar(channelKey: string, file: {
 
 export function getUnreadSummary() {
   return apiClient
-    .get<{ totalUnread: number }>('/chat/unread')
+    .get<{ totalUnread: number; channels?: ChatChannelsResponse['channels'] }>(
+      '/chat/unread',
+    )
     .then((res) => res.data);
 }
 
@@ -460,11 +462,16 @@ function watchAppState() {
   if (appStateWatching) return;
   appStateWatching = true;
   // Socket.io drops the link while the app is suspended. Reconnect on resume
-  // so live messages come back without the user reopening a chat.
+  // so live messages come back without the user reopening a chat. If the
+  // socket stayed up, still sync delivery ACKs for anything unread while
+  // backgrounded (push arrived, ChatScreen never opened).
   AppState.addEventListener('change', (state: AppStateStatus) => {
-    if (state === 'active' && sharedSocket && !sharedSocket.connected) {
+    if (state !== 'active' || !sharedSocket) return;
+    if (!sharedSocket.connected) {
       sharedSocket.connect();
+      return;
     }
+    syncDeliveredOnConnect(sharedSocket);
   });
 }
 
@@ -501,6 +508,35 @@ export function isChatSocketConnected(): boolean {
   return !!sharedSocket?.connected;
 }
 
+/** Device got the payload — double grey tick. Separate from channel:read (opened). */
+function ackDelivered(socket: Socket, channelKey: string | null | undefined) {
+  const key = channelKey?.trim();
+  if (!key) return;
+  socket.emit('channel:delivered', { channelKey: key });
+}
+
+/**
+ * On (re)connect the app is reachable again — mark org/guild delivered always,
+ * plus any channel that still shows unread (covers DMs received while offline).
+ * Without this, delivery only fires when ChatScreen is mounted.
+ */
+function syncDeliveredOnConnect(socket: Socket) {
+  void getChatChannels()
+    .then((summary) => {
+      if (!socket.connected) return;
+      const keys = new Set<string>(['org', 'guild']);
+      for (const c of summary.channels ?? []) {
+        if (c.unreadCount > 0) keys.add(c.channelKey);
+      }
+      for (const key of keys) ackDelivered(socket, key);
+    })
+    .catch(() => {
+      if (!socket.connected) return;
+      ackDelivered(socket, 'org');
+      ackDelivered(socket, 'guild');
+    });
+}
+
 export function connectChatSocket(token: string): Socket {
   watchAppState();
   if (sharedSocket && sharedToken === token) {
@@ -515,12 +551,17 @@ export function connectChatSocket(token: string): Socket {
     // then the socket never connects at all.
     transports: ['websocket', 'polling'],
   });
-  socket.on('connect', () => notifyInbox(null));
+  socket.on('connect', () => {
+    notifyInbox(null);
+    syncDeliveredOnConnect(socket);
+  });
   socket.on('chat:unread', (p?: { channelKey?: string }) =>
     notifyInbox(p?.channelKey ?? null),
   );
   socket.on('message:new', (m?: ChatMessage) => {
     notifyInbox(m?.channelKey ?? null);
+    // ACK even when no ChatScreen is open (app foreground, hub, etc.).
+    ackDelivered(socket, m?.channelKey);
     if (m) messageListeners.forEach((listener) => listener(m));
   });
   sharedSocket = socket;

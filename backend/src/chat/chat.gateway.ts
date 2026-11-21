@@ -225,12 +225,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (!data?.orgId) return;
     const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
     const { lastReadAt } = await this.chatService.markRead(data.userId, channelKey);
-    this.server.to(this.roomFor(data.orgId, channelKey)).emit('chat:read', {
-      userId: data.userId,
-      userName: data.userName,
-      channelKey,
-      lastReadAt,
-    });
+    this.server
+      .to(this.receiptRooms(data.orgId, data.userId, channelKey))
+      .emit('chat:read', {
+        userId: data.userId,
+        userName: data.userName,
+        channelKey,
+        lastReadAt,
+      });
   }
 
   // Mirrors onChannelRead, but for the "delivered" (double grey tick) tier —
@@ -248,12 +250,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
       data.userId,
       channelKey,
     );
-    this.server.to(this.roomFor(data.orgId, channelKey)).emit('chat:delivered', {
-      userId: data.userId,
-      userName: data.userName,
-      channelKey,
-      lastDeliveredAt,
-    });
+    this.server
+      .to(this.receiptRooms(data.orgId, data.userId, channelKey))
+      .emit('chat:delivered', {
+        userId: data.userId,
+        userName: data.userName,
+        channelKey,
+        lastDeliveredAt,
+      });
   }
 
   /** Client fires this on every keystroke-ish (debounced client-side); auto-clears on disconnect. */
@@ -504,5 +508,17 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   private userRoom(userId: string) {
     return `user:${userId}`;
+  }
+
+  /**
+   * Channel room plus (for DMs) the peer's personal room — so the sender's
+   * ticks / Message Info update even when they aren't currently joined to the
+   * DM channel socket room (e.g. peer ACKed via the shared app socket).
+   */
+  private receiptRooms(orgId: string, actorUserId: string, channelKey: string) {
+    const rooms = [this.roomFor(orgId, channelKey)];
+    const peerId = this.chatService.parseDmPeer(channelKey, actorUserId);
+    if (peerId) rooms.push(this.userRoom(peerId));
+    return rooms;
   }
 }

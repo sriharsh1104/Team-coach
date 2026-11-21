@@ -123,6 +123,7 @@ export function MediaFeedScreen({ navigation }: Props) {
                   onPress={() => setSelectedUploaderId(item.userId)}
                   style={[staticStyles.chip, isActive && styles.chipActive]}
                   pressScale={0.96}
+                  haptic={false}
                 >
                   <Text
                     style={isActive ? styles.chipTextActive : styles.chipText}
@@ -161,6 +162,7 @@ export function MediaFeedScreen({ navigation }: Props) {
                   item.type === 'IMAGE' ? 'View image' : 'View video'
                 }
                 pressScale={0.985}
+                haptic={false}
               >
                 {item.type === 'IMAGE' ? (
                   <Image
@@ -189,6 +191,7 @@ export function MediaFeedScreen({ navigation }: Props) {
                     accessibilityRole="button"
                     accessibilityLabel={`${item.uploaderName} profile`}
                     pressScale={0.97}
+                    haptic={false}
                   >
                     <Text style={styles.uploader}>{item.uploaderName}</Text>
                   </SoftPressable>

@@ -28,12 +28,14 @@ import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SoftPressable } from '../../ui/SoftPressable';
+import { SkeletonList } from '../../ui/Skeleton';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import {
   cacheGet,
   cacheSet,
   CacheKeys,
   cacheInvalidate,
+  hasFreshEnough,
 } from '../../api/queryCache';
 import { useOrgRealtimeOptional } from '../../realtime/OrgRealtimeProvider';
 import { groupEntriesByDay } from './dayGroups';
@@ -94,6 +96,9 @@ export function StatsHomeScreen({ navigation, route }: Props) {
   const [pending, setPending] = useState<StatExtraction[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [boardReady, setBoardReady] = useState(() =>
+    hasFreshEnough(`stats:bundle:${mode}`),
+  );
 
   const grind = isGrindMode(mode);
 
@@ -110,31 +115,37 @@ export function StatsHomeScreen({ navigation, route }: Props) {
             setHistory,
             setHistoryCursor,
           });
+          setBoardReady(true);
           return;
         }
+        setBoardReady(false);
       }
 
-      const [board, extractions, modeHistory] = await Promise.all([
-        statsApi.getLeaderboard(selected),
-        statsApi.listExtractions(selected),
-        statsApi.getModeHistory(selected),
-      ]);
-      const bundle: ModeBundle = {
-        board,
-        pending: extractions.filter((e) =>
-          ['QUEUED', 'PROCESSING', 'PENDING', 'FAILED'].includes(e.status),
-        ),
-        history: modeHistory.entries,
-        historyCursor: modeHistory.nextCursor,
-      };
-      cacheSet(cacheKey, bundle);
-      cacheSet(CacheKeys.statsBoard(selected), board);
-      applyBundle(bundle, {
-        setLeaderboard,
-        setPending,
-        setHistory,
-        setHistoryCursor,
-      });
+      try {
+        const [board, extractions, modeHistory] = await Promise.all([
+          statsApi.getLeaderboard(selected),
+          statsApi.listExtractions(selected),
+          statsApi.getModeHistory(selected),
+        ]);
+        const bundle: ModeBundle = {
+          board,
+          pending: extractions.filter((e) =>
+            ['QUEUED', 'PROCESSING', 'PENDING', 'FAILED'].includes(e.status),
+          ),
+          history: modeHistory.entries,
+          historyCursor: modeHistory.nextCursor,
+        };
+        cacheSet(cacheKey, bundle);
+        cacheSet(CacheKeys.statsBoard(selected), board);
+        applyBundle(bundle, {
+          setLeaderboard,
+          setPending,
+          setHistory,
+          setHistoryCursor,
+        });
+      } finally {
+        setBoardReady(true);
+      }
     },
     [],
   );
@@ -383,9 +394,13 @@ export function StatsHomeScreen({ navigation, route }: Props) {
               <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
             }
             ListEmptyComponent={
-              <Text style={styles.empty}>
-                No {modeLabel} grind stats yet. Upload scoreboard(s) below.
-              </Text>
+              boardReady ? (
+                <Text style={styles.empty}>
+                  No {modeLabel} grind stats yet. Upload scoreboard(s) below.
+                </Text>
+              ) : (
+                <SkeletonList count={6} avatar={false} />
+              )
             }
             renderItem={({ item, index }) => (
               <SoftPressable
@@ -398,6 +413,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                   })
                 }
                 pressScale={0.985}
+                haptic={false}
               >
                 <Text style={[styles.rank, index === 0 && styles.rankLead]}>
                   #{index + 1}
@@ -430,7 +446,11 @@ export function StatsHomeScreen({ navigation, route }: Props) {
               ) : null
             }
             ListEmptyComponent={
-              <Text style={styles.empty}>No {modeLabel} day history yet.</Text>
+              boardReady ? (
+                <Text style={styles.empty}>No {modeLabel} day history yet.</Text>
+              ) : (
+                <SkeletonList count={5} avatar={false} />
+              )
             }
             renderItem={({ item: group }) => (
               <View style={styles.dayCard}>
@@ -452,6 +472,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                       })
                     }
                     pressScale={0.985}
+                    haptic={false}
                   >
                     <Text style={styles.dayName}>{entry.name}</Text>
                     <Text style={styles.stats}>

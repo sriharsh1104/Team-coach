@@ -22,6 +22,8 @@ import { installInviteLinkListener } from './src/invite/inviteLinks';
 import { startNetworkWatch } from './src/net/networkStatus';
 import { warmUpServer } from './src/perf/serverWarmup';
 import { OfflineBanner } from './src/ui/OfflineBanner';
+import { hydrateQueryCache } from './src/api/queryCache';
+import { hydrateNavPersist } from './src/navigation/navPersist';
 
 // Catch roster/guild invite links from the very start (even while signed out).
 installInviteLinkListener();
@@ -32,6 +34,10 @@ startNetworkWatch();
 // Starting that now means it is usually up by the time anyone has finished
 // typing a password, instead of the login request paying for it.
 warmUpServer();
+// Paint inbox / org / media from disk before the first network round-trip.
+void hydrateQueryCache();
+// Restore last main-stack screen on native (web already used localStorage).
+void hydrateNavPersist();
 
 /** Runs hooks that need AuthContext — must be rendered inside AuthProvider. */
 function AuthenticatedEffects() {

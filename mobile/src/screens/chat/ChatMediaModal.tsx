@@ -8,7 +8,6 @@ import {
   Pressable,
   FlatList,
   Linking,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -17,6 +16,7 @@ import { ChatMessage } from '../../api/types';
 import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { useTheme } from '../../theme/ThemeContext';
+import { SkeletonGrid } from '../../ui/Skeleton';
 import { MediaViewerModal } from './MediaViewerModal';
 
 type GalleryTab = 'media' | 'docs' | 'links';
@@ -113,7 +113,7 @@ export function ChatMediaModal({ visible, channelKey, title, onClose }: Props) {
         </View>
 
         {isLoading ? (
-          <ActivityIndicator color={colors.chrome} style={{ marginTop: 24 }} />
+          <SkeletonGrid count={9} columns={3} style={{ padding: 16, marginTop: 8 }} />
         ) : tab === 'media' ? (
           <FlatList
             data={media}

@@ -675,7 +675,7 @@ describe('ChatScreen', () => {
 
       expect(await screen.findByText('Message Info')).toBeTruthy();
       expect(screen.getByText('Alice')).toBeTruthy();
-      expect(screen.getByText('Pending')).toBeTruthy();
+      expect(screen.getByText('Not delivered')).toBeTruthy();
       expect(screen.getByText('Bob')).toBeTruthy();
     });
 
@@ -904,34 +904,38 @@ describe('ChatScreen', () => {
       }));
     }
 
-    it('loads older messages via onStartReached and prepends them', async () => {
+    it('loads older messages via onEndReached and prepends them', async () => {
       const firstPage = makeMessages(50, 50); // a full page => more may exist
       mockedChatApi.getChatHistory.mockResolvedValueOnce(firstPage);
       await connectAndSettle();
-      await screen.findByText('msg-50');
+      // inverted + newest-first: latest rows mount first
+      await screen.findByText('msg-99');
 
       const olderPage = makeMessages(3, 0);
       mockedChatApi.getChatHistory.mockResolvedValueOnce(olderPage);
 
       const list = screen.UNSAFE_getByType(FlatList);
       await act(async () => {
-        list.props.onStartReached();
+        list.props.onEndReached();
       });
 
       expect(mockedChatApi.getChatHistory).toHaveBeenLastCalledWith('org', 'm50');
-      expect(screen.getByText('msg-0')).toBeTruthy();
-      expect(screen.getByText('msg-50')).toBeTruthy();
+      // Newest stays mounted; older rows may be virtualized off-screen.
+      expect(screen.getByText('msg-99')).toBeTruthy();
+      const data = list.props.data as Array<{ text: string }>;
+      expect(data.some((m) => m.text === 'msg-0')).toBe(true);
+      expect(data).toHaveLength(53);
     });
 
     it('does not request another page once a short page signals there is no more history', async () => {
       const shortPage = makeMessages(3, 0); // fewer than a full page => nothing older
       mockedChatApi.getChatHistory.mockResolvedValueOnce(shortPage);
       await connectAndSettle();
-      await screen.findByText('msg-0');
+      await screen.findByText('msg-2');
 
       const list = screen.UNSAFE_getByType(FlatList);
       await act(async () => {
-        list.props.onStartReached();
+        list.props.onEndReached();
       });
 
       expect(mockedChatApi.getChatHistory).toHaveBeenCalledTimes(1);

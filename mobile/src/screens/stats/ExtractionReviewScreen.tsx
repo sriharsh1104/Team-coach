@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   Alert,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -20,6 +19,7 @@ import { MainStackParamList } from '../../navigation/types';
 import { Screen } from '../../brand/Screen';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { confirmAsync } from '../../ui/confirmAsync';
+import { SkeletonList } from '../../ui/Skeleton';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
@@ -328,8 +328,8 @@ export function ExtractionReviewScreen({ navigation, route }: Props) {
   if (stillProcessing) {
     return (
       <Screen>
-        <View style={shared.container}>
-          <ActivityIndicator color={colors.chrome} />
+        <View style={[shared.container, { justifyContent: 'flex-start', paddingTop: 24 }]}>
+          <SkeletonList count={4} avatar={false} />
           <Text style={[styles.hint, { marginTop: 16 }]}>
             Still processing this screenshot — this updates automatically
             once it's ready to review.
