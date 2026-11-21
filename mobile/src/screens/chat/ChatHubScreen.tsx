@@ -204,6 +204,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
       return (
         <ChatMembersPanel
           title={active.title}
+          channelKey={active.channelKey}
           onBack={popOverlay}
           onSelectMember={(member) =>
             pushOverlay({

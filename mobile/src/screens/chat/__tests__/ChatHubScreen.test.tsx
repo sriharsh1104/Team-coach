@@ -82,6 +82,37 @@ beforeEach(() => {
     };
   });
   mockedOrgApi.getMyOrg.mockResolvedValue(orgDetail as any);
+  mockedOrgApi.getMyGuild.mockResolvedValue({
+    id: 'org-1',
+    name: 'Alpha',
+    orgCode: 'ABC',
+    referralLink: 'https://x',
+    myInviteCount: 0,
+    myGuildRole: 'MEMBER',
+    onRoster: true,
+    canManageRoster: false,
+    roster: [],
+    members: [
+      {
+        userId: 'user-2',
+        name: 'Teammate',
+        inGameName: null,
+        guildRole: 'MEMBER',
+        onRoster: true,
+        rosterRole: 'PLAYER',
+        isOwner: false,
+      },
+      {
+        userId: 'user-3',
+        name: 'Guild Only',
+        inGameName: 'GO-1',
+        guildRole: 'MEMBER',
+        onRoster: false,
+        rosterRole: null,
+        isOwner: false,
+      },
+    ],
+  } as any);
   mockedUsersApi.getMemberProfile.mockResolvedValue({
     id: 'user-2',
     name: 'Teammate',
@@ -275,6 +306,39 @@ describe('ChatHubScreen', () => {
 
     await screen.findByText(/1\. Teammate/);
     expect(mockedChatApi.getChatMedia).not.toHaveBeenCalled();
+  });
+
+  it('loads guild seats (including non-roster) when opened from Guild Chat', async () => {
+    mockedChatApi.getChatChannels.mockResolvedValue({
+      ...channelsResponse,
+      channels: [
+        {
+          channelKey: 'guild',
+          type: 'ORG' as const,
+          title: 'Guild Chat',
+          peerUserId: null,
+          peerAvatarUrl: null,
+          memberCount: 2,
+          unreadCount: 0,
+          lastMessageAt: null,
+          lastPreview: null,
+        },
+      ],
+    } as any);
+
+    render(<ChatHubScreen />);
+    await screen.findByText('Guild Chat');
+    fireEvent.press(screen.getByText('Guild Chat'));
+    await screen.findByLabelText('Back');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Team members'));
+    });
+
+    await screen.findByText(/1\. Teammate/);
+    expect(screen.getByText(/2\. Guild Only/)).toBeTruthy();
+    expect(mockedOrgApi.getMyGuild).toHaveBeenCalled();
+    expect(mockedOrgApi.getMyOrg).not.toHaveBeenCalled();
   });
 
   it('opens a member profile from the members list, and Back returns step-by-step', async () => {

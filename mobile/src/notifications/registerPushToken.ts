@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as usersApi from '../api/users';
 import { getActiveChatChannel } from './activeChatChannel';
@@ -24,12 +24,17 @@ export async function registerPushTokenWithBackend() {
         // Already staring at this thread — don't flash a banner on top.
         const viewingThread =
           !!active && !!data?.channelKey && data.channelKey === active;
-        // App open with a live chat socket: the in-app alert already shows
-        // the message, so skip the duplicate banner. Only Team/Guild chat
-        // messages reach the app-level socket; DMs still need their push.
+        // Foreground + live socket: the in-app bubble already shows the
+        // message, so skip a duplicate tray banner for Team/Guild (DMs still
+        // need their push — they don't hit the app-level socket the same way).
+        // Socket alone is NOT enough: Android keeps the process/socket alive
+        // in the background, and that used to swallow Team/Guild pushes while
+        // 1:1 still arrived.
         const groupChannel =
           data?.channelKey === 'org' || data?.channelKey === 'guild';
-        const liveInApp = isChatSocketConnected() && groupChannel;
+        const appInForeground = AppState.currentState === 'active';
+        const liveInApp =
+          appInForeground && isChatSocketConnected() && groupChannel;
         const suppress = isChatPush && (viewingThread || liveInApp);
 
         return {

@@ -7,7 +7,6 @@ import {
   View,
 } from 'react-native';
 import * as orgApi from '../../api/org';
-import { OrgMember } from '../../api/types';
 import { roleLabel } from '../../api/roles';
 import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
@@ -15,35 +14,82 @@ import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { ChatFlowHeader } from './ChatFlowHeader';
 
+type MemberRow = {
+  userId: string;
+  name: string;
+  roleLabel: string;
+  meta: string | null;
+};
+
 function formatInGameRoles(roles: string[]): string | null {
   if (roles.length === 0) return null;
   return roles.map(roleLabel).join(', ');
 }
 
-/** Group roster sheet used inside ChatHub’s local back stack. */
+/** Group roster / guild sheet used inside ChatHub’s local back stack. */
 export function ChatMembersPanel({
   title,
+  channelKey,
   onBack,
   onSelectMember,
 }: {
   title: string;
+  /** `guild` → guild seats (incl. non-roster). Anything else → esports roster. */
+  channelKey?: string;
   onBack: () => void;
   onSelectMember: (member: { userId: string; name: string }) => void;
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(membersPanelStyles);
-  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [members, setMembers] = useState<MemberRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setIsLoading(true);
-    orgApi
-      .getMyOrg()
-      .then((org) => setMembers(org.members))
-      .catch(() => setError('Could not load members'))
-      .finally(() => setIsLoading(false));
-  }, []);
+    setError(null);
+
+    const load =
+      channelKey === 'guild'
+        ? orgApi.getMyGuild().then((guild): MemberRow[] =>
+            guild.members.map((m) => ({
+              userId: m.userId,
+              name: m.name,
+              roleLabel: m.onRoster
+                ? String(m.rosterRole ?? 'Roster')
+                : String(m.guildRole),
+              meta: m.onRoster
+                ? m.inGameName
+                  ? `${m.inGameName} · On roster`
+                  : 'On roster'
+                : m.inGameName,
+            })),
+          )
+        : orgApi.getMyOrg().then((org): MemberRow[] =>
+            org.members.map((m) => ({
+              userId: m.userId,
+              name: m.name,
+              roleLabel: String(m.role),
+              meta: formatInGameRoles(m.inGameRoles),
+            })),
+          );
+
+    load
+      .then((rows) => {
+        if (!cancelled) setMembers(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load members');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [channelKey]);
 
   return (
     <View style={styles.root}>
@@ -70,31 +116,25 @@ export function ChatMembersPanel({
           data={members}
           keyExtractor={(item) => item.userId}
           contentContainerStyle={staticStyles.list}
-          renderItem={({ item, index }) => {
-            const inGameRoles = formatInGameRoles(item.inGameRoles);
-            return (
-              <SoftPressable
-                style={staticStyles.row}
-                onPress={() =>
-                  onSelectMember({ userId: item.userId, name: item.name })
-                }
-                accessibilityRole="button"
-                accessibilityLabel={item.name}
-                pressScale={0.985}
-              >
-                <View style={staticStyles.rowMain}>
-                  <Text style={styles.name}>
-                    {index + 1}. {item.name}
-                    {item.isOwner ? ' (Owner)' : ''}
-                  </Text>
-                  {inGameRoles ? (
-                    <Text style={styles.meta}>{inGameRoles}</Text>
-                  ) : null}
-                </View>
-                <Text style={styles.role}>{item.role}</Text>
-              </SoftPressable>
-            );
-          }}
+          renderItem={({ item, index }) => (
+            <SoftPressable
+              style={staticStyles.row}
+              onPress={() =>
+                onSelectMember({ userId: item.userId, name: item.name })
+              }
+              accessibilityRole="button"
+              accessibilityLabel={item.name}
+              pressScale={0.985}
+            >
+              <View style={staticStyles.rowMain}>
+                <Text style={styles.name}>
+                  {index + 1}. {item.name}
+                </Text>
+                {item.meta ? <Text style={styles.meta}>{item.meta}</Text> : null}
+              </View>
+              <Text style={styles.role}>{item.roleLabel}</Text>
+            </SoftPressable>
+          )}
         />
       )}
     </View>
