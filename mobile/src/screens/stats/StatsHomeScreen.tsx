@@ -255,7 +255,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
   const dayGroups = useMemo(() => groupEntriesByDay(history), [history]);
 
   const modeChips = (
-    <View style={staticStyles.modeTrack}>
+    <View style={styles.modeTrack}>
       {STAT_MODES.map((item) => {
         const active = mode === item.mode;
         return (
@@ -321,7 +321,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
 
       {pending.length > 0 && (
         <>
-          <Text style={staticStyles.sectionHeader}>Pending Review</Text>
+          <Text style={styles.sectionHeader}>Pending Review</Text>
           {pending.map((extraction) => (
             <View key={extraction.id} style={styles.pendingRow}>
               <Pressable
@@ -363,7 +363,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
         </>
       )}
 
-      <Text style={staticStyles.sectionHeader}>
+      <Text style={styles.sectionHeader}>
         {viewTab === 'board' ? `${modeLabel} Leaderboard` : `${modeLabel} By Day`}
       </Text>
     </>
@@ -433,7 +433,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
               <Text style={styles.empty}>No {modeLabel} day history yet.</Text>
             }
             renderItem={({ item: group }) => (
-              <View style={staticStyles.dayCard}>
+              <View style={styles.dayCard}>
                 <View style={styles.dayHeader}>
                   <Text style={styles.dayTitle}>{group.label}</Text>
                   <Text style={styles.dayTotals}>
@@ -453,7 +453,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
                     }
                     pressScale={0.985}
                   >
-                    <Text style={staticStyles.dayName}>{entry.name}</Text>
+                    <Text style={styles.dayName}>{entry.name}</Text>
                     <Text style={styles.stats}>
                       {entry.kills}K / {entry.assists}A / {entry.damage} DMG
                     </Text>
@@ -464,7 +464,7 @@ export function StatsHomeScreen({ navigation, route }: Props) {
           />
         )}
 
-        <View style={staticStyles.bottomBar}>
+        <View style={styles.bottomBar}>
           <SoftPressable
             style={[styles.uploadBtn, uploading && staticStyles.uploadDisabled]}
             onPress={onUploadScoreboards}
@@ -491,28 +491,10 @@ const staticStyles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 8 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
-  modeTrack: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 14,
-    padding: 4,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
   modeChip: {
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 14,
-  },
-  sectionHeader: {
-    fontWeight: '700',
-    fontSize: 16,
-    marginTop: 12,
-    marginBottom: 8,
-    color: '#e8eaed',
   },
   row: {
     flexDirection: 'row',
@@ -529,28 +511,11 @@ const staticStyles = StyleSheet.create({
     backgroundColor: 'rgba(201,204,209,0.1)',
     borderColor: 'rgba(201,204,209,0.28)',
   },
-  dayCard: {
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
   dayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 8,
     paddingHorizontal: 2,
-  },
-  dayName: { color: '#e8eaed' },
-  bottomBar: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#2a2d33',
-    backgroundColor: 'rgba(10,10,12,0.94)',
   },
   uploadDisabled: { opacity: 0.6 },
 });
@@ -565,9 +530,44 @@ function statsStyles(c: ThemeColors) {
       marginBottom: 12,
       lineHeight: 18,
     },
+    modeTrack: {
+      flexDirection: 'row' as const,
+      flexWrap: 'wrap' as const,
+      gap: 6,
+      marginBottom: 14,
+      padding: 4,
+      borderRadius: 14,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
     modeChipActive: { backgroundColor: c.chrome },
     modeText: { color: c.textMuted, fontWeight: '600' as const },
     modeTextActive: { color: c.chromeInk, fontWeight: '700' as const },
+    sectionHeader: {
+      fontWeight: '700' as const,
+      fontSize: 16,
+      marginTop: 12,
+      marginBottom: 8,
+      color: c.text,
+    },
+    dayCard: {
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      backgroundColor: c.surface,
+    },
+    dayName: { color: c.text },
+    bottomBar: {
+      alignItems: 'center' as const,
+      paddingVertical: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+      backgroundColor: c.bg,
+    },
     pendingRow: {
       flexDirection: 'row' as const,
       justifyContent: 'space-between' as const,

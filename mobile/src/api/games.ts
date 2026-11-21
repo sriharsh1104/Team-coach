@@ -17,7 +17,7 @@ export const GAME_CATALOG: Array<{
   {
     id: 'rps',
     title: 'Stone Paper Scissors',
-    tagline: 'Best of 7 — first to 4 wins',
+    tagline: 'Best of 3 — first to 2 wins',
     players: '2 players',
     minPlayers: 2,
     maxPlayers: 2,

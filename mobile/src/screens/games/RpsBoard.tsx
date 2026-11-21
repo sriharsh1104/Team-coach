@@ -32,9 +32,6 @@ export function RpsBoard({ room, meId, onPick, busy, mode = '2d', onFallback }: 
   const opponentId = rps.playerIds.find((id) => id !== meId) ?? rps.playerIds[1];
   const me = room.players.find((p) => p.userId === meId);
   const opp = room.players.find((p) => p.userId === opponentId);
-  const myScore = rps.scores[meId] ?? 0;
-  const oppScore = rps.scores[opponentId] ?? 0;
-
   const reveal = rps.phase !== 'picking' && rps.lastResult;
   const myPick = reveal ? rps.lastResult!.picks[meId] : null;
   const oppPick = reveal ? rps.lastResult!.picks[opponentId] : null;
@@ -73,9 +70,21 @@ export function RpsBoard({ room, meId, onPick, busy, mode = '2d', onFallback }: 
   const bob = shake.interpolate({ inputRange: [0, 1], outputRange: [0, -26] });
   const showHands = reveal && !shaking;
 
+  // Keep the previous score on screen until the shoot animation finishes —
+  // otherwise the number jumps before the hands open.
+  const myScore =
+    shaking && rps.lastResult?.winnerId === meId
+      ? Math.max(0, (rps.scores[meId] ?? 0) - 1)
+      : (rps.scores[meId] ?? 0);
+  const oppScore =
+    shaking && rps.lastResult?.winnerId === opponentId
+      ? Math.max(0, (rps.scores[opponentId] ?? 0) - 1)
+      : (rps.scores[opponentId] ?? 0);
+  const displayHistory = shaking ? rps.history.slice(0, -1) : rps.history;
+
   const roundWinner = rps.lastResult?.winnerId;
   const banner =
-    rps.phase === 'done'
+    rps.phase === 'done' && !shaking
       ? rps.winnerId === meId
         ? '🏆 You won the match!'
         : `${opp?.name ?? 'Opponent'} won the match`
@@ -85,9 +94,11 @@ export function RpsBoard({ room, meId, onPick, busy, mode = '2d', onFallback }: 
           : roundWinner === meId
             ? 'You win this round!'
             : `${opp?.name ?? 'Opponent'} wins this round`
-        : iPicked && !oppPicked
-          ? `Waiting for ${opp?.name ?? 'opponent'}…`
-          : 'Make your pick';
+        : reveal && shaking
+          ? 'Stone… Paper… Scissors…'
+          : iPicked && !oppPicked
+            ? `Waiting for ${opp?.name ?? 'opponent'}…`
+            : 'Make your pick';
 
   return (
     <View style={styles.wrap}>
@@ -137,7 +148,7 @@ export function RpsBoard({ room, meId, onPick, busy, mode = '2d', onFallback }: 
       <Text style={styles.banner}>{banner}</Text>
 
       <View style={styles.dots}>
-        {rps.history.map((h, i) => (
+        {displayHistory.map((h, i) => (
           <View
             key={i}
             style={[

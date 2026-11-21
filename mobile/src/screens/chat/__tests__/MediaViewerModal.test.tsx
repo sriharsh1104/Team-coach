@@ -2,6 +2,10 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 import { MediaViewerModal } from '../MediaViewerModal';
 
+jest.mock('../saveMediaToGallery', () => ({
+  saveMediaToGallery: jest.fn().mockResolvedValue(true),
+}));
+
 describe('MediaViewerModal', () => {
   it('renders nothing visible-by-query when there is no uri', () => {
     render(<MediaViewerModal visible={false} type={null} uri={null} onClose={jest.fn()} />);
@@ -19,6 +23,7 @@ describe('MediaViewerModal', () => {
     );
 
     expect(screen.getByLabelText('Close viewer')).toBeTruthy();
+    expect(screen.getByLabelText('Save to gallery')).toBeTruthy();
   });
 
   it('shows a Video for type VIDEO', () => {
@@ -32,6 +37,7 @@ describe('MediaViewerModal', () => {
     );
 
     expect(screen.getByLabelText('Close viewer')).toBeTruthy();
+    expect(screen.getByLabelText('Save to gallery')).toBeTruthy();
   });
 
   it('calls onClose when the close button is pressed', () => {

@@ -38,6 +38,7 @@ export function GameRoomScreen() {
   // userId -> when I last notified them (server enforces 1 per 5 min per pair).
   const [notifiedAt, setNotifiedAt] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
+  // Animation games default to 3D; fall back to 2D only if GL isn't available.
   const [mode, setMode] = useState<'2d' | '3d'>(() => (supports3D() ? '3d' : '2d'));
   const meId = user?.id ?? '';
 

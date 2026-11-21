@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -19,7 +20,7 @@ import { useThemedStyles } from '../../theme/useThemedStyles';
 import { useTheme } from '../../theme/ThemeContext';
 import { emitToast } from '../../ui/toastBus';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
-import { AppIcon } from '../../ui/AppIcon';
+import { AppIcon, AppIconName } from '../../ui/AppIcon';
 
 const DISAPPEAR_OPTIONS: Array<{ label: string; sec: number | null }> = [
   { label: 'Off', sec: null },
@@ -32,19 +33,55 @@ type Props = {
   visible: boolean;
   channelKey: string;
   isGroup: boolean;
+  muted?: boolean;
   onClose: () => void;
   onCleared: () => void;
   onStarredFilter: () => void;
+  onSearch?: () => void;
+  onToggleMute?: () => void;
+  onOpenMedia?: () => void;
   onMetaChanged?: (meta: ChatChannelMeta) => void;
 };
+
+function MenuRow({
+  icon,
+  label,
+  onPress,
+  danger,
+  colors,
+  styles,
+}: {
+  icon: AppIconName;
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+  colors: ThemeColors;
+  styles: ReturnType<typeof chatSettingsStyles>;
+}) {
+  return (
+    <Pressable
+      style={styles.menuRow}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <AppIcon name={icon} size={20} color={danger ? '#e57373' : colors.icon} />
+      <Text style={[styles.menuLabel, danger && styles.menuLabelDanger]}>{label}</Text>
+    </Pressable>
+  );
+}
 
 export function ChatSettingsSheet({
   visible,
   channelKey,
   isGroup,
+  muted = false,
   onClose,
   onCleared,
   onStarredFilter,
+  onSearch,
+  onToggleMute,
+  onOpenMedia,
   onMetaChanged,
 }: Props) {
   const { colors } = useTheme();
@@ -115,8 +152,7 @@ export function ChatSettingsSheet({
     // Close this sheet first. On Android, launching the gallery/crop activity
     // while an RN <Modal> window is open is unreliable, and toasts render in
     // the app root *behind* the Modal — so progress/success were invisible
-    // and the photo looked like it never changed (the profile picker works
-    // because it runs on a normal screen, not inside a Modal).
+    // and the photo looked like it never changed.
     onClose();
     await new Promise((resolve) => setTimeout(resolve, 350));
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -186,92 +222,128 @@ export function ChatSettingsSheet({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={staticStyles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => undefined}>
-          <Text style={styles.title}>Chat settings</Text>
+          <Text style={styles.title}>Chat options</Text>
           {busy ? (
             <ActivityIndicator color={colors.chrome} style={{ marginVertical: 8 }} />
           ) : null}
 
-          {/* Icon-only quick actions. The old text rows used an unthemed
-              glyph colour, so the ★ / ⌫ vanished on the dark theme. */}
-          <View style={staticStyles.actionRow}>
-            <Pressable
-              style={styles.actionBtn}
+          <ScrollView
+            style={staticStyles.scroll}
+            contentContainerStyle={staticStyles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {onSearch ? (
+              <MenuRow
+                icon="search"
+                label="Search"
+                onPress={() => {
+                  onClose();
+                  onSearch();
+                }}
+                colors={colors}
+                styles={styles}
+              />
+            ) : null}
+            {onToggleMute ? (
+              <MenuRow
+                icon={muted ? 'notifications-off' : 'notifications'}
+                label={muted ? 'Unmute' : 'Mute'}
+                onPress={() => {
+                  onToggleMute();
+                  onClose();
+                }}
+                colors={colors}
+                styles={styles}
+              />
+            ) : null}
+            {onOpenMedia ? (
+              <MenuRow
+                icon="images-outline"
+                label="Media"
+                onPress={() => {
+                  onClose();
+                  onOpenMedia();
+                }}
+                colors={colors}
+                styles={styles}
+              />
+            ) : null}
+            <MenuRow
+              icon="star"
+              label="Starred messages"
               onPress={onStarredFilter}
-              accessibilityRole="button"
-              accessibilityLabel="Starred messages"
-              hitSlop={6}
-            >
-              <AppIcon name="star" size={22} color={colors.chrome} />
-            </Pressable>
-            <Pressable
-              style={[styles.actionBtn, styles.actionBtnDanger]}
+              colors={colors}
+              styles={styles}
+            />
+            <MenuRow
+              icon="trash-outline"
+              label="Clear chat"
               onPress={clearChat}
-              accessibilityRole="button"
-              accessibilityLabel="Clear chat"
-              hitSlop={6}
-            >
-              <AppIcon name="trash-outline" size={22} color="#e57373" />
-            </Pressable>
-          </View>
+              danger
+              colors={colors}
+              styles={styles}
+            />
 
-          <Text style={styles.section}>Disappearing messages</Text>
-          <View style={staticStyles.chips}>
-            {DISAPPEAR_OPTIONS.map((opt) => {
-              const active =
-                (opt.sec == null && !meta?.disappearAfterSec) ||
-                opt.sec === meta?.disappearAfterSec;
-              return (
-                <Pressable
-                  key={opt.label}
-                  style={[styles.chip, active && styles.chipOn]}
-                  onPress={() => void setDisappear(opt.sec)}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextOn]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+            <Text style={styles.section}>Disappearing messages</Text>
+            <View style={staticStyles.chips}>
+              {DISAPPEAR_OPTIONS.map((opt) => {
+                const active =
+                  (opt.sec == null && !meta?.disappearAfterSec) ||
+                  opt.sec === meta?.disappearAfterSec;
+                return (
+                  <Pressable
+                    key={opt.label}
+                    style={[styles.chip, active && styles.chipOn]}
+                    onPress={() => void setDisappear(opt.sec)}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextOn]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
-          {isGroup ? (
-            <>
-              <Text style={styles.section}>Group description</Text>
-              <View style={staticStyles.descriptionRow}>
-                <TextInput
-                  style={[styles.input, staticStyles.descriptionInput]}
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="Add a group description"
-                  placeholderTextColor={colors.textDim}
-                  maxLength={500}
-                  multiline
-                />
-                <Pressable
-                  style={[styles.actionBtn, styles.saveBtn]}
-                  onPress={() => void saveDescription()}
-                  disabled={busy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Save description"
-                  hitSlop={6}
-                >
-                  <AppIcon name="checkmark" size={22} color={colors.chromeInk} />
-                </Pressable>
-              </View>
-
-              <Text style={styles.section}>Group photo</Text>
-              <Pressable style={staticStyles.avatarRow} onPress={() => void pickGroupAvatar()}>
-                <View style={staticStyles.avatar}>
-                  {avatarUri ? (
-                    <Image source={{ uri: avatarUri }} style={staticStyles.avatarImg} />
-                  ) : (
-                    <Text style={staticStyles.avatarPlaceholder}>📷</Text>
-                  )}
+            {isGroup ? (
+              <>
+                <Text style={styles.section}>Group description</Text>
+                <View style={staticStyles.descriptionRow}>
+                  <TextInput
+                    style={[styles.input, staticStyles.descriptionInput]}
+                    value={description}
+                    onChangeText={setDescription}
+                    placeholder="Add a group description"
+                    placeholderTextColor={colors.textDim}
+                    maxLength={500}
+                    multiline
+                  />
+                  <Pressable
+                    style={[styles.actionBtn, styles.saveBtn]}
+                    onPress={() => void saveDescription()}
+                    disabled={busy}
+                    accessibilityRole="button"
+                    accessibilityLabel="Save description"
+                    hitSlop={6}
+                  >
+                    <AppIcon name="checkmark" size={22} color={colors.chromeInk} />
+                  </Pressable>
                 </View>
-                <Text style={styles.rowLabel}>Change group photo</Text>
-              </Pressable>
-            </>
-          ) : null}
+
+                <Text style={styles.section}>Group photo</Text>
+                <Pressable style={staticStyles.avatarRow} onPress={() => void pickGroupAvatar()}>
+                  <View style={staticStyles.avatar}>
+                    {avatarUri ? (
+                      <Image source={{ uri: avatarUri }} style={staticStyles.avatarImg} />
+                    ) : (
+                      <Text style={staticStyles.avatarPlaceholder}>📷</Text>
+                    )}
+                  </View>
+                  <Text style={styles.rowLabel}>Change group photo</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </ScrollView>
 
           <Pressable style={staticStyles.closeBtn} onPress={onClose}>
             <Text style={styles.closeText}>Close</Text>
@@ -289,11 +361,12 @@ const staticStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-  actionRow: { flexDirection: 'row', gap: 12, paddingVertical: 4 },
+  scroll: { maxHeight: 420 },
+  scrollContent: { paddingBottom: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   descriptionRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   descriptionInput: { flex: 1 },
-  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
   avatar: {
     width: 56,
     height: 56,
@@ -305,14 +378,12 @@ const staticStyles = StyleSheet.create({
   },
   avatarImg: { width: '100%', height: '100%' },
   avatarPlaceholder: { fontSize: 22 },
-  closeBtn: { alignItems: 'center', paddingTop: 18 },
+  closeBtn: { alignItems: 'center', paddingTop: 14 },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function chatSettingsStyles(c: ThemeColors) {
   return {
-    // Was a fixed '#121216' panel while every label inside it is themed —
-    // dark-on-dark, i.e. unreadable, once the white / lavender theme is on.
     sheet: {
       backgroundColor: c.bg,
       borderTopLeftRadius: 16,
@@ -320,8 +391,18 @@ function chatSettingsStyles(c: ThemeColors) {
       paddingTop: 16,
       paddingHorizontal: 20,
       paddingBottom: 28,
-      maxHeight: '85%' as const,
+      maxHeight: '88%' as const,
     },
+    menuRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 14,
+      paddingVertical: 13,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    menuLabel: { color: c.text, fontSize: 15, fontWeight: '600' as const, flex: 1 },
+    menuLabelDanger: { color: '#e57373' },
     chip: {
       paddingHorizontal: 12,
       paddingVertical: 8,
@@ -334,7 +415,7 @@ function chatSettingsStyles(c: ThemeColors) {
       color: c.text,
       fontWeight: '700' as const,
       fontSize: 16,
-      marginBottom: 12,
+      marginBottom: 8,
     },
     section: {
       color: c.textMuted,
@@ -356,7 +437,6 @@ function chatSettingsStyles(c: ThemeColors) {
       borderWidth: 1,
       borderColor: c.border,
     },
-    actionBtnDanger: { borderColor: 'rgba(229,115,115,0.45)' },
     saveBtn: { backgroundColor: c.chrome, borderColor: c.chrome },
     chipOn: {
       backgroundColor: c.chrome,

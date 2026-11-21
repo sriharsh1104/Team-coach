@@ -32,26 +32,38 @@ jest.mock('../ChatMediaModal', () => ({
   },
 }));
 
+jest.mock('../ChatSettingsSheet', () => ({
+  ChatSettingsSheet: ({
+    visible,
+    onOpenMedia,
+  }: {
+    visible: boolean;
+    onOpenMedia?: () => void;
+  }) => {
+    const { Text, Pressable } = require('react-native');
+    if (!visible) return null;
+    return (
+      <Pressable accessibilityLabel="Media" onPress={() => onOpenMedia?.()}>
+        <Text>SettingsOpen</Text>
+      </Pressable>
+    );
+  },
+}));
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockNav.headerRight = undefined;
 });
 
 describe('ChatScreenWithMedia', () => {
-  it('registers a Media header button via navigation.setOptions (standalone routes have no custom header of their own)', () => {
+  it('registers a ⋮ header button via navigation.setOptions', () => {
     render(<ChatScreenWithMedia channelKey="guild" title="Guild Chat" />);
     expect(mockNav.setOptions).toHaveBeenCalledWith(
       expect.objectContaining({ headerRight: expect.any(Function) }),
     );
   });
 
-  it('opens the media gallery, scoped to this channel, when the header button is pressed', () => {
-    // In the real app, React Navigation renders headerRight()'s output in
-    // the same tree as the screen it belongs to, sharing its state. The root
-    // element type must stay the same (a Fragment, both times) across the
-    // rerender below, or React remounts ChatScreenWithMedia from scratch
-    // instead of preserving the instance whose setMediaOpen the captured
-    // headerRight closure actually points to.
+  it('opens the media gallery from the ⋮ menu', () => {
     function Harness({ showHeaderRight }: { showHeaderRight: boolean }) {
       const HeaderRight = mockNav.headerRight;
       return (
@@ -68,7 +80,10 @@ describe('ChatScreenWithMedia', () => {
     rerender(<Harness showHeaderRight={true} />);
 
     act(() => {
-      fireEvent.press(screen.getByLabelText('Chat Media'));
+      fireEvent.press(screen.getByLabelText('Chat settings'));
+    });
+    act(() => {
+      fireEvent.press(screen.getByLabelText('Media'));
     });
 
     expect(screen.getByText('MediaModalOpen:Guild Chat')).toBeTruthy();

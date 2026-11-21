@@ -37,6 +37,7 @@ import { CustomSticker } from './stickerStorage';
 import { MessageReactionPills } from './MessageReactionPills';
 import { ReactionPicker } from './ReactionPicker';
 import { ForwardSheet } from './ForwardSheet';
+import { saveMediaToGallery } from './saveMediaToGallery';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { VoiceRecorderButton } from './VoiceRecorderButton';
 import { VoiceNoteBubble } from './VoiceNoteBubble';
@@ -139,6 +140,7 @@ export function ChatScreen({
   onCloseSearch,
   starredOnly = false,
   onPeerPresenceChange,
+  onJoinVoice,
 }: {
   embedded?: boolean;
   channelKey?: string;
@@ -149,6 +151,8 @@ export function ChatScreen({
   starredOnly?: boolean;
   /** DM peer online/last-seen — hub uses this for the header avatar pip. */
   onPeerPresenceChange?: (presence: UserPresence | null) => void;
+  /** Team / guild voice — shown beside the composer, not in the header. */
+  onJoinVoice?: () => void;
 } = {}) {
   const shared = useSharedStyles();
   const { user } = useAuth();
@@ -1042,6 +1046,31 @@ export function ChatScreen({
     }
   }, [canPinStar, channelKey, exitSelectMode, selectedList]);
 
+  const canSaveToGallery =
+    selectedList.length === 1 &&
+    (selectedList[0].mediaType === 'IMAGE' || selectedList[0].mediaType === 'VIDEO') &&
+    !!(
+      chatApi.resolveChatMediaUrl(selectedList[0].mediaUrl) ||
+      uploads[selectedList[0].id]?.asset.uri
+    );
+
+  const onSaveSelectedToGallery = useCallback(async () => {
+    if (!canSaveToGallery) return;
+    const msg = selectedList[0];
+    const type = msg.mediaType === 'VIDEO' ? 'VIDEO' : 'IMAGE';
+    const uri =
+      chatApi.resolveChatMediaUrl(msg.mediaUrl) ||
+      uploads[msg.id]?.asset.uri ||
+      null;
+    if (!uri) return;
+    exitSelectMode();
+    try {
+      await saveMediaToGallery(uri, type);
+    } catch {
+      emitToast('Could not save to gallery');
+    }
+  }, [canSaveToGallery, exitSelectMode, selectedList, uploads]);
+
   const onLoadOlder = useCallback(async () => {
     if (!hasOlderMessages || isLoadingOlder || messages.length === 0) return;
     setIsLoadingOlder(true);
@@ -1652,6 +1681,15 @@ export function ChatScreen({
               color={colors.link}
               disabled={!canReply}
               onPress={onForwardPressSelected}
+            />
+            <IconActionButton
+              plain
+              icon="download-outline"
+              label="Save to gallery"
+              tooltip="Save"
+              color={colors.link}
+              disabled={!canSaveToGallery}
+              onPress={() => void onSaveSelectedToGallery()}
             />
             <IconActionButton
               plain
@@ -2309,6 +2347,19 @@ export function ChatScreen({
               );
             }}
           />
+        ) : null}
+        {onJoinVoice && !editingId ? (
+          <Pressable
+            onPress={onJoinVoice}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              channelKey === 'guild' ? 'Join guild voice' : 'Join team voice'
+            }
+            style={styles.sendIconBtn}
+          >
+            <AppIcon name="mic-outline" size={24} color={colors.icon} />
+          </Pressable>
         ) : null}
         <Pressable
           style={[styles.sendIconBtn, !draft.trim() && styles.sendIconDisabled]}

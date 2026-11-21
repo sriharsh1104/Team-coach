@@ -300,77 +300,16 @@ export function ChatHubScreen({ onLoadError }: Props) {
             />
           }
           trailing={
-            <>
-              {active.type === 'ORG' &&
-              (active.channelKey === 'org' || active.channelKey === 'guild') ? (
-                <SoftPressable
-                  style={styles.iconBtn}
-                  onPress={() =>
-                    (navigation as any)?.navigate(
-                      active.channelKey === 'guild' ? 'GuildVoice' : 'Voice',
-                    )
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    active.channelKey === 'guild'
-                      ? 'Join guild voice'
-                      : 'Join team voice'
-                  }
-                  hitSlop={10}
-                  pressScale={0.92}
-                >
-                  <AppIcon name="mic-outline" size={22} color={theme.icon} />
-                </SoftPressable>
-              ) : null}
-
-              <SoftPressable
-                style={styles.iconBtn}
-                onPress={() => pushOverlay({ kind: 'media' })}
-                accessibilityRole="button"
-                accessibilityLabel="Chat Media"
-                hitSlop={10}
-                pressScale={0.92}
-              >
-                <AppIcon name="images-outline" size={22} color={theme.icon} />
-              </SoftPressable>
-
-              <SoftPressable
-                style={styles.iconBtn}
-                onPress={() => void toggleMute()}
-                accessibilityRole="button"
-                accessibilityLabel={active.muted ? 'Unmute chat' : 'Mute chat'}
-                hitSlop={10}
-                pressScale={0.92}
-              >
-                <AppIcon
-                  name={active.muted ? 'notifications-off' : 'notifications'}
-                  size={22}
-                  color={active.muted ? theme.textMuted : theme.icon}
-                />
-              </SoftPressable>
-
-              <SoftPressable
-                style={styles.iconBtn}
-                onPress={() => setSearchOpen((v) => !v)}
-                accessibilityRole="button"
-                accessibilityLabel="Search chat"
-                hitSlop={10}
-                pressScale={0.92}
-              >
-                <AppIcon name="search" size={22} color={theme.icon} />
-              </SoftPressable>
-
-              <SoftPressable
-                style={styles.iconBtn}
-                onPress={() => setSettingsOpen(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Chat settings"
-                hitSlop={10}
-                pressScale={0.92}
-              >
-                <AppIcon name="ellipsis-vertical" size={20} color={theme.icon} />
-              </SoftPressable>
-            </>
+            <SoftPressable
+              style={styles.iconBtn}
+              onPress={() => setSettingsOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Chat settings"
+              hitSlop={10}
+              pressScale={0.92}
+            >
+              <AppIcon name="ellipsis-vertical" size={20} color={theme.icon} />
+            </SoftPressable>
           }
         />
         {starredOnly ? (
@@ -409,6 +348,14 @@ export function ChatHubScreen({ onLoadError }: Props) {
           onPeerPresenceChange={(p: UserPresence | null) =>
             setPeerOnline(!!p?.online)
           }
+          onJoinVoice={
+            active.channelKey === 'org' || active.channelKey === 'guild'
+              ? () =>
+                  (navigation as any)?.navigate(
+                    active.channelKey === 'guild' ? 'GuildVoice' : 'Voice',
+                  )
+              : undefined
+          }
         />
         <ChatMediaModal
           visible={mediaOpen}
@@ -420,6 +367,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
           visible={settingsOpen}
           channelKey={active.channelKey}
           isGroup={active.type === 'ORG'}
+          muted={!!active.muted}
           onClose={() => setSettingsOpen(false)}
           onCleared={() => {
             setStarredOnly(false);
@@ -429,6 +377,9 @@ export function ChatHubScreen({ onLoadError }: Props) {
             setSettingsOpen(false);
             setStarredOnly(true);
           }}
+          onSearch={() => setSearchOpen(true)}
+          onToggleMute={() => void toggleMute()}
+          onOpenMedia={() => pushOverlay({ kind: 'media' })}
           onMetaChanged={(meta) => {
             setActive((prev) =>
               prev ? { ...prev, avatarUrl: meta.avatarUrl } : prev,
@@ -550,9 +501,6 @@ export function ChatHubScreen({ onLoadError }: Props) {
                     </Text>
                   )}
                 </View>
-                <Text style={[styles.dmHint, { color: theme.textMuted }]}>
-                  1:1
-                </Text>
                 {item.unreadCount > 0 ? (
                   <View style={[styles.badge, { backgroundColor: theme.chrome }]}>
                     <Text style={[styles.badgeText, { color: theme.chromeInk }]}>
@@ -600,9 +548,6 @@ export function ChatHubScreen({ onLoadError }: Props) {
                     />
                     <Text style={[styles.rowTitle, { color: theme.text }]}>
                       {mate.name}
-                    </Text>
-                    <Text style={[styles.dmHint, { color: theme.textMuted }]}>
-                      1:1
                     </Text>
                   </SoftPressable>
                 ))}
@@ -687,7 +632,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   badgeText: { fontWeight: '700', fontSize: 12 },
-  dmHint: { fontSize: 12, fontWeight: '600' },
   empty: {
     paddingHorizontal: 16,
     paddingVertical: 8,

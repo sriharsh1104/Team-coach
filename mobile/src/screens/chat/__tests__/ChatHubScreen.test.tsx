@@ -10,7 +10,7 @@ jest.mock('../../../api/org');
 jest.mock('../../../api/users');
 jest.mock('../ChatScreen', () => {
   const React = require('react');
-  const { Text } = require('react-native');
+  const { Text, Pressable } = require('react-native');
   return {
     ChatScreen: function MockChatScreen(props: any) {
       return React.createElement(
@@ -19,6 +19,17 @@ jest.mock('../ChatScreen', () => {
         React.createElement(Text, null, 'Conversation: ' + props.channelKey),
         props.searchActive
           ? React.createElement(Text, null, 'In-chat search open')
+          : null,
+        props.onJoinVoice
+          ? React.createElement(
+              Pressable,
+              {
+                accessibilityLabel:
+                  props.channelKey === 'guild' ? 'Join guild voice' : 'Join team voice',
+                onPress: props.onJoinVoice,
+              },
+              React.createElement(Text, null, 'Voice'),
+            )
           : null,
       );
     },
@@ -75,6 +86,12 @@ beforeEach(() => {
   mockedChatApi.getChatMedia.mockResolvedValue([]);
   mockedChatApi.getChatLinks.mockResolvedValue([]);
   mockedChatApi.searchChatMessages.mockResolvedValue([]);
+  mockedChatApi.getChannelMeta.mockResolvedValue({
+    channelKey: 'org',
+    description: null,
+    avatarUrl: null,
+    disappearAfterSec: null,
+  } as any);
   mockedChatApi.subscribeChatInbox.mockImplementation((listener) => {
     inboxListener = listener;
     return () => {
@@ -257,14 +274,17 @@ describe('ChatHubScreen', () => {
     await screen.findByText(/gg just now/);
   });
 
-  it('opens the chat media gallery when the labeled "Media" button is pressed', async () => {
+  it('opens the chat media gallery from the ⋮ menu', async () => {
     render(<ChatHubScreen />);
     await screen.findByText('Team Chat');
     fireEvent.press(screen.getByText('Team Chat'));
     await screen.findByLabelText('Back');
 
     await act(async () => {
-      fireEvent.press(screen.getByLabelText('Chat Media'));
+      fireEvent.press(screen.getByLabelText('Chat settings'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Media'));
     });
 
     expect(mockedChatApi.getChatMedia).toHaveBeenCalledWith('org');
@@ -272,7 +292,7 @@ describe('ChatHubScreen', () => {
     expect(screen.getByText('No media shared yet.')).toBeTruthy();
   });
 
-  it('toggles in-chat search from the search icon (no separate screen)', async () => {
+  it('opens in-chat search from the ⋮ menu', async () => {
     render(<ChatHubScreen />);
     await screen.findByText('Team Chat');
     fireEvent.press(screen.getByText('Team Chat'));
@@ -282,11 +302,24 @@ describe('ChatHubScreen', () => {
     expect(screen.getByText('Conversation: org')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(screen.getByLabelText('Search chat'));
+      fireEvent.press(screen.getByLabelText('Chat settings'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Search'));
     });
 
     expect(screen.getByText('In-chat search open')).toBeTruthy();
     expect(screen.getByText('Conversation: org')).toBeTruthy();
+  });
+
+  it('puts team voice next to the composer, not in the header', async () => {
+    render(<ChatHubScreen />);
+    await screen.findByText('Team Chat');
+    fireEvent.press(screen.getByText('Team Chat'));
+    await screen.findByLabelText('Back');
+
+    expect(screen.getByLabelText('Join team voice')).toBeTruthy();
+    expect(screen.getByLabelText('Chat settings')).toBeTruthy();
   });
 
   it('opens the members list when the group chat title is pressed (Media stays a separate button)', async () => {

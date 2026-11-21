@@ -13,7 +13,8 @@ function formatMs(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/** Playback bubble for a voice-note message: tap to play/pause, tiny progress bar. */
+/** Playback bubble for a voice-note message: tap to play/pause, tiny progress bar.
+ * Plays once then stops (never loops). */
 export function VoiceNoteBubble({ uri, isMine }: { uri: string; isMine: boolean }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(bubbleStyles);
@@ -29,14 +30,26 @@ export function VoiceNoteBubble({ uri, isMine }: { uri: string; isMine: boolean 
     };
   }, []);
 
+  const stopAtStart = async () => {
+    const sound = soundRef.current;
+    if (!sound) return;
+    try {
+      await sound.stopAsync();
+      await sound.setPositionAsync(0);
+    } catch {
+      /* ignore */
+    }
+    setIsPlaying(false);
+    setPositionMs(0);
+  };
+
   const onStatus = (status: AVPlaybackStatus) => {
     if (!status.isLoaded) return;
     setIsPlaying(status.isPlaying);
     setPositionMs(status.positionMillis);
     if (status.durationMillis) setDurationMs(status.durationMillis);
     if (status.didJustFinish) {
-      setIsPlaying(false);
-      soundRef.current?.setPositionAsync(0).catch(() => undefined);
+      void stopAtStart();
     }
   };
 
@@ -47,18 +60,23 @@ export function VoiceNoteBubble({ uri, isMine }: { uri: string; isMine: boolean 
       if (!status.isLoaded) return;
       if (status.isPlaying) {
         await sound.pauseAsync();
-      } else {
-        if (status.durationMillis && status.positionMillis >= status.durationMillis - 80) {
-          await sound.setPositionAsync(0);
-        }
-        await sound.playAsync();
+        return;
       }
+      // Finished or near end → restart once from the beginning.
+      if (status.durationMillis && status.positionMillis >= status.durationMillis - 80) {
+        await sound.setPositionAsync(0);
+      }
+      await sound.setIsLoopingAsync(false);
+      await sound.playAsync();
       return;
     }
     setLoading(true);
     try {
       await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, allowsRecordingIOS: false });
-      const { sound: s } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
+      const { sound: s } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true, isLooping: false },
+      );
       soundRef.current = s;
       s.setOnPlaybackStatusUpdate(onStatus);
     } catch {

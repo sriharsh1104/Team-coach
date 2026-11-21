@@ -176,23 +176,22 @@ describe('GameRoomScreen', () => {
       ],
       rps: {
         playerIds: ['me', 'u2'],
-        round: 3,
-        maxRounds: 7,
-        winsNeeded: 4,
-        scores: { me: 2, u2: 0 },
+        round: 2,
+        maxRounds: 3,
+        winsNeeded: 2,
+        scores: { me: 1, u2: 0 },
         picked: { me: false, u2: true },
         phase: 'picking',
         lastResult: null,
         history: [
           { round: 1, picks: { me: 'paper', u2: 'stone' }, winnerId: 'me' },
-          { round: 2, picks: { me: 'paper', u2: 'stone' }, winnerId: 'me' },
         ],
         winnerId: null,
       },
     });
     mockedSocket.mockReturnValue(api({ joinRoom: jest.fn().mockResolvedValue(playing), rpsPick }));
     render(<GameRoomScreen />);
-    await screen.findByText('3/7');
+    await screen.findByText('2/3');
     expect(screen.getByText('Make your pick')).toBeTruthy();
     fireEvent.press(screen.getByLabelText('Pick Scissors'));
     await waitFor(() => expect(rpsPick).toHaveBeenCalledWith('r1', 'scissors'));
@@ -209,10 +208,10 @@ describe('GameRoomScreen', () => {
       ],
       rps: {
         playerIds: ['me', 'u2'],
-        round: 5,
-        maxRounds: 7,
-        winsNeeded: 4,
-        scores: { me: 4, u2: 1 },
+        round: 2,
+        maxRounds: 3,
+        winsNeeded: 2,
+        scores: { me: 2, u2: 0 },
         picked: { me: true, u2: true },
         phase: 'done',
         lastResult: null,
@@ -223,7 +222,7 @@ describe('GameRoomScreen', () => {
     mockedSocket.mockReturnValue(api({ joinRoom: jest.fn().mockResolvedValue(done), rematch }));
     render(<GameRoomScreen />);
     await screen.findByText('You won!');
-    expect(screen.getByText('4 – 1')).toBeTruthy();
+    expect(screen.getByText('2 – 0')).toBeTruthy();
     fireEvent.press(screen.getByText('Play again'));
     await waitFor(() => expect(rematch).toHaveBeenCalledWith('r1'));
   });

@@ -1,9 +1,8 @@
-import { AppState, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as usersApi from '../api/users';
 import * as chatApi from '../api/chat';
 import { getActiveChatChannel } from './activeChatChannel';
-import { isChatSocketConnected } from '../api/chat';
 
 const CHAT_REPLY_CATEGORY = 'chat_reply';
 const CHAT_REPLY_ACTION = 'REPLY';
@@ -27,21 +26,11 @@ export async function registerPushTokenWithBackend() {
         const active = getActiveChatChannel();
         const isChatPush =
           data?.type === 'chat_unread' || data?.type === 'chat_mention';
-        // Already staring at this thread — don't flash a banner on top.
+        // Already staring at this thread — don't flash a system banner on top.
+        // Otherwise always show the OS push (no in-app header toast anymore).
         const viewingThread =
           !!active && !!data?.channelKey && data.channelKey === active;
-        // Foreground + live socket: the in-app bubble already shows the
-        // message, so skip a duplicate tray banner for Team/Guild (DMs still
-        // need their push — they don't hit the app-level socket the same way).
-        // Socket alone is NOT enough: Android keeps the process/socket alive
-        // in the background, and that used to swallow Team/Guild pushes while
-        // 1:1 still arrived.
-        const groupChannel =
-          data?.channelKey === 'org' || data?.channelKey === 'guild';
-        const appInForeground = AppState.currentState === 'active';
-        const liveInApp =
-          appInForeground && isChatSocketConnected() && groupChannel;
-        const suppress = isChatPush && (viewingThread || liveInApp);
+        const suppress = isChatPush && viewingThread;
 
         return {
           shouldShowAlert: !suppress,
