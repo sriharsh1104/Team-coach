@@ -129,11 +129,19 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
 
   const activate = useCallback((config: VoiceActivation) => {
     setActivation((prev) => {
-      if (
-        prev &&
-        prev.mode === config.mode &&
-        (prev.room ?? 'team') === (config.room ?? 'team')
-      ) {
+      const nextRoom = config.room ?? 'team';
+      const prevRoom = prev?.room ?? 'team';
+      const live = controllerRef.current?.status;
+      const inCall = live === 'connected' || live === 'connecting';
+
+      // Opening Team Voice while already in Guild Voice (or the reverse)
+      // used to remount the holder and silently drop everyone from the call.
+      // Keep the live session; the voice screen shows Leave & Switch instead.
+      if (prev && inCall && (prev.mode !== config.mode || prevRoom !== nextRoom)) {
+        return prev;
+      }
+
+      if (prev && prev.mode === config.mode && prevRoom === nextRoom) {
         // A different LiveKit server / room → new session.
         if (prev.mode === 'hosted' && config.mode === 'hosted' && prev.url !== config.url) {
           return config;
@@ -144,8 +152,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         // each call). Swapping the token remounts the holder, which drops the
         // call and shows "Join" again. While the user is in (or joining) the
         // call keep the live session; only pick up the new token once idle.
-        const live = controllerRef.current?.status;
-        if (live === 'connected' || live === 'connecting') {
+        if (inCall) {
           if (
             prev.mode === 'hosted' &&
             config.mode === 'hosted' &&

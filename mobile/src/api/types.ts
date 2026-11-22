@@ -321,7 +321,12 @@ export interface VoiceRoom {
 }
 
 export type VoiceConfig =
-  | { mode: 'self' }
+  | {
+      mode: 'self';
+      /** Team = 5, guild = 50. */
+      max?: number;
+      room?: 'team' | 'guild';
+    }
   | {
       mode: 'hosted';
       url: string;
@@ -331,7 +336,7 @@ export type VoiceConfig =
       room?: 'team' | 'guild';
       /** Server says this user is a host (owner / coach / guild leader). */
       canModerate?: boolean;
-      /** Guild room participant cap. */
+      /** Participant cap (team = 5, guild = 50). */
       max?: number;
     };
 

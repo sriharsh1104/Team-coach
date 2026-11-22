@@ -22,6 +22,8 @@ export function drawerItemKeyForRoute(routeName: string | undefined): string | n
     case 'Games':
     case 'GameRoom':
       return 'games';
+    case 'GoLive':
+      return 'goLive';
     case 'Maps':
       return 'maps';
     case 'RuleBook':

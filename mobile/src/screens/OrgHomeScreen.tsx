@@ -193,6 +193,20 @@ export function OrgHomeScreen({ navigation }: Props) {
     });
 
     sections.push({
+      key: 'live',
+      label: 'Live',
+      split: true,
+      items: [
+        {
+          key: 'goLive',
+          label: 'Go Live',
+          icon: 'play' as const,
+          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'GoLive' }),
+        },
+      ],
+    });
+
+    sections.push({
       key: 'account',
       label: 'Account',
       split: true,

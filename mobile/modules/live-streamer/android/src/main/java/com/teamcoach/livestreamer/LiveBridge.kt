@@ -1,0 +1,67 @@
+package com.teamcoach.livestreamer
+
+import android.os.Handler
+import android.os.Looper
+import expo.modules.kotlin.Promise
+import java.util.concurrent.atomic.AtomicBoolean
+
+/** Process-local callbacks between the permission activity, the service, and JS. */
+internal object LiveBridge {
+  private val main = Handler(Looper.getMainLooper())
+  val live = AtomicBoolean(false)
+  val starting = AtomicBoolean(false)
+
+  var startPromise: Promise? = null
+  var stopPromise: Promise? = null
+  var module: LiveStreamerModule? = null
+
+  /** Pending RTMP endpoint assembled in the Expo module before the permission activity. */
+  @Volatile
+  var pendingEndpoint: String? = null
+
+  fun resolveStart() {
+    main.post {
+      starting.set(false)
+      live.set(true)
+      startPromise?.resolve(null)
+      startPromise = null
+      module?.sendEvent("onStarted", emptyMap<String, Any?>())
+    }
+  }
+
+  fun rejectStart(code: String, message: String) {
+    main.post {
+      starting.set(false)
+      live.set(false)
+      pendingEndpoint = null
+      startPromise?.reject(code, message, null)
+      startPromise = null
+      module?.sendEvent("onError", mapOf("message" to message, "code" to code))
+    }
+  }
+
+  fun deliverStopped() {
+    main.post {
+      live.set(false)
+      starting.set(false)
+      pendingEndpoint = null
+      module?.sendEvent("onStopped", emptyMap<String, Any?>())
+      stopPromise?.resolve(null)
+      stopPromise = null
+    }
+  }
+
+  fun deliverFailed(message: String) {
+    main.post {
+      live.set(false)
+      starting.set(false)
+      pendingEndpoint = null
+      module?.sendEvent("onError", mapOf("message" to message))
+      module?.sendEvent("onStopped", mapOf("error" to message))
+      stopPromise?.reject("LIVE_FAILED", message, null)
+      stopPromise = null
+      startPromise?.reject("LIVE_FAILED", message, null)
+      startPromise = null
+    }
+  }
+}

@@ -14,6 +14,8 @@ import { ConfirmModalHost } from './src/ui/ConfirmModal';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { RecordingProvider } from './src/recording/RecordingContext';
 import { RecordingWidget } from './src/recording/RecordingWidget';
+import { LiveProvider } from './src/live/LiveContext';
+import { LiveWidget } from './src/live/LiveWidget';
 import { useAppPermissions } from './src/hooks/useAppPermissions';
 import { useServerWakePing } from './src/hooks/useServerWakePing';
 import { VoiceProvider } from './src/voice/VoiceContext';
@@ -63,10 +65,13 @@ function AppShell() {
               <AuthenticatedEffects />
               <OrgRealtimeProvider>
                 <RecordingProvider>
-                  <VoiceProvider>
-                    <RootNavigator />
-                  </VoiceProvider>
-                  <RecordingWidget />
+                  <LiveProvider>
+                    <VoiceProvider>
+                      <RootNavigator />
+                    </VoiceProvider>
+                    <RecordingWidget />
+                    <LiveWidget />
+                  </LiveProvider>
                 </RecordingProvider>
               </OrgRealtimeProvider>
             </AuthProvider>

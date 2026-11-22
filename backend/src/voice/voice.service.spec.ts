@@ -43,7 +43,7 @@ describe('VoiceService (unit)', () => {
   it('returns { mode: "self" } without touching org lookup or LiveKit at all when self-hosted', async () => {
     const service = buildService({}, true);
     const result = await service.getConfig('user-123');
-    expect(result).toEqual({ mode: 'self' });
+    expect(result).toEqual({ mode: 'self', max: 5, room: 'team' });
   });
 
   it('throws a clean ServiceUnavailableException when hosted but LiveKit is not configured', async () => {
@@ -77,14 +77,23 @@ describe('VoiceService (unit)', () => {
       },
       false,
     );
+    const lk = { createRoom: jest.fn().mockResolvedValue({ metadata: '' }) };
+    jest
+      .spyOn(service as unknown as { roomClient: () => unknown }, 'roomClient' as never)
+      .mockReturnValue(lk as never);
 
     const result = (await service.getConfig('user-123')) as {
       mode: 'hosted';
       url: string;
       token: string;
+      max?: number;
     };
     expect(result.mode).toBe('hosted');
     expect(result.url).toBe('wss://example.livekit.cloud');
+    expect(result.max).toBe(5);
+    expect(lk.createRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'org-123', maxParticipants: 5 }),
+    );
 
     // Decode with the same secret — proves it's a real, validly-signed token,
     // not just a string that happens to look like one, and that the room is
@@ -109,6 +118,10 @@ describe('VoiceService (unit)', () => {
       },
       false,
     );
+    const lk = { createRoom: jest.fn().mockResolvedValue({ metadata: '' }) };
+    jest
+      .spyOn(service as unknown as { roomClient: () => unknown }, 'roomClient' as never)
+      .mockReturnValue(lk as never);
     const result = (await service.getConfig('user-123')) as { token: string };
 
     const wrongVerifier = new TokenVerifier('test-key', 'a-completely-different-secret-value');

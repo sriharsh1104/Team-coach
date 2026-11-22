@@ -333,6 +333,13 @@ export function RootNavigator() {
               }))}
             />
             <MainStack.Screen
+              name="GoLive"
+              getComponent={() =>
+                require('../screens/live/GoLiveScreen').GoLiveScreen
+              }
+              options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Go Live' }))}
+            />
+            <MainStack.Screen
               name="MemberProfile"
               component={MemberProfileScreen}
               options={detailOptions(({ route }) => ({
@@ -530,6 +537,13 @@ export function RootNavigator() {
               options={detailOptions(({ route }) => ({
                 title: route.params?.game === 'ludo' ? 'Ludo' : route.params?.game === 'rps' ? 'Stone Paper Scissors' : 'Game',
               }))}
+            />
+            <MainStack.Screen
+              name="GoLive"
+              getComponent={() =>
+                require('../screens/live/GoLiveScreen').GoLiveScreen
+              }
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Go Live' }))}
             />
           </MainStack.Navigator>
           <SideDrawer

@@ -14,6 +14,10 @@ export interface HostedRoomState {
   speakers: string[];
 }
 
+/** Hard cap for Team (org roster) voice. */
+export const TEAM_VOICE_MAX_PARTICIPANTS = 5;
+
+/** Hard cap for Guild Voice. */
 export const GUILD_VOICE_MAX_PARTICIPANTS = 50;
 
 /** Participant attribute set only by our token endpoint (clients cannot write it). */

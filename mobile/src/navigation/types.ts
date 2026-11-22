@@ -52,4 +52,5 @@ export type MainStackParamList = {
   SocialHandles: undefined;
   Games: undefined;
   GameRoom: { roomId: string; game?: 'rps' | 'ludo' };
+  GoLive: undefined;
 };

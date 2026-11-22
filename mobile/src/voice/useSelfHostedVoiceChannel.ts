@@ -11,6 +11,7 @@ import {
   stopVoiceBackground,
 } from './voiceBackground';
 import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
+import { playVoiceCue, preloadVoiceCues, unloadVoiceCues } from './voiceCues';
 import { VoiceChannelController, VoiceChannelStatus, VoiceParticipant } from './types';
 
 function emitAsync<T = any>(socket: Socket, event: string, payload?: unknown): Promise<T> {
@@ -109,6 +110,8 @@ export function useSelfHostedVoiceChannel(
   // 'disconnect' handler tell an intentional leave from a dropped connection.
   const sessionWantedRef = useRef(false);
   const joiningRef = useRef(false);
+  /** Gates join/leave beeps until our own join finished — see the hosted hook. */
+  const cuesArmedRef = useRef(false);
   const rejoinAttemptsRef = useRef(0);
   const rejoinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const joinRef = useRef<() => Promise<void>>(async () => {});
@@ -219,6 +222,7 @@ export function useSelfHostedVoiceChannel(
 
   /** Closes every WebRTC object + the mic. Leaves the socket alone. */
   const teardownMedia = useCallback(() => {
+    cuesArmedRef.current = false;
     if (rejoinTimerRef.current) {
       clearTimeout(rejoinTimerRef.current);
       rejoinTimerRef.current = null;
@@ -278,6 +282,7 @@ export function useSelfHostedVoiceChannel(
   const leave = useCallback(() => {
     sessionWantedRef.current = false;
     rejoinAttemptsRef.current = 0;
+    void unloadVoiceCues();
     stopVoiceBackground();
     teardownMedia();
     closeSocket();
@@ -295,8 +300,9 @@ export function useSelfHostedVoiceChannel(
     ) => {
       const device = deviceRef.current;
       if (!device) return;
-      // One audio consumer per user is enough; a stale one (reconnect) gets replaced.
-      dropConsumerForUser(ownerUserId);
+      // Keep the working consumer until the replacement is ready — dropping
+      // first meant a failed consume left that peer permanently silent.
+      const previousConsumerId = userConsumersRef.current.get(ownerUserId);
 
       const params = await emitAsync<{
         id: string;
@@ -315,18 +321,37 @@ export function useSelfHostedVoiceChannel(
         kind: params.kind,
         rtpParameters: params.rtpParameters as never,
       });
+
+      if (previousConsumerId && previousConsumerId !== consumer.id) {
+        const old = consumersRef.current.get(previousConsumerId);
+        if (old) {
+          try {
+            old.consumer.close();
+          } catch {
+            /* already closed */
+          }
+          consumersRef.current.delete(previousConsumerId);
+        }
+      }
+
       consumersRef.current.set(consumer.id, { consumer, userId: ownerUserId });
       userConsumersRef.current.set(ownerUserId, consumer.id);
 
       await emitAsync(socket, 'resumeConsumer', { consumerId: consumer.id });
       applyPlayback(ownerUserId);
     },
-    [applyPlayback, dropConsumerForUser],
+    [applyPlayback],
   );
 
   const attachSocketEvents = useCallback(
     (socket: Socket) => {
       socket.on('newProducer', (payload: RemoteProducer) => {
+        // One user can produce more than once (a reconnect re-produces), so
+        // the beep keys off the roster, not off the producer event.
+        const isNewPeer = !roomMembersRef.current.has(payload.userId);
+        if (isNewPeer && cuesArmedRef.current && !isDeafenedRef.current) {
+          playVoiceCue('join');
+        }
         producerOwnersRef.current.set(payload.producerId, {
           id: payload.userId,
           name: payload.userName,
@@ -354,6 +379,7 @@ export function useSelfHostedVoiceChannel(
       });
 
       socket.on('peerLeft', (payload: { userId: string }) => {
+        if (cuesArmedRef.current && !isDeafenedRef.current) playVoiceCue('leave');
         for (const [producerId, owner] of producerOwnersRef.current) {
           if (owner.id === payload.userId) producerOwnersRef.current.delete(producerId);
         }
@@ -363,6 +389,35 @@ export function useSelfHostedVoiceChannel(
         handRaisedIdsRef.current.delete(payload.userId);
         speakingIdsRef.current.delete(payload.userId);
         refreshParticipants();
+
+        // Reconnect race fallback: if the peer already re-produced on a new
+        // socket, getProducers still lists them — re-consume so we don't stay silent.
+        const recvTransport = recvTransportRef.current;
+        if (!recvTransport || !sessionWantedRef.current) return;
+        emitAsync<RemoteProducer[]>(socket, 'getProducers')
+          .then((producers) => {
+            if (!sessionWantedRef.current) return;
+            let restored = false;
+            for (const p of producers) {
+              producerOwnersRef.current.set(p.producerId, {
+                id: p.userId,
+                name: p.userName,
+                avatarUrl: p.avatarUrl,
+              });
+              roomMembersRef.current.set(p.userId, {
+                id: p.userId,
+                name: p.userName,
+                avatarUrl: p.avatarUrl,
+              });
+              if (p.userId !== payload.userId) continue;
+              restored = true;
+              consumeProducer(recvTransport, socket, p.producerId, p.userId).catch((err) =>
+                console.warn('peerLeft re-consume failed:', err),
+              );
+            }
+            if (restored) refreshParticipants();
+          })
+          .catch((err) => console.warn('peerLeft getProducers failed:', err));
       });
 
       socket.on('handRaised', (payload: { userId: string; raised: boolean }) => {
@@ -407,6 +462,8 @@ export function useSelfHostedVoiceChannel(
         // Our own leave() → nothing to do. Anything else is a dropped
         // connection: tear down the dead transports and try to get back in.
         if (!sessionWantedRef.current) return;
+        if (cuesArmedRef.current) playVoiceCue('leave');
+        cuesArmedRef.current = false;
         console.warn('Voice socket disconnected:', reason);
         teardownMedia();
         closeSocket();
@@ -427,7 +484,15 @@ export function useSelfHostedVoiceChannel(
         }
       });
     },
-    [consumeProducer, dropConsumerForUser, refreshParticipants, applyVoiceState, teardownMedia, closeSocket, resetUiState],
+    [
+      consumeProducer,
+      dropConsumerForUser,
+      refreshParticipants,
+      applyVoiceState,
+      teardownMedia,
+      closeSocket,
+      resetUiState,
+    ],
   );
 
   const join = useCallback(async () => {
@@ -570,6 +635,8 @@ export function useSelfHostedVoiceChannel(
 
       rejoinAttemptsRef.current = 0;
       setStatus('connected');
+      preloadVoiceCues();
+      cuesArmedRef.current = true;
     } catch (err: any) {
       // Never leave half a session behind: close whatever got created so
       // "Try Again" starts clean and the mic LED goes off.

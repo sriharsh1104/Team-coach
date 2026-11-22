@@ -148,6 +148,9 @@ jest.mock('expo-av', () => {
           sound: {
             setOnPlaybackStatusUpdate: jest.fn(),
             playAsync: jest.fn().mockResolvedValue(undefined),
+            // Join/leave cues restart from zero rather than resume.
+            replayAsync: jest.fn().mockResolvedValue(undefined),
+            setVolumeAsync: jest.fn().mockResolvedValue(undefined),
             pauseAsync: jest.fn().mockResolvedValue(undefined),
             setPositionAsync: jest.fn().mockResolvedValue(undefined),
             getStatusAsync: jest.fn().mockResolvedValue({ isLoaded: true, isPlaying: false }),

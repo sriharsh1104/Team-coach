@@ -11,19 +11,31 @@ let mockStatus = 'idle';
 let mockSetHostedStatus: ((s: string) => void) | null = null;
 
 jest.mock('../useHostedVoiceChannel', () => ({
-  useHostedVoiceChannel: () => {
+  useHostedVoiceChannel: (_url: string, _token: string, opts?: { room?: string }) => {
     mockHookCalls += 1;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useState } = require('react');
     const [status, setStatus] = useState(mockStatus);
     mockSetHostedStatus = setStatus;
-    return { status, participants: [], join: jest.fn(), leave: jest.fn() };
+    return {
+      status,
+      participants: [],
+      join: jest.fn(),
+      leave: jest.fn(),
+      room: opts?.room ?? 'team',
+    };
   },
 }));
 jest.mock('../useSelfHostedVoiceChannel', () => ({
-  useSelfHostedVoiceChannel: () => {
+  useSelfHostedVoiceChannel: (_token: string, room?: string) => {
     mockHookCalls += 1;
-    return { status: mockStatus, participants: [], join: jest.fn(), leave: jest.fn() };
+    return {
+      status: mockStatus,
+      participants: [],
+      join: jest.fn(),
+      leave: jest.fn(),
+      room: room ?? 'team',
+    };
   },
 }));
 
@@ -117,5 +129,44 @@ describe('VoiceProvider', () => {
     await settle();
     // Holder was not remounted → still connected (a remount would reset to idle).
     expect(screen.getByText('status:connected')).toBeTruthy();
+  });
+
+  it('does not silently switch rooms while connected (team ↔ guild)', async () => {
+    let activateFn: ((c: Parameters<ReturnType<typeof useVoiceContext>['activate']>[0]) => void) | null = null;
+    let roomLabel = '';
+    function Probe() {
+      const { activate, controller } = useVoiceContext();
+      activateFn = activate;
+      roomLabel = controller?.room ?? 'none';
+      useEffect(() => {
+        activate({ mode: 'hosted', url: 'wss://lk', token: 't1', room: 'guild' });
+      }, [activate]);
+      return (
+        <Text>
+          {controller ? `status:${controller.status}|room:${controller.room ?? 'team'}` : 'none'}
+        </Text>
+      );
+    }
+    render(
+      <VoiceProvider>
+        <Probe />
+      </VoiceProvider>,
+    );
+    await settle();
+    await act(async () => {
+      mockSetHostedStatus?.('connected');
+    });
+    await settle();
+    expect(screen.getByText('status:connected|room:guild')).toBeTruthy();
+
+    const hooksBefore = mockHookCalls;
+    await act(async () => {
+      activateFn?.({ mode: 'hosted', url: 'wss://lk', token: 't2', room: 'team' });
+    });
+    await settle();
+    // Still on guild — refuse remount that would drop the live call.
+    expect(screen.getByText('status:connected|room:guild')).toBeTruthy();
+    expect(mockHookCalls).toBe(hooksBefore);
+    expect(roomLabel).toBe('guild');
   });
 });

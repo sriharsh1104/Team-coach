@@ -87,6 +87,20 @@ export function GuildHomeScreen({ navigation }: Props) {
           ],
         },
         {
+          key: 'live',
+          label: 'Live',
+          split: true,
+          items: [
+            {
+              key: 'goLive',
+              label: 'Go Live',
+              icon: 'play' as const,
+              onPress: () =>
+                goToSection(navigation, 'GuildHome', { screen: 'GoLive' }),
+            },
+          ],
+        },
+        {
           key: 'account',
           label: 'Account',
           split: true,

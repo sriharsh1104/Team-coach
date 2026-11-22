@@ -1,0 +1,36 @@
+apply plugin: 'com.android.library'
+
+group = 'com.teamcoach.livestreamer'
+version = '1.0.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
+
+android {
+  namespace "com.teamcoach.livestreamer"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+configurations.configureEach {
+  resolutionStrategy {
+    // Keep Kotlin aligned with Expo/RN (1.9.x). RootEncoder 2.5.2 is Kotlin 2.0
+    // metadata-compatible; newer RootEncoder pulls kotlin-stdlib 2.2 which breaks
+    // this project's Kotlin 1.9 compiler.
+    force "org.jetbrains.kotlin:kotlin-stdlib:1.9.25"
+    force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.25"
+    force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.25"
+  }
+}
+
+dependencies {
+  implementation "androidx.core:core:1.13.1"
+  // RootEncoder 2.5.2: MediaProjection + MixAudioSource (mic + game) → RTMP(S).
+  // Chosen over StreamPack for built-in mic/internal mix; pinned for Kotlin 1.9.
+  implementation "com.github.pedroSG94.RootEncoder:library:2.5.2"
+}

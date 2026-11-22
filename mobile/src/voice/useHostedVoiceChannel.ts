@@ -23,6 +23,7 @@ import {
   ConnectionQualityLevel,
 } from './types';
 import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
+import { playVoiceCue, preloadVoiceCues, unloadVoiceCues } from './voiceCues';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -116,6 +117,12 @@ export function useHostedVoiceChannel(
   const roomStateRef = useRef<RoomState>(EMPTY_STATE);
 
   const roomRef = useRef<Room | null>(null);
+  /**
+   * Gates the join/leave beeps until our own connect has finished. LiveKit
+   * hands us the existing roster during connect; without this, walking into a
+   * busy channel would fire a beep per person already in it.
+   */
+  const cuesArmedRef = useRef(false);
   // Per-participant local volumes (0-1); default 1 until changed
   const localVolumesRef = useRef<Map<string, number>>(new Map());
   // Participants who have raised their hand
@@ -127,6 +134,31 @@ export function useHostedVoiceChannel(
   // Track deafen state in a ref for use inside callbacks
   const isDeafenedRef = useRef(false);
   const isPushToTalkRef = useRef(false);
+
+  /**
+   * Playback state lives on the RemoteParticipant object, and LiveKit builds a
+   * fresh one for every join and every reconnect. Deafen and per-person volume
+   * therefore have to be re-applied to each arrival — looping the roster once
+   * when the user hits deafen only covers whoever was already in the room.
+   */
+  const applyPlaybackTo = useCallback((participant: RemoteParticipant) => {
+    const volume = isDeafenedRef.current
+      ? 0
+      : (localVolumesRef.current.get(participant.identity) ?? 1);
+    try {
+      participant.setVolume(volume);
+    } catch (err) {
+      console.warn('setVolume failed:', err);
+    }
+  }, []);
+
+  /** Re-applies playback to everyone currently in the room. */
+  const applyPlaybackToAll = useCallback(
+    (room: Room) => {
+      for (const p of room.remoteParticipants.values()) applyPlaybackTo(p);
+    },
+    [applyPlaybackTo],
+  );
 
   const syncParticipants = useCallback((room: Room) => {
     setParticipants(
@@ -167,8 +199,14 @@ export function useHostedVoiceChannel(
   }, []);
 
   const leave = useCallback(() => {
-    roomRef.current?.disconnect();
+    // Ref first, disconnect second: RoomEvent.Disconnected fires after this
+    // returns, and it uses `roomRef.current !== room` to tell "the user left"
+    // from "the connection died".
+    const room = roomRef.current;
     roomRef.current = null;
+    cuesArmedRef.current = false;
+    void unloadVoiceCues();
+    room?.disconnect();
     stopVoiceBackground();
     AudioSession.stopAudioSession().catch(() => {});
     localVolumesRef.current.clear();
@@ -224,22 +262,67 @@ export function useHostedVoiceChannel(
       });
       roomRef.current = room;
 
-      room.on(RoomEvent.ParticipantConnected, () => syncParticipants(room));
+      room.on(RoomEvent.ParticipantConnected, (p: RemoteParticipant) => {
+        // Someone joining while you are deafened used to come in audible.
+        applyPlaybackTo(p);
+        // Deafen means "silence everything", so it mutes the cues too —
+        // same rule the hand-raise beep already follows.
+        if (cuesArmedRef.current && !isDeafenedRef.current) playVoiceCue('join');
+        syncParticipants(room);
+      });
       // Some Android devices populate remotes a tick after connect — keep the
-      // roster in sync when tracks arrive too.
-      room.on(RoomEvent.TrackSubscribed, () => syncParticipants(room));
+      // roster in sync when tracks arrive too. The track is also the first
+      // point at which setVolume has anything to act on, so re-apply here.
+      room.on(RoomEvent.TrackSubscribed, (_track, _pub, p: RemoteParticipant) => {
+        applyPlaybackTo(p);
+        syncParticipants(room);
+      });
       room.on(RoomEvent.ParticipantDisconnected, (p: RemoteParticipant) => {
+        if (cuesArmedRef.current && !isDeafenedRef.current) playVoiceCue('leave');
         localVolumesRef.current.delete(p.identity);
         handRaisedIdsRef.current.delete(p.identity);
         speakingIdsRef.current.delete(p.identity);
         connectionQualitiesRef.current.delete(p.identity);
         syncParticipants(room);
       });
+      // LiveKit retries a dropped connection on its own. Without these two
+      // the UI kept claiming "connected" with dead audio for the whole retry,
+      // and the user had no idea anything had happened.
+      room.on(RoomEvent.Reconnecting, () => {
+        if (roomRef.current !== room) return;
+        setStatus('connecting');
+      });
+      room.on(RoomEvent.Reconnected, () => {
+        if (roomRef.current !== room) return;
+        // Remote participants are rebuilt by the reconnect, so deafen and
+        // per-person volumes have to be re-applied or everyone comes back
+        // at full volume.
+        applyPlaybackToAll(room);
+        syncParticipants(room);
+        setStatus('connected');
+      });
+
       room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
+        // Our own leave() already cleared the ref and reset the UI.
+        const wasLeave = roomRef.current !== room;
+        roomRef.current = null;
+        // Dropping out ourselves is the one the user is most likely to miss,
+        // since the screen may not even be open — beep before the toast.
+        if (cuesArmedRef.current && !wasLeave) playVoiceCue('leave');
+        cuesArmedRef.current = false;
         if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
           emitToast('You were removed from the voice channel by a host.');
+        } else if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
+          emitToast('You joined voice from another device, so this one left.');
+        } else if (!wasLeave) {
+          // Dropping out silently read as the app losing the call for no
+          // reason — say what happened so rejoining is an obvious next step.
+          emitToast('Voice disconnected — check your network and rejoin.');
         }
         stopVoiceBackground();
+        // join() starts a fresh session; without this the audio route stays
+        // in call mode and the mic indicator can hang around.
+        AudioSession.stopAudioSession().catch(() => {});
         setStatus('idle');
         setParticipants([]);
         setIsMuted(false);
@@ -249,6 +332,7 @@ export function useHostedVoiceChannel(
         isDeafenedRef.current = false;
         isPushToTalkRef.current = false;
         speakingIdsRef.current.clear();
+        connectionQualitiesRef.current.clear();
       });
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
         speakingIdsRef.current = new Set(
@@ -356,6 +440,9 @@ export function useHostedVoiceChannel(
       syncParticipants(room);
       setIsMuted(startMuted);
       setStatus('connected');
+      // Decode both clips now so the first arrival isn't silent.
+      preloadVoiceCues();
+      cuesArmedRef.current = true;
       // Late roster sync: LiveKit can still be hydrating remoteParticipants
       // right after connect on older phones.
       setTimeout(() => {
@@ -376,7 +463,9 @@ export function useHostedVoiceChannel(
     } finally {
       joiningRef.current = false;
     }
-  }, [url, token, isGuild, syncParticipants]);
+    // Both playback helpers are stable (no changing deps), so listing them
+    // doesn't churn `join` — it just keeps the lint rule honest.
+  }, [url, token, isGuild, syncParticipants, applyPlaybackTo, applyPlaybackToAll]);
 
   const toggleMute = useCallback(() => {
     const room = roomRef.current;
@@ -461,18 +550,14 @@ export function useHostedVoiceChannel(
       const nextDeafened = !prev;
       isDeafenedRef.current = nextDeafened;
       if (nextDeafened) {
-        // Mute all remote participants and mute local mic
-        for (const p of room.remoteParticipants.values()) {
-          p.setVolume(0);
-        }
+        // Silence everyone in the room now; ParticipantConnected and
+        // TrackSubscribed cover anyone who arrives while deafened.
+        applyPlaybackToAll(room);
         room.localParticipant.setMicrophoneEnabled(false);
         setIsMuted(true);
       } else {
-        // Restore local volumes
-        for (const p of room.remoteParticipants.values()) {
-          const vol = localVolumesRef.current.get(p.identity) ?? 1;
-          p.setVolume(vol);
-        }
+        // Restore each person's own volume.
+        applyPlaybackToAll(room);
         // Restore mic (unless in PTT mode where mic stays gated)
         if (!isPushToTalkRef.current && !isHostMutedRef.current) {
           room.localParticipant.setMicrophoneEnabled(true);
@@ -481,7 +566,7 @@ export function useHostedVoiceChannel(
       }
       return nextDeafened;
     });
-  }, []);
+  }, [applyPlaybackToAll]);
 
   const togglePushToTalk = useCallback(() => {
     const room = roomRef.current;
@@ -567,7 +652,8 @@ export function useHostedVoiceChannel(
     });
   }, [toggleMute, toggleDeafen, leave]);
 
-  const roomCount = isGuild ? participants.length + (status === 'connected' ? 1 : 0) : undefined;
+  const roomCount =
+    status === 'connected' ? participants.length + 1 : undefined;
   const canModerate = !!options.canModerate;
   const roomMax = options.max;
   const isListenOnly = roomState.listenOnly;
@@ -594,19 +680,19 @@ export function useHostedVoiceChannel(
       togglePushToTalk,
       pttStart,
       pttStop,
+      room: voiceRoom,
+      roomCount,
+      roomMax,
       ...(isGuild
         ? {
-            room: voiceRoom,
             canModerate,
             isHostMuted,
             isListenOnly,
-            roomCount,
-            roomMax,
             muteAll,
             unmuteAll,
             setParticipantHostMuted,
           }
-        : { room: voiceRoom }),
+        : {}),
     }),
     [
       status,

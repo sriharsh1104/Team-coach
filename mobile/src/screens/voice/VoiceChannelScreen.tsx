@@ -727,6 +727,28 @@ function HostedVoiceChannel({
   // The shared session may still be the other room's (team <-> guild) for one
   // render before the provider swaps holders — don't show its controls here.
   if (!controller || (controller.room ?? 'team') !== room) {
+    const live =
+      !!controller &&
+      (controller.status === 'connected' || controller.status === 'connecting');
+    if (live) {
+      return (
+        <RoomSwitchGate
+          currentRoom={(controller.room ?? 'team') as VoiceRoomKind}
+          targetRoom={room}
+          onSwitch={() => {
+            deactivate();
+            activate({
+              mode: 'hosted',
+              url: effectiveUrl,
+              token: effectiveToken,
+              room,
+              canModerate,
+              max,
+            });
+          }}
+        />
+      );
+    }
     return (
       <Screen>
         <View style={[shared.container, { justifyContent: 'flex-start', paddingTop: 24 }]}>
@@ -762,8 +784,7 @@ function SelfHostedVoiceChannel({
   authToken: string;
   room: VoiceRoomKind;
 }) {
-  const { activate, controller, setScreenFocused } = useVoiceContext();
-  const { colors } = useTheme();
+  const { activate, deactivate, controller, setScreenFocused } = useVoiceContext();
   const shared = useSharedStyles();
 
   // Mount the mediasoup session in the global VoiceContext (above the
@@ -786,6 +807,21 @@ function SelfHostedVoiceChannel({
   // The shared session may still be the other room's (team <-> guild) for one
   // render before the provider swaps holders — don't show its controls here.
   if (!controller || (controller.room ?? 'team') !== room) {
+    const live =
+      !!controller &&
+      (controller.status === 'connected' || controller.status === 'connecting');
+    if (live) {
+      return (
+        <RoomSwitchGate
+          currentRoom={(controller.room ?? 'team') as VoiceRoomKind}
+          targetRoom={room}
+          onSwitch={() => {
+            deactivate();
+            activate({ mode: 'self', token: authToken, room });
+          }}
+        />
+      );
+    }
     return (
       <Screen>
         <View style={[shared.container, { justifyContent: 'flex-start', paddingTop: 24 }]}>
@@ -804,6 +840,40 @@ function SelfHostedVoiceChannel({
       selectedRoom={null}
       onSelectRoom={() => {}}
     />
+  );
+}
+
+/** Shown when the user opens Team/Guild Voice while already live in the other. */
+function RoomSwitchGate({
+  currentRoom,
+  targetRoom,
+  onSwitch,
+}: {
+  currentRoom: VoiceRoomKind;
+  targetRoom: VoiceRoomKind;
+  onSwitch: () => void;
+}) {
+  const shared = useSharedStyles();
+  const { colors } = useTheme();
+  const currentLabel = currentRoom === 'guild' ? 'Guild Voice' : 'Team Voice';
+  const targetLabel = targetRoom === 'guild' ? 'Guild Voice' : 'Team Voice';
+  return (
+    <Screen>
+      <View style={[shared.container, { justifyContent: 'center', gap: 12 }]}>
+        <Text style={[shared.title, { textAlign: 'center' }]}>Already In {currentLabel}</Text>
+        <Text style={{ color: colors.textMuted, textAlign: 'center', lineHeight: 22, marginBottom: 8 }}>
+          Leave {currentLabel} first if you want to join {targetLabel}. Switching drops your
+          current call.
+        </Text>
+        <Pressable
+          style={shared.button}
+          onPress={onSwitch}
+          accessibilityLabel={`Leave ${currentLabel} and join ${targetLabel}`}
+        >
+          <Text style={shared.buttonText}>Leave & Switch</Text>
+        </Pressable>
+      </View>
+    </Screen>
   );
 }
 

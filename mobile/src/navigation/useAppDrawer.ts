@@ -151,6 +151,20 @@ export function useOrgDrawer() {
     });
 
     sections.push({
+      key: 'live',
+      label: 'Live',
+      split: true,
+      items: [
+        {
+          key: 'goLive',
+          label: 'Go Live',
+          icon: 'play' as const,
+          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'GoLive' }),
+        },
+      ],
+    });
+
+    sections.push({
       key: 'account',
       label: 'Account',
       split: true,
@@ -216,6 +230,19 @@ export function useGuildDrawer() {
             label: 'Games',
             icon: 'game-controller-outline' as const,
             onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Games' }),
+          },
+        ],
+      },
+      {
+        key: 'live',
+        label: 'Live',
+        split: true,
+        items: [
+          {
+            key: 'goLive',
+            label: 'Go Live',
+            icon: 'play' as const,
+            onPress: () => goToSection(navigation, 'GuildHome', { screen: 'GoLive' }),
           },
         ],
       },

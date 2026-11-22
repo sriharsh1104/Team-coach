@@ -16,6 +16,7 @@ import { resolveGuildAccess } from './guild-access';
 import {
   applyModeration,
   GUILD_VOICE_MAX_PARTICIPANTS,
+  TEAM_VOICE_MAX_PARTICIPANTS,
   HostedRoomState,
   isUserHostMuted,
   MOD_ATTRIBUTE,
@@ -88,8 +89,11 @@ export class VoiceService {
   }
 
   async getConfig(userId: string, room: VoiceRoomName = 'team') {
+    const max =
+      room === 'guild' ? GUILD_VOICE_MAX_PARTICIPANTS : TEAM_VOICE_MAX_PARTICIPANTS;
+
     if (this.sfu.isSelfHosted()) {
-      return { mode: 'self' as const };
+      return { mode: 'self' as const, max, room };
     }
 
     // Config check first so a missing LiveKit setup fails cleanly before any lookups.
@@ -99,14 +103,14 @@ export class VoiceService {
 
     let canPublish = true;
     let state: HostedRoomState | undefined;
+    const client = this.roomClient(creds);
+    // Idempotent — returns the live room if it already exists. Enforces the cap.
+    const lkRoom = await client.createRoom({
+      name: ctx.roomName,
+      maxParticipants: max,
+      emptyTimeout: 120,
+    });
     if (ctx.kind === 'guild') {
-      const client = this.roomClient(creds);
-      // Idempotent — returns the live room if it already exists. Enforces the 50 cap.
-      const lkRoom = await client.createRoom({
-        name: ctx.roomName,
-        maxParticipants: GUILD_VOICE_MAX_PARTICIPANTS,
-        emptyTimeout: 120,
-      });
       state = parseRoomState(lkRoom.metadata);
       // Rejoining must not be a way around a host mute.
       canPublish = !isUserHostMuted(state, userId, ctx.canModerate);
@@ -133,7 +137,7 @@ export class VoiceService {
       token: await token.toJwt(),
       room: ctx.kind,
       canModerate: ctx.canModerate,
-      ...(ctx.kind === 'guild' ? { max: GUILD_VOICE_MAX_PARTICIPANTS } : {}),
+      max,
     };
   }
 

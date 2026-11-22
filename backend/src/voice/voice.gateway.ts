@@ -170,6 +170,8 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (!partial?.orgId) return;
     const data = partial as VoiceSocketData;
     const room = this.roomFor(data.roomKey);
+    // Mark cleaned so a second call (manual cleanup then disconnect) is a no-op.
+    (client.data as Partial<VoiceSocketData>).orgId = undefined;
 
     this.closeMedia(data);
     for (const producerId of data.producers.keys()) {
@@ -183,12 +185,21 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
       if (hands.size === 0) this.raisedHands.delete(data.roomKey);
     }
 
-    this.server.to(room).emit('peerLeft', { userId: data.userId });
     this.signalingLimiter.clear(client.id);
 
     // Tear the router down once the last peer is gone.
+    // Only announce peerLeft if this user has no other live socket in the
+    // room — otherwise a reconnect's late disconnect silences the new session.
     try {
       const remaining = await this.server.in(room).fetchSockets();
+      const stillHere = remaining.some(
+        (s) =>
+          s.id !== client.id &&
+          (s.data as Partial<VoiceSocketData>)?.userId === data.userId,
+      );
+      if (!stillHere) {
+        this.server.to(room).emit('peerLeft', { userId: data.userId });
+      }
       this.sfu.closeRoomIfEmpty(data.roomKey, remaining.length);
       if (data.kind === 'guild') {
         await this.afterGuildLeave(data, remaining);
@@ -505,7 +516,11 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
       const id = (s.data as Partial<VoiceSocketData>)?.userId;
       if (!id) continue;
       if (id === userId) {
+        // Finish media + peerLeft for the stale socket BEFORE the replacement
+        // joins, so peers don't get a late peerLeft after already consuming
+        // the new producer.
         s.emit('kicked', { by: 'another device' });
+        await this.handleDisconnect(s as unknown as Socket);
         s.disconnect(true);
       } else {
         others.add(id);
