@@ -74,8 +74,15 @@ export function VoiceNotificationBridge() {
         handledKeys.add(key);
         openVoice(room);
       };
+      // Only honor a tap from the last ~45s. Replaying an old response on
+      // every cold start / login used to dump people into Voice for no reason.
       void Notifications.getLastNotificationResponseAsync?.()
-        .then(handle)
+        .then((response) => {
+          const date = (response as { notification?: { date?: number } } | null)
+            ?.notification?.date;
+          if (typeof date === 'number' && Date.now() - date > 45_000) return;
+          handle(response);
+        })
         .catch(() => undefined);
       const sub = Notifications.addNotificationResponseReceivedListener(handle);
       remove = () => sub.remove();

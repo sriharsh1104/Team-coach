@@ -64,6 +64,48 @@ function loadVideoView(): React.ComponentType<{
   }
 }
 
+/** Easy − / + volume for one remote person (0–5 steps). Tap name to mute. */
+function ParticipantVolumeControl({
+  volume,
+  onSetVolume,
+  muted,
+}: {
+  volume: number;
+  onSetVolume: (v: number) => void;
+  muted: boolean;
+}) {
+  const step = Math.round(Math.max(0, Math.min(1, volume)) * 5);
+  const bump = (delta: number) => {
+    const next = Math.max(0, Math.min(5, step + delta));
+    onSetVolume(next / 5);
+  };
+  return (
+    <View style={styles.volRow}>
+      <Pressable
+        hitSlop={8}
+        style={[styles.volBtn, step === 0 && styles.volBtnDisabled]}
+        onPress={() => bump(-1)}
+        disabled={step === 0}
+        accessibilityLabel="Volume down"
+      >
+        <Text style={styles.volBtnText}>−</Text>
+      </Pressable>
+      <Text style={[styles.volLabel, muted && styles.volLabelMuted]}>
+        {muted ? 'Mute' : `${step}/5`}
+      </Text>
+      <Pressable
+        hitSlop={8}
+        style={[styles.volBtn, step === 5 && styles.volBtnDisabled]}
+        onPress={() => bump(1)}
+        disabled={step === 5}
+        accessibilityLabel="Volume up"
+      >
+        <Text style={styles.volBtnText}>+</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function ScreenShareViewer({
   voice,
 }: {
@@ -671,66 +713,76 @@ function VoiceChannelBody({
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContent}
               renderItem={({ item }) => (
-                <Pressable
-                  style={themed.participantRow}
-                  disabled={item.isSelf}
-                  onPress={
-                    item.isSelf
-                      ? undefined
-                      : () => voice.toggleParticipantMute(item.id)
-                  }
-                  accessibilityRole={item.isSelf ? undefined : 'button'}
-                  accessibilityLabel={
-                    item.isSelf
-                      ? undefined
-                      : item.isLocallyMuted
-                        ? `Unmute ${item.name} for you`
-                        : `Mute ${item.name} for you`
-                  }
-                >
-                  {/* Avatar + speaking ring + hand-raise badge */}
-                  <View style={styles.avatarWrapper}>
-                    {item.isSpeaking && <SpeakingRing />}
-                    <View
-                      style={[
-                        styles.avatar,
-                        item.isSpeaking && styles.avatarSpeaking,
-                      ]}
-                    >
-                      <ChannelAvatar
-                        uri={item.avatarUrl}
-                        size={32}
-                        fallback={(item.name[0] ?? '?').toUpperCase()}
-                        previewable={false}
-                      />
-                    </View>
-                    {item.isHandRaised && (
-                      <View style={styles.handRaisedBadge}>
-                        <AppIcon name="hand-raised" size={10} color="#fff" />
+                <View style={themed.participantRow}>
+                  {/* Tap name/avatar → mute/unmute for you */}
+                  <Pressable
+                    style={styles.participantTap}
+                    disabled={item.isSelf}
+                    onPress={
+                      item.isSelf
+                        ? undefined
+                        : () => voice.toggleParticipantMute(item.id)
+                    }
+                    accessibilityRole={item.isSelf ? undefined : 'button'}
+                    accessibilityLabel={
+                      item.isSelf
+                        ? undefined
+                        : item.isLocallyMuted
+                          ? `Unmute ${item.name} for you`
+                          : `Mute ${item.name} for you`
+                    }
+                  >
+                    <View style={styles.avatarWrapper}>
+                      {item.isSpeaking && <SpeakingRing />}
+                      <View
+                        style={[
+                          styles.avatar,
+                          item.isSpeaking && styles.avatarSpeaking,
+                        ]}
+                      >
+                        <ChannelAvatar
+                          uri={item.avatarUrl}
+                          size={32}
+                          fallback={(item.name[0] ?? '?').toUpperCase()}
+                          previewable={false}
+                        />
                       </View>
-                    )}
-                  </View>
-
-                  {/* Name + quality bars */}
-                  <View style={styles.participantInfo}>
-                    <View style={styles.nameRow}>
-                      <Text style={themed.participantName} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <QualityBars quality={item.connectionQuality} />
+                      {item.isHandRaised && (
+                        <View style={styles.handRaisedBadge}>
+                          <AppIcon name="hand-raised" size={10} color="#fff" />
+                        </View>
+                      )}
                     </View>
-                    {item.isLocallyMuted && (
-                      <Text style={themed.mutedHint}>Muted for you</Text>
-                    )}
-                    {item.isScreenSharing && (
-                      <Text style={themed.mutedHint}>Sharing screen</Text>
-                    )}
-                    {isGuild && (item.isModerator || item.isHostMuted) && (
-                      <Text style={themed.mutedHint}>
-                        {item.isModerator ? 'Host' : 'Muted by host'}
-                      </Text>
-                    )}
-                  </View>
+
+                    <View style={styles.participantInfo}>
+                      <View style={styles.nameRow}>
+                        <Text style={themed.participantName} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <QualityBars quality={item.connectionQuality} />
+                      </View>
+                      {item.isLocallyMuted && (
+                        <Text style={themed.mutedHint}>Muted for you</Text>
+                      )}
+                      {item.isScreenSharing && (
+                        <Text style={themed.mutedHint}>Sharing screen</Text>
+                      )}
+                      {isGuild && (item.isModerator || item.isHostMuted) && (
+                        <Text style={themed.mutedHint}>
+                          {item.isModerator ? 'Host' : 'Muted by host'}
+                        </Text>
+                      )}
+                    </View>
+                  </Pressable>
+
+                  {/* Local volume for this person (everyone can adjust) */}
+                  {!item.isSelf && (
+                    <ParticipantVolumeControl
+                      volume={item.localVolume}
+                      muted={item.isLocallyMuted}
+                      onSetVolume={(v) => voice.setParticipantVolume(item.id, v)}
+                    />
+                  )}
 
                   {/* Guild host: mute / unmute this person for everyone */}
                   {!item.isSelf && canHostMute && !item.isModerator && (
@@ -759,7 +811,7 @@ function VoiceChannelBody({
                       <AppIcon name="person-remove" size={16} color="#f23f43" />
                     </Pressable>
                   )}
-                </Pressable>
+                </View>
               )}
             />
 
@@ -863,7 +915,8 @@ function HostedVoiceChannel({
   config: Extract<VoiceConfig, { mode: 'hosted' }>;
   room: VoiceRoomKind;
 }) {
-  const { activate, deactivate, controller, setScreenFocused } = useVoiceContext();
+  const { activate, deactivate, controller, activationRoom, setScreenFocused } =
+    useVoiceContext();
   const { colors } = useTheme();
   const shared = useSharedStyles();
 
@@ -886,9 +939,13 @@ function HostedVoiceChannel({
   // Activate (or reactivate) in the global VoiceContext whenever url/token change.
   // This is what mounts HostedVoiceHolder above the navigator, keeping the
   // LiveKit Room alive when the user navigates away.
+  // hasSession in the deps: leaving a call now drops the provider's holder,
+  // so without this the screen sat on the skeleton below with no way back to
+  // the Join button (nothing else re-runs while the screen stays focused).
+  const hasSession = !!controller;
   useEffect(() => {
     activate({ mode: 'hosted', url: effectiveUrl, token: effectiveToken, room, canModerate, max });
-  }, [effectiveUrl, effectiveToken, room, canModerate, max, activate]);
+  }, [effectiveUrl, effectiveToken, room, canModerate, max, activate, hasSession]);
 
   // Track screen focus so VoiceFloatingWidget only shows when user has
   // navigated away from this screen.
@@ -903,16 +960,25 @@ function HostedVoiceChannel({
     }, [effectiveUrl, effectiveToken, room, canModerate, max, activate, setScreenFocused]),
   );
 
-  // The shared session may still be the other room's (team <-> guild) for one
+  // The shared session may still be the other room's (team ↔ guild) for one
   // render before the provider swaps holders — don't show its controls here.
+  // Only show Leave & Switch when the provider is intentionally still holding
+  // the other live room (activate refused to swap). A stale controller during
+  // remount must not flash that gate / toast-like message.
   if (!controller || (controller.room ?? 'team') !== room) {
+    const sessionRoom = activationRoom ?? (controller?.room as VoiceRoomKind | undefined);
     const live =
       !!controller &&
       (controller.status === 'connected' || controller.status === 'connecting');
-    if (live) {
+    const blockedOnOther =
+      live &&
+      !!sessionRoom &&
+      sessionRoom !== room &&
+      (controller.room ?? 'team') === sessionRoom;
+    if (blockedOnOther) {
       return (
         <RoomSwitchGate
-          currentRoom={(controller.room ?? 'team') as VoiceRoomKind}
+          currentRoom={sessionRoom}
           targetRoom={room}
           onSwitch={() => {
             deactivate();
@@ -963,15 +1029,19 @@ function SelfHostedVoiceChannel({
   authToken: string;
   room: VoiceRoomKind;
 }) {
-  const { activate, deactivate, controller, setScreenFocused } = useVoiceContext();
+  const { activate, deactivate, controller, activationRoom, setScreenFocused } =
+    useVoiceContext();
   const shared = useSharedStyles();
 
   // Mount the mediasoup session in the global VoiceContext (above the
   // navigator) so it keeps running when the user navigates away — same as
   // the hosted path. See SelfHostedVoiceHolder in VoiceContext.tsx.
+  // hasSession: see the hosted path — leaving drops the holder, and without
+  // this dep the screen would stay stuck on the skeleton below.
+  const hasSession = !!controller;
   useEffect(() => {
     activate({ mode: 'self', token: authToken, room });
-  }, [authToken, room, activate]);
+  }, [authToken, room, activate, hasSession]);
 
   useFocusEffect(
     useCallback(() => {
@@ -983,16 +1053,21 @@ function SelfHostedVoiceChannel({
     }, [authToken, room, activate, setScreenFocused]),
   );
 
-  // The shared session may still be the other room's (team <-> guild) for one
-  // render before the provider swaps holders — don't show its controls here.
+  // Same gate rules as hosted — see HostedVoiceChannel above.
   if (!controller || (controller.room ?? 'team') !== room) {
+    const sessionRoom = activationRoom ?? (controller?.room as VoiceRoomKind | undefined);
     const live =
       !!controller &&
       (controller.status === 'connected' || controller.status === 'connecting');
-    if (live) {
+    const blockedOnOther =
+      live &&
+      !!sessionRoom &&
+      sessionRoom !== room &&
+      (controller.room ?? 'team') === sessionRoom;
+    if (blockedOnOther) {
       return (
         <RoomSwitchGate
-          currentRoom={(controller.room ?? 'team') as VoiceRoomKind}
+          currentRoom={sessionRoom}
           targetRoom={room}
           onSwitch={() => {
             deactivate();
@@ -1323,6 +1398,46 @@ const styles = StyleSheet.create({
   qualityBar: {
     width: 3,
     borderRadius: 1,
+  },
+  participantTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+    gap: 10,
+  },
+  volRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 4,
+  },
+  volBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  volBtnDisabled: {
+    opacity: 0.35,
+  },
+  volBtnText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  volLabel: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontWeight: '700',
+    minWidth: 36,
+    textAlign: 'center',
+  },
+  volLabelMuted: {
+    color: '#f59e0b',
   },
   // Kick button
   kickBtn: {

@@ -139,6 +139,7 @@ describe('VoiceService (unit)', () => {
       room: 'org-123',
       canPublish: true,
       canSubscribe: true,
+      canPublishSources: ['microphone', 'screen_share', 'screen_share_audio'],
     });
   });
 
@@ -319,6 +320,9 @@ describe('VoiceService hosted guild voice (unit)', () => {
     ).verify(res.token);
     expect(claims.video?.room).toBe('guild:org-1');
     expect(claims.video?.canPublish).toBe(true);
+    expect(claims.video?.canPublishSources).toEqual(
+      expect.arrayContaining(['microphone', 'screen_share', 'screen_share_audio']),
+    );
   });
 
   it('a muted user cannot rejoin with publish rights', async () => {

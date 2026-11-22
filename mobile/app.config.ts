@@ -95,7 +95,17 @@ const expoConfig: ExpoConfig = {
   },
   plugins: [
     '@react-native-community/datetimepicker',
-    '@livekit/react-native-expo-plugin',
+    // Screen share in voice needs the MediaProjection foreground service
+    // (Android 14+). No extra LiveKit secrets — only this native flag.
+    [
+      '@livekit/react-native-expo-plugin',
+      {
+        android: {
+          audioType: 'communication',
+          enableScreenShareService: true,
+        },
+      },
+    ],
     '@config-plugins/react-native-webrtc',
     'expo-secure-store',
     'react-native-compressor',

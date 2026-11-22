@@ -67,8 +67,12 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
 
   @Volatile var preset: Preset = Preset.OFF
 
+  /** When true (default), soft-gates low-level background noise on the mic. */
+  @Volatile var noiseGateEnabled: Boolean = true
+
   private var bandRate = 16000
   private val shifter = PitchShifter()
+  private val gate = NoiseGate()
   private var ringPhase = 0.0
   private var scratch = FloatArray(0)
   private var zeros = FloatArray(0)
@@ -77,6 +81,7 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
   override fun initialize(sampleRateHz: Int, numChannels: Int) {
     bandRate = sampleRateHz
     shifter.reset()
+    gate.reset()
     ringPhase = 0.0
     Log.i(TAG, "initialize rate=$sampleRateHz channels=$numChannels")
   }
@@ -84,13 +89,15 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
   override fun reset(newRate: Int) {
     bandRate = newRate
     shifter.reset()
+    gate.reset()
     ringPhase = 0.0
     Log.i(TAG, "reset rate=$newRate")
   }
 
   override fun process(numBands: Int, numFrames: Int, buffer: ByteBuffer) {
     val p = preset
-    if (p == Preset.OFF || numBands <= 0 || numFrames <= 0) return
+    val gateOn = noiseGateEnabled
+    if ((!gateOn && p == Preset.OFF) || numBands <= 0 || numFrames <= 0) return
 
     // Work out how many samples one band holds. WebRTC's wrapper reports
     // `numFrames` per band, but fall back to "whole buffer / bands" if the
@@ -112,23 +119,31 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
     if (scratch.size < perBand) scratch = FloatArray(perBand)
     val x = scratch
 
-    // Band 0 in, effect, band 0 out.
+    // Band 0 in → gate → optional pitch → band 0 out.
     fb.position(0)
     fb.get(x, 0, perBand)
 
     // Sample rate of one band (16 kHz for the 16/32/48 kHz capture rates).
     val rate = if (numBands > 1) (bandRate / numBands).coerceAtLeast(8000) else bandRate
-    shifter.setRate(rate)
-    shifter.ratio = 2.0.pow(p.semitones / 12.0)
-    shifter.process(x, perBand)
 
-    if (p.ringMix > 0.0 && p.ringModHz > 0.0) {
-      val inc = 2.0 * PI * p.ringModHz / rate
-      val dry = 1.0 - p.ringMix
-      for (i in 0 until perBand) {
-        x[i] = (x[i] * (dry + p.ringMix * sin(ringPhase))).toFloat()
-        ringPhase += inc
-        if (ringPhase > 2.0 * PI) ringPhase -= 2.0 * PI
+    if (gateOn) {
+      gate.setRate(rate)
+      gate.process(x, perBand)
+    }
+
+    if (p != Preset.OFF) {
+      shifter.setRate(rate)
+      shifter.ratio = 2.0.pow(p.semitones / 12.0)
+      shifter.process(x, perBand)
+
+      if (p.ringMix > 0.0 && p.ringModHz > 0.0) {
+        val inc = 2.0 * PI * p.ringModHz / rate
+        val dry = 1.0 - p.ringMix
+        for (i in 0 until perBand) {
+          x[i] = (x[i] * (dry + p.ringMix * sin(ringPhase))).toFloat()
+          ringPhase += inc
+          if (ringPhase > 2.0 * PI) ringPhase -= 2.0 * PI
+        }
       }
     }
 
@@ -141,7 +156,7 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
     fb.put(x, 0, perBand)
 
     // Mute the upper bands (8 kHz+) while shifting — see class doc.
-    if (numBands > 1) {
+    if (p != Preset.OFF && numBands > 1) {
       if (zeros.size < perBand) zeros = FloatArray(perBand)
       for (band in 1 until numBands) {
         fb.position(band * perBand)
@@ -161,6 +176,58 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
       "process: bands=$numBands frames=$numFrames capacity=$capacity perBand=$perBand " +
         "rate=$bandRate preset=${p.name}" + if (perBand < 0) " (UNSUPPORTED LAYOUT, audio untouched)" else "",
     )
+  }
+
+  /**
+   * Soft noise gate for gaming rooms: hush fans / AC / keyboard when you are
+   * not speaking. WebRTC float samples sit on the int16 scale (±32767).
+   * Open/close hysteresis + fast attack / slower release avoid choppy words.
+   */
+  private class NoiseGate {
+    private companion object {
+      const val OPEN_RMS = 900f
+      const val CLOSE_RMS = 450f
+      const val CLOSED_GAIN = 0.05f
+      const val ATTACK_MS = 8.0
+      const val RELEASE_MS = 120.0
+    }
+
+    private var open = false
+    private var gain = CLOSED_GAIN
+    private var attackCoef = 0.5f
+    private var releaseCoef = 0.02f
+
+    fun setRate(rate: Int) {
+      val r = rate.coerceAtLeast(8000).toDouble()
+      attackCoef = (1.0 - kotlin.math.exp(-1.0 / (r * ATTACK_MS / 1000.0))).toFloat()
+      releaseCoef = (1.0 - kotlin.math.exp(-1.0 / (r * RELEASE_MS / 1000.0))).toFloat()
+    }
+
+    fun reset() {
+      open = false
+      gain = CLOSED_GAIN
+    }
+
+    fun process(x: FloatArray, n: Int) {
+      if (n <= 0) return
+      var sumSq = 0.0
+      for (i in 0 until n) {
+        val v = x[i]
+        sumSq += (v * v).toDouble()
+      }
+      val rms = kotlin.math.sqrt(sumSq / n).toFloat()
+      if (open) {
+        if (rms < CLOSE_RMS) open = false
+      } else if (rms >= OPEN_RMS) {
+        open = true
+      }
+      val target = if (open) 1f else CLOSED_GAIN
+      val coef = if (target > gain) attackCoef else releaseCoef
+      gain += (target - gain) * coef
+      if (gain < 0.999f) {
+        for (i in 0 until n) x[i] *= gain
+      }
+    }
   }
 
   /**

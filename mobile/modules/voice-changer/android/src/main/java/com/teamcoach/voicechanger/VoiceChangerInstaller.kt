@@ -32,7 +32,9 @@ object VoiceChangerInstaller {
   val processor = VoiceEffectProcessor()
 
   private val bridge = object : AudioProcessorInterface {
-    override fun isEnabled(): Boolean = processor.preset != VoiceEffectProcessor.Preset.OFF
+    // Keep enabled whenever the noise gate or a voice preset needs the buffer.
+    override fun isEnabled(): Boolean =
+      processor.noiseGateEnabled || processor.preset != VoiceEffectProcessor.Preset.OFF
     override fun getName(): String = "sacred-voice-changer"
     override fun initializeAudioProcessing(sampleRateHz: Int, numChannels: Int) =
       processor.initialize(sampleRateHz, numChannels)
@@ -94,7 +96,9 @@ object VoiceChangerInstaller {
     }
     if (attachedTo === controller) return true
     controller.capturePostProcessor = bridge
-    controller.bypassCapturePostProcessing = processor.preset == VoiceEffectProcessor.Preset.OFF
+    // Always run post-processing: noise gate stays on even when the pitch
+    // preset is OFF (bypass would mute the gate and let background through).
+    controller.bypassCapturePostProcessing = false
     attachedTo = controller
     Log.i(TAG, "Voice changer attached to LiveKit audio pipeline")
     return true
@@ -103,8 +107,7 @@ object VoiceChangerInstaller {
   fun setPreset(preset: VoiceEffectProcessor.Preset) {
     processor.preset = preset
     if (tryAttach()) {
-      // Skip the JNI round-trip entirely when no effect is selected.
-      attachedTo?.bypassCapturePostProcessing = preset == VoiceEffectProcessor.Preset.OFF
+      attachedTo?.bypassCapturePostProcessing = false
     }
   }
 }

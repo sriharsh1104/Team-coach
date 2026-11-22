@@ -169,4 +169,59 @@ describe('VoiceProvider', () => {
     expect(mockHookCalls).toBe(hooksBefore);
     expect(roomLabel).toBe('guild');
   });
+
+  it('drops the session when a live call ends (kick / other device / leave)', async () => {
+    render(
+      <VoiceProvider>
+        <Activator mode="hosted" />
+      </VoiceProvider>,
+    );
+    await settle();
+    await act(async () => {
+      mockSetHostedStatus?.('connected');
+    });
+    await settle();
+    expect(screen.getByText('status:connected')).toBeTruthy();
+
+    // LiveKit identity is the user id, so joining from a second device kicks
+    // this one (DUPLICATE_IDENTITY) and the hook falls back to idle. The
+    // provider must let go of the dead holder instead of keeping a zombie
+    // controller behind the floating widget / voice screen.
+    await act(async () => {
+      mockSetHostedStatus?.('idle');
+    });
+    await settle();
+    expect(screen.getByText('none')).toBeTruthy();
+  });
+
+  it('keeps an errored session mounted so the screen can offer Try Again', async () => {
+    render(
+      <VoiceProvider>
+        <Activator mode="hosted" />
+      </VoiceProvider>,
+    );
+    await settle();
+    await act(async () => {
+      mockSetHostedStatus?.('connected');
+    });
+    await settle();
+    await act(async () => {
+      mockSetHostedStatus?.('error');
+    });
+    await settle();
+    expect(screen.getByText('status:error')).toBeTruthy();
+  });
+
+  it('never tears down a session that has not connected yet', async () => {
+    render(
+      <VoiceProvider>
+        <Activator mode="hosted" />
+      </VoiceProvider>,
+    );
+    await settle();
+    // Sits at idle until the user taps Join — the holder must stay mounted.
+    expect(screen.getByText('status:idle')).toBeTruthy();
+    await settle();
+    expect(screen.getByText('status:idle')).toBeTruthy();
+  });
 });

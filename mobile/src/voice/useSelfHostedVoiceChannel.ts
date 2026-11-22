@@ -13,6 +13,7 @@ import {
 import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
 import { playVoiceCue, preloadVoiceCues, unloadVoiceCues } from './voiceCues';
 import { VoiceChannelController, VoiceChannelStatus, VoiceParticipant } from './types';
+import { voiceRejoinDelayMs } from './voiceReconnect';
 
 function emitAsync<T = any>(socket: Socket, event: string, payload?: unknown): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -44,10 +45,6 @@ type GuildVoiceState = {
 };
 
 type ConsumerEntry = { consumer: mediasoupTypes.Consumer; userId: string };
-
-// How many times we silently try to get back in after the socket drops
-// (WiFi → 4G, backend restart, ...) before giving up and showing an error.
-const MAX_REJOIN_ATTEMPTS = 3;
 
 // react-native-webrtc's MediaStreamTrack exposes a per-track playback volume
 // (the same hook livekit-react-native uses for RemoteAudioTrack.setVolume).
@@ -113,6 +110,8 @@ export function useSelfHostedVoiceChannel(
   /** Gates join/leave beeps until our own join finished — see the hosted hook. */
   const cuesArmedRef = useRef(false);
   const rejoinAttemptsRef = useRef(0);
+  /** Wall-clock start of the current reconnect window (null when stable). */
+  const reconnectStartedAtRef = useRef<number | null>(null);
   const rejoinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const joinRef = useRef<() => Promise<void>>(async () => {});
 
@@ -282,6 +281,7 @@ export function useSelfHostedVoiceChannel(
   const leave = useCallback(() => {
     sessionWantedRef.current = false;
     rejoinAttemptsRef.current = 0;
+    reconnectStartedAtRef.current = null;
     void unloadVoiceCues();
     stopVoiceBackground();
     teardownMedia();
@@ -460,26 +460,34 @@ export function useSelfHostedVoiceChannel(
 
       socket.on('disconnect', (reason: string) => {
         // Our own leave() → nothing to do. Anything else is a dropped
-        // connection: tear down the dead transports and try to get back in.
+        // connection: tear down the dead transports and try to get back in
+        // for up to 1 minute, then exit so Join works again.
         if (!sessionWantedRef.current) return;
         if (cuesArmedRef.current) playVoiceCue('leave');
         cuesArmedRef.current = false;
         console.warn('Voice socket disconnected:', reason);
         teardownMedia();
         closeSocket();
-        if (rejoinAttemptsRef.current < MAX_REJOIN_ATTEMPTS) {
-          rejoinAttemptsRef.current += 1;
+        if (reconnectStartedAtRef.current === null) {
+          reconnectStartedAtRef.current = Date.now();
+          emitToast('Network dropped — reconnecting for up to 1 min…');
+        }
+        const elapsed = Date.now() - (reconnectStartedAtRef.current ?? Date.now());
+        rejoinAttemptsRef.current += 1;
+        const delay = voiceRejoinDelayMs(rejoinAttemptsRef.current, elapsed);
+        if (delay !== null) {
           setStatus('connecting');
-          const delay = 1500 * rejoinAttemptsRef.current;
           rejoinTimerRef.current = setTimeout(() => {
             rejoinTimerRef.current = null;
             if (sessionWantedRef.current) joinRef.current().catch(() => {});
           }, delay);
         } else {
           sessionWantedRef.current = false;
+          reconnectStartedAtRef.current = null;
+          rejoinAttemptsRef.current = 0;
           stopVoiceBackground();
           resetUiState();
-          setErrorMessage('Voice connection lost. Check your network and rejoin.');
+          setErrorMessage('Could not reconnect in 1 min — tap Join to get back in.');
           setStatus('error');
         }
       });
@@ -525,6 +533,9 @@ export function useSelfHostedVoiceChannel(
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          // Cuts low rumble (fans / AC) before encode — mapped to
+          // googHighpassFilter on Android WebRTC.
+          highpassFilter: true,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any,
         video: false,
@@ -637,18 +648,45 @@ export function useSelfHostedVoiceChannel(
         emitAsync(socket, 'setHandRaised', { raised: true }).catch(() => {});
       }
 
+      const wasReconnecting = reconnectStartedAtRef.current !== null;
       rejoinAttemptsRef.current = 0;
+      reconnectStartedAtRef.current = null;
       setStatus('connected');
       preloadVoiceCues();
       cuesArmedRef.current = true;
+      if (wasReconnecting) emitToast('Back in the voice call');
     } catch (err: any) {
       // Never leave half a session behind: close whatever got created so
       // "Try Again" starts clean and the mic LED goes off.
-      sessionWantedRef.current = false;
+      // Still inside the 1 min reconnect window → schedule another attempt.
+      const reconnectStarted = reconnectStartedAtRef.current;
+      const retryDelay =
+        reconnectStarted !== null && sessionWantedRef.current
+          ? voiceRejoinDelayMs(
+              rejoinAttemptsRef.current + 1,
+              Date.now() - reconnectStarted,
+            )
+          : null;
       stopVoiceBackground();
       teardownMedia();
       closeSocket();
-      setErrorMessage(err?.message ?? 'Could not join voice channel');
+      if (retryDelay !== null) {
+        rejoinAttemptsRef.current += 1;
+        setStatus('connecting');
+        rejoinTimerRef.current = setTimeout(() => {
+          rejoinTimerRef.current = null;
+          if (sessionWantedRef.current) joinRef.current().catch(() => {});
+        }, retryDelay);
+        return;
+      }
+      sessionWantedRef.current = false;
+      reconnectStartedAtRef.current = null;
+      rejoinAttemptsRef.current = 0;
+      setErrorMessage(
+        reconnectStarted !== null
+          ? 'Could not reconnect in 1 min — tap Join to get back in.'
+          : (err?.message ?? 'Could not join voice channel'),
+      );
       setStatus('error');
     } finally {
       joiningRef.current = false;

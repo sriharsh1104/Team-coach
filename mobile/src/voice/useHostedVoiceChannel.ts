@@ -10,6 +10,7 @@ import {
   ConnectionQuality,
   DisconnectReason,
   Track,
+  AudioPresets,
   type VideoTrack,
 } from 'livekit-client';
 import { moderateVoice } from '../api/voice';
@@ -31,6 +32,7 @@ import {
 import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
 import { playVoiceCue, preloadVoiceCues, unloadVoiceCues } from './voiceCues';
 import { setVoiceScreenSharing } from './voiceScreenShareGate';
+import { createVoiceReconnectPolicy } from './voiceReconnect';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -135,6 +137,8 @@ export function useHostedVoiceChannel(
    * busy channel would fire a beep per person already in it.
    */
   const cuesArmedRef = useRef(false);
+  /** Avoid toast spam while LiveKit keeps firing Reconnecting. */
+  const reconnectToastShownRef = useRef(false);
   // Per-participant local volumes (0-1); default 1 until changed
   const localVolumesRef = useRef<Map<string, number>>(new Map());
   // Participants who have raised their hand
@@ -326,7 +330,16 @@ export function useHostedVoiceChannel(
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          // Stronger "focus on voice" when the OS/WebRTC build supports it.
+          voiceIsolation: true,
         },
+        publishDefaults: {
+          // Speech preset + DTX: less background hiss sent while silent.
+          audioPreset: AudioPresets.speech,
+          dtx: true,
+        },
+        // Network drops: keep retrying the same call for ~1 min, then exit.
+        reconnectPolicy: createVoiceReconnectPolicy(),
       });
       roomRef.current = room;
 
@@ -368,6 +381,10 @@ export function useHostedVoiceChannel(
       room.on(RoomEvent.Reconnecting, () => {
         if (roomRef.current !== room) return;
         setStatus('connecting');
+        if (!reconnectToastShownRef.current) {
+          reconnectToastShownRef.current = true;
+          emitToast('Network dropped — reconnecting for up to 1 min…');
+        }
       });
       room.on(RoomEvent.Reconnected, () => {
         if (roomRef.current !== room) return;
@@ -377,12 +394,17 @@ export function useHostedVoiceChannel(
         applyPlaybackToAll(room);
         syncParticipants(room);
         setStatus('connected');
+        if (reconnectToastShownRef.current) {
+          emitToast('Back in the voice call');
+        }
+        reconnectToastShownRef.current = false;
       });
 
       room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
         // Our own leave() already cleared the ref and reset the UI.
         const wasLeave = roomRef.current !== room;
         roomRef.current = null;
+        reconnectToastShownRef.current = false;
         // Dropping out ourselves is the one the user is most likely to miss,
         // since the screen may not even be open — beep before the toast.
         if (cuesArmedRef.current && !wasLeave) playVoiceCue('leave');
@@ -392,9 +414,8 @@ export function useHostedVoiceChannel(
         } else if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
           emitToast('You joined voice from another device, so this one left.');
         } else if (!wasLeave) {
-          // Dropping out silently read as the app losing the call for no
-          // reason — say what happened so rejoining is an obvious next step.
-          emitToast('Voice disconnected — check your network and rejoin.');
+          // Retries exhausted (~1 min) — leave the session so Join works again.
+          emitToast('Could not reconnect in 1 min — tap Join to get back in.');
         }
         stopVoiceBackground();
         // join() starts a fresh session; without this the audio route stays
@@ -667,20 +688,15 @@ export function useHostedVoiceChannel(
         return;
       }
     }
-    // audio: true asks for device/system audio (movie/game) when the OS
-    // supports it; mic stays a separate track so voice + media both go out.
+    // RN Android getDisplayMedia is video-only; mic stays a separate LiveKit track.
     room.localParticipant
-      .setScreenShareEnabled(true, {
-        audio: true,
-        systemAudio: 'include',
-        contentHint: 'motion',
-      })
+      .setScreenShareEnabled(true, { audio: false, contentHint: 'motion' })
       .then(
         async () => {
           isScreenSharingRef.current = true;
           setIsScreenSharing(true);
           setVoiceScreenSharing(true);
-          // Keep mic live while sharing so voice + movie/game audio both go out.
+          // Keep mic live while sharing so voice continues alongside the video.
           if (
             !isMutedRef.current &&
             !isPushToTalkRef.current &&
@@ -695,11 +711,28 @@ export function useHostedVoiceChannel(
             }
           }
           refreshScreenShare(room);
-          emitToast('Sharing screen — others hear your mic + media audio when available');
+          emitToast('Sharing screen — others in this voice call can see it');
         },
-        (err) => {
+        (err: unknown) => {
           console.warn('start screen share failed:', err);
-          emitToast(err?.message || 'Could not start screen share');
+          const name =
+            err && typeof err === 'object' && 'name' in err
+              ? String((err as { name?: unknown }).name ?? '')
+              : '';
+          const message =
+            err && typeof err === 'object' && 'message' in err
+              ? String((err as { message?: unknown }).message ?? '')
+              : '';
+          const denied =
+            name === 'NotAllowedError' ||
+            /NotAllowed/i.test(message) ||
+            /PermissionDenied/i.test(message) ||
+            /permission/i.test(message);
+          emitToast(
+            denied
+              ? 'Screen share blocked — tap Allow on the Android share prompt'
+              : message || 'Could not start screen share',
+          );
         },
       );
   }, [status, refreshScreenShare]);

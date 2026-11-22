@@ -6,7 +6,11 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
+import {
+  AccessToken,
+  RoomServiceClient,
+  TrackSource,
+} from 'livekit-server-sdk';
 import { ChatService } from '../chat/chat.service';
 import { MembershipService } from '../membership/membership.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -194,11 +198,22 @@ export class VoiceService {
       // the voice screen show a real avatar instead of just initials.
       metadata: JSON.stringify({ avatarUrl: user.avatarUrl }),
     });
+    // Explicit sources so LiveKit Cloud / room defaults never block in-call
+    // screen share. Mic stays the primary publish; camera not needed for voice.
     token.addGrant({
       roomJoin: true,
       room: ctx.roomName,
       canPublish,
       canSubscribe: true,
+      ...(canPublish
+        ? {
+            canPublishSources: [
+              TrackSource.MICROPHONE,
+              TrackSource.SCREEN_SHARE,
+              TrackSource.SCREEN_SHARE_AUDIO,
+            ],
+          }
+        : {}),
     });
 
     return {

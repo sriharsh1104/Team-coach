@@ -24,6 +24,11 @@ export type VoiceActivation =
 type VoiceContextValue = {
   /** Currently active controller, or null when not in a voice session. */
   controller: VoiceChannelController | null;
+  /**
+   * Room the provider is actually holding (may differ from the screen the
+   * user just opened when a live call blocks team ↔ guild switch).
+   */
+  activationRoom: 'team' | 'guild' | null;
   /** Whether the voice screen is currently focused (user is looking at it). */
   isScreenFocused: boolean;
   /** Activate a voice session with the given config. */
@@ -36,6 +41,7 @@ type VoiceContextValue = {
 
 const VoiceContext = createContext<VoiceContextValue>({
   controller: null,
+  activationRoom: null,
   isScreenFocused: false,
   activate: () => {},
   deactivate: () => {},
@@ -167,6 +173,35 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  /**
+   * A session that was live and has gone back to idle has ended for good:
+   * the user tapped Leave on the voice screen, a host removed them, the same
+   * account joined from another device (LiveKit's identity is the user id, so
+   * the older device is kicked with DUPLICATE_IDENTITY), or the reconnect
+   * window ran out. The hooks reset their own state, but the provider used to
+   * keep the holder mounted around a dead Room — leaving a zombie controller
+   * behind the floating widget and the voice screen. Drop the activation so
+   * the next Join starts from a clean session.
+   */
+  const wasLiveRef = useRef(false);
+  useEffect(() => {
+    if (!controller) {
+      wasLiveRef.current = false;
+      return;
+    }
+    if (controller.status === 'connected' || controller.status === 'connecting') {
+      wasLiveRef.current = true;
+      return;
+    }
+    // 'error' keeps the holder so the screen can offer Try Again.
+    if (wasLiveRef.current && controller.status === 'idle') {
+      wasLiveRef.current = false;
+      setActivation(null);
+      setController(null);
+      controllerRef.current = null;
+    }
+  }, [controller]);
+
   const deactivate = useCallback(() => {
     // Leave the voice channel before removing the holder
     controllerRef.current?.leave();
@@ -175,9 +210,18 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     controllerRef.current = null;
   }, []);
 
+  const activationRoom = activation ? (activation.room ?? 'team') : null;
+
   return (
     <VoiceContext.Provider
-      value={{ controller, isScreenFocused, activate, deactivate, setScreenFocused }}
+      value={{
+        controller,
+        activationRoom,
+        isScreenFocused,
+        activate,
+        deactivate,
+        setScreenFocused,
+      }}
     >
       {activation?.mode === 'hosted' ? (
         <HostedVoiceHolder

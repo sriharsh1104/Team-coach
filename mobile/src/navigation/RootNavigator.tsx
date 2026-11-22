@@ -47,7 +47,7 @@ import {
 } from './types';
 import { titleCase } from '../utils/titleCase';
 import { colors } from '../theme';
-import { VoiceFloatingWidget } from '../voice/VoiceFloatingWidget';
+import { navigationRef, notifyFocusedRouteChanged } from './navigationRef';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
@@ -207,6 +207,7 @@ export function RootNavigator() {
   return (
     <NavigationContainer
       key={navKey}
+      ref={navigationRef}
       theme={sacredNavTheme}
       initialState={initialNavState}
       onReady={() => {
@@ -219,6 +220,7 @@ export function RootNavigator() {
           orgDrawer.setRouteName(name);
           guildDrawer.setRouteName(name);
         }
+        notifyFocusedRouteChanged();
       }}
       onStateChange={(state) => {
         persistNavState(phase, state);
@@ -227,6 +229,7 @@ export function RootNavigator() {
           null;
         orgDrawer.setRouteName(name);
         guildDrawer.setRouteName(name);
+        notifyFocusedRouteChanged();
       }}
     >
       {!user ? (
@@ -572,10 +575,6 @@ export function RootNavigator() {
           <InviteLinkBridge />
         </>
       )}
-      {/* VoiceFloatingWidget must be inside NavigationContainer so
-          useNavigation() can find the navigation context. It returns null
-          when no voice session is active, so it is safe in every branch. */}
-      <VoiceFloatingWidget />
     </NavigationContainer>
   );
 }

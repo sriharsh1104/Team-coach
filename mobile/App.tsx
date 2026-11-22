@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AuthProvider } from './src/auth/AuthContext';
+import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { BrandWatermark } from './src/brand/BrandWatermark';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { OrgRealtimeProvider } from './src/realtime/OrgRealtimeProvider';
@@ -19,7 +19,8 @@ import { LiveOverlay } from './src/live/LiveOverlay';
 import { LiveWidget } from './src/live/LiveWidget';
 import { useAppPermissions } from './src/hooks/useAppPermissions';
 import { useServerWakePing } from './src/hooks/useServerWakePing';
-import { VoiceProvider } from './src/voice/VoiceContext';
+import { VoiceProvider, useVoiceContext } from './src/voice/VoiceContext';
+import { VoiceFloatingWidget } from './src/voice/VoiceFloatingWidget';
 import { AppUpdatePrompt } from './src/update/AppUpdatePrompt';
 import { installInviteLinkListener } from './src/invite/inviteLinks';
 import { startNetworkWatch } from './src/net/networkStatus';
@@ -49,6 +50,20 @@ function AuthenticatedEffects() {
   return null;
 }
 
+/**
+ * Drop any leftover voice session on logout / account switch. Without this,
+ * login could reopen Team/Guild Voice against a stale call and flash the
+ * "Leave X first if you want to join Y" gate for no reason.
+ */
+function VoiceAuthCleanup() {
+  const { user } = useAuth();
+  const { deactivate } = useVoiceContext();
+  useEffect(() => {
+    if (!user) deactivate();
+  }, [user, deactivate]);
+  return null;
+}
+
 function AppShell() {
   // Request notification + microphone permissions once on app start,
   // before the user reaches any screen that needs them.
@@ -68,7 +83,10 @@ function AppShell() {
                 <RecordingProvider>
                   <LiveProvider>
                     <VoiceProvider>
+                      <VoiceAuthCleanup />
                       <RootNavigator />
+                      {/* Above native-stack screens (unlike inside the navigator). */}
+                      <VoiceFloatingWidget />
                     </VoiceProvider>
                     <RecordingWidget />
                     <LiveOverlay />

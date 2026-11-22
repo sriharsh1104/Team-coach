@@ -68,10 +68,21 @@ class VoiceKeepAliveService : Service() {
         startForeground(NOTIF_ID, notification)
       }
     } catch (_: Exception) {
-      // Not allowed to start right now (e.g. mic permission missing). Voice
-      // still works in the foreground; just don't crash the app.
-      stopSelf()
-      return START_NOT_STICKY
+      // Android 14+ refuses a "microphone" foreground service in cases where
+      // a plain one is still fine (started while the app is already in the
+      // background, mic permission temporarily not "while-in-use", ...).
+      // Giving up here was the difference between voice surviving the user
+      // switching to their game and the OS freezing the process a few seconds
+      // later — so fall back to an untyped foreground service, which still
+      // holds the process and keeps the notification's buttons working.
+      try {
+        startForeground(NOTIF_ID, notification)
+      } catch (_: Exception) {
+        // Genuinely not allowed to go foreground at all. Voice still works
+        // while the app is on screen; just don't crash the app.
+        stopSelf()
+        return START_NOT_STICKY
+      }
     }
     acquireWakeLock()
     // The session lives in the JS runtime; if the OS kills the process there

@@ -87,6 +87,10 @@ jest.mock('livekit-client', () => ({
     DUPLICATE_IDENTITY: 4,
     CLIENT_INITIATED: 1,
   },
+  AudioPresets: {
+    speech: { maxBitrate: 24_000 },
+    music: { maxBitrate: 48_000 },
+  },
 }));
 
 jest.mock('../voiceBackground', () => ({
@@ -255,7 +259,7 @@ describe('useHostedVoiceChannel', () => {
 
       expect(hook.result.current.status).toBe('idle');
       expect(emitToast).toHaveBeenCalledWith(
-        expect.stringMatching(/check your network/i),
+        expect.stringMatching(/could not reconnect|tap join/i),
       );
     });
 

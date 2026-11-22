@@ -9,8 +9,11 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useNavigationState } from '@react-navigation/native';
-import type { NavigationState, PartialState } from '@react-navigation/native';
+import {
+  getFocusedRouteNameFromRef,
+  navigateToVoice,
+  subscribeToFocusedRoute,
+} from '../navigation/navigationRef';
 import { useVoiceContext } from './VoiceContext';
 import { AppIcon } from '../ui/AppIcon';
 
@@ -18,17 +21,6 @@ const BAR_HEIGHT = 56;
 const BAR_WIDTH = 280;
 const EDGE_PAD = 12;
 const DRAG_THRESHOLD = 6;
-
-type NavState = NavigationState | PartialState<NavigationState> | undefined;
-
-function getFocusedRouteName(state: NavState): string | undefined {
-  if (!state || !('routes' in state) || !state.routes?.length) return undefined;
-  const index = state.index ?? state.routes.length - 1;
-  const route = state.routes[index];
-  if (!route) return undefined;
-  if (route.state) return getFocusedRouteName(route.state) ?? route.name;
-  return route.name;
-}
 
 function isGameRoute(name: string | undefined): boolean {
   return name === 'GameRoom' || name === 'Games';
@@ -38,14 +30,15 @@ type Pos = { x: number; y: number };
 
 /**
  * Floating PiP-style widget shown when the user has an active voice session
- * but has navigated away from the Voice screen. Freely draggable anywhere on
- * screen; tap opens the voice participant list.
+ * but has navigated away from the Voice screen. Mounted above the navigator
+ * (App.tsx) so native-stack screens cannot cover it. Freely draggable.
  */
 export function VoiceFloatingWidget() {
   const { controller, isScreenFocused, deactivate } = useVoiceContext();
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<any>();
-  const focusedRoute = useNavigationState(getFocusedRouteName);
+  const [focusedRoute, setFocusedRoute] = useState<string | undefined>(() =>
+    getFocusedRouteNameFromRef(),
+  );
   const onGame = isGameRoute(focusedRoute);
 
   const window = Dimensions.get('window');
@@ -64,6 +57,11 @@ export function VoiceFloatingWidget() {
   const slideAnim = useRef(new Animated.Value(120)).current;
 
   const isConnected = controller?.status === 'connected';
+  // A session that is connecting (incl. a mid-call reconnect) still owns the
+  // mic, so the widget stays mounted and can slide back in. Anything else —
+  // idle / error — means there is no call to float, and the full-screen layer
+  // below must not stay over the app.
+  const isLive = isConnected || controller?.status === 'connecting';
   const isGuild = controller?.room === 'guild';
   const micOff = !!controller && (controller.isMuted || !!controller.isHostMuted);
   const shouldShow = isConnected && !isScreenFocused;
@@ -71,6 +69,15 @@ export function VoiceFloatingWidget() {
   const memberCount =
     controller?.roomCount ??
     (controller ? controller.participants.length + (isConnected ? 1 : 0) : 0);
+
+  // Track focused route without living inside NavigationContainer. This must
+  // go through the module-level emitter: a listener added to the container
+  // ref is dropped when RootNavigator remounts (it is keyed by phase + user),
+  // which left the widget frozen on a stale route.
+  useEffect(() => {
+    setFocusedRoute(getFocusedRouteNameFromRef());
+    return subscribeToFocusedRoute(setFocusedRoute);
+  }, []);
 
   const wasOnGame = useRef(false);
   useEffect(() => {
@@ -81,7 +88,6 @@ export function VoiceFloatingWidget() {
     wasOnGame.current = onGame;
   }, [onGame, defaultGame.x, defaultGame.y]);
 
-  // Keep within bounds if safe area / window changes.
   useEffect(() => {
     const next: Pos = {
       x: Math.min(maxX, Math.max(minX, posRef.current.x)),
@@ -127,7 +133,6 @@ export function VoiceFloatingWidget() {
           setPos(next);
         },
         onPanResponderRelease: () => {
-          // Stay where the user dropped it — no edge snap.
           if (dragged.current) {
             setTimeout(() => {
               dragged.current = false;
@@ -138,7 +143,11 @@ export function VoiceFloatingWidget() {
     [minX, maxX, minY, maxY],
   );
 
-  if (!controller) return null;
+  // Unmount entirely once the call is over (user left, host kicked us, the
+  // account joined from another device, retries ran out). Keeping the layer
+  // mounted left an invisible full-screen view — and a green bar that could
+  // re-appear — hanging over the app long after the session was dead.
+  if (!controller || !isLive) return null;
 
   const handleLeave = () => {
     if (dragged.current) return;
@@ -147,14 +156,7 @@ export function VoiceFloatingWidget() {
 
   const handleOpen = () => {
     if (dragged.current) return;
-    // Voice / GuildVoice sit on the root MainStack (siblings of OrgHome),
-    // not nested under OrgHome — navigate straight to the voice list.
-    try {
-      if (isGuild) navigation.navigate('GuildVoice');
-      else navigation.navigate('Voice');
-    } catch {
-      // Navigator not ready.
-    }
+    navigateToVoice(isGuild ? 'guild' : 'team');
   };
 
   const handleMute = () => {
@@ -163,55 +165,63 @@ export function VoiceFloatingWidget() {
   };
 
   return (
-    <Animated.View
-      style={[
-        styles.wrapper,
-        {
-          left: pos.x,
-          top: pos.y,
-          width: BAR_WIDTH,
-          transform: [{ translateY: slideAnim }],
-        },
-      ]}
-      pointerEvents={shouldShow ? 'auto' : 'none'}
-      {...panResponder.panHandlers}
-    >
-      <Pressable style={styles.pill} onPress={handleOpen} accessibilityLabel="Open voice">
-        <View style={styles.liveDot} />
-        <Text style={styles.label} numberOfLines={1}>
-          {isGuild ? 'Guild Voice' : 'Voice'}
-        </Text>
-        <Text style={styles.sub} numberOfLines={1}>
-          {memberCount} member{memberCount !== 1 ? 's' : ''}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={[styles.iconBtn, micOff && styles.iconBtnMuted]}
-        onPress={handleMute}
-        accessibilityLabel={
-          controller.isHostMuted ? 'Muted by host' : controller.isMuted ? 'Unmute' : 'Mute'
-        }
+    <View style={styles.layer} pointerEvents="box-none">
+      <Animated.View
+        style={[
+          styles.wrapper,
+          {
+            left: pos.x,
+            top: pos.y,
+            width: BAR_WIDTH,
+            opacity: shouldShow ? 1 : 0,
+            transform: [{ translateY: slideAnim }],
+          },
+        ]}
+        pointerEvents={shouldShow ? 'auto' : 'none'}
+        {...panResponder.panHandlers}
       >
-        <AppIcon
-          name={micOff ? 'mic-off' : 'mic'}
-          size={18}
-          color={micOff ? '#ef4444' : '#fff'}
-        />
-      </Pressable>
+        <Pressable style={styles.pill} onPress={handleOpen} accessibilityLabel="Open voice">
+          <View style={styles.liveDot} />
+          <Text style={styles.label} numberOfLines={1}>
+            {isGuild ? 'Guild Voice' : 'Voice'}
+          </Text>
+          <Text style={styles.sub} numberOfLines={1}>
+            {memberCount} member{memberCount !== 1 ? 's' : ''}
+          </Text>
+        </Pressable>
 
-      <Pressable
-        style={[styles.iconBtn, styles.leaveBtn]}
-        onPress={handleLeave}
-        accessibilityLabel="Leave voice"
-      >
-        <AppIcon name="phone-down" size={16} color="#fff" />
-      </Pressable>
-    </Animated.View>
+        <Pressable
+          style={[styles.iconBtn, micOff && styles.iconBtnMuted]}
+          onPress={handleMute}
+          accessibilityLabel={
+            controller.isHostMuted ? 'Muted by host' : controller.isMuted ? 'Unmute' : 'Mute'
+          }
+        >
+          <AppIcon
+            name={micOff ? 'mic-off' : 'mic'}
+            size={18}
+            color={micOff ? '#ef4444' : '#fff'}
+          />
+        </Pressable>
+
+        <Pressable
+          style={[styles.iconBtn, styles.leaveBtn]}
+          onPress={handleLeave}
+          accessibilityLabel="Leave voice"
+        >
+          <AppIcon name="phone-down" size={16} color="#fff" />
+        </Pressable>
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  layer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10000,
+    elevation: 10000,
+  },
   wrapper: {
     position: 'absolute',
     flexDirection: 'row',
@@ -223,12 +233,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 8,
-    zIndex: 9999,
     shadowColor: '#000',
     shadowOpacity: 0.5,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 12,
+    elevation: 24,
   },
   liveDot: {
     width: 8,
