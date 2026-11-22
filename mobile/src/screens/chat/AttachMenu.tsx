@@ -13,6 +13,7 @@ export type AttachOption =
   | 'video'
   | 'camera'
   | 'record'
+  | 'voiceNote'
   | 'reminder'
   | 'screenShare'
   | 'points';
@@ -120,17 +121,24 @@ export function AttachMenu({
       onPress: () => onPickMedia('camera'),
     },
     {
-      key: 'record',
-      label: 'Record',
+      key: 'voiceNote',
+      label: 'Voice Note',
       icon: 'mic-outline',
       tint: '#e74c3c',
+      onPress: () => onPickMedia('voiceNote'),
+    },
+    {
+      key: 'record',
+      label: 'Record',
+      icon: 'stop-circle',
+      tint: '#c0392b',
       onPress: () => onPickMedia('record'),
     },
     {
       key: 'screenShare',
       label: 'Screen',
       icon: 'phone-portrait-outline',
-      tint: '#e74c3c',
+      tint: '#e67e22',
       onPress: () => onPickMedia('screenShare'),
     },
     {

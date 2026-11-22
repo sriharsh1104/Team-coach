@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,14 +17,12 @@ import { useLive } from '../../live/LiveContext';
 import {
   LIVE_PLATFORMS,
   LivePlatform,
-  loadRtmpUrl,
-  loadStreamBannerUri,
-  loadStreamKey,
-  loadStreamTitle,
-  saveRtmpUrl,
-  saveStreamBannerUri,
-  saveStreamKey,
-  saveStreamTitle,
+  StreamPreset,
+  createBlankPreset,
+  deletePreset,
+  getActivePresetId,
+  loadPresetsForPlatform,
+  upsertPreset,
 } from '../../live/streamKeys';
 import { MainStackParamList } from '../../navigation/types';
 import { ThemeColors } from '../../theme';
@@ -38,8 +37,8 @@ type Props = NativeStackScreenProps<MainStackParamList, 'GoLive'>;
 
 /**
  * Go Live: each person uses their own YouTube / Twitch / Kick stream URL + key.
- * Title + banner show on-screen while live (and in the capture). Chat comments
- * from team/guild float on the right for 5s.
+ * Multiple named presets per platform — pick from a dropdown, Save without
+ * going live, or Go Live with the selected preset.
  */
 export function GoLiveScreen(_props: Props) {
   const shared = useSharedStyles();
@@ -48,44 +47,119 @@ export function GoLiveScreen(_props: Props) {
   const { live, starting, elapsedSec, startLive, stopLive } = useLive();
 
   const [platform, setPlatform] = useState<LivePlatform>('youtube');
+  const [presets, setPresets] = useState<StreamPreset[]>([]);
+  const [presetId, setPresetId] = useState<string | null>(null);
+  const [label, setLabel] = useState('');
   const [rtmpUrl, setRtmpUrl] = useState('');
   const [streamKey, setStreamKey] = useState('');
   const [title, setTitle] = useState('');
   const [bannerUri, setBannerUri] = useState<string | null>(null);
   const [loadingKeys, setLoadingKeys] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const meta = LIVE_PLATFORMS.find((p) => p.id === platform)!;
+  const activePreset = useMemo(
+    () => presets.find((p) => p.id === presetId) ?? null,
+    [presets, presetId],
+  );
+
+  const applyPreset = useCallback((p: StreamPreset) => {
+    setPresetId(p.id);
+    setLabel(p.label);
+    setRtmpUrl(p.rtmpUrl);
+    setStreamKey(p.streamKey);
+    setTitle(p.title);
+    setBannerUri(p.bannerUri || null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoadingKeys(true);
     void (async () => {
-      const [url, key, savedTitle, savedBanner] = await Promise.all([
-        loadRtmpUrl(platform),
-        loadStreamKey(platform),
-        loadStreamTitle(platform),
-        loadStreamBannerUri(platform),
+      const [list, activeId] = await Promise.all([
+        loadPresetsForPlatform(platform),
+        getActivePresetId(platform),
       ]);
       if (cancelled) return;
-      setRtmpUrl(url);
-      setStreamKey(key);
-      setTitle(savedTitle);
-      setBannerUri(savedBanner || null);
+      setPresets(list);
+      const chosen =
+        list.find((p) => p.id === activeId) ?? list[0] ?? createBlankPreset(platform);
+      if (!list.some((p) => p.id === chosen.id)) {
+        const next = await upsertPreset(chosen);
+        if (cancelled) return;
+        setPresets(next.filter((p) => p.platform === platform));
+      }
+      applyPreset(chosen);
       setLoadingKeys(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [platform]);
+  }, [platform, applyPreset]);
 
-  const persist = useCallback(async () => {
-    await Promise.all([
-      saveRtmpUrl(platform, rtmpUrl),
-      saveStreamKey(platform, streamKey),
-      saveStreamTitle(platform, title),
-      saveStreamBannerUri(platform, bannerUri ?? ''),
-    ]);
-  }, [platform, rtmpUrl, streamKey, title, bannerUri]);
+  const buildCurrent = useCallback((): StreamPreset => {
+    return {
+      id: presetId ?? createBlankPreset(platform).id,
+      label: label.trim() || meta.label,
+      platform,
+      rtmpUrl: rtmpUrl.trim(),
+      streamKey: streamKey.trim(),
+      title: title.trim(),
+      bannerUri: bannerUri ?? '',
+    };
+  }, [presetId, label, platform, rtmpUrl, streamKey, title, bannerUri, meta.label]);
+
+  const onSave = async () => {
+    if (!rtmpUrl.trim() && !streamKey.trim() && !title.trim() && !label.trim()) {
+      emitToast('Enter a name or stream URL to save');
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = buildCurrent();
+      const next = await upsertPreset(saved);
+      setPresets(next.filter((p) => p.platform === platform));
+      setPresetId(saved.id);
+      emitToast('Stream details saved');
+    } catch {
+      emitToast('Could not save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onSaveAsNew = async () => {
+    const blank = createBlankPreset(platform, undefined, presets.length);
+    const saved: StreamPreset = {
+      ...buildCurrent(),
+      id: blank.id,
+      label: label.trim() || blank.label,
+    };
+    setSaving(true);
+    try {
+      const next = await upsertPreset(saved);
+      setPresets(next.filter((p) => p.platform === platform));
+      applyPreset(saved);
+      emitToast('New stream option saved');
+    } catch {
+      emitToast('Could not save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onDeletePreset = async () => {
+    if (!presetId || presets.length <= 1) {
+      emitToast('Keep at least one option');
+      return;
+    }
+    const nextAll = await deletePreset(presetId);
+    const next = nextAll.filter((p) => p.platform === platform);
+    setPresets(next);
+    applyPreset(next[0]);
+    emitToast('Removed saved option');
+  };
 
   const pickBanner = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -104,7 +178,7 @@ export function GoLiveScreen(_props: Props) {
   };
 
   const onGoLive = async () => {
-    await persist();
+    await upsertPreset(buildCurrent());
     await startLive({
       rtmpUrl: rtmpUrl.trim(),
       streamKey: streamKey.trim(),
@@ -127,6 +201,8 @@ export function GoLiveScreen(_props: Props) {
     );
   }
 
+  const busy = live || starting || loadingKeys || saving;
+
   return (
     <Screen>
       <ScrollView
@@ -134,9 +210,9 @@ export function GoLiveScreen(_props: Props) {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.lead}>
-          Stream your screen with game sound and your mic. Set a title and
-          banner for the overlay — team chat comments float on the right for 5
-          seconds while you’re live.
+          Stream your screen with game sound and your mic. Save multiple YouTube /
+          Twitch / Kick options so you don&apos;t re-paste every time — then Go Live
+          when ready.
         </Text>
 
         <Text style={styles.label}>Platform</Text>
@@ -171,12 +247,37 @@ export function GoLiveScreen(_props: Props) {
           })}
         </View>
 
+        <Text style={styles.label}>Saved Option</Text>
+        <Pressable
+          style={[styles.dropdown, { borderColor: colors.border, backgroundColor: colors.surface }]}
+          onPress={() => !busy && setPickerOpen(true)}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel="Choose saved stream option"
+        >
+          <Text style={[styles.dropdownText, { color: colors.text }]} numberOfLines={1}>
+            {activePreset?.label || label || 'Select…'}
+          </Text>
+          <AppIcon name="chevron-back" size={16} color={colors.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+        </Pressable>
+
+        <Text style={styles.label}>Option Name</Text>
+        <TextInput
+          style={shared.input}
+          value={label}
+          onChangeText={setLabel}
+          editable={!busy}
+          placeholder="e.g. Main YouTube, Scrim Alt"
+          placeholderTextColor={colors.textDim}
+          maxLength={40}
+        />
+
         <Text style={styles.label}>Stream Title</Text>
         <TextInput
           style={shared.input}
           value={title}
           onChangeText={setTitle}
-          editable={!live && !starting && !loadingKeys}
+          editable={!busy}
           placeholder="Shown on screen while live"
           placeholderTextColor={colors.textDim}
           maxLength={80}
@@ -206,7 +307,7 @@ export function GoLiveScreen(_props: Props) {
           <View style={styles.bannerActions}>
             <SoftPressable
               style={[shared.button, styles.bannerBtn]}
-              disabled={live || starting}
+              disabled={busy}
               onPress={() => void pickBanner()}
               pressScale={0.98}
             >
@@ -217,7 +318,7 @@ export function GoLiveScreen(_props: Props) {
             {bannerUri ? (
               <Pressable
                 onPress={() => setBannerUri(null)}
-                disabled={live || starting}
+                disabled={busy}
                 hitSlop={8}
                 accessibilityLabel="Remove banner"
               >
@@ -236,7 +337,7 @@ export function GoLiveScreen(_props: Props) {
           onChangeText={setRtmpUrl}
           autoCapitalize="none"
           autoCorrect={false}
-          editable={!live && !starting && !loadingKeys}
+          editable={!busy}
           placeholder={meta.defaultUrl || 'rtmps://…'}
           placeholderTextColor={colors.textDim}
         />
@@ -249,16 +350,15 @@ export function GoLiveScreen(_props: Props) {
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
-          editable={!live && !starting && !loadingKeys}
+          editable={!busy}
           placeholder="Paste your stream key"
           placeholderTextColor={colors.textDim}
         />
 
         <Text style={styles.help}>
-          Paste your own channel URL + key once — saved on this phone. While
-          live: title/banner show at the top, Pause mutes audio, and Team/Guild
-          chat lines appear on the right then fade after 5 seconds (no chat
-          panel).
+          Save once, then pick from the dropdown next time. While live: title/banner
+          show at the top, Pause mutes audio, and Team/Guild chat lines appear on
+          the right then fade after 5 seconds.
         </Text>
 
         {live ? (
@@ -275,25 +375,109 @@ export function GoLiveScreen(_props: Props) {
             </SoftPressable>
           </>
         ) : (
-          <SoftPressable
-            style={[
-              shared.button,
-              (starting || !rtmpUrl.trim() || !streamKey.trim()) &&
-                shared.buttonDisabled,
-            ]}
-            disabled={starting || !rtmpUrl.trim() || !streamKey.trim()}
-            onPress={() => void onGoLive()}
-            pressScale={0.98}
-          >
-            <View style={styles.goLiveRow}>
-              <AppIcon name="play" size={18} color="#0a0a0c" />
-              <Text style={shared.buttonText}>
-                {starting ? 'Starting…' : 'Go Live'}
+          <View style={styles.actionCol}>
+            <SoftPressable
+              style={[
+                shared.button,
+                styles.secondaryBtn,
+                { borderColor: colors.border },
+                saving && shared.buttonDisabled,
+              ]}
+              disabled={busy}
+              onPress={() => void onSave()}
+              pressScale={0.98}
+              accessibilityLabel="Save stream option"
+            >
+              <Text style={[shared.buttonText, { color: colors.text }]}>
+                {saving ? 'Saving…' : 'Save'}
               </Text>
-            </View>
-          </SoftPressable>
+            </SoftPressable>
+            <SoftPressable
+              style={[
+                shared.button,
+                (starting || !rtmpUrl.trim() || !streamKey.trim()) &&
+                  shared.buttonDisabled,
+              ]}
+              disabled={starting || loadingKeys || !rtmpUrl.trim() || !streamKey.trim()}
+              onPress={() => void onGoLive()}
+              pressScale={0.98}
+            >
+              <View style={styles.goLiveRow}>
+                <AppIcon name="play" size={18} color="#0a0a0c" />
+                <Text style={shared.buttonText}>
+                  {starting ? 'Starting…' : 'Go Live'}
+                </Text>
+              </View>
+            </SoftPressable>
+          </View>
         )}
       </ScrollView>
+
+      <Modal
+        visible={pickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)}>
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: colors.bg, borderColor: colors.border }]}
+            onPress={(e) => e.stopPropagation?.()}
+          >
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Saved Options</Text>
+            <ScrollView style={styles.modalList}>
+              {presets.map((p) => {
+                const selected = p.id === presetId;
+                return (
+                  <Pressable
+                    key={p.id}
+                    style={[
+                      styles.modalRow,
+                      selected && { backgroundColor: 'rgba(201,204,209,0.12)' },
+                    ]}
+                    onPress={() => {
+                      applyPreset(p);
+                      setPickerOpen(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={p.label}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[styles.modalRowTitle, { color: colors.text }]} numberOfLines={1}>
+                        {p.label}
+                      </Text>
+                      <Text style={{ color: colors.textDim, fontSize: 12 }} numberOfLines={1}>
+                        {p.rtmpUrl || 'No URL yet'}
+                      </Text>
+                    </View>
+                    {selected ? (
+                      <AppIcon name="checkmark" size={18} color={colors.link} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <SoftPressable
+                style={[shared.button, styles.modalActionBtn]}
+                onPress={() => {
+                  setPickerOpen(false);
+                  void onSaveAsNew();
+                }}
+                pressScale={0.98}
+              >
+                <Text style={shared.buttonText}>Add New</Text>
+              </SoftPressable>
+              {presets.length > 1 ? (
+                <Pressable onPress={() => { setPickerOpen(false); void onDeletePreset(); }} hitSlop={8}>
+                  <Text style={{ color: colors.danger, fontWeight: '700' }}>Delete Current</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -342,6 +526,21 @@ function screenStyles(c: ThemeColors) {
       fontWeight: '700',
       fontSize: 13,
     },
+    dropdown: {
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 4,
+    },
+    dropdownText: {
+      flex: 1,
+      fontSize: 16,
+      fontWeight: '600',
+    },
     bannerRow: {
       flexDirection: 'row',
       gap: 12,
@@ -385,11 +584,59 @@ function screenStyles(c: ThemeColors) {
       marginBottom: 4,
       textAlign: 'center',
     },
+    actionCol: {
+      gap: 10,
+    },
+    secondaryBtn: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+    },
     goLiveRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
+    },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    modalCard: {
+      borderRadius: 16,
+      borderWidth: 1,
+      maxHeight: '70%',
+      padding: 16,
+      gap: 10,
+    },
+    modalTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      textTransform: 'capitalize',
+    },
+    modalList: {
+      maxHeight: 280,
+    },
+    modalRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 10,
+      borderRadius: 10,
+    },
+    modalRowTitle: {
+      fontWeight: '700',
+      fontSize: 15,
+    },
+    modalActions: {
+      gap: 12,
+      alignItems: 'center',
+      paddingTop: 4,
+    },
+    modalActionBtn: {
+      alignSelf: 'stretch',
     },
   });
 }

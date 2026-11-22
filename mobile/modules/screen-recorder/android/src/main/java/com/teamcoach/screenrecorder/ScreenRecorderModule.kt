@@ -51,7 +51,7 @@ class ScreenRecorderModule : Module() {
     // Foreground service that keeps an active voice channel alive in the
     // background (see VoiceKeepAliveService). Both calls are safe to repeat —
     // also how JS refreshes the Mute/Deafen button labels after toggling.
-    Function("startVoiceService") { title: String, text: String, muted: Boolean, deafened: Boolean ->
+    Function("startVoiceService") { title: String, text: String, muted: Boolean, deafened: Boolean, room: String ->
       val context = appContext.reactContext ?: return@Function false
       val intent = Intent(context, VoiceKeepAliveService::class.java).apply {
         action = VoiceKeepAliveService.ACTION_START
@@ -59,6 +59,7 @@ class ScreenRecorderModule : Module() {
         putExtra(VoiceKeepAliveService.EXTRA_TEXT, text)
         putExtra(VoiceKeepAliveService.EXTRA_MUTED, muted)
         putExtra(VoiceKeepAliveService.EXTRA_DEAFENED, deafened)
+        putExtra(VoiceKeepAliveService.EXTRA_ROOM, if (room == "guild") "guild" else "team")
       }
       try {
         if (android.os.Build.VERSION.SDK_INT >= 26) {

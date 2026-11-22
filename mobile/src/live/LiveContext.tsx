@@ -20,6 +20,7 @@ import {
   startLiveStream,
   stopLiveStream,
 } from '../media/liveStreamer';
+import { isVoiceScreenSharing } from '../voice/voiceScreenShareGate';
 import { emitToast } from '../ui/toastBus';
 
 export type LiveStartOpts = {
@@ -159,6 +160,10 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       }
       if (isScreenRecording()) {
         emitToast('Stop screen recording before going live');
+        return false;
+      }
+      if (isVoiceScreenSharing()) {
+        emitToast('Stop voice screen share before going live');
         return false;
       }
       if (isLiveStreaming() || starting) return true;

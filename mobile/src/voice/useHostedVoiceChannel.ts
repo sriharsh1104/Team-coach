@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
+import { Platform } from 'react-native';
 import {
   Room,
   RoomEvent,
@@ -8,8 +9,12 @@ import {
   Participant,
   ConnectionQuality,
   DisconnectReason,
+  Track,
+  type VideoTrack,
 } from 'livekit-client';
 import { moderateVoice } from '../api/voice';
+import { isLiveStreaming } from '../media/liveStreamer';
+import { isScreenRecording } from '../media/screenRecorder';
 import { emitToast } from '../ui/toastBus';
 import {
   addVoiceNotificationActionListener,
@@ -20,10 +25,12 @@ import {
   VoiceChannelController,
   VoiceChannelStatus,
   VoiceParticipant,
+  VoiceScreenShare,
   ConnectionQualityLevel,
 } from './types';
 import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
 import { playVoiceCue, preloadVoiceCues, unloadVoiceCues } from './voiceCues';
+import { setVoiceScreenSharing } from './voiceScreenShareGate';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -110,11 +117,16 @@ export function useHostedVoiceChannel(
   const [isLocalHandRaised, setIsLocalHandRaised] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [isPushToTalk, setIsPushToTalk] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenShare, setScreenShare] = useState<VoiceScreenShare | null>(null);
   // Guild voice: host-mute state, derived from room metadata + server permissions.
   const [roomState, setRoomState] = useState<RoomState>(EMPTY_STATE);
   const [isHostMuted, setIsHostMuted] = useState(false);
   const isHostMutedRef = useRef(false);
+  const isMutedRef = useRef(false);
   const roomStateRef = useRef<RoomState>(EMPTY_STATE);
+  const isScreenSharingRef = useRef(false);
+  isMutedRef.current = isMuted;
 
   const roomRef = useRef<Room | null>(null);
   /**
@@ -160,10 +172,53 @@ export function useHostedVoiceChannel(
     [applyPlaybackTo],
   );
 
+  const refreshScreenShare = useCallback((room: Room) => {
+    const localPub = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+    const localTrack = localPub?.track;
+    if (localTrack && localTrack.kind === Track.Kind.Video) {
+      const next: VoiceScreenShare = {
+        participantId: room.localParticipant.identity,
+        participantName: room.localParticipant.name || 'You',
+        isLocal: true,
+        videoTrack: localTrack as VideoTrack,
+      };
+      setScreenShare(next);
+      isScreenSharingRef.current = true;
+      setIsScreenSharing(true);
+      setVoiceScreenSharing(true);
+      return;
+    }
+
+    for (const p of room.remoteParticipants.values()) {
+      const pub = p.getTrackPublication(Track.Source.ScreenShare);
+      const track = pub?.track;
+      if (track && track.kind === Track.Kind.Video) {
+        setScreenShare({
+          participantId: p.identity,
+          participantName: p.name || p.identity,
+          isLocal: false,
+          videoTrack: track as VideoTrack,
+        });
+        isScreenSharingRef.current = false;
+        setIsScreenSharing(false);
+        setVoiceScreenSharing(false);
+        return;
+      }
+    }
+
+    setScreenShare(null);
+    if (isScreenSharingRef.current) {
+      isScreenSharingRef.current = false;
+      setIsScreenSharing(false);
+      setVoiceScreenSharing(false);
+    }
+  }, []);
+
   const syncParticipants = useCallback((room: Room) => {
     setParticipants(
       [...room.remoteParticipants.values()].map((p: RemoteParticipant) => {
         const vol = localVolumesRef.current.get(p.identity) ?? 1;
+        const sharing = !!p.getTrackPublication(Track.Source.ScreenShare)?.track;
         return {
           id: p.identity,
           name: p.name || p.identity,
@@ -173,6 +228,7 @@ export function useHostedVoiceChannel(
           isHandRaised: handRaisedIdsRef.current.has(p.identity),
           localVolume: vol,
           connectionQuality: connectionQualitiesRef.current.get(p.identity) ?? 'unknown',
+          isScreenSharing: sharing,
           ...(isGuild
             ? {
                 isModerator: isModeratorParticipant(p),
@@ -186,7 +242,8 @@ export function useHostedVoiceChannel(
         };
       }),
     );
-  }, [isGuild]);
+    refreshScreenShare(room);
+  }, [isGuild, refreshScreenShare]);
 
   const publishData = useCallback((msg: DataMsg, destinationIdentities?: string[]) => {
     const room = roomRef.current;
@@ -206,6 +263,9 @@ export function useHostedVoiceChannel(
     roomRef.current = null;
     cuesArmedRef.current = false;
     void unloadVoiceCues();
+    if (isScreenSharingRef.current) {
+      room?.localParticipant.setScreenShareEnabled(false).catch(() => undefined);
+    }
     room?.disconnect();
     stopVoiceBackground();
     AudioSession.stopAudioSession().catch(() => {});
@@ -221,6 +281,10 @@ export function useHostedVoiceChannel(
     setIsPushToTalk(false);
     isDeafenedRef.current = false;
     isPushToTalkRef.current = false;
+    isScreenSharingRef.current = false;
+    setIsScreenSharing(false);
+    setScreenShare(null);
+    setVoiceScreenSharing(false);
     roomStateRef.current = EMPTY_STATE;
     isHostMutedRef.current = false;
     setRoomState(EMPTY_STATE);
@@ -247,8 +311,12 @@ export function useHostedVoiceChannel(
     setIsLocalHandRaised(false);
     setIsDeafened(false);
     setIsPushToTalk(false);
+    setIsScreenSharing(false);
+    setScreenShare(null);
     isDeafenedRef.current = false;
     isPushToTalkRef.current = false;
+    isScreenSharingRef.current = false;
+    setVoiceScreenSharing(false);
     try {
       // Explicit, not just relying on LiveKit's own defaults — without
       // echoCancellation the loudspeaker's own output gets picked back up
@@ -275,6 +343,15 @@ export function useHostedVoiceChannel(
       // point at which setVolume has anything to act on, so re-apply here.
       room.on(RoomEvent.TrackSubscribed, (_track, _pub, p: RemoteParticipant) => {
         applyPlaybackTo(p);
+        syncParticipants(room);
+      });
+      room.on(RoomEvent.TrackUnsubscribed, () => {
+        syncParticipants(room);
+      });
+      room.on(RoomEvent.LocalTrackPublished, () => {
+        syncParticipants(room);
+      });
+      room.on(RoomEvent.LocalTrackUnpublished, () => {
         syncParticipants(room);
       });
       room.on(RoomEvent.ParticipantDisconnected, (p: RemoteParticipant) => {
@@ -470,8 +547,6 @@ export function useHostedVoiceChannel(
   const toggleMute = useCallback(() => {
     const room = roomRef.current;
     if (!room) return;
-    // Don't toggle mic when deafened; deafen controls mic in that case
-    if (isDeafenedRef.current) return;
     // Don't toggle mic in PTT mode; pttStart/pttStop control it
     if (isPushToTalkRef.current) return;
     if (isHostMutedRef.current) {
@@ -549,24 +624,85 @@ export function useHostedVoiceChannel(
     setIsDeafened((prev) => {
       const nextDeafened = !prev;
       isDeafenedRef.current = nextDeafened;
-      if (nextDeafened) {
-        // Silence everyone in the room now; ParticipantConnected and
-        // TrackSubscribed cover anyone who arrives while deafened.
-        applyPlaybackToAll(room);
-        room.localParticipant.setMicrophoneEnabled(false);
-        setIsMuted(true);
-      } else {
-        // Restore each person's own volume.
-        applyPlaybackToAll(room);
-        // Restore mic (unless in PTT mode where mic stays gated)
-        if (!isPushToTalkRef.current && !isHostMutedRef.current) {
-          room.localParticipant.setMicrophoneEnabled(true);
-          setIsMuted(false);
-        }
-      }
+      // Deafen only silences incoming audio — mic stays under mute / PTT control.
+      applyPlaybackToAll(room);
       return nextDeafened;
     });
   }, [applyPlaybackToAll]);
+
+  const toggleScreenShare = useCallback(() => {
+    const room = roomRef.current;
+    if (!room || status !== 'connected') return;
+    if (Platform.OS === 'web') {
+      emitToast('Screen share is available on the Android app');
+      return;
+    }
+    if (isScreenSharingRef.current) {
+      room.localParticipant.setScreenShareEnabled(false).then(
+        () => {
+          isScreenSharingRef.current = false;
+          setIsScreenSharing(false);
+          setVoiceScreenSharing(false);
+          refreshScreenShare(room);
+        },
+        (err) => {
+          console.warn('stop screen share failed:', err);
+          emitToast('Could not stop screen share');
+        },
+      );
+      return;
+    }
+    if (isLiveStreaming()) {
+      emitToast('Stop Go Live before sharing your screen in voice');
+      return;
+    }
+    if (isScreenRecording()) {
+      emitToast('Stop screen recording before sharing in voice');
+      return;
+    }
+    // Someone else already sharing — avoid stacking two shares.
+    for (const p of room.remoteParticipants.values()) {
+      if (p.getTrackPublication(Track.Source.ScreenShare)?.track) {
+        emitToast(`${p.name || p.identity} is already sharing`);
+        return;
+      }
+    }
+    // audio: true asks for device/system audio (movie/game) when the OS
+    // supports it; mic stays a separate track so voice + media both go out.
+    room.localParticipant
+      .setScreenShareEnabled(true, {
+        audio: true,
+        systemAudio: 'include',
+        contentHint: 'motion',
+      })
+      .then(
+        async () => {
+          isScreenSharingRef.current = true;
+          setIsScreenSharing(true);
+          setVoiceScreenSharing(true);
+          // Keep mic live while sharing so voice + movie/game audio both go out.
+          if (
+            !isMutedRef.current &&
+            !isPushToTalkRef.current &&
+            !isHostMutedRef.current &&
+            room.localParticipant.permissions?.canPublish !== false
+          ) {
+            try {
+              await room.localParticipant.setMicrophoneEnabled(true);
+              attachVoiceChanger();
+            } catch (err) {
+              console.warn('re-enable mic during screen share failed:', err);
+            }
+          }
+          refreshScreenShare(room);
+          emitToast('Sharing screen — others hear your mic + media audio when available');
+        },
+        (err) => {
+          console.warn('start screen share failed:', err);
+          emitToast(err?.message || 'Could not start screen share');
+        },
+      );
+  }, [status, refreshScreenShare]);
 
   const togglePushToTalk = useCallback(() => {
     const room = roomRef.current;
@@ -579,8 +715,8 @@ export function useHostedVoiceChannel(
         room.localParticipant.setMicrophoneEnabled(false);
         setIsMuted(true);
       } else {
-        // Leaving PTT mode: restore mic (if not deafened)
-        if (!isDeafenedRef.current && !isHostMutedRef.current) {
+        // Leaving PTT mode: restore mic (unless host-muted)
+        if (!isHostMutedRef.current) {
           room.localParticipant.setMicrophoneEnabled(true);
           setIsMuted(false);
         }
@@ -591,7 +727,7 @@ export function useHostedVoiceChannel(
 
   const pttStart = useCallback(() => {
     const room = roomRef.current;
-    if (!room || !isPushToTalkRef.current || isDeafenedRef.current) return;
+    if (!room || !isPushToTalkRef.current) return;
     if (isHostMutedRef.current) {
       emitToast('A host muted you. Raise your hand to ask for the mic.');
       return;
@@ -638,8 +774,8 @@ export function useHostedVoiceChannel(
     if (status !== 'connected' && status !== 'connecting') return;
     startVoiceBackground(
       isGuild ? 'Guild Voice' : 'Team Voice',
-      'You are in voice. Tap to return to the app.',
-      { muted: isMuted, deafened: isDeafened },
+      'You are in voice. Tap to return to the voice channel.',
+      { muted: isMuted, deafened: isDeafened, room: isGuild ? 'guild' : 'team' },
     );
   }, [status, isMuted, isDeafened, isGuild]);
 
@@ -669,9 +805,12 @@ export function useHostedVoiceChannel(
       isLocalHandRaised,
       isDeafened,
       isPushToTalk,
+      isScreenSharing,
+      screenShare,
       join,
       leave,
       toggleMute,
+      toggleScreenShare,
       toggleParticipantMute,
       toggleHandRaise,
       setParticipantVolume,
@@ -702,9 +841,12 @@ export function useHostedVoiceChannel(
       isLocalHandRaised,
       isDeafened,
       isPushToTalk,
+      isScreenSharing,
+      screenShare,
       join,
       leave,
       toggleMute,
+      toggleScreenShare,
       toggleParticipantMute,
       toggleHandRaise,
       setParticipantVolume,

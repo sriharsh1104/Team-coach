@@ -9,6 +9,7 @@ import { AppIcon } from '../../ui/AppIcon';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { useTheme } from '../../theme/ThemeContext';
 import { MainStackParamList } from '../../navigation/types';
+import { VoiceJoinHeaderButton } from './VoiceJoinHeaderButton';
 
 interface Props {
   channelKey: string;
@@ -16,8 +17,8 @@ interface Props {
 }
 
 /**
- * Standalone chat route (e.g. Guild Chat) — voice sits next to the composer;
- * media / clear / starred / etc. live under the header ⋮ menu.
+ * Standalone chat route (e.g. Guild Chat) — voice lives next to the header ⋮;
+ * media / clear / starred / etc. live under that menu.
  */
 export function ChatScreenWithMedia({ channelKey, title }: Props) {
   const navigation =
@@ -28,6 +29,8 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
   const [starredOnly, setStarredOnly] = useState(false);
   const [chatEpoch, setChatEpoch] = useState(0);
   const { colors: theme } = useTheme();
+  const voiceRoom =
+    channelKey === 'guild' ? 'guild' : channelKey === 'org' ? 'team' : null;
   const voiceRoute =
     channelKey === 'guild' ? 'GuildVoice' : channelKey === 'org' ? 'Voice' : null;
   const isGroup = channelKey === 'org' || channelKey === 'guild';
@@ -35,19 +38,27 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <SoftPressable
-          onPress={() => setSettingsOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Chat settings"
-          hitSlop={8}
-          pressScale={0.92}
-          style={staticStyles.headerBtn}
-        >
-          <AppIcon name="ellipsis-vertical" size={20} color={theme.icon} />
-        </SoftPressable>
+        <View style={staticStyles.headerRight}>
+          {voiceRoom && voiceRoute ? (
+            <VoiceJoinHeaderButton
+              room={voiceRoom}
+              onPress={() => (navigation as any).navigate(voiceRoute)}
+            />
+          ) : null}
+          <SoftPressable
+            onPress={() => setSettingsOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Chat settings"
+            hitSlop={8}
+            pressScale={0.92}
+            style={staticStyles.headerBtn}
+          >
+            <AppIcon name="ellipsis-vertical" size={20} color={theme.icon} />
+          </SoftPressable>
+        </View>
       ),
     });
-  }, [navigation, theme]);
+  }, [navigation, theme, voiceRoom, voiceRoute]);
 
   return (
     <View style={staticStyles.root}>
@@ -57,11 +68,6 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
         searchActive={searchOpen}
         onCloseSearch={() => setSearchOpen(false)}
         starredOnly={starredOnly}
-        onJoinVoice={
-          voiceRoute
-            ? () => (navigation as any).navigate(voiceRoute)
-            : undefined
-        }
       />
       <ChatMediaModal
         visible={mediaOpen}
@@ -92,6 +98,10 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
   root: { flex: 1, minWidth: 0 },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   headerBtn: {
     width: 40,
     height: 40,

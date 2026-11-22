@@ -10,7 +10,7 @@ jest.mock('../../../api/org');
 jest.mock('../../../api/users');
 jest.mock('../ChatScreen', () => {
   const React = require('react');
-  const { Text, Pressable } = require('react-native');
+  const { Text } = require('react-native');
   return {
     ChatScreen: function MockChatScreen(props: any) {
       return React.createElement(
@@ -20,21 +20,17 @@ jest.mock('../ChatScreen', () => {
         props.searchActive
           ? React.createElement(Text, null, 'In-chat search open')
           : null,
-        props.onJoinVoice
-          ? React.createElement(
-              Pressable,
-              {
-                accessibilityLabel:
-                  props.channelKey === 'guild' ? 'Join guild voice' : 'Join team voice',
-                onPress: props.onJoinVoice,
-              },
-              React.createElement(Text, null, 'Voice'),
-            )
-          : null,
       );
     },
   };
 });
+
+jest.mock('../../../voice/useVoiceOccupancy', () => ({
+  useVoiceOccupancy: () => ({
+    occupancy: { room: 'team', max: 5, count: 0, participants: [] },
+    refresh: jest.fn(),
+  }),
+}));
 
 const mockedChatApi = chatApi as jest.Mocked<typeof chatApi>;
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
@@ -312,7 +308,7 @@ describe('ChatHubScreen', () => {
     expect(screen.getByText('Conversation: org')).toBeTruthy();
   });
 
-  it('puts team voice next to the composer, not in the header', async () => {
+  it('puts team voice next to the chat settings menu in the header', async () => {
     render(<ChatHubScreen />);
     await screen.findByText('Team Chat');
     fireEvent.press(screen.getByText('Team Chat'));

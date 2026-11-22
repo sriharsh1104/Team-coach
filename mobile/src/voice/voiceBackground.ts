@@ -4,7 +4,13 @@ import { Platform } from 'react-native';
 export type VoiceNotificationAction = 'mute' | 'deafen' | 'leave';
 
 type NativeVoiceService = {
-  startVoiceService?: (title: string, text: string, muted: boolean, deafened: boolean) => boolean;
+  startVoiceService?: (
+    title: string,
+    text: string,
+    muted: boolean,
+    deafened: boolean,
+    room: string,
+  ) => boolean;
   stopVoiceService?: () => boolean;
   addListener?: (
     event: 'onVoiceAction',
@@ -34,10 +40,16 @@ function loadNative(): NativeVoiceService | null {
 export function startVoiceBackground(
   title: string,
   text: string,
-  state: { muted?: boolean; deafened?: boolean } = {},
+  state: { muted?: boolean; deafened?: boolean; room?: 'team' | 'guild' } = {},
 ): void {
   try {
-    loadNative()?.startVoiceService?.(title, text, !!state.muted, !!state.deafened);
+    loadNative()?.startVoiceService?.(
+      title,
+      text,
+      !!state.muted,
+      !!state.deafened,
+      state.room === 'guild' ? 'guild' : 'team',
+    );
   } catch (err) {
     console.warn('startVoiceBackground failed (voice still works in foreground):', err);
   }

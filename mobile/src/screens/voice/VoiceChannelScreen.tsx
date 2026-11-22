@@ -1,4 +1,13 @@
-import React, { Component, ErrorInfo, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  Component,
+  ErrorInfo,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   Animated,
@@ -9,8 +18,12 @@ import {
   ActivityIndicator,
   ScrollView,
   StyleSheet,
+  Platform,
+  Modal,
+  StatusBar,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getToken } from '../../storage/tokenStorage';
 import * as voiceApi from '../../api/voice';
 import type { VoiceRoomKind } from '../../api/voice';
@@ -36,6 +49,126 @@ import {
   isVoiceChangerAvailable,
   setVoicePreset,
 } from '../../voice/voiceChanger';
+
+function loadVideoView(): React.ComponentType<{
+  videoTrack?: unknown;
+  style?: object;
+  objectFit?: 'cover' | 'contain';
+}> | null {
+  if (Platform.OS === 'web') return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('@livekit/react-native').VideoView;
+  } catch {
+    return null;
+  }
+}
+
+function ScreenShareViewer({
+  voice,
+}: {
+  voice: VoiceChannelController;
+}) {
+  const share = voice.screenShare;
+  const insets = useSafeAreaInsets();
+  const [fullscreen, setFullscreen] = useState(false);
+  const VideoView = useMemo(() => loadVideoView(), []);
+
+  useEffect(() => {
+    if (!share) setFullscreen(false);
+  }, [share]);
+
+  if (!share) return null;
+
+  const title = share.isLocal
+    ? 'You are sharing your screen'
+    : `${share.participantName} is sharing`;
+  const audioHint = share.isLocal
+    ? 'Others hear your mic + media audio when available'
+    : 'Voice + shared media audio';
+
+  const videoNode =
+    VideoView && share.videoTrack ? (
+      <VideoView
+        videoTrack={share.videoTrack}
+        style={fullscreen ? styles.shareVideoFull : styles.shareVideo}
+        objectFit="contain"
+      />
+    ) : (
+      <View style={fullscreen ? styles.sharePlaceholderFull : styles.sharePlaceholder}>
+        <Text style={styles.sharePlaceholderText}>
+          {share.isLocal
+            ? 'Others in this voice call can see your screen'
+            : 'Waiting for video…'}
+        </Text>
+      </View>
+    );
+
+  const header = (
+    <View style={[styles.shareHeader, fullscreen && { paddingTop: Math.max(insets.top, 8) }]}>
+      <AppIcon name="phone-portrait-outline" size={14} color="#22c55e" />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.shareHeaderText} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={styles.shareAudioHint} numberOfLines={1}>
+          {audioHint}
+        </Text>
+      </View>
+      <Pressable
+        onPress={() => setFullscreen((v) => !v)}
+        hitSlop={10}
+        accessibilityLabel={fullscreen ? 'Exit full screen' : 'Full screen'}
+        style={styles.shareIconBtn}
+      >
+        <AppIcon name={fullscreen ? 'contract' : 'expand'} size={18} color="#fff" />
+      </Pressable>
+      {share.isLocal ? (
+        <Pressable
+          onPress={voice.toggleScreenShare}
+          hitSlop={8}
+          accessibilityLabel="Stop screen share"
+        >
+          <Text style={styles.shareStop}>Stop</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <>
+      <View style={styles.shareBox}>
+        {header}
+        <Pressable onPress={() => setFullscreen(true)} accessibilityLabel="Open full screen">
+          {videoNode}
+        </Pressable>
+      </View>
+
+      <Modal
+        visible={fullscreen}
+        animationType="fade"
+        supportedOrientations={['portrait', 'landscape']}
+        onRequestClose={() => setFullscreen(false)}
+      >
+        <StatusBar hidden={fullscreen} />
+        <View style={styles.shareFullRoot}>
+          {header}
+          <View style={styles.shareFullBody}>{videoNode}</View>
+          <View style={[styles.shareFullFooter, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <Pressable
+              style={styles.shareFullExit}
+              onPress={() => setFullscreen(false)}
+              accessibilityLabel="Exit full screen"
+            >
+              <AppIcon name="contract" size={18} color="#fff" />
+              <Text style={styles.shareFullExitText}>Exit Full Screen</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
 
 type VoiceHooks = {
   useHostedVoiceChannel: typeof import('../../voice/useHostedVoiceChannel').useHostedVoiceChannel;
@@ -216,35 +349,6 @@ function QualityBars({ quality }: { quality: ConnectionQualityLevel }) {
   );
 }
 
-/** 5-segment volume bar for per-participant volume control. */
-function VolumeBar({
-  volume,
-  onSetVolume,
-}: {
-  volume: number;
-  onSetVolume: (v: number) => void;
-}) {
-  // volume is 0-1; filled segments = how many of 5 are lit
-  const filled = Math.round(volume * 5);
-  const color = volume > 0.5 ? '#22c55e' : volume > 0 ? '#f59e0b' : '#555';
-
-  return (
-    <View style={styles.volumeBar}>
-      {[1, 2, 3, 4, 5].map((seg) => (
-        <Pressable
-          key={seg}
-          hitSlop={4}
-          onPress={() => onSetVolume(seg / 5)}
-          style={[
-            styles.volumeSegment,
-            { backgroundColor: seg <= filled ? color : '#333' },
-          ]}
-        />
-      ))}
-    </View>
-  );
-}
-
 type ListItem =
   | (VoiceParticipant & { isSelf: false })
   | {
@@ -255,6 +359,7 @@ type ListItem =
       isHandRaised: boolean;
       localVolume: number;
       connectionQuality: ConnectionQualityLevel;
+      isScreenSharing?: boolean;
       isHostMuted?: boolean;
       isModerator?: boolean;
       avatarUrl?: string | null;
@@ -367,6 +472,7 @@ function VoiceChannelBody({
           isHandRaised: voice.isLocalHandRaised,
           localVolume: 1,
           connectionQuality: 'excellent' as ConnectionQualityLevel,
+          isScreenSharing: voice.isScreenSharing,
           isHostMuted: voice.isHostMuted,
           isModerator: isGuild && !!voice.canModerate,
           isSelf: true,
@@ -557,13 +663,31 @@ function VoiceChannelBody({
               </View>
             )}
 
+            <ScreenShareViewer voice={voice} />
+
             <Text style={themed.sectionTitle}>In Channel</Text>
             <FlatList
               data={listData}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.listContent}
               renderItem={({ item }) => (
-                <View style={themed.participantRow}>
+                <Pressable
+                  style={themed.participantRow}
+                  disabled={item.isSelf}
+                  onPress={
+                    item.isSelf
+                      ? undefined
+                      : () => voice.toggleParticipantMute(item.id)
+                  }
+                  accessibilityRole={item.isSelf ? undefined : 'button'}
+                  accessibilityLabel={
+                    item.isSelf
+                      ? undefined
+                      : item.isLocallyMuted
+                        ? `Unmute ${item.name} for you`
+                        : `Mute ${item.name} for you`
+                  }
+                >
                   {/* Avatar + speaking ring + hand-raise badge */}
                   <View style={styles.avatarWrapper}>
                     {item.isSpeaking && <SpeakingRing />}
@@ -598,20 +722,15 @@ function VoiceChannelBody({
                     {item.isLocallyMuted && (
                       <Text style={themed.mutedHint}>Muted for you</Text>
                     )}
+                    {item.isScreenSharing && (
+                      <Text style={themed.mutedHint}>Sharing screen</Text>
+                    )}
                     {isGuild && (item.isModerator || item.isHostMuted) && (
                       <Text style={themed.mutedHint}>
                         {item.isModerator ? 'Host' : 'Muted by host'}
                       </Text>
                     )}
                   </View>
-
-                  {/* Volume bar (remote only) */}
-                  {!item.isSelf && (
-                    <VolumeBar
-                      volume={item.localVolume}
-                      onSetVolume={(v) => voice.setParticipantVolume(item.id, v)}
-                    />
-                  )}
 
                   {/* Guild host: mute / unmute this person for everyone */}
                   {!item.isSelf && canHostMute && !item.isModerator && (
@@ -640,11 +759,11 @@ function VoiceChannelBody({
                       <AppIcon name="person-remove" size={16} color="#f23f43" />
                     </Pressable>
                   )}
-                </View>
+                </Pressable>
               )}
             />
 
-            {/* Bottom bar: [Hand Raise] [Mic/PTT] [Deafen] [Disconnect] */}
+            {/* Bottom bar: [Hand Raise] [Mic/PTT] [Share] [Deafen] [Disconnect] */}
             <View style={themed.bottomBar}>
               {/* Hand Raise */}
               <Pressable
@@ -690,6 +809,20 @@ function VoiceChannelBody({
                   <Text style={styles.pttLabel}>HOLD</Text>
                 )}
               </View>
+
+              {/* Screen share — others in this voice call can watch */}
+              <Pressable
+                style={[
+                  styles.iconBtn,
+                  voice.isScreenSharing ? styles.iconBtnActive : themed.iconBtnDefault,
+                ]}
+                onPress={voice.toggleScreenShare}
+                accessibilityLabel={
+                  voice.isScreenSharing ? 'Stop screen share' : 'Share screen'
+                }
+              >
+                <AppIcon name="phone-portrait-outline" size={22} color="#fff" />
+              </Pressable>
 
               {/* Deafen */}
               <Pressable
@@ -1016,6 +1149,99 @@ export function GuildVoiceScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
+  shareBox: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#111',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.35)',
+  },
+  shareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(34,197,94,0.12)',
+  },
+  shareHeaderText: {
+    color: '#e5e7eb',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  shareAudioHint: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  shareIconBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareStop: {
+    color: '#ef4444',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  shareVideo: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#000',
+  },
+  shareVideoFull: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#000',
+  },
+  sharePlaceholder: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  sharePlaceholderFull: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  sharePlaceholderText: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  shareFullRoot: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  shareFullBody: {
+    flex: 1,
+  },
+  shareFullFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    alignItems: 'center',
+  },
+  shareFullExit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  shareFullExitText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
   channelCard: {
     margin: 16,
     padding: 20,
@@ -1097,18 +1323,6 @@ const styles = StyleSheet.create({
   qualityBar: {
     width: 3,
     borderRadius: 1,
-  },
-  // Volume bar
-  volumeBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    marginHorizontal: 8,
-  },
-  volumeSegment: {
-    width: 10,
-    height: 20,
-    borderRadius: 2,
   },
   // Kick button
   kickBtn: {

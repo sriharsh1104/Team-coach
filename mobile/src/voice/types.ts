@@ -1,6 +1,16 @@
+import type { VideoTrack } from 'livekit-client';
+
 export type VoiceChannelStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
 export type ConnectionQualityLevel = 'excellent' | 'good' | 'poor' | 'lost' | 'unknown';
+
+export type VoiceScreenShare = {
+  participantId: string;
+  participantName: string;
+  isLocal: boolean;
+  /** LiveKit video track for rendering; null when the backend can't share video. */
+  videoTrack: VideoTrack | null;
+};
 
 export interface VoiceParticipant {
   id: string;
@@ -17,6 +27,8 @@ export interface VoiceParticipant {
   localVolume: number;
   /** Connection quality for this participant. */
   connectionQuality: ConnectionQualityLevel;
+  /** True when this participant is publishing a screen share. */
+  isScreenSharing?: boolean;
   /** Guild voice: a host muted this person (or listen-only is on). */
   isHostMuted?: boolean;
   /** Guild voice: owner / coach / guild leader. */
@@ -33,13 +45,19 @@ export interface VoiceChannelController {
   isMuted: boolean;
   /** Whether the local user has raised their hand. */
   isLocalHandRaised: boolean;
-  /** Whether the local user is deafened (all remote audio muted + mic muted). */
+  /** Whether the local user is deafened (all remote audio muted; mic unchanged). */
   isDeafened: boolean;
   /** Whether push-to-talk mode is active (mic only opens while holding PTT). */
   isPushToTalk: boolean;
+  /** Whether this client is currently sharing its screen. */
+  isScreenSharing: boolean;
+  /** Active screen share in the room (local or remote), if any. */
+  screenShare: VoiceScreenShare | null;
   join: () => Promise<void>;
   leave: () => void;
   toggleMute: () => void;
+  /** Start/stop sharing this device's screen with others in the voice call. */
+  toggleScreenShare: () => void;
   /** Mute/unmute another person in your own ears only (Discord-style). Kept for backwards compat — calls setParticipantVolume(id, 0). */
   toggleParticipantMute: (participantId: string) => void;
   /** Toggle local hand raise on/off, broadcasting to all participants. */
@@ -48,7 +66,7 @@ export interface VoiceChannelController {
   setParticipantVolume: (id: string, volume: number) => void;
   /** Kick a participant from the voice channel (admin/coach only). */
   kickParticipant: (id: string) => void;
-  /** Toggle deafen: mutes all remote audio + local mic. Un-deafen restores. */
+  /** Toggle deafen: silences all remote audio in your ears. Mic stays independent. */
   toggleDeafen: () => void;
   // ---- Guild voice (self-hosted only; undefined on team / hosted voice) ----
   /** Which room this session is in. */

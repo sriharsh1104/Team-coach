@@ -538,8 +538,12 @@ export function useSelfHostedVoiceChannel(
       // game. Started only after the mic permission is granted.
       startVoiceBackground(
         room === 'guild' ? 'Guild Voice' : 'Team Voice',
-        'You are in voice. Tap to return to the app.',
-        { muted: isMutedRef.current, deafened: isDeafenedRef.current },
+        'You are in voice. Tap to return to the voice channel.',
+        {
+          muted: isMutedRef.current,
+          deafened: isDeafenedRef.current,
+          room,
+        },
       );
 
       const socket = connectVoiceSocket(authToken, room);
@@ -592,8 +596,8 @@ export function useSelfHostedVoiceChannel(
 
       const producer = await sendTransport.produce({ track });
       producerRef.current = producer;
-      // Carry mute / deafen / PTT across a reconnect.
-      if (isMutedRef.current || isDeafenedRef.current || isPushToTalkRef.current) {
+      // Carry mute / PTT across a reconnect (deafen does not pause the mic).
+      if (isMutedRef.current || isPushToTalkRef.current) {
         producer.pause();
       }
 
@@ -664,7 +668,7 @@ export function useSelfHostedVoiceChannel(
   }, [teardownMedia, closeSocket]);
 
   const toggleMute = useCallback(() => {
-    if (isDeafenedRef.current || isPushToTalkRef.current) return;
+    if (isPushToTalkRef.current) return;
     if (isHostMutedRef.current) {
       emitToast('A host muted you. Raise your hand to ask for the mic.');
       return;
@@ -715,13 +719,9 @@ export function useSelfHostedVoiceChannel(
     const next = !isDeafenedRef.current;
     isDeafenedRef.current = next;
     setIsDeafened(next);
+    // Deafen only silences incoming audio — mic stays under mute / PTT control.
     for (const userId of userConsumersRef.current.keys()) applyPlayback(userId);
-    if (next) {
-      setMicEnabled(false);
-    } else if (!isPushToTalkRef.current) {
-      setMicEnabled(true);
-    }
-  }, [applyPlayback, setMicEnabled]);
+  }, [applyPlayback]);
 
   const togglePushToTalk = useCallback(() => {
     const next = !isPushToTalkRef.current;
@@ -729,13 +729,13 @@ export function useSelfHostedVoiceChannel(
     setIsPushToTalk(next);
     if (next) {
       setMicEnabled(false);
-    } else if (!isDeafenedRef.current) {
+    } else {
       setMicEnabled(true);
     }
   }, [setMicEnabled]);
 
   const pttStart = useCallback(() => {
-    if (!isPushToTalkRef.current || isDeafenedRef.current) return;
+    if (!isPushToTalkRef.current) return;
     setMicEnabled(true);
   }, [setMicEnabled]);
 
@@ -751,8 +751,8 @@ export function useSelfHostedVoiceChannel(
     if (status !== 'connected' && status !== 'connecting') return;
     startVoiceBackground(
       room === 'guild' ? 'Guild Voice' : 'Team Voice',
-      'You are in voice. Tap to return to the app.',
-      { muted: isMuted, deafened: isDeafened },
+      'You are in voice. Tap to return to the voice channel.',
+      { muted: isMuted, deafened: isDeafened, room },
     );
   }, [status, isMuted, isDeafened, room]);
 
@@ -783,6 +783,10 @@ export function useSelfHostedVoiceChannel(
 
   // Stable identity until something actually changes: VoiceProvider stores
   // this in state, so a fresh object per render looped forever (app hang).
+  const toggleScreenShare = useCallback(() => {
+    emitToast('Screen share needs hosted voice. Ask your coach to enable it.');
+  }, []);
+
   return useMemo<VoiceChannelController>(
     () => ({
       status,
@@ -792,9 +796,12 @@ export function useSelfHostedVoiceChannel(
       isLocalHandRaised,
       isDeafened,
       isPushToTalk,
+      isScreenSharing: false,
+      screenShare: null,
       join,
       leave,
       toggleMute,
+      toggleScreenShare,
       toggleParticipantMute,
       toggleHandRaise,
       setParticipantVolume,
@@ -828,6 +835,7 @@ export function useSelfHostedVoiceChannel(
       join,
       leave,
       toggleMute,
+      toggleScreenShare,
       toggleParticipantMute,
       toggleHandRaise,
       setParticipantVolume,

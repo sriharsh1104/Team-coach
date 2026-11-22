@@ -9,8 +9,12 @@ class FakeRoom {
   handlers = new Map<string, ((...args: unknown[]) => void)[]>();
   remoteParticipants = new Map<string, FakeParticipant>();
   localParticipant = {
+    identity: 'me',
+    name: 'Me',
     permissions: { canPublish: true },
     setMicrophoneEnabled: jest.fn(),
+    setScreenShareEnabled: jest.fn().mockResolvedValue(undefined),
+    getTrackPublication: jest.fn(() => undefined),
     publishData: jest.fn().mockResolvedValue(undefined),
   };
   metadata = '';
@@ -42,6 +46,7 @@ class FakeParticipant {
   metadata = '';
   attributes: Record<string, string> = {};
   isLocal = false;
+  getTrackPublication = jest.fn(() => undefined);
   constructor(public identity: string) {
     this.name = identity;
   }
@@ -59,6 +64,9 @@ jest.mock('livekit-client', () => ({
     ParticipantConnected: 'participantConnected',
     ParticipantDisconnected: 'participantDisconnected',
     TrackSubscribed: 'trackSubscribed',
+    TrackUnsubscribed: 'trackUnsubscribed',
+    LocalTrackPublished: 'localTrackPublished',
+    LocalTrackUnpublished: 'localTrackUnpublished',
     Disconnected: 'disconnected',
     Reconnecting: 'reconnecting',
     Reconnected: 'reconnected',
@@ -68,6 +76,10 @@ jest.mock('livekit-client', () => ({
     ParticipantAttributesChanged: 'participantAttributesChanged',
     ParticipantPermissionsChanged: 'participantPermissionsChanged',
     DataReceived: 'dataReceived',
+  },
+  Track: {
+    Source: { ScreenShare: 'screen_share', Camera: 'camera', Microphone: 'microphone' },
+    Kind: { Video: 'video', Audio: 'audio' },
   },
   ConnectionQuality: { Excellent: 2, Good: 1, Poor: 0, Lost: 3 },
   DisconnectReason: {

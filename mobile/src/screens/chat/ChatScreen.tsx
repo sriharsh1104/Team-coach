@@ -49,9 +49,6 @@ import { emitToast } from '../../ui/toastBus';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
 import { useRecording } from '../../recording/RecordingContext';
 import { setActiveChatChannel } from '../../notifications/activeChatChannel';
-import { useVoiceOccupancy } from '../../voice/useVoiceOccupancy';
-import type { VoiceRoomKind } from '../../api/voice';
-import { ChannelAvatar } from './ChannelAvatar';
 
 import { chatStyles } from './chatStyles';
 import { MessageBubble } from './MessageBubble';
@@ -72,7 +69,6 @@ export function ChatScreen({
   onCloseSearch,
   starredOnly = false,
   onPeerPresenceChange,
-  onJoinVoice,
 }: {
   embedded?: boolean;
   channelKey?: string;
@@ -83,8 +79,6 @@ export function ChatScreen({
   starredOnly?: boolean;
   /** DM peer online/last-seen — hub uses this for the header avatar pip. */
   onPeerPresenceChange?: (presence: UserPresence | null) => void;
-  /** Team / guild voice — shown beside the composer, not in the header. */
-  onJoinVoice?: () => void;
 } = {}) {
   const shared = useSharedStyles();
   const { user } = useAuth();
@@ -92,11 +86,6 @@ export function ChatScreen({
   const styles = useThemedStyles(chatStyles);
   const { startRecording, pendingShare, clearPendingShare } = useRecording();
   const isGroup = channelKey === 'org' || channelKey === 'guild';
-  const voiceRoom: VoiceRoomKind | null =
-    channelKey === 'guild' ? 'guild' : channelKey === 'org' ? 'team' : null;
-  const { occupancy: voiceOccupancy } = useVoiceOccupancy(voiceRoom, {
-    enabled: !!onJoinVoice && voiceRoom != null,
-  });
   // DM channel keys are `dm:{userA}:{userB}` (sorted) — the other id is the peer.
   const dmPeerId = useMemo(() => {
     if (!channelKey.startsWith('dm:') || !user?.id) return null;
@@ -144,6 +133,7 @@ export function ChatScreen({
   // Why the live socket isn't up (shown under "Connecting…" so it's diagnosable).
   const [connectError, setConnectError] = useState<string | null>(null);
   const [showAttach, setShowAttach] = useState(false);
+  const [voiceNoteActive, setVoiceNoteActive] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
   const [receipts, setReceipts] = useState<ReadReceipt[]>([]);
   const [deliveries, setDeliveries] = useState<DeliveryReceipt[]>([]);
@@ -1523,6 +1513,10 @@ export function ChatScreen({
 
   const onPickMedia = async (option: AttachOption) => {
     setShowAttach(false);
+    if (option === 'voiceNote') {
+      setVoiceNoteActive(true);
+      return;
+    }
     if (option === 'points') {
       setPointsSeed(null);
       setPointsOpen(true);
@@ -2009,49 +2003,12 @@ export function ChatScreen({
         }
       />
       <View style={styles.inputRow}>
-        <Pressable
-          onPress={() => setShowAttach((v) => !v)}
-          hitSlop={8}
-          accessibilityLabel="Attach"
-          style={styles.attachBtn}
-          disabled={!!editingId}
-        >
-          <AppIcon
-            name={showAttach ? 'close' : 'add-circle-outline'}
-            size={28}
-            color={colors.textMuted}
-            style={editingId ? { opacity: 0.35 } : undefined}
-          />
-        </Pressable>
-        <TextInput
-          style={[
-            shared.input,
-            styles.composeInput,
-            { flex: 1, marginBottom: 0 },
-          ]}
-          placeholder={
-            editingId
-              ? 'Edit message…'
-              : replyTo
-                ? 'Reply…'
-                : 'Message… @IGN to mention'
-          }
-          placeholderTextColor={colors.textDim}
-          value={draft}
-          onChangeText={(text) => {
-            setDraft(text);
-            setCaret(text.length);
-            if (text.trim()) notifyTyping();
-            else clearTypingNow();
-          }}
-          onSelectionChange={(e) => {
-            setCaret(e.nativeEvent.selection.end);
-          }}
-          onSubmitEditing={onSend}
-        />
-        {!draft.trim() && !editingId ? (
+        {voiceNoteActive && !editingId ? (
           <VoiceRecorderButton
+            autoStart
+            onCancel={() => setVoiceNoteActive(false)}
             onRecorded={(note) => {
+              setVoiceNoteActive(false);
               const parent = replyTo;
               setReplyTo(null);
               startMediaSend(
@@ -2061,77 +2018,65 @@ export function ChatScreen({
               );
             }}
           />
-        ) : null}
-        {onJoinVoice && !editingId ? (
-          <View style={styles.voiceJoinWrap}>
-            {voiceOccupancy.count > 0 ? (
-              <View
-                style={styles.voiceOccupancyAvatars}
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-              >
-                {voiceOccupancy.participants.slice(0, 3).map((p, i) => (
-                  <View
-                    key={p.id}
-                    style={[
-                      styles.voiceOccupancyAvatar,
-                      { marginLeft: i === 0 ? 0 : -8, zIndex: 3 - i },
-                    ]}
-                  >
-                    <ChannelAvatar
-                      uri={p.avatarUrl}
-                      size={18}
-                      fallback={(p.name[0] ?? '?').toUpperCase()}
-                      previewable={false}
-                    />
-                  </View>
-                ))}
-              </View>
-            ) : null}
+        ) : (
+          <>
             <Pressable
-              onPress={onJoinVoice}
+              onPress={() => setShowAttach((v) => !v)}
               hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={
-                voiceOccupancy.count > 0
-                  ? channelKey === 'guild'
-                    ? `Join guild voice, ${voiceOccupancy.count} already in`
-                    : `Join team voice, ${voiceOccupancy.count} already in`
-                  : channelKey === 'guild'
-                    ? 'Join guild voice'
-                    : 'Join team voice'
-              }
-              style={styles.sendIconBtn}
+              accessibilityLabel="Attach"
+              style={styles.attachBtn}
+              disabled={!!editingId}
             >
               <AppIcon
-                name="headset"
-                size={24}
-                color={voiceOccupancy.count > 0 ? colors.link : colors.icon}
+                name={showAttach ? 'close' : 'add-circle-outline'}
+                size={28}
+                color={colors.textMuted}
+                style={editingId ? { opacity: 0.35 } : undefined}
               />
-              {voiceOccupancy.count > 0 ? (
-                <View style={styles.voiceOccupancyBadge}>
-                  <Text style={styles.voiceOccupancyBadgeText}>
-                    {voiceOccupancy.count > 9 ? '9+' : String(voiceOccupancy.count)}
-                  </Text>
-                </View>
-              ) : null}
             </Pressable>
-          </View>
-        ) : null}
-        <Pressable
-          style={[styles.sendIconBtn, !draft.trim() && styles.sendIconDisabled]}
-          disabled={!draft.trim()}
-          onPress={onSend}
-          accessibilityRole="button"
-          accessibilityLabel={editingId ? 'Save edit' : 'Send'}
-          hitSlop={8}
-        >
-          <AppIcon
-            name={editingId ? 'checkmark-circle' : 'send'}
-            size={24}
-            color={colors.icon}
-          />
-        </Pressable>
+            <TextInput
+              style={[
+                shared.input,
+                styles.composeInput,
+                { flex: 1, marginBottom: 0 },
+              ]}
+              placeholder={
+                editingId
+                  ? 'Edit message…'
+                  : replyTo
+                    ? 'Reply…'
+                    : 'Message'
+              }
+              placeholderTextColor={colors.textDim}
+              value={draft}
+              multiline
+              onChangeText={(text) => {
+                setDraft(text);
+                setCaret(text.length);
+                if (text.trim()) notifyTyping();
+                else clearTypingNow();
+              }}
+              onSelectionChange={(e) => {
+                setCaret(e.nativeEvent.selection.end);
+              }}
+              onSubmitEditing={onSend}
+            />
+            <Pressable
+              style={[styles.sendIconBtn, !draft.trim() && styles.sendIconDisabled]}
+              disabled={!draft.trim()}
+              onPress={onSend}
+              accessibilityRole="button"
+              accessibilityLabel={editingId ? 'Save edit' : 'Send'}
+              hitSlop={8}
+            >
+              <AppIcon
+                name={editingId ? 'checkmark-circle' : 'send'}
+                size={24}
+                color={colors.icon}
+              />
+            </Pressable>
+          </>
+        )}
       </View>
 
       <MediaViewerModal

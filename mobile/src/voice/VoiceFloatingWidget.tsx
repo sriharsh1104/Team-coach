@@ -15,8 +15,9 @@ import { useVoiceContext } from './VoiceContext';
 import { AppIcon } from '../ui/AppIcon';
 
 const BAR_HEIGHT = 56;
-const EDGE_PAD = 16;
-const DRAG_THRESHOLD = 8;
+const BAR_WIDTH = 280;
+const EDGE_PAD = 12;
+const DRAG_THRESHOLD = 6;
 
 type NavState = NavigationState | PartialState<NavigationState> | undefined;
 
@@ -33,13 +34,12 @@ function isGameRoute(name: string | undefined): boolean {
   return name === 'GameRoom' || name === 'Games';
 }
 
+type Pos = { x: number; y: number };
+
 /**
  * Floating PiP-style widget shown when the user has an active voice session
- * but has navigated away from the Voice screen. Provides quick mute/unmute
- * and leave controls without returning to the Voice screen.
- *
- * Vertically draggable. Defaults to the bottom; on Games / GameRoom it
- * starts at the top so it does not cover game controls.
+ * but has navigated away from the Voice screen. Freely draggable anywhere on
+ * screen; tap opens the voice participant list.
  */
 export function VoiceFloatingWidget() {
   const { controller, isScreenFocused, deactivate } = useVoiceContext();
@@ -48,15 +48,18 @@ export function VoiceFloatingWidget() {
   const focusedRoute = useNavigationState(getFocusedRouteName);
   const onGame = isGameRoute(focusedRoute);
 
-  const windowH = Dimensions.get('window').height;
-  const minTop = insets.top + EDGE_PAD;
-  const maxTop = Math.max(minTop, windowH - insets.bottom - EDGE_PAD - BAR_HEIGHT);
-  const defaultBottomTop = maxTop;
-  const defaultGameTop = minTop;
+  const window = Dimensions.get('window');
+  const minX = EDGE_PAD;
+  const maxX = Math.max(minX, window.width - EDGE_PAD - BAR_WIDTH);
+  const minY = insets.top + EDGE_PAD;
+  const maxY = Math.max(minY, window.height - insets.bottom - EDGE_PAD - BAR_HEIGHT);
 
-  const [top, setTop] = useState(defaultBottomTop);
-  const topRef = useRef(top);
-  const dragStartTop = useRef(top);
+  const defaultBottom: Pos = { x: EDGE_PAD, y: maxY };
+  const defaultGame: Pos = { x: EDGE_PAD, y: minY };
+
+  const [pos, setPos] = useState<Pos>(defaultBottom);
+  const posRef = useRef(pos);
+  const dragStart = useRef<Pos>(pos);
   const dragged = useRef(false);
   const slideAnim = useRef(new Animated.Value(120)).current;
 
@@ -65,65 +68,66 @@ export function VoiceFloatingWidget() {
   const micOff = !!controller && (controller.isMuted || !!controller.isHostMuted);
   const shouldShow = isConnected && !isScreenFocused;
 
-  // participants[] excludes self; roomCount (when present) already includes everyone.
   const memberCount =
     controller?.roomCount ??
     (controller ? controller.participants.length + (isConnected ? 1 : 0) : 0);
 
-  // Entering a game screen → pin to top by default (once per enter).
   const wasOnGame = useRef(false);
   useEffect(() => {
     if (onGame && !wasOnGame.current) {
-      topRef.current = defaultGameTop;
-      setTop(defaultGameTop);
+      posRef.current = defaultGame;
+      setPos(defaultGame);
     }
     wasOnGame.current = onGame;
-  }, [onGame, defaultGameTop]);
+  }, [onGame, defaultGame.x, defaultGame.y]);
 
   // Keep within bounds if safe area / window changes.
   useEffect(() => {
-    const clamped = Math.min(maxTop, Math.max(minTop, topRef.current));
-    if (clamped !== topRef.current) {
-      topRef.current = clamped;
-      setTop(clamped);
+    const next: Pos = {
+      x: Math.min(maxX, Math.max(minX, posRef.current.x)),
+      y: Math.min(maxY, Math.max(minY, posRef.current.y)),
+    };
+    if (next.x !== posRef.current.x || next.y !== posRef.current.y) {
+      posRef.current = next;
+      setPos(next);
     }
-  }, [minTop, maxTop]);
+  }, [minX, maxX, minY, maxY]);
 
   useEffect(() => {
-    const nearTop = topRef.current < (minTop + maxTop) / 2;
+    const nearTop = posRef.current.y < (minY + maxY) / 2;
     Animated.spring(slideAnim, {
       toValue: shouldShow ? 0 : nearTop ? -120 : 120,
       useNativeDriver: true,
       tension: 80,
       friction: 10,
     }).start();
-  }, [shouldShow, slideAnim, minTop, maxTop]);
+  }, [shouldShow, slideAnim, minY, maxY]);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_e, g) =>
-          Math.abs(g.dy) > DRAG_THRESHOLD && Math.abs(g.dy) > Math.abs(g.dx),
+          Math.abs(g.dx) > DRAG_THRESHOLD || Math.abs(g.dy) > DRAG_THRESHOLD,
         onMoveShouldSetPanResponderCapture: (_e, g) =>
-          Math.abs(g.dy) > DRAG_THRESHOLD && Math.abs(g.dy) > Math.abs(g.dx),
+          Math.abs(g.dx) > DRAG_THRESHOLD || Math.abs(g.dy) > DRAG_THRESHOLD,
         onPanResponderGrant: () => {
           dragged.current = false;
-          dragStartTop.current = topRef.current;
+          dragStart.current = posRef.current;
         },
         onPanResponderMove: (_e, g) => {
-          if (Math.abs(g.dy) > DRAG_THRESHOLD) dragged.current = true;
-          const next = Math.min(maxTop, Math.max(minTop, dragStartTop.current + g.dy));
-          topRef.current = next;
-          setTop(next);
+          if (Math.abs(g.dx) > DRAG_THRESHOLD || Math.abs(g.dy) > DRAG_THRESHOLD) {
+            dragged.current = true;
+          }
+          const next: Pos = {
+            x: Math.min(maxX, Math.max(minX, dragStart.current.x + g.dx)),
+            y: Math.min(maxY, Math.max(minY, dragStart.current.y + g.dy)),
+          };
+          posRef.current = next;
+          setPos(next);
         },
         onPanResponderRelease: () => {
-          // Snap toward nearest edge so the bar stays out of the way.
-          const mid = (minTop + maxTop) / 2;
-          const snapped = topRef.current < mid ? minTop : maxTop;
-          topRef.current = snapped;
-          setTop(snapped);
-          // Suppress the trailing Pressable tap that follows a drag.
+          // Stay where the user dropped it — no edge snap.
           if (dragged.current) {
             setTimeout(() => {
               dragged.current = false;
@@ -131,7 +135,7 @@ export function VoiceFloatingWidget() {
           }
         },
       }),
-    [minTop, maxTop],
+    [minX, maxX, minY, maxY],
   );
 
   if (!controller) return null;
@@ -143,8 +147,14 @@ export function VoiceFloatingWidget() {
 
   const handleOpen = () => {
     if (dragged.current) return;
-    if (isGuild) navigation.navigate('GuildVoice');
-    else navigation.navigate('OrgHome', { screen: 'Voice' });
+    // Voice / GuildVoice sit on the root MainStack (siblings of OrgHome),
+    // not nested under OrgHome — navigate straight to the voice list.
+    try {
+      if (isGuild) navigation.navigate('GuildVoice');
+      else navigation.navigate('Voice');
+    } catch {
+      // Navigator not ready.
+    }
   };
 
   const handleMute = () => {
@@ -157,7 +167,9 @@ export function VoiceFloatingWidget() {
       style={[
         styles.wrapper,
         {
-          top,
+          left: pos.x,
+          top: pos.y,
+          width: BAR_WIDTH,
           transform: [{ translateY: slideAnim }],
         },
       ]}
@@ -165,15 +177,15 @@ export function VoiceFloatingWidget() {
       {...panResponder.panHandlers}
     >
       <Pressable style={styles.pill} onPress={handleOpen} accessibilityLabel="Open voice">
-        {/* Green dot = live */}
         <View style={styles.liveDot} />
-        <Text style={styles.label}>{isGuild ? 'Guild Voice' : 'Voice'}</Text>
-        <Text style={styles.sub}>
+        <Text style={styles.label} numberOfLines={1}>
+          {isGuild ? 'Guild Voice' : 'Voice'}
+        </Text>
+        <Text style={styles.sub} numberOfLines={1}>
           {memberCount} member{memberCount !== 1 ? 's' : ''}
         </Text>
       </Pressable>
 
-      {/* Mute / unmute */}
       <Pressable
         style={[styles.iconBtn, micOff && styles.iconBtnMuted]}
         onPress={handleMute}
@@ -188,7 +200,6 @@ export function VoiceFloatingWidget() {
         />
       </Pressable>
 
-      {/* Leave */}
       <Pressable
         style={[styles.iconBtn, styles.leaveBtn]}
         onPress={handleLeave}
@@ -203,17 +214,15 @@ export function VoiceFloatingWidget() {
 const styles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    left: 16,
-    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1a2a1a',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(34,197,94,0.3)',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 10,
-    gap: 10,
+    gap: 8,
     zIndex: 9999,
     shadowColor: '#000',
     shadowOpacity: 0.5,
@@ -232,15 +241,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    minWidth: 0,
   },
   label: {
     color: '#fff',
     fontWeight: '700',
     fontSize: 14,
+    flexShrink: 1,
   },
   sub: {
     color: 'rgba(255,255,255,0.5)',
     fontSize: 12,
+    flexShrink: 1,
   },
   iconBtn: {
     width: 36,

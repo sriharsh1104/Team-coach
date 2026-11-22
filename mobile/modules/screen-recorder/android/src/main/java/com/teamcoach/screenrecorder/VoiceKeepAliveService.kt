@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -58,7 +59,8 @@ class VoiceKeepAliveService : Service() {
     val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Tap to return to the voice channel"
     val muted = intent?.getBooleanExtra(EXTRA_MUTED, false) ?: false
     val deafened = intent?.getBooleanExtra(EXTRA_DEAFENED, false) ?: false
-    val notification = buildNotification(title, text, muted, deafened)
+    val room = intent?.getStringExtra(EXTRA_ROOM) ?: "team"
+    val notification = buildNotification(title, text, muted, deafened, room)
     try {
       if (Build.VERSION.SDK_INT >= 30) {
         startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
@@ -119,6 +121,7 @@ class VoiceKeepAliveService : Service() {
     text: String,
     muted: Boolean,
     deafened: Boolean,
+    room: String,
   ): Notification {
     val manager = getSystemService(NotificationManager::class.java)
     if (Build.VERSION.SDK_INT >= 26) {
@@ -126,15 +129,20 @@ class VoiceKeepAliveService : Service() {
       channel.setShowBadge(false)
       manager.createNotificationChannel(channel)
     }
-    val launch = packageManager.getLaunchIntentForPackage(packageName)
-    val open = launch?.let {
-      PendingIntent.getActivity(
-        this,
-        0,
-        it,
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-      )
+    // Deep-link straight into the voice participant list (not chat / home).
+    val voiceRoom = if (room == "guild") "guild" else "team"
+    val openIntent = Intent(Intent.ACTION_VIEW, Uri.parse("teamcoach://voice/$voiceRoom")).apply {
+      setPackage(packageName)
+      addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+      putExtra("type", "voice_keepalive")
+      putExtra("voiceRoom", voiceRoom)
     }
+    val open = PendingIntent.getActivity(
+      this,
+      0,
+      openIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
     return NotificationCompat.Builder(this, CHANNEL)
       .setContentTitle(title)
       .setContentText(text)
@@ -171,6 +179,7 @@ class VoiceKeepAliveService : Service() {
     const val EXTRA_TEXT = "text"
     const val EXTRA_MUTED = "muted"
     const val EXTRA_DEAFENED = "deafened"
+    const val EXTRA_ROOM = "room"
     private const val CHANNEL = "sacred-voice"
     private const val NOTIF_ID = 4108
     private const val MAX_MS = 6L * 60L * 60L * 1000L

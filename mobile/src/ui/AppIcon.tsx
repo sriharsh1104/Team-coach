@@ -32,6 +32,8 @@ export type AppIconName =
   | 'person-remove-outline'
   | 'phone-down'
   | 'phone-portrait-outline'
+  | 'expand'
+  | 'contract'
   | 'pin'
   | 'pin-outline'
   | 'search'
@@ -313,6 +315,28 @@ const ICONS: Record<AppIconName, Renderer> = {
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Rect x="5" y="2" width="14" height="20" rx="2" stroke={c} strokeWidth={2} />
       <Line x1="12" y1="18" x2="12.01" y2="18" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'expand': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"
+        stroke={c}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  ),
+  'contract': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"
+        stroke={c}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </Svg>
   ),
   'cart': (c, s) => (

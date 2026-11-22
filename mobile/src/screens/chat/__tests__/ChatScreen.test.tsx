@@ -133,31 +133,22 @@ beforeEach(() => {
 });
 
 describe('ChatScreen', () => {
-  it('shows voice occupancy on the headset when teammates are already in', async () => {
+  it('offers Voice Note from the attach menu instead of a composer mic', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();
     mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
-    mockedVoiceApi.getVoiceOccupancy.mockResolvedValue({
-      room: 'team',
-      max: 5,
-      count: 2,
-      participants: [
-        { id: 'u2', name: 'Bob', avatarUrl: null },
-        { id: 'u3', name: 'Cara', avatarUrl: null },
-      ],
-    });
-    const onJoinVoice = jest.fn();
     render(
       <RecordingProvider>
-        <ChatScreen channelKey="org" onJoinVoice={onJoinVoice} />
+        <ChatScreen channelKey="org" />
       </RecordingProvider>,
     );
     await waitFor(() => expect(mockedChatApi.connectChatSocket).toHaveBeenCalled());
 
-    const btn = await screen.findByLabelText('Join team voice, 2 already in');
-    expect(screen.getByText('2')).toBeTruthy();
-    fireEvent.press(btn);
-    expect(onJoinVoice).toHaveBeenCalled();
+    expect(screen.queryByLabelText('Record a voice note')).toBeNull();
+    expect(screen.queryByLabelText('Join team voice')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Attach'));
+    expect(screen.getByLabelText('Voice Note')).toBeTruthy();
   });
 
   it('shows "Connecting…" until the socket connects, then hides it', async () => {
@@ -295,9 +286,8 @@ describe('ChatScreen', () => {
   it('blocks sending an empty or whitespace-only draft', async () => {
     const fakeSocket = await connectAndSettle();
 
-    // Empty draft — the voice-note mic appears beside the composer and Send
-    // stays visible but disabled, so the button never moves under the thumb.
-    expect(screen.getByLabelText('Record a voice note')).toBeTruthy();
+    // Empty draft — Send stays visible but disabled; voice notes live under +.
+    expect(screen.queryByLabelText('Record a voice note')).toBeNull();
     expect(screen.getByLabelText('Send').props.accessibilityState).toMatchObject(
       { disabled: true },
     );
@@ -309,7 +299,7 @@ describe('ChatScreen', () => {
     );
 
     // Whitespace-only draft trims to empty too — same story.
-    fireEvent.changeText(screen.getByPlaceholderText('Message… @IGN to mention'), '   ');
+    fireEvent.changeText(screen.getByPlaceholderText('Message'), '   ');
     expect(screen.getByLabelText('Send').props.accessibilityState).toMatchObject(
       { disabled: true },
     );
@@ -325,7 +315,7 @@ describe('ChatScreen', () => {
     const fakeSocket = await connectAndSettle();
     fakeSocket.trigger('connect');
 
-    const input = screen.getByPlaceholderText('Message… @IGN to mention');
+    const input = screen.getByPlaceholderText('Message');
     fireEvent.changeText(input, '  gl hf  ');
     await pressAndSettle('Send');
 
@@ -392,7 +382,7 @@ describe('ChatScreen', () => {
 
       fireEvent.press(screen.getByText('😀'));
 
-      expect(screen.getByPlaceholderText('Message… @IGN to mention').props.value).toBe('😀');
+      expect(screen.getByPlaceholderText('Message').props.value).toBe('😀');
       // Still open — picking an emoji doesn't dismiss the panel.
       expect(screen.getByText('😀')).toBeTruthy();
     });

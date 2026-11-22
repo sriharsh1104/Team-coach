@@ -162,6 +162,14 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
       emitToast('Recording is already in progress');
       return;
     }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { isVoiceScreenSharing } = require('../voice/voiceScreenShareGate') as {
+      isVoiceScreenSharing: () => boolean;
+    };
+    if (isVoiceScreenSharing()) {
+      emitToast('Stop voice screen share before recording');
+      return;
+    }
     const result = await startScreenRecording();
     if (result === 'started') {
       originChannelRef.current = originChannelKey ?? null;

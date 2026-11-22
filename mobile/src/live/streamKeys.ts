@@ -2,6 +2,16 @@ import { Platform } from 'react-native';
 
 export type LivePlatform = 'youtube' | 'twitch' | 'kick';
 
+export type StreamPreset = {
+  id: string;
+  label: string;
+  platform: LivePlatform;
+  rtmpUrl: string;
+  streamKey: string;
+  title: string;
+  bannerUri: string;
+};
+
 export const LIVE_PLATFORMS: Array<{
   id: LivePlatform;
   label: string;
@@ -36,6 +46,8 @@ const KEY_PREFIX = 'sacred.live.streamKey.';
 const URL_PREFIX = 'sacred.live.rtmpUrl.';
 const TITLE_PREFIX = 'sacred.live.title.';
 const BANNER_PREFIX = 'sacred.live.banner.';
+const PRESETS_KEY = 'sacred.live.presets.v1';
+const ACTIVE_ID_KEY = 'sacred.live.activePresetId.';
 
 function secureStore() {
   if (Platform.OS === 'web') return null;
@@ -54,6 +66,15 @@ async function saveString(key: string, value: string): Promise<void> {
   const trimmed = value.trim();
   if (!trimmed) await store.deleteItemAsync(key);
   else await store.setItemAsync(key, trimmed);
+}
+
+function newPresetId(): string {
+  return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function defaultPresetLabel(platform: LivePlatform, index = 1): string {
+  const name = LIVE_PLATFORMS.find((p) => p.id === platform)?.label ?? platform;
+  return index <= 1 ? `${name} Main` : `${name} ${index}`;
 }
 
 export async function loadStreamKey(platform: LivePlatform): Promise<string> {
@@ -102,4 +123,134 @@ export async function saveStreamBannerUri(
   uri: string,
 ): Promise<void> {
   return saveString(BANNER_PREFIX + platform, uri);
+}
+
+/** Seed one preset per platform from the older single-slot SecureStore keys. */
+async function migrateLegacyPresets(): Promise<StreamPreset[]> {
+  const seeded: StreamPreset[] = [];
+  for (const p of LIVE_PLATFORMS) {
+    const [rtmpUrl, streamKey, title, bannerUri] = await Promise.all([
+      loadRtmpUrl(p.id),
+      loadStreamKey(p.id),
+      loadStreamTitle(p.id),
+      loadStreamBannerUri(p.id),
+    ]);
+    // Always seed a default slot so the dropdown has something to select.
+    seeded.push({
+      id: newPresetId(),
+      label: defaultPresetLabel(p.id),
+      platform: p.id,
+      rtmpUrl: rtmpUrl || p.defaultUrl,
+      streamKey,
+      title,
+      bannerUri,
+    });
+  }
+  await saveAllPresets(seeded);
+  return seeded;
+}
+
+export async function loadAllPresets(): Promise<StreamPreset[]> {
+  const raw = await loadString(PRESETS_KEY);
+  if (!raw) return migrateLegacyPresets();
+  try {
+    const parsed = JSON.parse(raw) as StreamPreset[];
+    if (!Array.isArray(parsed) || parsed.length === 0) return migrateLegacyPresets();
+    return parsed.filter(
+      (p) =>
+        p &&
+        typeof p.id === 'string' &&
+        typeof p.label === 'string' &&
+        (p.platform === 'youtube' || p.platform === 'twitch' || p.platform === 'kick'),
+    );
+  } catch {
+    return migrateLegacyPresets();
+  }
+}
+
+export async function saveAllPresets(presets: StreamPreset[]): Promise<void> {
+  const store = secureStore();
+  if (!store) return;
+  await store.setItemAsync(PRESETS_KEY, JSON.stringify(presets));
+}
+
+export async function loadPresetsForPlatform(
+  platform: LivePlatform,
+): Promise<StreamPreset[]> {
+  const all = await loadAllPresets();
+  return all.filter((p) => p.platform === platform);
+}
+
+export async function getActivePresetId(
+  platform: LivePlatform,
+): Promise<string | null> {
+  const id = await loadString(ACTIVE_ID_KEY + platform);
+  return id || null;
+}
+
+export async function setActivePresetId(
+  platform: LivePlatform,
+  id: string,
+): Promise<void> {
+  return saveString(ACTIVE_ID_KEY + platform, id);
+}
+
+/**
+ * Upsert a preset. Also mirrors URL/key/title/banner into the legacy
+ * single-slot keys so older code paths still see the last-used values.
+ */
+export async function upsertPreset(preset: StreamPreset): Promise<StreamPreset[]> {
+  const all = await loadAllPresets();
+  const idx = all.findIndex((p) => p.id === preset.id);
+  const next =
+    idx >= 0
+      ? all.map((p, i) => (i === idx ? preset : p))
+      : [...all, preset];
+  await saveAllPresets(next);
+  await Promise.all([
+    saveRtmpUrl(preset.platform, preset.rtmpUrl),
+    saveStreamKey(preset.platform, preset.streamKey),
+    saveStreamTitle(preset.platform, preset.title),
+    saveStreamBannerUri(preset.platform, preset.bannerUri),
+    setActivePresetId(preset.platform, preset.id),
+  ]);
+  return next;
+}
+
+export async function deletePreset(id: string): Promise<StreamPreset[]> {
+  const all = await loadAllPresets();
+  const target = all.find((p) => p.id === id);
+  const next = all.filter((p) => p.id !== id);
+  // Keep at least one empty slot per platform.
+  if (target && !next.some((p) => p.platform === target.platform)) {
+    const meta = LIVE_PLATFORMS.find((p) => p.id === target.platform)!;
+    next.push({
+      id: newPresetId(),
+      label: defaultPresetLabel(target.platform),
+      platform: target.platform,
+      rtmpUrl: meta.defaultUrl,
+      streamKey: '',
+      title: '',
+      bannerUri: '',
+    });
+  }
+  await saveAllPresets(next);
+  return next;
+}
+
+export function createBlankPreset(
+  platform: LivePlatform,
+  label?: string,
+  existingCount = 0,
+): StreamPreset {
+  const meta = LIVE_PLATFORMS.find((p) => p.id === platform)!;
+  return {
+    id: newPresetId(),
+    label: label?.trim() || defaultPresetLabel(platform, existingCount + 1),
+    platform,
+    rtmpUrl: meta.defaultUrl,
+    streamKey: '',
+    title: '',
+    bannerUri: '',
+  };
 }

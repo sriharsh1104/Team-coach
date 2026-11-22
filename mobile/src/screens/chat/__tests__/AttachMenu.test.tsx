@@ -20,6 +20,7 @@ describe('AttachMenu', () => {
     expect(screen.getByLabelText('Photo')).toBeTruthy();
     expect(screen.getByLabelText('Video')).toBeTruthy();
     expect(screen.getByLabelText('Camera')).toBeTruthy();
+    expect(screen.getByLabelText('Voice Note')).toBeTruthy();
     expect(screen.getByLabelText('Record')).toBeTruthy();
   });
 
@@ -42,6 +43,9 @@ describe('AttachMenu', () => {
 
     fireEvent.press(screen.getByLabelText('Camera'));
     expect(onPickMedia).toHaveBeenCalledWith('camera');
+
+    fireEvent.press(screen.getByLabelText('Voice Note'));
+    expect(onPickMedia).toHaveBeenCalledWith('voiceNote');
 
     fireEvent.press(screen.getByLabelText('Record'));
     expect(onPickMedia).toHaveBeenCalledWith('record');

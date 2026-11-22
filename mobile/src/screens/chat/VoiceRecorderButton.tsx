@@ -52,6 +52,9 @@ function formatElapsed(ms: number): string {
 type Props = {
   onRecorded: (note: RecordedVoiceNote) => void;
   disabled?: boolean;
+  /** Start recording as soon as the button mounts (e.g. from Attach → Voice Note). */
+  autoStart?: boolean;
+  onCancel?: () => void;
 };
 
 /**
@@ -59,7 +62,12 @@ type Props = {
  * the recording as a voice note (reuses the same optimistic-upload pipeline
  * as photos/videos once onRecorded fires).
  */
-export function VoiceRecorderButton({ onRecorded, disabled }: Props) {
+export function VoiceRecorderButton({
+  onRecorded,
+  disabled,
+  autoStart = false,
+  onCancel,
+}: Props) {
   const { colors } = useTheme();
   const styles = useThemedStyles(recorderStyles);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -67,6 +75,7 @@ export function VoiceRecorderButton({ onRecorded, disabled }: Props) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef(0);
   const mountedRef = useRef(true);
+  const autoStartedRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -85,6 +94,7 @@ export function VoiceRecorderButton({ onRecorded, disabled }: Props) {
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) {
         Alert.alert('Permission needed', 'Allow microphone access to record a voice note.');
+        onCancel?.();
         return;
       }
       await Audio.setAudioModeAsync({
@@ -104,12 +114,16 @@ export function VoiceRecorderButton({ onRecorded, disabled }: Props) {
       }, 200);
     } catch {
       Alert.alert('Could not start recording', 'Try again in a moment.');
+      onCancel?.();
     }
   };
 
   const stop = async (send: boolean) => {
     const rec = recording;
-    if (!rec) return;
+    if (!rec) {
+      onCancel?.();
+      return;
+    }
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -126,12 +140,22 @@ export function VoiceRecorderButton({ onRecorded, disabled }: Props) {
     const uri = rec.getURI();
     if (send && uri && duration >= MIN_DURATION_MS) {
       onRecorded({ uri, fileName: `voice-${Date.now()}.m4a`, mimeType: 'audio/mp4', durationMs: duration });
-    } else if (uri) {
-      await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
+    } else {
+      if (uri) {
+        await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
+      }
+      onCancel?.();
     }
   };
 
-  if (recording) {
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current || disabled) return;
+    autoStartedRef.current = true;
+    void start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, disabled]);
+
+  if (recording || autoStart) {
     return (
       <View style={styles.activeRow}>
         <View style={styles.dot} />
@@ -182,12 +206,14 @@ function recorderStyles(c: ThemeColors) {
       justifyContent: 'center' as const,
     },
     activeRow: {
+      flex: 1,
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
       gap: 8,
-      paddingHorizontal: 8,
-      paddingVertical: 6,
-      borderRadius: 20,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      minHeight: 48,
+      borderRadius: 22,
       backgroundColor: c.surface,
     },
     dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },

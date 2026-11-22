@@ -24,6 +24,7 @@ import { subscribeOpenChat } from '../../notifications/openChatChannel';
 import { ChatSettingsSheet } from './ChatSettingsSheet';
 import { ChatFlowHeader } from './ChatFlowHeader';
 import { ChannelAvatar } from './ChannelAvatar';
+import { VoiceJoinHeaderButton } from './VoiceJoinHeaderButton';
 
 interface Props {
   /** Called when loading the channel list fails — e.g. to surface a toast.
@@ -369,16 +370,28 @@ export function ChatHubScreen({ onLoadError }: Props) {
             />
           }
           trailing={
-            <SoftPressable
-              style={styles.iconBtn}
-              onPress={() => setSettingsOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Chat settings"
-              hitSlop={10}
-              pressScale={0.92}
-            >
-              <AppIcon name="ellipsis-vertical" size={20} color={theme.icon} />
-            </SoftPressable>
+            <>
+              {active.channelKey === 'org' || active.channelKey === 'guild' ? (
+                <VoiceJoinHeaderButton
+                  room={active.channelKey === 'guild' ? 'guild' : 'team'}
+                  onPress={() =>
+                    (navigation as any)?.navigate(
+                      active.channelKey === 'guild' ? 'GuildVoice' : 'Voice',
+                    )
+                  }
+                />
+              ) : null}
+              <SoftPressable
+                style={styles.iconBtn}
+                onPress={() => setSettingsOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Chat settings"
+                hitSlop={10}
+                pressScale={0.92}
+              >
+                <AppIcon name="ellipsis-vertical" size={20} color={theme.icon} />
+              </SoftPressable>
+            </>
           }
         />
         {starredOnly ? (
@@ -416,14 +429,6 @@ export function ChatHubScreen({ onLoadError }: Props) {
           starredOnly={starredOnly}
           onPeerPresenceChange={(p: UserPresence | null) =>
             setPeerOnline(!!p?.online)
-          }
-          onJoinVoice={
-            active.channelKey === 'org' || active.channelKey === 'guild'
-              ? () =>
-                  (navigation as any)?.navigate(
-                    active.channelKey === 'guild' ? 'GuildVoice' : 'Voice',
-                  )
-              : undefined
           }
         />
         <ChatMediaModal

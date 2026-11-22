@@ -32,6 +32,7 @@ import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
 // load on first navigate so cold start stays light on mid-range Android.
 import { GameInviteBridge } from '../games/GameInviteBridge';
 import { ChatNotificationBridge } from '../notifications/ChatNotificationBridge';
+import { VoiceNotificationBridge } from '../notifications/VoiceNotificationBridge';
 import { InviteLinkBridge } from '../invite/InviteLinkBridge';
 import { MenuButton, SideDrawer } from '../ui/SideDrawer';
 import { HeaderBackButton } from '../ui/HeaderBackButton';
@@ -362,6 +363,7 @@ export function RootNavigator() {
           />
           <GameInviteBridge />
           <ChatNotificationBridge />
+          <VoiceNotificationBridge />
           <InviteLinkBridge />
         </>
       ) : (
@@ -566,6 +568,7 @@ export function RootNavigator() {
           />
           <GameInviteBridge />
           <ChatNotificationBridge />
+          <VoiceNotificationBridge />
           <InviteLinkBridge />
         </>
       )}
