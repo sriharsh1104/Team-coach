@@ -29,8 +29,10 @@ import { useSharedStyles } from '../shared';
 type Props = NativeStackScreenProps<MainStackParamList, 'GoLive'>;
 
 /**
- * Roster Go Live: pick YouTube / Twitch / Kick, paste stream key, stream
- * screen + mic + game audio over free RTMP. Android only.
+ * Go Live: each person uses their own YouTube / Twitch / Kick stream URL + key.
+ * Saved on this device so you don’t re-paste every time. Platforms keep the
+ * same key until you reset it in their dashboard — the app does not invent a
+ * new one per stream.
  */
 export function GoLiveScreen(_props: Props) {
   const shared = useSharedStyles();
@@ -96,8 +98,8 @@ export function GoLiveScreen(_props: Props) {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.lead}>
-          Stream your screen with game sound and your mic. No paid service —
-          goes straight to the platform.
+          Stream your screen with game sound and your mic. Use your own channel
+          keys — saved on this phone for next time.
         </Text>
 
         <Text style={styles.label}>Platform</Text>
@@ -153,14 +155,15 @@ export function GoLiveScreen(_props: Props) {
           autoCorrect={false}
           secureTextEntry
           editable={!live && !starting && !loadingKeys}
-          placeholder="Paste stream key"
+          placeholder="Paste your stream key"
           placeholderTextColor={colors.textDim}
         />
 
         <Text style={styles.help}>
-          Enable Live in the platform dashboard, copy the Stream URL and Stream
-          Key, then tap Go Live. Some games block audio capture — those will
-          stream video + mic only. Stop screen recording before going live.
+          Paste once from your YouTube / Twitch / Kick dashboard. The key stays
+          the same until you reset it there — Go Live saves it on this device so
+          you don’t dig it out every stream. Some games block audio capture;
+          those stream video + mic only. Stop screen recording before going live.
         </Text>
 
         {live ? (

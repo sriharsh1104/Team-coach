@@ -21,6 +21,7 @@ describe('SocialHandlesScreen', () => {
     expect(screen.getByText('Instagram')).toBeTruthy();
     expect(screen.getByText('Discord')).toBeTruthy();
     expect(screen.getByText('YouTube')).toBeTruthy();
+    expect(screen.getByText('Kick')).toBeTruthy();
     expect(screen.getByText('Telegram')).toBeTruthy();
     expect(
       screen.getAllByText(
@@ -36,7 +37,13 @@ describe('SocialHandlesScreen', () => {
     expect(
       screen.getAllByText('https://discord.gg/mUES4kcAE').length,
     ).toBeGreaterThan(0);
-    expect(screen.getAllByText('Add your link here').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('https://kick.com/sacred-esports').length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('https://t.me/Sacredesports').length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('Add your link here')).toBeNull();
 
     // Bottom "Scan to connect" block removed — QR lives on the row.
     expect(screen.queryByText('Scan to connect')).toBeNull();

@@ -55,6 +55,12 @@ beforeEach(() => {
   });
   mockedUseHosted.mockReturnValue(controller());
   mockedUseSelfHosted.mockReturnValue(controller());
+  mockedVoiceApi.getVoiceOccupancy.mockResolvedValue({
+    room: 'team',
+    max: 5,
+    count: 0,
+    participants: [],
+  });
 });
 
 describe('VoiceChannelScreen', () => {
@@ -122,6 +128,28 @@ describe('VoiceChannelScreen', () => {
     await screen.findByText('Empty — join to talk with your team');
     fireEvent.press(screen.getByText('Join Voice Channel'));
     expect(joinSpy).toHaveBeenCalled();
+  });
+
+  it('shows who is already in voice on the lobby before joining', async () => {
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
+    mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
+    mockedVoiceApi.getVoiceOccupancy.mockResolvedValue({
+      room: 'team',
+      max: 5,
+      count: 2,
+      participants: [
+        { id: 'u2', name: 'Bob', avatarUrl: null },
+        { id: 'u3', name: 'Cara', avatarUrl: null },
+      ],
+    });
+    mockedUseSelfHosted.mockReturnValue(controller());
+    renderWithVoice(<VoiceChannelScreen />);
+
+    await screen.findByText('Already In Voice');
+    expect(screen.getByText('2 / 5 already in voice')).toBeTruthy();
+    expect(screen.getByText('Bob')).toBeTruthy();
+    expect(screen.getByText('Cara')).toBeTruthy();
+    expect(screen.getByText('Join Voice Channel')).toBeTruthy();
   });
 
   it('shows a connecting indicator while status is "connecting"', async () => {

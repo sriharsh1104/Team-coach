@@ -77,14 +77,14 @@ const SOCIAL_CONTACTS: SocialContact[] = [
   {
     key: 'kick',
     label: 'Kick',
-    value: '',
-    href: '',
+    value: 'https://kick.com/sacred-esports',
+    href: 'https://kick.com/sacred-esports',
   },
   {
     key: 'telegram',
     label: 'Telegram',
-    value: '',
-    href: '',
+    value: 'https://t.me/Sacredesports',
+    href: 'https://t.me/Sacredesports',
   },
 ];
 

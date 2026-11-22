@@ -11,10 +11,12 @@ import { ChatScreen } from '../ChatScreen';
 import { RecordingProvider } from '../../../recording/RecordingContext';
 import { emitToast } from '../../../ui/toastBus';
 import * as chatApi from '../../../api/chat';
+import * as voiceApi from '../../../api/voice';
 import { useAuth } from '../../../auth/AuthContext';
 import { TOKEN_STORAGE_KEY } from '../../../api/client';
 
 jest.mock('../../../api/chat');
+jest.mock('../../../api/voice');
 jest.mock('../../../auth/AuthContext');
 jest.mock('../../../ui/toastBus', () => ({
   emitToast: jest.fn(),
@@ -34,6 +36,7 @@ jest.mock('expo-image-picker', () => ({
 }));
 
 const mockedChatApi = chatApi as jest.Mocked<typeof chatApi>;
+const mockedVoiceApi = voiceApi as jest.Mocked<typeof voiceApi>;
 const mockedUseAuth = useAuth as jest.Mock;
 const mockedImagePicker = ImagePicker as jest.Mocked<typeof ImagePicker>;
 const mockedStartRecording = startScreenRecording as jest.Mock;
@@ -121,9 +124,42 @@ beforeEach(() => {
   mockedChatApi.resolveChatMediaUrl = jest.fn(
     (url) => (url ? `http://localhost:3000${url}` : null),
   ) as any;
+  mockedVoiceApi.getVoiceOccupancy.mockResolvedValue({
+    room: 'team',
+    max: 5,
+    count: 0,
+    participants: [],
+  });
 });
 
 describe('ChatScreen', () => {
+  it('shows voice occupancy on the headset when teammates are already in', async () => {
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
+    const fakeSocket = createFakeSocket();
+    mockedChatApi.connectChatSocket.mockReturnValue(fakeSocket as any);
+    mockedVoiceApi.getVoiceOccupancy.mockResolvedValue({
+      room: 'team',
+      max: 5,
+      count: 2,
+      participants: [
+        { id: 'u2', name: 'Bob', avatarUrl: null },
+        { id: 'u3', name: 'Cara', avatarUrl: null },
+      ],
+    });
+    const onJoinVoice = jest.fn();
+    render(
+      <RecordingProvider>
+        <ChatScreen channelKey="org" onJoinVoice={onJoinVoice} />
+      </RecordingProvider>,
+    );
+    await waitFor(() => expect(mockedChatApi.connectChatSocket).toHaveBeenCalled());
+
+    const btn = await screen.findByLabelText('Join team voice, 2 already in');
+    expect(screen.getByText('2')).toBeTruthy();
+    fireEvent.press(btn);
+    expect(onJoinVoice).toHaveBeenCalled();
+  });
+
   it('shows "Connecting…" until the socket connects, then hides it', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-123');
     const fakeSocket = createFakeSocket();

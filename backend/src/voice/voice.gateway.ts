@@ -627,6 +627,37 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     await this.broadcastVoiceState(data.roomKey);
   }
 
+  /**
+   * Who is currently connected to a self-hosted voice room — used by
+   * GET /voice/occupancy so chat/lobby can show Discord-style presence
+   * without the viewer joining the mediasoup session.
+   */
+  async listOccupants(
+    roomKey: string,
+  ): Promise<Array<{ id: string; name: string; avatarUrl: string | null }>> {
+    if (!this.server) return [];
+    try {
+      const sockets = await this.server.in(this.roomFor(roomKey)).fetchSockets();
+      const seen = new Set<string>();
+      const members: Array<{ id: string; name: string; avatarUrl: string | null }> =
+        [];
+      for (const s of sockets) {
+        const d = s.data as Partial<VoiceSocketData>;
+        if (!d?.userId || seen.has(d.userId)) continue;
+        seen.add(d.userId);
+        members.push({
+          id: d.userId,
+          name: d.userName ?? 'Member',
+          avatarUrl: d.avatarUrl ?? null,
+        });
+      }
+      return members;
+    } catch (err) {
+      this.logger.warn(`listOccupants failed: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
   private roomFor(orgId: string) {
     return `voice:${orgId}`;
   }

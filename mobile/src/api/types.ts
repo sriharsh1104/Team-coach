@@ -320,6 +320,20 @@ export interface VoiceRoom {
   token: string;
 }
 
+/** Someone already connected to a voice room (lobby / chat indicator). */
+export interface VoiceOccupant {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
+export interface VoiceOccupancy {
+  room: 'team' | 'guild';
+  max: number;
+  count: number;
+  participants: VoiceOccupant[];
+}
+
 export type VoiceConfig =
   | {
       mode: 'self';

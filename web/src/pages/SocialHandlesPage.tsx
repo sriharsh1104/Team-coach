@@ -37,8 +37,18 @@ const CONTACTS: Array<{
     value: 'https://www.youtube.com/channel/UC_SatA-81Ycr3gpQnqRix3g',
     href: 'https://www.youtube.com/channel/UC_SatA-81Ycr3gpQnqRix3g',
   },
-  { key: 'kick', label: 'Kick', value: '', href: '' },
-  { key: 'telegram', label: 'Telegram', value: '', href: '' },
+  {
+    key: 'kick',
+    label: 'Kick',
+    value: 'https://kick.com/sacred-esports',
+    href: 'https://kick.com/sacred-esports',
+  },
+  {
+    key: 'telegram',
+    label: 'Telegram',
+    value: 'https://t.me/Sacredesports',
+    href: 'https://t.me/Sacredesports',
+  },
 ];
 
 function PlatformIcon({ name }: { name: PlatformKey }) {

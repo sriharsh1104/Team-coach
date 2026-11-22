@@ -49,6 +49,9 @@ import { emitToast } from '../../ui/toastBus';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
 import { useRecording } from '../../recording/RecordingContext';
 import { setActiveChatChannel } from '../../notifications/activeChatChannel';
+import { useVoiceOccupancy } from '../../voice/useVoiceOccupancy';
+import type { VoiceRoomKind } from '../../api/voice';
+import { ChannelAvatar } from './ChannelAvatar';
 
 import { chatStyles } from './chatStyles';
 import { MessageBubble } from './MessageBubble';
@@ -89,6 +92,11 @@ export function ChatScreen({
   const styles = useThemedStyles(chatStyles);
   const { startRecording, pendingShare, clearPendingShare } = useRecording();
   const isGroup = channelKey === 'org' || channelKey === 'guild';
+  const voiceRoom: VoiceRoomKind | null =
+    channelKey === 'guild' ? 'guild' : channelKey === 'org' ? 'team' : null;
+  const { occupancy: voiceOccupancy } = useVoiceOccupancy(voiceRoom, {
+    enabled: !!onJoinVoice && voiceRoom != null,
+  });
   // DM channel keys are `dm:{userA}:{userB}` (sorted) — the other id is the peer.
   const dmPeerId = useMemo(() => {
     if (!channelKey.startsWith('dm:') || !user?.id) return null;
@@ -2055,17 +2063,60 @@ export function ChatScreen({
           />
         ) : null}
         {onJoinVoice && !editingId ? (
-          <Pressable
-            onPress={onJoinVoice}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={
-              channelKey === 'guild' ? 'Join guild voice' : 'Join team voice'
-            }
-            style={styles.sendIconBtn}
-          >
-            <AppIcon name="headset" size={24} color={colors.icon} />
-          </Pressable>
+          <View style={styles.voiceJoinWrap}>
+            {voiceOccupancy.count > 0 ? (
+              <View
+                style={styles.voiceOccupancyAvatars}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                {voiceOccupancy.participants.slice(0, 3).map((p, i) => (
+                  <View
+                    key={p.id}
+                    style={[
+                      styles.voiceOccupancyAvatar,
+                      { marginLeft: i === 0 ? 0 : -8, zIndex: 3 - i },
+                    ]}
+                  >
+                    <ChannelAvatar
+                      uri={p.avatarUrl}
+                      size={18}
+                      fallback={(p.name[0] ?? '?').toUpperCase()}
+                      previewable={false}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            <Pressable
+              onPress={onJoinVoice}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={
+                voiceOccupancy.count > 0
+                  ? channelKey === 'guild'
+                    ? `Join guild voice, ${voiceOccupancy.count} already in`
+                    : `Join team voice, ${voiceOccupancy.count} already in`
+                  : channelKey === 'guild'
+                    ? 'Join guild voice'
+                    : 'Join team voice'
+              }
+              style={styles.sendIconBtn}
+            >
+              <AppIcon
+                name="headset"
+                size={24}
+                color={voiceOccupancy.count > 0 ? colors.link : colors.icon}
+              />
+              {voiceOccupancy.count > 0 ? (
+                <View style={styles.voiceOccupancyBadge}>
+                  <Text style={styles.voiceOccupancyBadgeText}>
+                    {voiceOccupancy.count > 9 ? '9+' : String(voiceOccupancy.count)}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+          </View>
         ) : null}
         <Pressable
           style={[styles.sendIconBtn, !draft.trim() && styles.sendIconDisabled]}

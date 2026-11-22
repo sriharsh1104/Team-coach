@@ -14,9 +14,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getToken } from '../../storage/tokenStorage';
 import * as voiceApi from '../../api/voice';
 import type { VoiceRoomKind } from '../../api/voice';
-import { VoiceConfig, VoiceRoom } from '../../api/types';
+import { VoiceConfig, VoiceOccupant, VoiceRoom } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { useVoiceContext } from '../../voice/VoiceContext';
+import { useVoiceOccupancy } from '../../voice/useVoiceOccupancy';
 import { VoiceChannelController, VoiceParticipant, ConnectionQualityLevel } from '../../voice/types';
 import { Screen } from '../../brand/Screen';
 import { AppIcon } from '../../ui/AppIcon';
@@ -324,6 +325,11 @@ function VoiceChannelBody({
   const { colors } = useTheme();
   const themed = useThemedStyles(voiceStyles);
   const inChannel = voice.status === 'connected';
+  const roomKind = (voice.room ?? 'team') as VoiceRoomKind;
+  // Peek at who is already inside before we join (Discord-style lobby).
+  const { occupancy, refresh: refreshOccupancy } = useVoiceOccupancy(roomKind, {
+    enabled: !inChannel,
+  });
 
   // Joining is asynchronous and the mic can take a second to come up — a
   // pulse on the actual transition tells the user they're live without
@@ -337,6 +343,11 @@ function VoiceChannelBody({
     else if (prev === 'connected') haptic('light');
     else if (voice.status === 'error') haptic('error');
   }, [voice.status]);
+
+  // Refresh once right before join so the lobby isn't stale.
+  useEffect(() => {
+    if (voice.status === 'idle') void refreshOccupancy();
+  }, [voice.status, refreshOccupancy]);
 
   const isGuild = voice.room === 'guild';
   // Guild voice: the server decides who is a host (owner / coach / guild
@@ -365,6 +376,7 @@ function VoiceChannelBody({
           .map((p) => ({ ...p, isSelf: false as const })),
       ]
     : [];
+  const lobbyOccupants: VoiceOccupant[] = !inChannel ? occupancy.participants : [];
 
   const handleKick = (participant: ListItem) => {
     if (participant.isSelf) return;
@@ -438,7 +450,11 @@ function VoiceChannelBody({
                   : `${voice.participants.length + 1} connected`
                 : showMultipleRooms && !selectedRoom
                 ? 'Select a room above to join'
-                : 'Empty — join to talk with your team'}
+                : lobbyOccupants.length > 0
+                  ? occupancy.max
+                    ? `${occupancy.count} / ${occupancy.max} already in voice`
+                    : `${occupancy.count} already in voice`
+                  : 'Empty — join to talk with your team'}
           </Text>
 
           {voice.status === 'idle' && (!showMultipleRooms || selectedRoom) && (
@@ -468,6 +484,36 @@ function VoiceChannelBody({
         </View>
 
         <VoicePresetPicker />
+
+        {!inChannel && lobbyOccupants.length > 0 && (
+          <>
+            <Text style={themed.sectionTitle}>Already In Voice</Text>
+            <FlatList
+              data={lobbyOccupants}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.listContent}
+              renderItem={({ item }) => (
+                <View style={themed.participantRow}>
+                  <View style={styles.avatarWrapper}>
+                    <View style={styles.avatar}>
+                      <ChannelAvatar
+                        uri={item.avatarUrl}
+                        size={32}
+                        fallback={(item.name[0] ?? '?').toUpperCase()}
+                        previewable={false}
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.participantInfo}>
+                    <Text style={themed.participantName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            />
+          </>
+        )}
 
         {inChannel && (
           <>

@@ -11,6 +11,7 @@ import { ChatService } from '../chat/chat.service';
 import { MembershipService } from '../membership/membership.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediasoupSfuService } from './mediasoup-sfu.service';
+import { VoiceGateway } from './voice.gateway';
 import { VoiceModerateDto, VoiceRoomName } from './dto';
 import { resolveGuildAccess } from './guild-access';
 import {
@@ -30,6 +31,19 @@ interface LiveKitCreds {
   apiSecret: string;
 }
 
+export type VoiceOccupant = {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+};
+
+export type VoiceOccupancy = {
+  room: VoiceRoomName;
+  max: number;
+  count: number;
+  participants: VoiceOccupant[];
+};
+
 @Injectable()
 export class VoiceService {
   private readonly logger = new Logger(VoiceService.name);
@@ -42,6 +56,7 @@ export class VoiceService {
     private readonly prisma: PrismaService,
     private readonly sfu: MediasoupSfuService,
     private readonly membershipService: MembershipService,
+    private readonly voiceGateway: VoiceGateway,
   ) {}
 
   private creds(): LiveKitCreds {
@@ -86,6 +101,50 @@ export class VoiceService {
       roomName: orgId,
       canModerate: await this.membershipService.hasEditAccess(userId, orgId),
     };
+  }
+
+  /**
+   * Who is already in the voice room — for lobby + chat indicators.
+   * Does not join the caller; only lists current occupants.
+   */
+  async getOccupancy(userId: string, room: VoiceRoomName = 'team'): Promise<VoiceOccupancy> {
+    const max =
+      room === 'guild' ? GUILD_VOICE_MAX_PARTICIPANTS : TEAM_VOICE_MAX_PARTICIPANTS;
+    const ctx = await this.resolveRoom(userId, room);
+
+    if (this.sfu.isSelfHosted()) {
+      const participants = await this.voiceGateway.listOccupants(ctx.roomName);
+      return { room: ctx.kind, max, count: participants.length, participants };
+    }
+
+    const creds = this.creds();
+    const client = this.roomClient(creds);
+    let participants: VoiceOccupant[] = [];
+    try {
+      const live = await client.listParticipants(ctx.roomName);
+      participants = live.map((p) => {
+        let avatarUrl: string | null = null;
+        if (p.metadata) {
+          try {
+            const meta = JSON.parse(p.metadata) as { avatarUrl?: string | null };
+            avatarUrl = meta.avatarUrl ?? null;
+          } catch {
+            // ignore malformed metadata
+          }
+        }
+        return {
+          id: p.identity,
+          name: p.name || p.identity,
+          avatarUrl,
+        };
+      });
+    } catch (err) {
+      // Room may not exist yet — treat as empty.
+      this.logger.debug(
+        `listParticipants(${ctx.roomName}): ${(err as Error).message}`,
+      );
+    }
+    return { room: ctx.kind, max, count: participants.length, participants };
   }
 
   async getConfig(userId: string, room: VoiceRoomName = 'team') {

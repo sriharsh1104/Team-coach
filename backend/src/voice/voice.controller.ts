@@ -18,6 +18,21 @@ export class VoiceController {
     return this.voiceService.getConfig(user.userId, room === 'guild' ? 'guild' : 'team');
   }
 
+  /**
+   * Who is already in the voice channel (without joining). Used by the
+   * voice lobby and the chat headset indicator.
+   */
+  @Get('occupancy')
+  getOccupancy(
+    @CurrentUser() user: { userId: string },
+    @Query('room') room?: string,
+  ) {
+    return this.voiceService.getOccupancy(
+      user.userId,
+      room === 'guild' ? 'guild' : 'team',
+    );
+  }
+
   /** Hosted-voice moderation (mute all / mute one / kick). Enforced server-side. */
   @Post('moderate')
   moderate(@CurrentUser() user: { userId: string }, @Body() dto: VoiceModerateDto) {

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { TokenVerifier } from 'livekit-server-sdk';
 import { VoiceService } from './voice.service';
+import { VoiceGateway } from './voice.gateway';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediasoupSfuService } from './mediasoup-sfu.service';
@@ -17,7 +18,19 @@ import { MembershipService } from '../membership/membership.service';
 // mocked dependencies instead of a full app avoids that risk entirely, and
 // is the more idiomatic place for isolated branch logic anyway.
 describe('VoiceService (unit)', () => {
-  function buildService(config: Record<string, string | undefined>, selfHosted: boolean) {
+  function mockGateway(
+    occupants: Array<{ id: string; name: string; avatarUrl: string | null }> = [],
+  ) {
+    return {
+      listOccupants: jest.fn().mockResolvedValue(occupants),
+    } as unknown as VoiceGateway;
+  }
+
+  function buildService(
+    config: Record<string, string | undefined>,
+    selfHosted: boolean,
+    gateway: VoiceGateway = mockGateway(),
+  ) {
     const configService = { get: (key: string) => config[key] } as unknown as ConfigService;
     const chatService = {
       getOrgIdForUser: jest.fn().mockResolvedValue('org-123'),
@@ -37,7 +50,14 @@ describe('VoiceService (unit)', () => {
       hasEditAccess: jest.fn().mockResolvedValue(false),
     } as unknown as MembershipService;
 
-    return new VoiceService(configService, chatService, prisma, sfu, membership);
+    return new VoiceService(
+      configService,
+      chatService,
+      prisma,
+      sfu,
+      membership,
+      gateway,
+    );
   }
 
   it('returns { mode: "self" } without touching org lookup or LiveKit at all when self-hosted', async () => {
@@ -127,6 +147,62 @@ describe('VoiceService (unit)', () => {
     const wrongVerifier = new TokenVerifier('test-key', 'a-completely-different-secret-value');
     await expect(wrongVerifier.verify(result.token)).rejects.toThrow();
   });
+
+  it('self-hosted occupancy lists gateway sockets without joining', async () => {
+    const gateway = mockGateway([
+      { id: 'u2', name: 'Bob', avatarUrl: null },
+      { id: 'u3', name: 'Cara', avatarUrl: 'https://cdn/c.png' },
+    ]);
+    const service = buildService({}, true, gateway);
+    const result = await service.getOccupancy('user-123', 'team');
+    expect(gateway.listOccupants).toHaveBeenCalledWith('org-123');
+    expect(result).toEqual({
+      room: 'team',
+      max: 5,
+      count: 2,
+      participants: [
+        { id: 'u2', name: 'Bob', avatarUrl: null },
+        { id: 'u3', name: 'Cara', avatarUrl: 'https://cdn/c.png' },
+      ],
+    });
+  });
+
+  it('hosted occupancy maps LiveKit participants (empty room = empty list)', async () => {
+    const service = buildService(
+      {
+        LIVEKIT_URL: 'wss://example.livekit.cloud',
+        LIVEKIT_API_KEY: 'test-key',
+        LIVEKIT_API_SECRET: 'test-secret-at-least-32-characters-long',
+      },
+      false,
+    );
+    const lk = {
+      listParticipants: jest.fn().mockResolvedValue([
+        {
+          identity: 'u2',
+          name: 'Bob',
+          metadata: JSON.stringify({ avatarUrl: 'https://cdn/b.png' }),
+        },
+      ]),
+    };
+    jest
+      .spyOn(service as unknown as { roomClient: () => unknown }, 'roomClient' as never)
+      .mockReturnValue(lk as never);
+
+    const result = await service.getOccupancy('user-123', 'team');
+    expect(lk.listParticipants).toHaveBeenCalledWith('org-123');
+    expect(result).toEqual({
+      room: 'team',
+      max: 5,
+      count: 1,
+      participants: [{ id: 'u2', name: 'Bob', avatarUrl: 'https://cdn/b.png' }],
+    });
+
+    lk.listParticipants.mockRejectedValue(new Error('room does not exist'));
+    const empty = await service.getOccupancy('user-123', 'team');
+    expect(empty.count).toBe(0);
+    expect(empty.participants).toEqual([]);
+  });
 });
 
 describe('VoiceService hosted guild voice (unit)', () => {
@@ -154,6 +230,7 @@ describe('VoiceService hosted guild voice (unit)', () => {
       prisma,
       { isSelfHosted: () => false } as unknown as MediasoupSfuService,
       { hasEditAccess: jest.fn().mockResolvedValue(opts.canModerate) } as unknown as MembershipService,
+      { listOccupants: jest.fn().mockResolvedValue([]) } as unknown as VoiceGateway,
     );
     const lk = {
       createRoom: jest.fn().mockResolvedValue({ metadata: opts.roomMetadata ?? '' }),

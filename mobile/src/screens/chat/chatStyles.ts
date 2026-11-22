@@ -333,6 +333,42 @@ export const chatStyles = (c: ThemeColors) => ({
     justifyContent: 'center' as const,
   },
   sendIconDisabled: { opacity: 0.35 },
+  voiceJoinWrap: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+  },
+  voiceOccupancyAvatars: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginRight: 2,
+  },
+  voiceOccupancyAvatar: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: c.bg,
+    overflow: 'hidden' as const,
+  },
+  voiceOccupancyBadge: {
+    position: 'absolute' as const,
+    top: 2,
+    right: 2,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    paddingHorizontal: 3,
+    backgroundColor: c.link,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  voiceOccupancyBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700' as const,
+    lineHeight: 11,
+  },
 });
 
 /** What `useThemedStyles(chatStyles)` hands back. */

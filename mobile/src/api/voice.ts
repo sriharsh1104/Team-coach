@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { apiClient, apiBaseUrl } from './client';
-import { VoiceConfig } from './types';
+import { VoiceConfig, VoiceOccupancy } from './types';
 
 export type VoiceRoomKind = 'team' | 'guild';
 
@@ -8,6 +8,16 @@ export type VoiceRoomKind = 'team' | 'guild';
 export function getVoiceConfig(room: VoiceRoomKind = 'team') {
   return apiClient
     .get<VoiceConfig>('/voice/config', room === 'guild' ? { params: { room } } : undefined)
+    .then((res) => res.data);
+}
+
+/** Who is already in the voice channel — does not join the caller. */
+export function getVoiceOccupancy(room: VoiceRoomKind = 'team') {
+  return apiClient
+    .get<VoiceOccupancy>(
+      '/voice/occupancy',
+      room === 'guild' ? { params: { room } } : undefined,
+    )
     .then((res) => res.data);
 }
 
