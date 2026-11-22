@@ -109,7 +109,8 @@ class LiveStreamService : Service(), ConnectChecker {
   }
 
   private fun setAudioMuted(s: GenericStream, muted: Boolean) {
-    when (val src = s.getAudioSource()) {
+    // StreamBase is Kotlin — use the property, not Java-style getAudioSource().
+    when (val src = s.audioSource) {
       is MixAudioSource -> {
         if (muted) {
           src.muteMicrophone()
