@@ -20,6 +20,9 @@ export const TEAM_VOICE_MAX_PARTICIPANTS = 5;
 /** Hard cap for Guild Voice. */
 export const GUILD_VOICE_MAX_PARTICIPANTS = 50;
 
+/** 1-on-1 means exactly two seats — the cap is the feature. */
+export const DIRECT_VOICE_MAX_PARTICIPANTS = 2;
+
 /** Participant attribute set only by our token endpoint (clients cannot write it). */
 export const MOD_ATTRIBUTE = 'mod';
 

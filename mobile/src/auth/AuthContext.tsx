@@ -46,6 +46,7 @@ function toAuthUser(me: AuthUser): AuthUser {
     hasGoogle: me.hasGoogle,
     twoFactorEnabled: me.twoFactorEnabled,
     isPlatformAdmin: me.isPlatformAdmin ?? false,
+    canDirectVoice: me.canDirectVoice ?? false,
   };
 }
 
@@ -172,13 +173,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const applyAuthResponse = useCallback(async (response: AuthResponse) => {
-    await setToken(response.accessToken);
-    // Through the same normaliser as the /auth/me paths so isPlatformAdmin
-    // is always a real boolean, whichever way the session started.
-    setUser(toAuthUser(response.user));
-    setOrgState(response.org);
-    setGuildState(response.guild ?? null);
-    registerPushTokenWithBackend();
+    // Hold the root spinner until user + org/guild are applied together so
+    // RootNavigator never flashes OrgChoice (and its "leave guild" toast)
+    // for an account that already has a seat.
+    setIsLoading(true);
+    try {
+      await setToken(response.accessToken);
+      // Through the same normaliser as the /auth/me paths so isPlatformAdmin
+      // is always a real boolean, whichever way the session started.
+      setUser(toAuthUser(response.user));
+      setOrgState(response.org);
+      setGuildState(response.guild ?? null);
+      registerPushTokenWithBackend();
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const signup = useCallback(

@@ -12,6 +12,21 @@ export const VOICE_PRESETS: Array<{ id: VoicePreset; label: string }> = [
   { id: 'robot', label: 'Robot' },
 ];
 
+export type VoiceChangerStatus = {
+  /** The native effect is part of this build at all. */
+  available: boolean;
+  /** Hooked into the live WebRTC capture pipeline. */
+  attached: boolean;
+  preset: VoicePreset;
+  /** Samples pushed through with a preset on — 0 means nothing is reaching us. */
+  processedFrames: number;
+  /** WebRTC handed us a buffer shape we cannot read; audio passes untouched. */
+  layoutUnsupported: boolean;
+  bandRate: number;
+  bands: number;
+  frames: number;
+};
+
 type NativeVoiceChanger = {
   isAvailable: () => boolean;
   isActive: () => boolean;
@@ -19,6 +34,7 @@ type NativeVoiceChanger = {
   getPresets: () => string[];
   getPreset: () => string;
   setPreset: (name: string) => string;
+  getStatus?: () => VoiceChangerStatus;
   playCue: () => boolean;
 };
 
@@ -58,6 +74,22 @@ export function attachVoiceChanger(): boolean {
   }
 }
 
+/**
+ * What the effect is really doing. "I picked Woman and nothing changed" has
+ * several causes that look identical from the UI — not attached yet, attached
+ * but no audio flowing, or an unreadable buffer layout — so the picker reads
+ * this instead of assuming the tap worked.
+ *
+ * Returns null on builds without the native module (iOS / web / Expo Go).
+ */
+export function getVoiceChangerStatus(): VoiceChangerStatus | null {
+  try {
+    return native?.getStatus?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function getVoicePreset(): VoicePreset {
   try {
     const p = native?.getPreset();
@@ -76,6 +108,11 @@ export function setVoicePreset(preset: VoicePreset): boolean {
   if (!native) return false;
   try {
     native.setPreset(preset);
+    // The effect only runs once it is bolted onto the capture pipeline, which
+    // does not exist until WebRTC has built its factory. Asking here means
+    // picking a preset before joining still takes hold the moment the call
+    // starts, rather than needing a second tap.
+    native.attach?.();
     return true;
   } catch (err) {
     console.warn('setVoicePreset failed:', err);

@@ -20,28 +20,34 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.pedro.common.ConnectChecker
+import com.pedro.encoder.input.sources.audio.AudioSource
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
 import com.pedro.encoder.input.sources.audio.MixAudioSource
 import com.pedro.encoder.input.sources.video.NoVideoSource
 import com.pedro.encoder.input.sources.video.ScreenSource
+import com.pedro.library.base.StreamBase
 import com.pedro.library.generic.GenericStream
+import com.pedro.library.multiple.MultiStream
+import com.pedro.library.multiple.MultiType
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Foreground live stream: screen (MediaProjection) + mic mixed with game/
- * media playback audio → RTMP(S) ingest (YouTube / Twitch / Kick).
- *
- * Separate from ScreenRecordService — recording stays untouched.
+ * media playback audio → one or more RTMP(S) ingest endpoints
+ * (YouTube / Twitch / Kick, alone or together).
  */
-class LiveStreamService : Service(), ConnectChecker {
+class LiveStreamService : Service() {
   private val main = Handler(Looper.getMainLooper())
   private var projection: MediaProjection? = null
-  private var stream: GenericStream? = null
+  private var stream: StreamBase? = null
   private var wakeLock: PowerManager.WakeLock? = null
   private val stopping = AtomicBoolean(false)
   private val videoBitrateBeforePause = AtomicInteger(2_500_000)
-  private var endpoint: String? = null
+  private var endpoints: List<String> = emptyList()
+  private val successCount = AtomicInteger(0)
+  private val failCount = AtomicInteger(0)
+  private var totalTargets = 1
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -64,12 +70,10 @@ class LiveStreamService : Service(), ConnectChecker {
     return START_NOT_STICKY
   }
 
-  /** Mute outbound audio while keeping the RTMP session + screen capture up. */
   private fun pauseLive() {
     val s = stream ?: return
     try {
       setAudioMuted(s, true)
-      // Soft-pause video: drop bitrate so the feed looks idle while PAUSED UI shows.
       try {
         videoBitrateBeforePause.set(2_500_000)
         s.setVideoBitrateOnFly(50_000)
@@ -101,15 +105,17 @@ class LiveStreamService : Service(), ConnectChecker {
       val manager = getSystemService(NotificationManager::class.java)
       manager.notify(
         NOTIF_ID,
-        buildNotification("LIVE", "Streaming to your channel. Tap End to stop."),
+        buildNotification(
+          "LIVE",
+          liveNotifText(),
+        ),
       )
     } catch (err: Exception) {
       Log.w(TAG, "resume failed", err)
     }
   }
 
-  private fun setAudioMuted(s: GenericStream, muted: Boolean) {
-    // StreamBase is Kotlin — use the property, not Java-style getAudioSource().
+  private fun setAudioMuted(s: StreamBase, muted: Boolean) {
     when (val src = s.audioSource) {
       is MixAudioSource -> {
         if (muted) {
@@ -124,6 +130,73 @@ class LiveStreamService : Service(), ConnectChecker {
         if (muted) src.mute() else src.unMute()
       }
     }
+  }
+
+  private fun makeChecker(index: Int): ConnectChecker {
+    return object : ConnectChecker {
+      override fun onConnectionStarted(url: String) {
+        Log.i(TAG, "connecting[$index] $url")
+      }
+
+      override fun onConnectionSuccess() {
+        val first = successCount.getAndIncrement() == 0
+        Log.i(TAG, "connected[$index] (first=$first)")
+        if (first) {
+          LiveBridge.resolveStart()
+          val manager = getSystemService(NotificationManager::class.java)
+          manager.notify(NOTIF_ID, buildNotification("LIVE", liveNotifText()))
+        }
+      }
+
+      override fun onConnectionFailed(reason: String) {
+        val fails = failCount.incrementAndGet()
+        Log.e(TAG, "connection failed[$index]: $reason")
+        // Keep going if at least one destination is up; only hard-fail when none connected.
+        if (successCount.get() == 0 && fails >= totalTargets) {
+          fail(reason.ifBlank { "Connection to ingest failed" })
+        } else if (successCount.get() > 0) {
+          LiveBridge.emitSoftError(
+            "One platform failed to connect: ${reason.ifBlank { "unknown error" }}",
+          )
+        }
+      }
+
+      override fun onDisconnect() {
+        if (!stopping.get() && successCount.get() <= 1 && totalTargets == 1) {
+          stopLive("Disconnected")
+        }
+      }
+
+      override fun onAuthError() {
+        onConnectionFailed("Stream key rejected by the platform")
+      }
+
+      override fun onAuthSuccess() {}
+    }
+  }
+
+  private fun liveNotifText(): String {
+    val n = endpoints.size.coerceAtLeast(1)
+    return if (n == 1) {
+      "Streaming to your channel. Tap End to stop."
+    } else {
+      "Streaming to $n platforms. Tap End to stop."
+    }
+  }
+
+  private fun prepareSources(proj: MediaProjection): Pair<ScreenSource, AudioSource> {
+    val video = ScreenSource(applicationContext, proj)
+    val audio: AudioSource = if (Build.VERSION.SDK_INT >= 29) {
+      try {
+        MixAudioSource(proj).also { it.microphoneVolume = 2f }
+      } catch (err: Exception) {
+        Log.w(TAG, "mix audio unavailable, mic only", err)
+        MicrophoneSource()
+      }
+    } else {
+      MicrophoneSource()
+    }
+    return video to audio
   }
 
   private fun startLive(intent: Intent) {
@@ -145,12 +218,16 @@ class LiveStreamService : Service(), ConnectChecker {
       @Suppress("DEPRECATION")
       intent.getParcelableExtra(EXTRA_DATA)
     }
-    val url = intent.getStringExtra(EXTRA_ENDPOINT)
-    if (data == null || url.isNullOrBlank()) {
+    val urls = intent.getStringArrayListExtra(EXTRA_ENDPOINTS)?.filter { it.isNotBlank() }
+      ?: emptyList()
+    if (data == null || urls.isEmpty()) {
       fail("Live stream could not start")
       return
     }
-    endpoint = url
+    endpoints = urls
+    totalTargets = urls.size
+    successCount.set(0)
+    failCount.set(0)
 
     val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     val proj = try {
@@ -177,43 +254,40 @@ class LiveStreamService : Service(), ConnectChecker {
     }
 
     val size = captureSize()
-    val generic = try {
-      GenericStream(applicationContext, this, NoVideoSource(), MicrophoneSource()).also { s ->
-        s.getGlInterface().setForceRender(true, 15)
-        val prepared = s.prepareVideo(
-          size.width,
-          size.height,
-          bitrate = 2_500_000,
-          fps = 30,
-          iFrameInterval = 2,
-          rotation = 0,
-        ) && s.prepareAudio(
-          sampleRate = 44_100,
-          isStereo = true,
-          bitrate = 128_000,
-          echoCanceler = true,
-          noiseSuppressor = true,
-        )
-        if (!prepared) {
-          throw IllegalStateException("Encoder prepare failed")
-        }
-        s.changeVideoSource(ScreenSource(applicationContext, proj))
-        if (Build.VERSION.SDK_INT >= 29) {
-          try {
-            val mix = MixAudioSource(proj)
-            mix.microphoneVolume = 2f
-            s.changeAudioSource(mix)
-          } catch (err: Exception) {
-            Log.w(TAG, "mix audio unavailable, mic only", err)
-          }
-        }
+    try {
+      if (urls.size == 1) {
+        startSingle(urls[0], proj, size)
+      } else {
+        startMulti(urls, proj, size)
       }
     } catch (err: Exception) {
       Log.e(TAG, "stream setup failed", err)
-      fail("Could not prepare live encoder")
-      return
+      fail(err.message ?: "Could not prepare live encoder")
     }
+  }
 
+  private fun startSingle(url: String, proj: MediaProjection, size: Size) {
+    val checker = makeChecker(0)
+    val generic = GenericStream(applicationContext, checker, NoVideoSource(), MicrophoneSource())
+    generic.getGlInterface().setForceRender(true, 15)
+    val prepared = generic.prepareVideo(
+      size.width,
+      size.height,
+      bitrate = 2_500_000,
+      fps = 30,
+      iFrameInterval = 2,
+      rotation = 0,
+    ) && generic.prepareAudio(
+      sampleRate = 44_100,
+      isStereo = true,
+      bitrate = 128_000,
+      echoCanceler = true,
+      noiseSuppressor = true,
+    )
+    if (!prepared) throw IllegalStateException("Encoder prepare failed")
+    val (video, audio) = prepareSources(proj)
+    generic.changeVideoSource(video)
+    generic.changeAudioSource(audio)
     stream = generic
     try {
       generic.startStream(url)
@@ -223,10 +297,61 @@ class LiveStreamService : Service(), ConnectChecker {
     }
   }
 
+  private fun startMulti(urls: List<String>, proj: MediaProjection, size: Size) {
+    val checkers = Array(urls.size) { i -> makeChecker(i) }
+    val multi = MultiStream(
+      applicationContext,
+      checkers,
+      null,
+      null,
+      null,
+      NoVideoSource(),
+      MicrophoneSource(),
+    )
+    multi.getGlInterface().setForceRender(true, 15)
+    val prepared = multi.prepareVideo(
+      size.width,
+      size.height,
+      bitrate = 2_500_000,
+      fps = 30,
+      iFrameInterval = 2,
+      rotation = 0,
+    ) && multi.prepareAudio(
+      sampleRate = 44_100,
+      isStereo = true,
+      bitrate = 128_000,
+      echoCanceler = true,
+      noiseSuppressor = true,
+    )
+    if (!prepared) throw IllegalStateException("Encoder prepare failed")
+    val (video, audio) = prepareSources(proj)
+    multi.changeVideoSource(video)
+    multi.changeAudioSource(audio)
+    stream = multi
+    urls.forEachIndexed { index, url ->
+      try {
+        multi.startStream(MultiType.RTMP, index, url)
+      } catch (err: Exception) {
+        Log.e(TAG, "startStream[$index] failed", err)
+        makeChecker(index).onConnectionFailed(err.message ?: "Could not connect")
+      }
+    }
+  }
+
   private fun stopLive(reason: String) {
     if (!stopping.compareAndSet(false, true)) return
     try {
-      stream?.stopStream()
+      when (val s = stream) {
+        is MultiStream -> {
+          endpoints.indices.forEach { i ->
+            try {
+              s.stopStream(MultiType.RTMP, i)
+            } catch (_: Exception) {
+            }
+          }
+        }
+        else -> s?.stopStream()
+      }
     } catch (_: Exception) {
     }
     try {
@@ -241,7 +366,7 @@ class LiveStreamService : Service(), ConnectChecker {
     projection = null
     wakeLock?.let { if (it.isHeld) it.release() }
     wakeLock = null
-    endpoint = null
+    endpoints = emptyList()
     LiveBridge.deliverStopped()
     val manager = getSystemService(NotificationManager::class.java)
     manager.cancel(NOTIF_ID)
@@ -258,7 +383,17 @@ class LiveStreamService : Service(), ConnectChecker {
   private fun fail(message: String) {
     stopping.set(true)
     try {
-      stream?.stopStream()
+      when (val s = stream) {
+        is MultiStream -> {
+          endpoints.indices.forEach { i ->
+            try {
+              s.stopStream(MultiType.RTMP, i)
+            } catch (_: Exception) {
+            }
+          }
+        }
+        else -> s?.stopStream()
+      }
     } catch (_: Exception) {
     }
     try {
@@ -273,6 +408,7 @@ class LiveStreamService : Service(), ConnectChecker {
     projection = null
     wakeLock?.let { if (it.isHeld) it.release() }
     wakeLock = null
+    endpoints = emptyList()
     LiveBridge.deliverFailed(message)
     val manager = getSystemService(NotificationManager::class.java)
     manager.cancel(NOTIF_ID)
@@ -284,38 +420,6 @@ class LiveStreamService : Service(), ConnectChecker {
     }
     stopSelf()
   }
-
-  // ---- ConnectChecker ----
-
-  override fun onConnectionStarted(url: String) {
-    Log.i(TAG, "connecting $url")
-  }
-
-  override fun onConnectionSuccess() {
-    LiveBridge.resolveStart()
-    val manager = getSystemService(NotificationManager::class.java)
-    manager.notify(
-      NOTIF_ID,
-      buildNotification("LIVE", "Streaming to your channel. Tap End to stop."),
-    )
-  }
-
-  override fun onConnectionFailed(reason: String) {
-    Log.e(TAG, "connection failed: $reason")
-    fail(reason.ifBlank { "Connection to ingest failed" })
-  }
-
-  override fun onDisconnect() {
-    if (!stopping.get()) {
-      stopLive("Disconnected")
-    }
-  }
-
-  override fun onAuthError() {
-    fail("Stream key rejected by the platform")
-  }
-
-  override fun onAuthSuccess() {}
 
   private fun buildNotification(title: String, text: String): Notification {
     ensureChannel()
@@ -371,7 +475,7 @@ class LiveStreamService : Service(), ConnectChecker {
     const val ACTION_RESUME = "com.teamcoach.livestreamer.RESUME"
     const val EXTRA_RESULT_CODE = "resultCode"
     const val EXTRA_DATA = "data"
-    const val EXTRA_ENDPOINT = "endpoint"
+    const val EXTRA_ENDPOINTS = "endpoints"
     private const val NOTIF_ID = 4412
     private const val CHANNEL = "sacred-go-live"
     private const val TAG = "LiveStream"

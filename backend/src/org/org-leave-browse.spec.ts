@@ -59,7 +59,10 @@ describe('OrgService leave + browse guilds', () => {
 
     const service = new OrgService(
       prisma,
-      { publish: jest.fn() } as unknown as RealtimeService,
+      {
+        publish: jest.fn(),
+        publishToUser: jest.fn(),
+      } as unknown as RealtimeService,
       {
         tokensFor: () => [],
         send: jest.fn().mockResolvedValue(undefined),

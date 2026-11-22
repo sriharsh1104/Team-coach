@@ -9,16 +9,28 @@ import { VoiceInviteDto, VoiceModerateDto } from './dto';
 export class VoiceController {
   constructor(private readonly voiceService: VoiceService) {}
 
-  /** `?room=guild` for the guild-wide room; anything else = the team room. */
+  /**
+   * `?room=guild` for the guild-wide room, `?room=direct&peer=<userId>` for a
+   * 1-on-1 call (both sides need the admin-granted permission); anything else
+   * is the team room.
+   */
   @Get('config')
   getConfig(
     @CurrentUser() user: { userId: string },
     @Query('room') room?: string,
+    @Query('peer') peer?: string,
   ) {
     return this.voiceService.getConfig(
       user.userId,
-      room === 'guild' ? 'guild' : 'team',
+      room === 'guild' ? 'guild' : room === 'direct' ? 'direct' : 'team',
+      peer,
     );
+  }
+
+  /** Who the caller can start a 1-on-1 voice call with. */
+  @Get('direct/peers')
+  listDirectVoicePeers(@CurrentUser() user: { userId: string }) {
+    return this.voiceService.listDirectVoicePeers(user.userId);
   }
 
   /**
@@ -29,10 +41,12 @@ export class VoiceController {
   getOccupancy(
     @CurrentUser() user: { userId: string },
     @Query('room') room?: string,
+    @Query('peer') peer?: string,
   ) {
     return this.voiceService.getOccupancy(
       user.userId,
-      room === 'guild' ? 'guild' : 'team',
+      room === 'guild' ? 'guild' : room === 'direct' ? 'direct' : 'team',
+      peer,
     );
   }
 

@@ -24,8 +24,8 @@ import { isVoiceScreenSharing } from '../voice/voiceScreenShareGate';
 import { emitToast } from '../ui/toastBus';
 
 export type LiveStartOpts = {
-  rtmpUrl: string;
-  streamKey: string;
+  /** One to three RTMP destinations — same screen goes to all of them. */
+  destinations: Array<{ rtmpUrl: string; streamKey: string }>;
   title?: string;
   bannerUri?: string | null;
 };
@@ -172,8 +172,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       setBannerUri(opts.bannerUri?.trim() || null);
       try {
         const result = await startLiveStream({
-          rtmpUrl: opts.rtmpUrl,
-          streamKey: opts.streamKey,
+          destinations: opts.destinations,
         });
         if (result === 'unsupported') {
           setStarting(false);

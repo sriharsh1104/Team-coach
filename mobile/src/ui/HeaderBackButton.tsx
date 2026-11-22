@@ -1,25 +1,26 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { AppIcon } from './AppIcon';
-import { colors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
 import { SoftPressable } from './SoftPressable';
 
 /**
  * Clearer stand-in for native-stack's default back chevron, which renders
  * small and low-contrast on some devices. Same icon-button look as the
- * menu/close/settings buttons elsewhere in the app.
+ * menu/settings buttons elsewhere in the app.
  */
 export function HeaderBackButton({ onPress }: { onPress: () => void }) {
+  const { colors } = useTheme();
   return (
     <SoftPressable
       onPress={onPress}
-      style={styles.btn}
+      style={[styles.btn, { backgroundColor: colors.surface }]}
       accessibilityRole="button"
       accessibilityLabel="Go back"
       hitSlop={8}
       pressScale={0.92}
     >
-      <AppIcon name="chevron-back" size={22} color={colors.text} />
+      <AppIcon name="chevron-back" size={22} color={colors.icon} />
     </SoftPressable>
   );
 }
@@ -31,7 +32,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginLeft: -4,
   },
 });

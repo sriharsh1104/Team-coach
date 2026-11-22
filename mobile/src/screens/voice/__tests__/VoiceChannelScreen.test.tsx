@@ -290,7 +290,11 @@ describe('GuildVoiceScreen', () => {
     renderWithVoice(<GuildVoiceScreen />);
 
     await screen.findByText('Guild Voice');
-    expect(mockedVoiceApi.getVoiceConfig).toHaveBeenCalledWith('guild');
+    // Second arg is the 1-on-1 peer id — undefined for a guild room.
+    expect(mockedVoiceApi.getVoiceConfig).toHaveBeenCalledWith(
+      'guild',
+      undefined,
+    );
     expect(mockedUseHosted).toHaveBeenCalledWith('wss://livekit.example.com', 'lk-guild-token', {
       room: 'guild',
       canModerate: true,

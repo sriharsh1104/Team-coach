@@ -48,6 +48,7 @@ const TITLE_PREFIX = 'sacred.live.title.';
 const BANNER_PREFIX = 'sacred.live.banner.';
 const PRESETS_KEY = 'sacred.live.presets.v1';
 const ACTIVE_ID_KEY = 'sacred.live.activePresetId.';
+const SELECTED_PLATFORMS_KEY = 'sacred.live.selectedPlatforms';
 
 function secureStore() {
   if (Platform.OS === 'web') return null;
@@ -193,6 +194,35 @@ export async function setActivePresetId(
   id: string,
 ): Promise<void> {
   return saveString(ACTIVE_ID_KEY + platform, id);
+}
+
+/** Which platforms are checked for the next Go Live (1–3). */
+export async function loadSelectedPlatforms(): Promise<LivePlatform[]> {
+  const raw = await loadString(SELECTED_PLATFORMS_KEY);
+  if (!raw) return ['youtube'];
+  try {
+    const parsed = JSON.parse(raw) as string[];
+    const valid = parsed.filter(
+      (p): p is LivePlatform =>
+        p === 'youtube' || p === 'twitch' || p === 'kick',
+    );
+    return valid.length > 0 ? valid : ['youtube'];
+  } catch {
+    return ['youtube'];
+  }
+}
+
+export async function saveSelectedPlatforms(
+  platforms: LivePlatform[],
+): Promise<void> {
+  const unique = [...new Set(platforms)].filter(
+    (p): p is LivePlatform =>
+      p === 'youtube' || p === 'twitch' || p === 'kick',
+  );
+  await saveString(
+    SELECTED_PLATFORMS_KEY,
+    JSON.stringify(unique.length > 0 ? unique : ['youtube']),
+  );
 }
 
 /**

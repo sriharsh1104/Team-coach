@@ -6,6 +6,8 @@ export type OrgRealtimeEvent = {
     | 'media.changed'
     | 'scrims.changed'
     | 'members.changed'
+    /** Your own seat changed — re-read /auth/me and redraw the shell. */
+    | 'membership.changed'
     | 'heartbeat';
   orgId?: string;
   at: string;

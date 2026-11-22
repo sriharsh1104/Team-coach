@@ -6,7 +6,10 @@ import {
   View,
 } from 'react-native';
 import * as orgApi from '../../api/org';
+import * as chatApi from '../../api/chat';
 import { roleLabel } from '../../api/roles';
+import { UserPresence } from '../../api/types';
+import { getToken } from '../../storage/tokenStorage';
 import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SoftPressable } from '../../ui/SoftPressable';
@@ -44,6 +47,9 @@ export function ChatMembersPanel({
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [onlineByUserId, setOnlineByUserId] = useState<Record<string, boolean>>(
+    {},
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +99,59 @@ export function ChatMembersPanel({
     };
   }, [channelKey]);
 
+  useEffect(() => {
+    const ids = members.map((m) => m.userId);
+    if (ids.length === 0) return;
+
+    let cancelled = false;
+    let detachUpdate: (() => void) | null = null;
+    let detachConnect: (() => void) | null = null;
+
+    void getToken().then((token) => {
+      if (!token || cancelled) return;
+      const socket = chatApi.connectChatSocket(token);
+      const fetchPresence = () => {
+        socket.emit(
+          'presence:get',
+          { userIds: ids },
+          (ack: {
+            ok?: boolean;
+            presence?: Record<string, UserPresence>;
+          }) => {
+            if (cancelled || !ack?.ok || !ack.presence) return;
+            setOnlineByUserId((prev) => {
+              const next = { ...prev };
+              for (const [id, p] of Object.entries(ack.presence!)) {
+                next[id] = !!p.online;
+              }
+              return next;
+            });
+          },
+        );
+      };
+      if (socket.connected) fetchPresence();
+      else {
+        const onConnect = () => fetchPresence();
+        socket.once('connect', onConnect);
+        detachConnect = () => socket.off('connect', onConnect);
+      }
+      const onUpdate = (payload: { userId: string; online: boolean }) => {
+        setOnlineByUserId((prev) => ({
+          ...prev,
+          [payload.userId]: !!payload.online,
+        }));
+      };
+      socket.on('presence:update', onUpdate);
+      detachUpdate = () => socket.off('presence:update', onUpdate);
+    });
+
+    return () => {
+      cancelled = true;
+      detachConnect?.();
+      detachUpdate?.();
+    };
+  }, [members]);
+
   return (
     <View style={styles.root}>
       <ChatFlowHeader
@@ -136,6 +195,7 @@ export function ChatMembersPanel({
                 size={36}
                 fallback={(item.name[0] ?? '?').toUpperCase()}
                 previewable={false}
+                online={!!onlineByUserId[item.userId]}
               />
               <View style={staticStyles.rowMain}>
                 <Text style={styles.name}>

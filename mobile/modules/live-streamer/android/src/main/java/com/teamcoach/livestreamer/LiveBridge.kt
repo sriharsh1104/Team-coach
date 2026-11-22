@@ -16,9 +16,9 @@ internal object LiveBridge {
   var stopPromise: Promise? = null
   var module: LiveStreamerModule? = null
 
-  /** Pending RTMP endpoint assembled in the Expo module before the permission activity. */
+  /** Pending RTMP endpoints assembled in the Expo module before the permission activity. */
   @Volatile
-  var pendingEndpoint: String? = null
+  var pendingEndpoints: ArrayList<String> = ArrayList()
 
   fun resolveStart() {
     main.post {
@@ -36,7 +36,7 @@ internal object LiveBridge {
       starting.set(false)
       live.set(false)
       paused.set(false)
-      pendingEndpoint = null
+      pendingEndpoints = ArrayList()
       startPromise?.reject(code, message, null)
       startPromise = null
       module?.sendEvent("onError", mapOf("message" to message, "code" to code))
@@ -48,7 +48,7 @@ internal object LiveBridge {
       live.set(false)
       starting.set(false)
       paused.set(false)
-      pendingEndpoint = null
+      pendingEndpoints = ArrayList()
       module?.sendEvent("onStopped", emptyMap<String, Any?>())
       stopPromise?.resolve(null)
       stopPromise = null
@@ -60,7 +60,7 @@ internal object LiveBridge {
       live.set(false)
       starting.set(false)
       paused.set(false)
-      pendingEndpoint = null
+      pendingEndpoints = ArrayList()
       module?.sendEvent("onError", mapOf("message" to message))
       module?.sendEvent("onStopped", mapOf("error" to message))
       stopPromise?.reject("LIVE_FAILED", message, null)
@@ -73,6 +73,12 @@ internal object LiveBridge {
   fun emitPaused(isPaused: Boolean) {
     main.post {
       module?.sendEvent("onPaused", mapOf("paused" to isPaused))
+    }
+  }
+
+  fun emitSoftError(message: String) {
+    main.post {
+      module?.sendEvent("onError", mapOf("message" to message))
     }
   }
 }

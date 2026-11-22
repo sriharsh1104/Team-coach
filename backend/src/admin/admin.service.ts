@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SetDirectVoiceDto } from './dto';
 
 /** Page size cap so one call can never pull the whole table. */
 const MAX_PAGE_SIZE = 100;
@@ -7,6 +8,8 @@ const DEFAULT_PAGE_SIZE = 25;
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /** Platform-wide counts for the admin landing screen. */
@@ -154,5 +157,65 @@ export class AdminService {
       orderBy: { createdAt: 'asc' },
       select: { id: true, name: true, email: true, createdAt: true },
     });
+  }
+
+  /**
+   * Everyone who can use 1-on-1 voice. Same reasoning as listAdmins: a
+   * permission nobody can see is a permission nobody can audit.
+   */
+  async listDirectVoiceUsers() {
+    return this.prisma.user.findMany({
+      where: { canDirectVoice: true },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        inGameName: true,
+        avatarUrl: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  /**
+   * Grant or revoke 1-on-1 voice. Addressed by email or user id — email is
+   * what an admin actually has to hand.
+   *
+   * A grant on its own opens nothing: a call needs the flag on BOTH people,
+   * checked server-side when the token is minted.
+   */
+  async setDirectVoice(dto: SetDirectVoiceDto) {
+    const where = dto.userId
+      ? { id: dto.userId }
+      : { email: dto.email!.trim().toLowerCase() };
+    const user = await this.prisma.user.findUnique({
+      where,
+      select: { id: true, canDirectVoice: true },
+    });
+    if (!user) {
+      throw new NotFoundException(
+        dto.userId
+          ? 'No user with that id'
+          : `No user signed up with ${dto.email}`,
+      );
+    }
+    if (user.canDirectVoice === dto.enabled) {
+      return { userId: user.id, canDirectVoice: user.canDirectVoice };
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { canDirectVoice: dto.enabled },
+      select: { id: true, name: true, email: true, canDirectVoice: true },
+    });
+    this.logger.log(
+      `direct voice ${dto.enabled ? 'granted to' : 'revoked from'} ${updated.email}`,
+    );
+    return {
+      userId: updated.id,
+      name: updated.name,
+      email: updated.email,
+      canDirectVoice: updated.canDirectVoice,
+    };
   }
 }

@@ -11,7 +11,8 @@ import { registerBackInterceptor } from '../../navigation/backInterceptors';
 import { AppIcon } from '../../ui/AppIcon';
 import * as chatApi from '../../api/chat';
 import { CacheKeys, hasFreshEnough, revalidate } from '../../api/queryCache';
-import { ChatChannel, ChatTeammate } from '../../api/types';
+import { ChatChannel, ChatTeammate, UserPresence } from '../../api/types';
+import { getToken } from '../../storage/tokenStorage';
 import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { SkeletonList } from '../../ui/Skeleton';
@@ -20,7 +21,6 @@ import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
 import { ChatMembersPanel } from './ChatMembersPanel';
 import { ChatMemberProfilePanel } from './ChatMemberProfilePanel';
-import { UserPresence } from '../../api/types';
 import { subscribeOpenChat } from '../../notifications/openChatChannel';
 import { ChatSettingsSheet } from './ChatSettingsSheet';
 import { ChatFlowHeader } from './ChatFlowHeader';
@@ -75,6 +75,10 @@ export function ChatHubScreen({ onLoadError }: Props) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingInbox, setIsLoadingInbox] = useState(true);
   const [peerOnline, setPeerOnline] = useState(false);
+  /** Live green-dot map for DM / teammate rows in the inbox. */
+  const [onlineByUserId, setOnlineByUserId] = useState<Record<string, boolean>>(
+    {},
+  );
 
   const load = useCallback(async (opts?: { force?: boolean }) => {
     await revalidate(
@@ -136,6 +140,71 @@ export function ChatHubScreen({ onLoadError }: Props) {
     const openKeys = new Set(dmChannels.map((d) => d.channelKey));
     return teammates.filter((t) => !openKeys.has(t.channelKey));
   }, [teammates, dmChannels]);
+
+  // Batch-fetch online status for everyone visible in the inbox, and keep
+  // the green dots live via presence:update.
+  useEffect(() => {
+    const ids = [
+      ...new Set(
+        [
+          ...dmChannels.map((c) => c.peerUserId),
+          ...startDmTeammates.map((t) => t.userId),
+        ].filter((id): id is string => !!id),
+      ),
+    ];
+    if (ids.length === 0) return;
+
+    let cancelled = false;
+    let detachUpdate: (() => void) | null = null;
+    let detachConnect: (() => void) | null = null;
+
+    void getToken().then((token) => {
+      if (!token || cancelled) return;
+      const socket = chatApi.connectChatSocket(token);
+      const fetchPresence = () => {
+        socket.emit(
+          'presence:get',
+          { userIds: ids },
+          (ack: {
+            ok?: boolean;
+            presence?: Record<string, UserPresence>;
+          }) => {
+            if (cancelled || !ack?.ok || !ack.presence) return;
+            setOnlineByUserId((prev) => {
+              const next = { ...prev };
+              for (const [id, p] of Object.entries(ack.presence!)) {
+                next[id] = !!p.online;
+              }
+              return next;
+            });
+          },
+        );
+      };
+      if (socket.connected) fetchPresence();
+      else {
+        const onConnect = () => fetchPresence();
+        socket.once('connect', onConnect);
+        detachConnect = () => socket.off('connect', onConnect);
+      }
+      const onUpdate = (payload: {
+        userId: string;
+        online: boolean;
+      }) => {
+        setOnlineByUserId((prev) => ({
+          ...prev,
+          [payload.userId]: !!payload.online,
+        }));
+      };
+      socket.on('presence:update', onUpdate);
+      detachUpdate = () => socket.off('presence:update', onUpdate);
+    });
+
+    return () => {
+      cancelled = true;
+      detachConnect?.();
+      detachUpdate?.();
+    };
+  }, [dmChannels, startDmTeammates]);
 
   const pushOverlay = (overlay: ChatOverlay) => {
     setOverlayStack((prev) => [...prev, overlay]);
@@ -613,6 +682,10 @@ export function ChatHubScreen({ onLoadError }: Props) {
                   size={40}
                   fallback={(channel.title || '?').slice(0, 1).toUpperCase()}
                   previewable={!!channel.peerAvatarUrl}
+                  online={
+                    !!channel.peerUserId &&
+                    !!onlineByUserId[channel.peerUserId]
+                  }
                 />
                 <View style={styles.rowMain}>
                   <Text style={[styles.rowTitle, { color: theme.text }]}>
@@ -669,6 +742,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
                 size={40}
                 fallback={(mate.name || '?').slice(0, 1).toUpperCase()}
                 previewable={!!mate.avatarUrl}
+                online={!!onlineByUserId[mate.userId]}
               />
               <Text style={[styles.rowTitle, { color: theme.text }]}>
                 {mate.name}

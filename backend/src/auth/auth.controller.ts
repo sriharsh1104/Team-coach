@@ -186,6 +186,7 @@ export class AuthController {
       hasGoogle: !!user.googleId,
       twoFactorEnabled: user.twoFactorEnabled,
       isPlatformAdmin: user.isPlatformAdmin,
+      canDirectVoice: user.canDirectVoice,
       org: session.org,
       guild: session.guild,
     };

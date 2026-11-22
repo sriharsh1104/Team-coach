@@ -19,6 +19,7 @@ import { ChannelAvatar } from './chat/ChannelAvatar';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
 import { usePendingInvite } from '../invite/inviteLinks';
+import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
 import { useTheme } from '../theme/ThemeContext';
 import { emitToast } from '../ui/toastBus';
 import { apiErrorMessage } from '../api/apiErrorMessage';
@@ -27,11 +28,22 @@ type Props = NativeStackScreenProps<OrgSetupStackParamList, 'OrgChoice'>;
 
 const SEARCH_DEBOUNCE_MS = 300;
 
+/** 409 from /orgs/guild/browse when the account already has a seat. */
+function isAlreadyMemberBrowseError(err: unknown): boolean {
+  const ax = err as {
+    response?: { status?: number; data?: { message?: string | string[] } };
+  };
+  if (ax.response?.status === 409) return true;
+  const msg = ax.response?.data?.message;
+  const text = Array.isArray(msg) ? msg.join(' ') : msg ?? '';
+  return /leave your current guild/i.test(text);
+}
+
 export function OrgChoiceScreen({ navigation }: Props) {
   const shared = useSharedStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { user, logout, setGuild, refreshOrg } = useAuth();
+  const { user, org, guild, logout, setGuild, refreshOrg } = useAuth();
   const pendingInvite = usePendingInvite();
 
   const [query, setQuery] = useState('');
@@ -44,16 +56,31 @@ export function OrgChoiceScreen({ navigation }: Props) {
     Record<string, orgApi.GuildJoinRequestStatus>
   >({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Avoid toasting / re-fetching after we learn the session already has a seat.
+  const alreadyMemberRef = useRef(false);
 
   // Signed in via an invite link → skip the choice and go straight to joining.
   useEffect(() => {
     if (pendingInvite) navigation.navigate('JoinOrg');
   }, [pendingInvite, navigation]);
 
+  // Login can briefly land here before org/guild hydrate — bail out.
+  useEffect(() => {
+    if (org || guild) {
+      alreadyMemberRef.current = true;
+      setLoading(false);
+    }
+  }, [org, guild]);
+
   const load = useCallback(async (q: string) => {
+    if (alreadyMemberRef.current || org || guild) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await orgApi.browseGuilds(q);
+      if (alreadyMemberRef.current) return;
       setGuilds(res.guilds);
       setRequests((prev) => {
         const next = { ...prev };
@@ -65,15 +92,41 @@ export function OrgChoiceScreen({ navigation }: Props) {
       });
     } catch (err) {
       setGuilds([]);
-      emitToast(apiErrorMessage(err, 'Could not load guilds'));
+      // Google / email login sometimes paints this screen for one tick while
+      // the user is already in a guild. Sync membership quietly — the
+      // "Leave your current guild…" copy is nonsense right after sign-in.
+      if (isAlreadyMemberBrowseError(err)) {
+        alreadyMemberRef.current = true;
+        try {
+          await refreshOrg();
+        } catch {
+          /* navigator will recover on next /me */
+        }
+        return;
+      }
+      if (!alreadyMemberRef.current) {
+        emitToast(apiErrorMessage(err, 'Could not load guilds'));
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [guild, org, refreshOrg]);
 
   useEffect(() => {
     void load('');
   }, [load]);
+
+  // An owner deciding on our request reaches us on the personal realtime
+  // channel. Acceptance swaps the whole navigator by itself (AuthContext
+  // picks up the new seat); a rejection has to repaint this list, which
+  // otherwise sat on "Waiting for the owner to accept" forever.
+  const realtime = useOrgRealtimeOptional();
+  useEffect(() => {
+    if (!realtime) return;
+    return realtime.subscribe((event) => {
+      if (event.type === 'membership.changed') void load(query);
+    });
+  }, [realtime, load, query]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

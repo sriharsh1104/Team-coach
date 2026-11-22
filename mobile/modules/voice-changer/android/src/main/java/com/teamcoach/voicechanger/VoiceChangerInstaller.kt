@@ -96,9 +96,10 @@ object VoiceChangerInstaller {
     }
     if (attachedTo === controller) return true
     controller.capturePostProcessor = bridge
-    // Always run post-processing: noise gate stays on even when the pitch
-    // preset is OFF (bypass would mute the gate and let background through).
-    controller.bypassCapturePostProcessing = false
+    // Only force the post-processor on when a preset/gate actually needs it.
+    // Leaving it always-on with a pumping noise gate caused mid-call rumble.
+    controller.bypassCapturePostProcessing =
+      !(processor.noiseGateEnabled || processor.preset != VoiceEffectProcessor.Preset.OFF)
     attachedTo = controller
     Log.i(TAG, "Voice changer attached to LiveKit audio pipeline")
     return true
@@ -107,7 +108,8 @@ object VoiceChangerInstaller {
   fun setPreset(preset: VoiceEffectProcessor.Preset) {
     processor.preset = preset
     if (tryAttach()) {
-      attachedTo?.bypassCapturePostProcessing = false
+      attachedTo?.bypassCapturePostProcessing =
+        !(processor.noiseGateEnabled || processor.preset != VoiceEffectProcessor.Preset.OFF)
     }
   }
 }

@@ -57,7 +57,9 @@ type VolumeTrack = { _setVolume?: (volume: number) => void };
  */
 export function useSelfHostedVoiceChannel(
   authToken: string,
-  room: VoiceRoomKind = 'team',
+  // mediasoup has no pair room — `direct` is hosted-voice only, and the
+  // backend refuses it on this path.
+  room: 'team' | 'guild' = 'team',
 ): VoiceChannelController {
   const [status, setStatus] = useState<VoiceChannelStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string>();
@@ -533,9 +535,6 @@ export function useSelfHostedVoiceChannel(
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          // Cuts low rumble (fans / AC) before encode — mapped to
-          // googHighpassFilter on Android WebRTC.
-          highpassFilter: true,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any,
         video: false,

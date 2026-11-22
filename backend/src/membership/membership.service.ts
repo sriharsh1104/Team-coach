@@ -18,6 +18,25 @@ export class MembershipService {
     return membership;
   }
 
+  /**
+   * The user's org, from either seat, or null when they have none. Unlike
+   * [getMembership] this never throws — realtime needs to serve people who
+   * are guild-only, or not in an org at all (waiting on a join request).
+   */
+  async findOrgId(userId: string): Promise<string | null> {
+    const [roster, guild] = await Promise.all([
+      this.prisma.membership.findFirst({
+        where: { userId },
+        select: { orgId: true },
+      }),
+      this.prisma.guildMembership.findFirst({
+        where: { userId },
+        select: { orgId: true },
+      }),
+    ]);
+    return roster?.orgId ?? guild?.orgId ?? null;
+  }
+
   // The org owner, or any coach, in this specific org. Used by scrims/stats'
   // "creator-or-elevated-access" edit/review gates — the org owner gets this
   // regardless of which functional role (PLAYER/COACH/ANALYST) they hold.

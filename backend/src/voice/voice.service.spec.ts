@@ -541,3 +541,149 @@ describe('VoiceService "ping to join" (unit)', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('VoiceService 1-on-1 voice', () => {
+  const ME = 'me';
+  const PEER = 'peer';
+
+  /** Keep createRoom off the network — same seam the other suites use. */
+  function stubLiveKit(service: VoiceService) {
+    const lk = { createRoom: jest.fn().mockResolvedValue({ metadata: '' }) };
+    jest
+      .spyOn(
+        service as unknown as { roomClient: () => unknown },
+        'roomClient' as never,
+      )
+      .mockReturnValue(lk as never);
+    return lk;
+  }
+
+  function build(flags: Record<string, boolean>) {
+    const prisma = {
+      user: {
+        findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(
+            where.id in flags
+              ? { canDirectVoice: flags[where.id], name: where.id }
+              : null,
+          ),
+        ),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ id: ME, name: 'Me', avatarUrl: null }),
+        findMany: jest.fn(() =>
+          Promise.resolve(
+            Object.entries(flags)
+              .filter(([id, on]) => on && id !== ME)
+              .map(([id]) => ({
+                id,
+                name: id,
+                inGameName: null,
+                avatarUrl: null,
+              })),
+          ),
+        ),
+      },
+    } as unknown as PrismaService;
+
+    return new VoiceService(
+      {
+        get: (k: string) =>
+          ({
+            LIVEKIT_URL: 'wss://lk',
+            LIVEKIT_API_KEY: 'key',
+            LIVEKIT_API_SECRET: 'secret-secret-secret-secret',
+          })[k],
+      } as unknown as ConfigService,
+      { getOrgIdForUser: jest.fn() } as unknown as ChatService,
+      prisma,
+      { isSelfHosted: () => false } as unknown as MediasoupSfuService,
+      { hasEditAccess: jest.fn() } as unknown as MembershipService,
+      { listOccupants: jest.fn() } as unknown as VoiceGateway,
+      stubPush(),
+    );
+  }
+
+  /** Both sides must derive the SAME room, or they sit in two empty calls. */
+  it('puts both sides in one room whichever of them asks', async () => {
+    const a = build({ [ME]: true, [PEER]: true });
+    const b = build({ [ME]: true, [PEER]: true });
+    const lkA = stubLiveKit(a);
+    const lkB = stubLiveKit(b);
+
+    await a.getConfig(ME, 'direct', PEER);
+    await b.getConfig(PEER, 'direct', ME);
+
+    const nameA = lkA.createRoom.mock.calls[0][0].name as string;
+    const nameB = lkB.createRoom.mock.calls[0][0].name as string;
+    expect(nameA).toBe(nameB);
+    expect(nameA).toMatch(/^direct:/);
+  });
+
+  it('refuses when the caller lacks the permission', async () => {
+    const service = build({ [ME]: false, [PEER]: true });
+    await expect(service.getConfig(ME, 'direct', PEER)).rejects.toThrow(
+      /not enabled for you/,
+    );
+  });
+
+  // Granting to one person alone must open nothing.
+  it('refuses when only the caller has it', async () => {
+    const service = build({ [ME]: true, [PEER]: false });
+    await expect(service.getConfig(ME, 'direct', PEER)).rejects.toThrow(
+      /not available with them/,
+    );
+  });
+
+  it('says the same thing for a peer that does not exist, so ids cannot be probed', async () => {
+    const service = build({ [ME]: true });
+    await expect(service.getConfig(ME, 'direct', 'ghost')).rejects.toThrow(
+      /not available with them/,
+    );
+  });
+
+  it('needs a peer, and refuses calling yourself', async () => {
+    const service = build({ [ME]: true });
+    await expect(service.getConfig(ME, 'direct')).rejects.toThrow(
+      /Pick who you want to call/,
+    );
+    await expect(service.getConfig(ME, 'direct', ME)).rejects.toThrow(
+      /cannot call yourself/,
+    );
+  });
+
+  it('mints a 2-seat token when both sides have it', async () => {
+    const service = build({ [ME]: true, [PEER]: true });
+    const lk = stubLiveKit(service);
+    const config = (await service.getConfig(ME, 'direct', PEER)) as {
+      mode: string;
+      max: number;
+      room: string;
+      token: string;
+    };
+    expect(config.mode).toBe('hosted');
+    expect(config.max).toBe(2);
+    expect(config.room).toBe('direct');
+    expect(config.token).toBeTruthy();
+    expect(lk.createRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ maxParticipants: 2 }),
+    );
+  });
+
+  describe('peer list', () => {
+    it('is empty and flagged off for someone without the permission', async () => {
+      const service = build({ [ME]: false, [PEER]: true });
+      await expect(service.listDirectVoicePeers(ME)).resolves.toEqual({
+        enabled: false,
+        peers: [],
+      });
+    });
+
+    it('lists only other holders, never the caller', async () => {
+      const service = build({ [ME]: true, [PEER]: true, other: false });
+      const res = await service.listDirectVoicePeers(ME);
+      expect(res.enabled).toBe(true);
+      expect(res.peers.map((p) => p.id)).toEqual([PEER]);
+    });
+  });
+});

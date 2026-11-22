@@ -54,11 +54,11 @@ const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
 const ProfileSetupStack = createNativeStackNavigator<ProfileSetupStackParamList>();
 const MainStack = createNativeStackNavigator<MainStackParamList>();
 
-// Top-level drawer destinations (Roster, Maps, Stats, …): hamburger opens the
-// same drawer as Home so users can jump sections without backing out first.
-// Also shows a back chevron (when there's actually a previous screen to pop
-// to — not on Home itself) so a section reached by drilling in doesn't force
-// a trip through the drawer just to go back the way you came.
+// Top-level drawer destinations (Roster, Maps, Stats, …).
+// Never stack back + hamburger on the left — that ate the title and looked
+// broken (Media / Stats / Maps…). Rule:
+//   • can go back → back on the left, menu moves next to settings on the right
+//   • root section → hamburger alone on the left
 function sectionOptions(
   openWith: (nav: any) => void,
   build?: (args: { navigation: any; route: any }) => Record<string, unknown>,
@@ -67,31 +67,37 @@ function sectionOptions(
     const built = build ? build(args) : {};
     const sectionTitle =
       typeof built.title === 'string' ? built.title : args.route.name;
+    const canPop = args.navigation.canGoBack();
     return {
       ...built,
-      headerLeft: () => (
-        <View style={styles.sectionHeaderLeft}>
-          {args.navigation.canGoBack() ? (
-            <HeaderBackButton onPress={() => args.navigation.goBack()} />
-          ) : null}
+      headerLeft: () =>
+        canPop ? (
+          <HeaderBackButton onPress={() => args.navigation.goBack()} />
+        ) : (
           <MenuButton onPress={() => openWith(args.navigation)} />
-        </View>
-      ),
+        ),
       // Org identity (name · code · members) rides along under the section
       // name, and the settings gear is always within reach — the user asked
       // for the Home header's block on every screen, not just Home.
       headerTitle: () => <HeaderOrgInfo sectionTitle={sectionTitle} />,
-      headerRight: () => <HeaderSettingsButton />,
+      headerRight: () => (
+        <View style={styles.sectionHeaderRight}>
+          {canPop ? (
+            <MenuButton onPress={() => openWith(args.navigation)} />
+          ) : null}
+          <HeaderSettingsButton />
+        </View>
+      ),
       headerBackVisible: false,
     };
   };
 }
 
 const styles = StyleSheet.create({
-  sectionHeaderLeft: {
+  sectionHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
   },
 });
 
@@ -356,6 +362,13 @@ export function RootNavigator() {
               component={AdminScreen}
               options={detailOptions(() => ({ title: 'Admin' }))}
             />
+            <MainStack.Screen
+              name="DirectVoice"
+              getComponent={() =>
+                require('../screens/voice/DirectVoiceScreen').DirectVoiceScreen
+              }
+              options={detailOptions(() => ({ title: '1-on-1 Voice' }))}
+            />
           </MainStack.Navigator>
           <SideDrawer
             open={guildDrawer.open}
@@ -560,6 +573,13 @@ export function RootNavigator() {
               name="Admin"
               component={AdminScreen}
               options={detailOptions(() => ({ title: 'Admin' }))}
+            />
+            <MainStack.Screen
+              name="DirectVoice"
+              getComponent={() =>
+                require('../screens/voice/DirectVoiceScreen').DirectVoiceScreen
+              }
+              options={detailOptions(() => ({ title: '1-on-1 Voice' }))}
             />
           </MainStack.Navigator>
           <SideDrawer

@@ -3,15 +3,20 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react-nativ
 import { OrgChoiceScreen } from '../OrgChoiceScreen';
 import { useAuth } from '../../auth/AuthContext';
 import * as orgApi from '../../api/org';
+import { emitToast } from '../../ui/toastBus';
 
 jest.mock('../../auth/AuthContext');
 jest.mock('../../api/org');
 jest.mock('../../invite/inviteLinks', () => ({
   usePendingInvite: () => null,
 }));
+jest.mock('../../ui/toastBus', () => ({
+  emitToast: jest.fn(),
+}));
 
 const mockedUseAuth = useAuth as jest.Mock;
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
+const mockedEmitToast = emitToast as jest.Mock;
 const navigation = { navigate: jest.fn() } as any;
 
 beforeEach(() => {
@@ -31,6 +36,8 @@ beforeEach(() => {
   });
   mockedUseAuth.mockReturnValue({
     user: { name: 'Player One' },
+    org: null,
+    guild: null,
     logout: jest.fn(),
     setGuild: jest.fn(),
     refreshOrg: jest.fn(),
@@ -127,6 +134,8 @@ describe('OrgChoiceScreen', () => {
     const logout = jest.fn();
     mockedUseAuth.mockReturnValue({
       user: { name: 'Player One' },
+      org: null,
+      guild: null,
       logout,
       setGuild: jest.fn(),
       refreshOrg: jest.fn(),
@@ -136,5 +145,28 @@ describe('OrgChoiceScreen', () => {
 
     fireEvent.press(screen.getByText('Log Out'));
     expect(logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not toast "leave guild" when browse says the account already has a seat', async () => {
+    const refreshOrg = jest.fn().mockResolvedValue(undefined);
+    mockedUseAuth.mockReturnValue({
+      user: { name: 'Player One' },
+      org: null,
+      guild: null,
+      logout: jest.fn(),
+      setGuild: jest.fn(),
+      refreshOrg,
+    });
+    mockedOrgApi.browseGuilds.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { message: 'Leave your current guild before browsing others' },
+      },
+    });
+
+    render(<OrgChoiceScreen navigation={navigation} route={{} as any} />);
+
+    await waitFor(() => expect(refreshOrg).toHaveBeenCalled());
+    expect(mockedEmitToast).not.toHaveBeenCalled();
   });
 });

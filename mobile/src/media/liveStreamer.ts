@@ -2,7 +2,8 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 import { Platform } from 'react-native';
 
 type NativeLiveStreamer = {
-  start: (rtmpUrl: string, streamKey: string) => Promise<void>;
+  /** JSON array of `{ url, key }` — one shared screen capture to every destination. */
+  start: (destinationsJson: string) => Promise<void>;
   stop: () => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -19,6 +20,8 @@ type NativeLiveStreamer = {
   ) => { remove: () => void };
 };
 
+export type LiveDestination = { rtmpUrl: string; streamKey: string };
+
 export type LiveStartResult = 'started' | 'unavailable' | 'unsupported';
 
 function loadNative(): NativeLiveStreamer | null {
@@ -33,14 +36,22 @@ const native = loadNative();
 
 /** Android screen capture keeps streaming after this app goes to the background. */
 export function startLiveStream(options: {
-  rtmpUrl: string;
-  streamKey: string;
+  destinations: LiveDestination[];
 }): Promise<LiveStartResult> | LiveStartResult {
   if (Platform.OS !== 'android') return 'unsupported';
   if (!native) return 'unavailable';
   if (native.isLive()) return 'started';
+  const payload = options.destinations
+    .map((d) => ({
+      url: d.rtmpUrl.trim(),
+      key: d.streamKey.trim(),
+    }))
+    .filter((d) => d.url && d.key);
+  if (payload.length === 0) {
+    return Promise.reject(new Error('Pick at least one platform with URL + stream key'));
+  }
   return native
-    .start(options.rtmpUrl, options.streamKey)
+    .start(JSON.stringify(payload))
     .then(() => 'started' as const);
 }
 

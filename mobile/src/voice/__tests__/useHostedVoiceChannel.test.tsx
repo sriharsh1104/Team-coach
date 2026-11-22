@@ -40,15 +40,35 @@ class FakeRoom {
   }
 }
 
+type FakePublication = {
+  isSubscribed: boolean;
+  setSubscribed: jest.Mock;
+  track: { kind: string } | null;
+};
+
 class FakeParticipant {
   setVolume = jest.fn();
   name: string;
   metadata = '';
   attributes: Record<string, string> = {};
   isLocal = false;
-  getTrackPublication = jest.fn(() => undefined);
+  getTrackPublication: jest.Mock = jest.fn(() => undefined);
   constructor(public identity: string) {
     this.name = identity;
+  }
+
+  /** Start sharing a screen. `subscribed: false` = the track has not landed yet. */
+  share(opts: { subscribed?: boolean } = {}): FakePublication {
+    const subscribed = opts.subscribed !== false;
+    const pub: FakePublication = {
+      isSubscribed: subscribed,
+      setSubscribed: jest.fn(),
+      track: subscribed ? { kind: 'video' } : null,
+    };
+    this.getTrackPublication = jest.fn((source: unknown) =>
+      source === 'screen_share' ? pub : undefined,
+    ) as jest.Mock;
+    return pub;
   }
 }
 
@@ -65,6 +85,8 @@ jest.mock('livekit-client', () => ({
     ParticipantDisconnected: 'participantDisconnected',
     TrackSubscribed: 'trackSubscribed',
     TrackUnsubscribed: 'trackUnsubscribed',
+    TrackPublished: 'trackPublished',
+    TrackUnpublished: 'trackUnpublished',
     LocalTrackPublished: 'localTrackPublished',
     LocalTrackUnpublished: 'localTrackUnpublished',
     Disconnected: 'disconnected',
@@ -228,6 +250,117 @@ describe('useHostedVoiceChannel', () => {
       act(() => mockCurrentRoom.fire('disconnected', undefined));
 
       expect(playVoiceCue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('watching someone else share their screen', () => {
+    it('shows the share as soon as the track is subscribed', async () => {
+      const hook = await joinedHook();
+      const peer = mockCurrentRoom.addPeer('bob');
+      peer.share();
+
+      await act(async () => {
+        mockCurrentRoom.fire('trackSubscribed', {}, {}, peer);
+      });
+
+      await waitFor(() => expect(hook.result.current.screenShare).toBeTruthy());
+      expect(hook.result.current.screenShare).toMatchObject({
+        participantId: 'bob',
+        isLocal: false,
+      });
+      expect(hook.result.current.screenShare?.videoTrack).toBeTruthy();
+    });
+
+    // The watcher used to see absolutely nothing until the subscription
+    // completed — no video and no sign anyone was sharing at all.
+    it('announces the share from the publication, before the track arrives', async () => {
+      const hook = await joinedHook();
+      const peer = mockCurrentRoom.addPeer('bob');
+      peer.share({ subscribed: false });
+
+      await act(async () => {
+        mockCurrentRoom.fire('trackPublished', {}, peer);
+      });
+
+      await waitFor(() => expect(hook.result.current.screenShare).toBeTruthy());
+      expect(hook.result.current.screenShare).toMatchObject({
+        participantId: 'bob',
+        isLocal: false,
+        // Null → the viewer renders "Waiting for video…" instead of nothing.
+        videoTrack: null,
+      });
+    });
+
+    it('subscribes itself to a share nothing subscribed us to', async () => {
+      const hook = await joinedHook();
+      const peer = mockCurrentRoom.addPeer('bob');
+      const pub = peer.share({ subscribed: false });
+
+      await act(async () => {
+        mockCurrentRoom.fire('trackPublished', {}, peer);
+      });
+
+      await waitFor(() => expect(pub.setSubscribed).toHaveBeenCalledWith(true));
+      expect(hook.result.current.screenShare?.participantId).toBe('bob');
+    });
+
+    it('does not re-subscribe one that is already subscribed', async () => {
+      await joinedHook();
+      const peer = mockCurrentRoom.addPeer('bob');
+      const pub = peer.share({ subscribed: true });
+
+      await act(async () => {
+        mockCurrentRoom.fire('trackSubscribed', {}, {}, peer);
+      });
+
+      expect(pub.setSubscribed).not.toHaveBeenCalled();
+    });
+
+    it('marks the sharer in the participant list', async () => {
+      const hook = await joinedHook();
+      const peer = mockCurrentRoom.addPeer('bob');
+      peer.share({ subscribed: false });
+
+      await act(async () => {
+        mockCurrentRoom.fire('trackPublished', {}, peer);
+      });
+
+      await waitFor(() =>
+        expect(
+          hook.result.current.participants.find((p: { id: string }) => p.id === 'bob')
+            ?.isScreenSharing,
+        ).toBe(true),
+      );
+    });
+
+    it('clears the share when the publication goes away', async () => {
+      const hook = await joinedHook();
+      const peer = mockCurrentRoom.addPeer('bob');
+      peer.share();
+      await act(async () => {
+        mockCurrentRoom.fire('trackSubscribed', {}, {}, peer);
+      });
+      await waitFor(() => expect(hook.result.current.screenShare).toBeTruthy());
+
+      peer.getTrackPublication = jest.fn(() => undefined) as jest.Mock;
+      await act(async () => {
+        mockCurrentRoom.fire('trackUnpublished', {}, peer);
+      });
+
+      await waitFor(() => expect(hook.result.current.screenShare).toBeNull());
+    });
+
+    it('watching someone else never flips my own sharing flag on', async () => {
+      const hook = await joinedHook();
+      const peer = mockCurrentRoom.addPeer('bob');
+      peer.share();
+
+      await act(async () => {
+        mockCurrentRoom.fire('trackSubscribed', {}, {}, peer);
+      });
+
+      await waitFor(() => expect(hook.result.current.screenShare).toBeTruthy());
+      expect(hook.result.current.isScreenSharing).toBe(false);
     });
   });
 

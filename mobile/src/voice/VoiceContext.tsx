@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { VoiceChannelController } from './types';
+import { VoiceChannelController, VoiceRoomKind } from './types';
 
 export type VoiceActivation =
   // Hosted (LiveKit): url + room token from GET /voice/config.
@@ -14,9 +14,15 @@ export type VoiceActivation =
       mode: 'hosted';
       url: string;
       token: string;
-      room?: 'team' | 'guild';
+      room?: VoiceRoomKind;
       canModerate?: boolean;
       max?: number;
+      /**
+       * 1-on-1 only. Carried on the activation so two different direct calls
+       * are told apart below — same room kind, different conversation.
+       */
+      peerId?: string;
+      peerName?: string;
     }
   // Self-hosted (mediasoup): our own API JWT for the /voice socket.
   | { mode: 'self'; token: string; room?: 'team' | 'guild' };
@@ -28,7 +34,7 @@ type VoiceContextValue = {
    * Room the provider is actually holding (may differ from the screen the
    * user just opened when a live call blocks team ↔ guild switch).
    */
-  activationRoom: 'team' | 'guild' | null;
+  activationRoom: VoiceRoomKind | null;
   /** Whether the voice screen is currently focused (user is looking at it). */
   isScreenFocused: boolean;
   /** Activate a voice session with the given config. */
@@ -67,7 +73,7 @@ const HostedVoiceHolder = React.memo(function HostedVoiceHolder({
 }: {
   url: string;
   token: string;
-  room: 'team' | 'guild';
+  room: VoiceRoomKind;
   canModerate?: boolean;
   max?: number;
   onController: (c: VoiceChannelController) => void;
@@ -152,6 +158,15 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         if (prev.mode === 'hosted' && config.mode === 'hosted' && prev.url !== config.url) {
           return config;
         }
+        // Same "direct" kind but a different person is a different call.
+        if (
+          prev.mode === 'hosted' &&
+          config.mode === 'hosted' &&
+          nextRoom === 'direct' &&
+          prev.peerId !== config.peerId
+        ) {
+          return config;
+        }
         if (prev.token === config.token) return prev;
         // Same room but a freshly minted token (the voice screen re-fetches
         // /voice/config every time it opens, and hosted tokens are new JWTs
@@ -225,7 +240,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     >
       {activation?.mode === 'hosted' ? (
         <HostedVoiceHolder
-          key={`hosted:${activation.room ?? 'team'}:${activation.url}:${activation.token}`}
+          key={`hosted:${activation.room ?? 'team'}:${activation.peerId ?? ''}:${activation.url}:${activation.token}`}
           url={activation.url}
           token={activation.token}
           room={activation.room ?? 'team'}

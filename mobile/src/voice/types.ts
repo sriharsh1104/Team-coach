@@ -2,6 +2,12 @@ import type { VideoTrack } from 'livekit-client';
 
 export type VoiceChannelStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
+/**
+ * Which room a session is in. 'direct' is an admin-granted 1-on-1 call
+ * between two people who both hold the permission — hosted voice only.
+ */
+export type VoiceRoomKind = 'team' | 'guild' | 'direct';
+
 export type ConnectionQualityLevel = 'excellent' | 'good' | 'poor' | 'lost' | 'unknown';
 
 export type VoiceScreenShare = {
@@ -70,7 +76,7 @@ export interface VoiceChannelController {
   toggleDeafen: () => void;
   // ---- Guild voice (self-hosted only; undefined on team / hosted voice) ----
   /** Which room this session is in. */
-  room?: 'team' | 'guild';
+  room?: VoiceRoomKind;
   /** You are a host: can mute/unmute everyone and remove people. */
   canModerate?: boolean;
   /** A host muted you — your mic is silent for others until they unmute you. */

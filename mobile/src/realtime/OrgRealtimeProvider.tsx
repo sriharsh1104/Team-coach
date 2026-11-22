@@ -32,24 +32,36 @@ export function OrgRealtimeProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, org } = useAuth();
+  const { user, org, guild, refreshOrg } = useAuth();
   const listeners = useRef(new Set<Listener>());
   const [lastEvent, setLastEvent] = useState<OrgRealtimeEvent | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const emit = useCallback((event: OrgRealtimeEvent) => {
-    if (event.type === 'heartbeat') return;
-    if (event.type === 'stats.changed') cacheInvalidate('stats:');
-    if (event.type === 'media.changed') cacheInvalidate('media:');
-    if (event.type === 'members.changed') cacheInvalidate('org:');
-    if (event.type === 'scrims.changed') {
-      cacheInvalidate(CacheKeys.scrimsList());
-      cacheInvalidate('stats:');
-    }
-    setLastEvent(event);
-    listeners.current.forEach((fn) => fn(event));
-  }, []);
+  const emit = useCallback(
+    (event: OrgRealtimeEvent) => {
+      if (event.type === 'heartbeat') return;
+      if (event.type === 'stats.changed') cacheInvalidate('stats:');
+      if (event.type === 'media.changed') cacheInvalidate('media:');
+      if (event.type === 'members.changed') cacheInvalidate('org:');
+      if (event.type === 'membership.changed') {
+        // Our own seat moved: accepted into a guild, added to or dropped from
+        // the roster. Re-reading /auth/me swaps org/guild in AuthContext,
+        // which is what moves RootNavigator between the auth / guild / main
+        // stacks and redraws the sidebar — the part that used to need the app
+        // to be closed and reopened.
+        cacheInvalidate('org:');
+        void refreshOrg().catch(() => undefined);
+      }
+      if (event.type === 'scrims.changed') {
+        cacheInvalidate(CacheKeys.scrimsList());
+        cacheInvalidate('stats:');
+      }
+      setLastEvent(event);
+      listeners.current.forEach((fn) => fn(event));
+    },
+    [refreshOrg],
+  );
 
   const subscribe = useCallback((listener: Listener) => {
     listeners.current.add(listener);
@@ -59,7 +71,10 @@ export function OrgRealtimeProvider({
   }, []);
 
   useEffect(() => {
-    if (!user || !org) return;
+    // Signed in is enough. The stream carries a personal channel as well as
+    // the org one, so a guild-only member — or someone with no seat at all,
+    // waiting on a join request — still gets told the moment that changes.
+    if (!user) return;
 
     let cancelled = false;
 
@@ -101,7 +116,9 @@ export function OrgRealtimeProvider({
       disconnect();
       sub.remove();
     };
-  }, [user, org, emit]);
+    // org/guild in the deps: re-opening the stream after a seat change
+    // re-resolves which org channel to listen on.
+  }, [user, org, guild, emit]);
 
   const value = useMemo(
     () => ({ subscribe, lastEvent }),

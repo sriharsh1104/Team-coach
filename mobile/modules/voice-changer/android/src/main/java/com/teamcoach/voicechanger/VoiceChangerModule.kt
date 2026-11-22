@@ -65,6 +65,29 @@ class VoiceChangerModule : Module() {
       }
     }
 
+    /**
+     * What the effect is actually doing right now. "I picked Woman and
+     * nothing happened" has several very different causes — not attached to
+     * the pipeline yet, attached but bypassed, or attached and running on a
+     * buffer layout we cannot read — and without this they all look the same
+     * from JS.
+     */
+    Function("getStatus") {
+      val processor = VoiceChangerInstaller.processor
+      mapOf(
+        "available" to VoiceChangerInstaller.available,
+        "attached" to VoiceChangerInstaller.active,
+        "preset" to processor.preset.name.lowercase(),
+        // Frames pushed through with a preset on. Still 0 a second after
+        // picking one means the pipeline is not reaching us at all.
+        "processedFrames" to processor.processedFrames.toDouble(),
+        "layoutUnsupported" to processor.layoutUnsupported,
+        "bandRate" to processor.lastBandRate,
+        "bands" to processor.lastBands,
+        "frames" to processor.lastFrames,
+      )
+    }
+
     /** Switch live — safe to call while in a call; takes effect on the next 10 ms frame. */
     Function("setPreset") { name: String ->
       val preset = VoiceEffectProcessor.Preset.fromName(name)

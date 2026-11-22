@@ -29,6 +29,7 @@ import {
   VoiceScreenShare,
   ConnectionQualityLevel,
 } from './types';
+import type { VoiceRoomKind } from './types';
 import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
 import { playVoiceCue, preloadVoiceCues, unloadVoiceCues } from './voiceCues';
 import { setVoiceScreenSharing } from './voiceScreenShareGate';
@@ -99,7 +100,7 @@ function errorText(err: unknown): string {
 }
 
 export type HostedVoiceOptions = {
-  room?: 'team' | 'guild';
+  room?: VoiceRoomKind;
   /** From the server's token response — never derived on the client. */
   canModerate?: boolean;
   max?: number;
@@ -194,20 +195,38 @@ export function useHostedVoiceChannel(
     }
 
     for (const p of room.remoteParticipants.values()) {
+      // The PUBLICATION is what says "this person is sharing" — it exists the
+      // moment they start. `pub.track` only appears once we have subscribed,
+      // which lags behind and can fail outright. Keying the whole viewer off
+      // the track meant a watcher saw nothing at all: no video, and no sign
+      // that anyone was sharing in the first place.
       const pub = p.getTrackPublication(Track.Source.ScreenShare);
-      const track = pub?.track;
-      if (track && track.kind === Track.Kind.Video) {
-        setScreenShare({
-          participantId: p.identity,
-          participantName: p.name || p.identity,
-          isLocal: false,
-          videoTrack: track as VideoTrack,
-        });
-        isScreenSharingRef.current = false;
-        setIsScreenSharing(false);
-        setVoiceScreenSharing(false);
-        return;
+      if (!pub) continue;
+
+      // Rescue a publication nothing subscribed us to (server-side subscribe
+      // settings, or it appeared while we were reconnecting). No-op when we
+      // are already subscribed.
+      if (!pub.isSubscribed) {
+        try {
+          pub.setSubscribed(true);
+        } catch (err) {
+          console.warn('subscribe to screen share failed:', err);
+        }
       }
+
+      const track = pub.track;
+      setScreenShare({
+        participantId: p.identity,
+        participantName: p.name || p.identity,
+        isLocal: false,
+        // Null until the track lands — the viewer shows "Waiting for video…".
+        videoTrack:
+          track && track.kind === Track.Kind.Video ? (track as VideoTrack) : null,
+      });
+      isScreenSharingRef.current = false;
+      setIsScreenSharing(false);
+      setVoiceScreenSharing(false);
+      return;
     }
 
     setScreenShare(null);
@@ -222,7 +241,8 @@ export function useHostedVoiceChannel(
     setParticipants(
       [...room.remoteParticipants.values()].map((p: RemoteParticipant) => {
         const vol = localVolumesRef.current.get(p.identity) ?? 1;
-        const sharing = !!p.getTrackPublication(Track.Source.ScreenShare)?.track;
+        // Publication, not track — see refreshScreenShare.
+        const sharing = !!p.getTrackPublication(Track.Source.ScreenShare);
         return {
           id: p.identity,
           name: p.name || p.identity,
@@ -330,13 +350,12 @@ export function useHostedVoiceChannel(
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          // Stronger "focus on voice" when the OS/WebRTC build supports it.
-          voiceIsolation: true,
         },
         publishDefaults: {
-          // Speech preset + DTX: less background hiss sent while silent.
-          audioPreset: AudioPresets.speech,
-          dtx: true,
+          // music bitrate stays clearer than speech+DTX (that combo was
+          // chopping mid-words into a "ghrr ghrr" rumble on some Androids).
+          audioPreset: AudioPresets.music,
+          dtx: false,
         },
         // Network drops: keep retrying the same call for ~1 min, then exit.
         reconnectPolicy: createVoiceReconnectPolicy(),
@@ -359,6 +378,16 @@ export function useHostedVoiceChannel(
         syncParticipants(room);
       });
       room.on(RoomEvent.TrackUnsubscribed, () => {
+        syncParticipants(room);
+      });
+      // A remote screen share is announced by TrackPublished well before
+      // TrackSubscribed fires — and if the subscription never completes,
+      // TrackSubscribed never fires at all. Without these the watcher's
+      // screen stayed blank through the entire share.
+      room.on(RoomEvent.TrackPublished, () => {
+        syncParticipants(room);
+      });
+      room.on(RoomEvent.TrackUnpublished, () => {
         syncParticipants(room);
       });
       room.on(RoomEvent.LocalTrackPublished, () => {
@@ -681,9 +710,11 @@ export function useHostedVoiceChannel(
       emitToast('Stop screen recording before sharing in voice');
       return;
     }
-    // Someone else already sharing — avoid stacking two shares.
+    // Someone else already sharing — avoid stacking two shares. Checked on
+    // the publication so a share we have not finished subscribing to still
+    // counts.
     for (const p of room.remoteParticipants.values()) {
-      if (p.getTrackPublication(Track.Source.ScreenShare)?.track) {
+      if (p.getTrackPublication(Track.Source.ScreenShare)) {
         emitToast(`${p.name || p.identity} is already sharing`);
         return;
       }

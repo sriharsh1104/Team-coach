@@ -7,6 +7,7 @@ import { AppIcon } from '../ui/AppIcon';
 import { SoftPressable } from '../ui/SoftPressable';
 import { emitToast } from '../ui/toastBus';
 import { haptic } from '../ui/haptics';
+import { useOrgRealtimeOptional } from '../realtime/OrgRealtimeProvider';
 import { useTheme } from '../theme/ThemeContext';
 import { ChannelAvatar } from './chat/ChannelAvatar';
 
@@ -16,8 +17,8 @@ import { ChannelAvatar } from './chat/ChannelAvatar';
  * elsewhere. Someone who gets in somewhere else first drops off this list on
  * its own (the server supersedes their other requests).
  *
- * Renders nothing at all when the inbox is empty, so it never takes up space
- * on a quiet guild — or for members who cannot decide.
+ * Renders nothing for members who cannot decide (403). Leaders always see the
+ * section — empty state included — so "where do requests go?" is obvious.
  */
 export function GuildJoinRequestsPanel({
   onAccepted,
@@ -26,25 +27,35 @@ export function GuildJoinRequestsPanel({
   onAccepted?: () => void;
 }) {
   const { colors } = useTheme();
-  const [requests, setRequests] = useState<IncomingGuildJoinRequest[] | null>(
-    null,
-  );
+  const [requests, setRequests] = useState<IncomingGuildJoinRequest[]>([]);
+  const [allowed, setAllowed] = useState<boolean | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await orgApi.listGuildJoinRequests();
       setRequests(res.requests);
+      setAllowed(true);
     } catch {
-      // 403 for plain members, 404 before a guild exists — both mean "no
-      // inbox here", which is the same as empty.
+      // 403 for plain members, 404 before a guild exists — hide the section.
       setRequests([]);
+      setAllowed(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A new request should land in the inbox while the screen is open, not on
+  // the next time it is reopened.
+  const realtime = useOrgRealtimeOptional();
+  useEffect(() => {
+    if (!realtime) return;
+    return realtime.subscribe((event) => {
+      if (event.type === 'members.changed') void load();
+    });
+  }, [realtime, load]);
 
   const decide = async (request: IncomingGuildJoinRequest, accept: boolean) => {
     setBusyId(request.id);
@@ -66,20 +77,26 @@ export function GuildJoinRequestsPanel({
     }
   };
 
-  if (!requests || requests.length === 0) return null;
+  if (allowed !== true) return null;
 
   return (
     <View style={[styles.card, { borderColor: colors.border }]}>
       <View style={styles.head}>
         <AppIcon name="person-add" size={16} color={colors.link} />
         <Text style={[styles.title, { color: colors.text }]}>
-          Join requests ({requests.length})
+          Join requests{requests.length > 0 ? ` (${requests.length})` : ''}
         </Text>
       </View>
       <Text style={[styles.hint, { color: colors.textMuted }]}>
-        They found this guild in the public list. Nobody gets in until you
-        accept.
+        People who asked from the public guild list. Approve to seat them, or
+        reject so they can try elsewhere.
       </Text>
+
+      {requests.length === 0 ? (
+        <Text style={[styles.empty, { color: colors.textDim }]}>
+          No pending requests right now.
+        </Text>
+      ) : null}
 
       {requests.map((request) => {
         const busy = busyId === request.id;
@@ -151,6 +168,7 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 15, fontWeight: '800' },
   hint: { fontSize: 12.5, marginTop: 4, marginBottom: 10 },
+  empty: { fontSize: 13, fontStyle: 'italic', marginBottom: 4 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

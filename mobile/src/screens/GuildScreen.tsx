@@ -54,8 +54,8 @@ function errorMessage(err: unknown, fallback: string) {
   return Array.isArray(msg) ? msg.join(', ') : msg?.toString() || fallback;
 }
 
-type GuildTab = 'members' | 'roster';
-const GUILD_TABS = [
+type GuildTab = 'members' | 'roster' | 'requests';
+const BASE_GUILD_TABS = [
   { value: 'members' as const, label: 'Members' },
   { value: 'roster' as const, label: 'Roster' },
 ];
@@ -177,12 +177,36 @@ export function GuildScreen({ navigation }: Props) {
   const members = detail?.members ?? [];
   const roster = detail?.roster ?? [];
   const canManage = !!detail?.canManageRoster;
+  // Same people who can decide browse-join requests (owner / coach / leaders).
+  const canReviewRequests =
+    isOrgOwner ||
+    org?.role === 'COACH' ||
+    detail?.myGuildRole === 'LEADER' ||
+    detail?.myGuildRole === 'ACTIVE_LEADER';
+  const guildTabs = canReviewRequests
+    ? [
+        ...BASE_GUILD_TABS,
+        { value: 'requests' as const, label: 'Requests' },
+      ]
+    : BASE_GUILD_TABS;
   // Waiting guild members first so Add-to-roster is obvious for owners/coaches.
   const sortedMembers = canManage
     ? [...members].sort((a, b) => Number(a.onRoster) - Number(b.onRoster))
     : members;
-  const listData = guildTab === 'members' ? sortedMembers : roster;
+  const listData =
+    guildTab === 'members'
+      ? sortedMembers
+      : guildTab === 'roster'
+        ? roster
+        : [];
   const waitingCount = members.filter((m) => !m.onRoster).length;
+
+  // If leadership access goes away, leave the Requests tab.
+  useEffect(() => {
+    if (!canReviewRequests && guildTab === 'requests') {
+      setGuildTab('members');
+    }
+  }, [canReviewRequests, guildTab]);
 
   return (
     <Screen>
@@ -201,9 +225,6 @@ export function GuildScreen({ navigation }: Props) {
         ListHeaderComponent={
           <View>
             <Text style={shared.title}>{detail?.name ?? 'Guild'}</Text>
-            {/* Renders nothing unless this member can decide and someone is
-                actually waiting. */}
-            <GuildJoinRequestsPanel onAccepted={() => void load()} />
             {detail ? (
               <Text style={styles.summary}>
                 {GUILD_ROLE_LABEL[detail.myGuildRole]} · {members.length} member
@@ -248,10 +269,13 @@ export function GuildScreen({ navigation }: Props) {
               </View>
             ) : null}
             <SegmentedTabs
-              tabs={GUILD_TABS}
+              tabs={guildTabs}
               value={guildTab}
               onChange={(next) => setGuildTab(next)}
             />
+            {guildTab === 'requests' ? (
+              <GuildJoinRequestsPanel onAccepted={() => void load()} />
+            ) : null}
             {canManage && guildTab === 'members' ? (
               <Text style={styles.manageHint}>
                 {waitingCount > 0
@@ -259,7 +283,7 @@ export function GuildScreen({ navigation }: Props) {
                   : 'Everyone below is on the esports roster. Tap − to remove someone.'}
               </Text>
             ) : null}
-            {detail && !canManage ? (
+            {detail && !canManage && guildTab !== 'requests' ? (
               <Text style={styles.manageHint}>
                 Only the org owner or a coach can add or remove roster seats.
               </Text>
@@ -267,6 +291,7 @@ export function GuildScreen({ navigation }: Props) {
           </View>
         }
         renderItem={({ item }) => {
+          if (guildTab === 'requests') return null;
           if (guildTab === 'members') {
             const member = item as GuildMemberRow;
             return (
@@ -312,7 +337,7 @@ export function GuildScreen({ navigation }: Props) {
           );
         }}
         ListEmptyComponent={
-          detail ? (
+          detail && guildTab !== 'requests' ? (
             <Text style={styles.empty}>
               {guildTab === 'members'
                 ? 'No guild members yet.'

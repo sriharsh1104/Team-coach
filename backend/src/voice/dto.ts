@@ -8,7 +8,7 @@ import {
   MaxLength,
 } from 'class-validator';
 
-export const VOICE_ROOMS = ['team', 'guild'] as const;
+export const VOICE_ROOMS = ['team', 'guild', 'direct'] as const;
 
 /** Cap on one ping so it stays a nudge to friends, not a broadcast. */
 export const VOICE_INVITE_MAX_TARGETS = 20;

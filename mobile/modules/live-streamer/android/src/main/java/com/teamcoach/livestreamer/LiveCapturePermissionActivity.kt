@@ -84,8 +84,8 @@ class LiveCapturePermissionActivity : Activity() {
       finish()
       return
     }
-    val endpoint = LiveBridge.pendingEndpoint
-    if (endpoint.isNullOrBlank()) {
+    val endpoints = ArrayList(LiveBridge.pendingEndpoints)
+    if (endpoints.isEmpty()) {
       settled = true
       LiveBridge.rejectStart("BAD_ARGS", "Missing stream URL")
       finish()
@@ -96,7 +96,7 @@ class LiveCapturePermissionActivity : Activity() {
       action = LiveStreamService.ACTION_START
       putExtra(LiveStreamService.EXTRA_RESULT_CODE, resultCode)
       putExtra(LiveStreamService.EXTRA_DATA, data)
-      putExtra(LiveStreamService.EXTRA_ENDPOINT, endpoint)
+      putStringArrayListExtra(LiveStreamService.EXTRA_ENDPOINTS, endpoints)
     }
     ContextCompat.startForegroundService(this, service)
     finish()

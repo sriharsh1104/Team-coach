@@ -2,22 +2,54 @@ import { io, Socket } from 'socket.io-client';
 import { apiClient, apiBaseUrl } from './client';
 import { VoiceConfig, VoiceOccupancy } from './types';
 
-export type VoiceRoomKind = 'team' | 'guild';
+export type VoiceRoomKind = 'team' | 'guild' | 'direct';
 
-/** `room` picks the team room (default) or the guild-wide room. */
-export function getVoiceConfig(room: VoiceRoomKind = 'team') {
+/**
+ * `room` picks the team room (default), the guild-wide room, or a 1-on-1
+ * call — the last needs `peerId`, and the server only mints a token when
+ * BOTH people hold the admin-granted permission.
+ */
+export function getVoiceConfig(room: VoiceRoomKind = 'team', peerId?: string) {
+  const params =
+    room === 'direct'
+      ? { room, peer: peerId }
+      : room === 'guild'
+        ? { room }
+        : undefined;
   return apiClient
-    .get<VoiceConfig>('/voice/config', room === 'guild' ? { params: { room } } : undefined)
+    .get<VoiceConfig>('/voice/config', params ? { params } : undefined)
+    .then((res) => res.data);
+}
+
+export type DirectVoicePeer = {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+};
+
+/**
+ * Who the signed-in user can place a 1-on-1 call to. `enabled: false` means
+ * they do not hold the permission — hide the section entirely.
+ */
+export function getDirectVoicePeers() {
+  return apiClient
+    .get<{ enabled: boolean; peers: DirectVoicePeer[] }>('/voice/direct/peers')
     .then((res) => res.data);
 }
 
 /** Who is already in the voice channel — does not join the caller. */
-export function getVoiceOccupancy(room: VoiceRoomKind = 'team') {
+export function getVoiceOccupancy(
+  room: VoiceRoomKind = 'team',
+  peerId?: string,
+) {
+  const params =
+    room === 'direct'
+      ? { room, peer: peerId }
+      : room === 'guild'
+        ? { room }
+        : undefined;
   return apiClient
-    .get<VoiceOccupancy>(
-      '/voice/occupancy',
-      room === 'guild' ? { params: { room } } : undefined,
-    )
+    .get<VoiceOccupancy>('/voice/occupancy', params ? { params } : undefined)
     .then((res) => res.data);
 }
 

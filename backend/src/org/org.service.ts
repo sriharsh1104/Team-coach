@@ -152,6 +152,17 @@ export class OrgService {
     this.realtime.publish(orgId, 'members.changed');
   }
 
+  /**
+   * Tell one person their own seat moved, on their personal channel.
+   * The org channel is no good here: someone just accepted into a guild was
+   * not listening to it a moment ago, and someone just removed is not
+   * listening to it any more. Without this the app only caught up on the
+   * next cold start — which is exactly what "band karke aane pe aaya" was.
+   */
+  private notifyMembershipChanged(userId: string, orgId?: string) {
+    this.realtime.publishToUser(userId, 'membership.changed', orgId);
+  }
+
   async createOrg(userId: string, dto: CreateOrgDto) {
     await this.assertUserHasNoOrg(userId);
 
@@ -551,6 +562,7 @@ export class OrgService {
     // user stays intact (those rows key off User.id, not Membership).
     await this.prisma.membership.delete({ where: { id: target.id } });
     this.notifyMembersChanged(current.orgId);
+    this.notifyMembershipChanged(dto.targetUserId, current.orgId);
   }
 
   /**
@@ -908,6 +920,7 @@ export class OrgService {
         },
       });
       this.realtime.publish(request.orgId, 'members.changed');
+      this.notifyMembershipChanged(request.userId, request.orgId);
       await this.notifyJoinRequestDecided(
         request.userId,
         request.org.name,
@@ -975,6 +988,7 @@ export class OrgService {
     ]);
 
     this.notifyMembersChanged(request.orgId);
+    this.notifyMembershipChanged(request.userId, request.orgId);
     await this.notifyJoinRequestDecided(request.userId, request.org.name, true);
     return { status: GuildJoinRequestStatus.ACCEPTED, orgId: request.orgId };
   }
@@ -1047,6 +1061,7 @@ export class OrgService {
         },
       });
       this.notifyMembersChanged(org.id);
+      this.notifyMembershipChanged(userId, org.id);
       return { id: org.id, name: org.name, role: created.role };
     } catch (err) {
       this.rethrowAsConflictOnDuplicateMembership(err);
@@ -1227,6 +1242,9 @@ export class OrgService {
     }
 
     this.notifyMembersChanged(actor.orgId);
+    // The new roster member moves guild → main stack; they only ever found
+    // out on a restart before this.
+    this.notifyMembershipChanged(dto.targetUserId, actor.orgId);
     return { userId: dto.targetUserId, role: dto.role };
   }
 
@@ -1252,6 +1270,7 @@ export class OrgService {
 
     await this.prisma.membership.delete({ where: { id: target.id } });
     this.notifyMembersChanged(actor.orgId);
+    this.notifyMembershipChanged(dto.targetUserId, actor.orgId);
     return { success: true };
   }
 

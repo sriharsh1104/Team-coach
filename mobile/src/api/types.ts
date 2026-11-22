@@ -18,6 +18,12 @@ export interface AuthUser {
    * database, so a faked flag here just yields a 403.
    */
   isPlatformAdmin?: boolean;
+  /**
+   * Admin-granted 1-on-1 voice. Display only — it decides whether the Direct
+   * Voice section is drawn at all. The room token re-checks the permission on
+   * BOTH people server-side, so a faked flag here reaches nobody.
+   */
+  canDirectVoice?: boolean;
 }
 
 export interface OrgSummary {

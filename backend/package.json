@@ -28,6 +28,9 @@
     "prisma:studio": "dotenv -e .env.development -- prisma studio",
     "admin:list": "dotenv -e .env.development -- ts-node scripts/platform-admin.ts list",
     "admin:grant": "dotenv -e .env.development -- ts-node scripts/platform-admin.ts grant",
+    "voice:direct:list": "dotenv -e .env.development -- ts-node scripts/direct-voice.ts list",
+    "voice:direct:grant": "dotenv -e .env.development -- ts-node scripts/direct-voice.ts grant",
+    "voice:direct:revoke": "dotenv -e .env.development -- ts-node scripts/direct-voice.ts revoke",
     "admin:revoke": "dotenv -e .env.development -- ts-node scripts/platform-admin.ts revoke"
   },
   "dependencies": {

@@ -24,6 +24,7 @@ import { VoiceInviteDto, VoiceModerateDto, VoiceRoomName } from './dto';
 import { resolveGuildAccess } from './guild-access';
 import {
   applyModeration,
+  DIRECT_VOICE_MAX_PARTICIPANTS,
   GUILD_VOICE_MAX_PARTICIPANTS,
   TEAM_VOICE_MAX_PARTICIPANTS,
   HostedRoomState,
@@ -93,7 +94,62 @@ export class VoiceService {
    * Which LiveKit room + what the caller may do there. The room name is always
    * derived from the caller's own org — never taken from the request.
    */
-  private async resolveRoom(userId: string, room: VoiceRoomName) {
+  /**
+   * The room name for a 1-on-1 call: both user ids, sorted, so each side
+   * derives the identical name without either having to tell the other.
+   */
+  private static directRoomName(a: string, b: string) {
+    return `direct:${[a, b].sort().join(':')}`;
+  }
+
+  /**
+   * Both people must hold `canDirectVoice`. The permission is only ever set
+   * by a platform admin, and it is re-read here on every token mint — so a
+   * revoke takes effect on the next join, and a grant to one person alone
+   * opens nothing.
+   */
+  private async resolveDirectRoom(userId: string, peerId: string | undefined) {
+    if (!peerId) {
+      throw new BadRequestException('Pick who you want to call');
+    }
+    if (peerId === userId) {
+      throw new BadRequestException('You cannot call yourself');
+    }
+    const [me, peer] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { canDirectVoice: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: peerId },
+        select: { canDirectVoice: true, name: true },
+      }),
+    ]);
+    if (!me?.canDirectVoice) {
+      throw new ForbiddenException('Direct voice is not enabled for you');
+    }
+    // Deliberately the same message either way: whether a particular account
+    // exists, and whether it holds this permission, is not something a caller
+    // gets to probe by trying ids.
+    if (!peer?.canDirectVoice) {
+      throw new ForbiddenException('Direct voice is not available with them');
+    }
+    return {
+      kind: 'direct' as const,
+      orgId: null,
+      roomName: VoiceService.directRoomName(userId, peerId),
+      canModerate: false,
+    };
+  }
+
+  private async resolveRoom(
+    userId: string,
+    room: VoiceRoomName,
+    peerId?: string,
+  ) {
+    if (room === 'direct') {
+      return this.resolveDirectRoom(userId, peerId);
+    }
     if (room === 'guild') {
       let access: { orgId: string; canModerate: boolean };
       try {
@@ -118,18 +174,50 @@ export class VoiceService {
   }
 
   /**
+   * Who this person can place a 1-on-1 call to: everyone else holding the
+   * same admin-granted permission. Returns an empty list (not an error) for
+   * people without it, so the client can simply hide the section.
+   */
+  async listDirectVoicePeers(userId: string) {
+    const me = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { canDirectVoice: true },
+    });
+    if (!me?.canDirectVoice) return { enabled: false, peers: [] };
+
+    const peers = await this.prisma.user.findMany({
+      where: { canDirectVoice: true, id: { not: userId } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, inGameName: true, avatarUrl: true },
+    });
+    return {
+      enabled: true,
+      peers: peers.map((p) => ({
+        id: p.id,
+        name: p.inGameName?.trim() || p.name,
+        avatarUrl: p.avatarUrl,
+      })),
+    };
+  }
+
+  /** Seats per room kind. */
+  private maxFor(room: VoiceRoomName): number {
+    if (room === 'guild') return GUILD_VOICE_MAX_PARTICIPANTS;
+    if (room === 'direct') return DIRECT_VOICE_MAX_PARTICIPANTS;
+    return TEAM_VOICE_MAX_PARTICIPANTS;
+  }
+
+  /**
    * Who is already in the voice room — for lobby + chat indicators.
    * Does not join the caller; only lists current occupants.
    */
   async getOccupancy(
     userId: string,
     room: VoiceRoomName = 'team',
+    peerId?: string,
   ): Promise<VoiceOccupancy> {
-    const max =
-      room === 'guild'
-        ? GUILD_VOICE_MAX_PARTICIPANTS
-        : TEAM_VOICE_MAX_PARTICIPANTS;
-    const ctx = await this.resolveRoom(userId, room);
+    const max = this.maxFor(room);
+    const ctx = await this.resolveRoom(userId, room, peerId);
 
     if (this.sfu.isSelfHosted()) {
       const participants = await this.voiceGateway.listOccupants(ctx.roomName);
@@ -168,19 +256,27 @@ export class VoiceService {
     return { room: ctx.kind, max, count: participants.length, participants };
   }
 
-  async getConfig(userId: string, room: VoiceRoomName = 'team') {
-    const max =
-      room === 'guild'
-        ? GUILD_VOICE_MAX_PARTICIPANTS
-        : TEAM_VOICE_MAX_PARTICIPANTS;
+  async getConfig(
+    userId: string,
+    room: VoiceRoomName = 'team',
+    peerId?: string,
+  ) {
+    const max = this.maxFor(room);
 
     if (this.sfu.isSelfHosted()) {
+      if (room === 'direct') {
+        // The mediasoup gateway has no notion of a pair room, and silently
+        // dropping someone into the team room would be worse than saying so.
+        throw new ServiceUnavailableException(
+          'One-to-one voice needs hosted voice (LiveKit).',
+        );
+      }
       return { mode: 'self' as const, max, room };
     }
 
     // Config check first so a missing LiveKit setup fails cleanly before any lookups.
     const creds = this.creds();
-    const ctx = await this.resolveRoom(userId, room);
+    const ctx = await this.resolveRoom(userId, room, peerId);
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });

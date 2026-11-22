@@ -47,6 +47,7 @@ import { useThemedStyles } from '../../theme/useThemedStyles';
 import {
   VOICE_PRESETS,
   VoicePreset,
+  getVoiceChangerStatus,
   getVoicePreset,
   isVoiceChangerAvailable,
   setVoicePreset,
@@ -127,9 +128,12 @@ function ScreenShareViewer({
   const title = share.isLocal
     ? 'You are sharing your screen'
     : `${share.participantName} is sharing`;
+  // Android's getDisplayMedia is video-only, so the mic is the only audio
+  // going out either way — saying "media audio" promised something we do
+  // not send.
   const audioHint = share.isLocal
-    ? 'Others hear your mic + media audio when available'
-    : 'Voice + shared media audio';
+    ? 'Your mic keeps going — screen video only, no device audio'
+    : 'Screen video — you still hear them on the mic';
 
   const videoNode =
     VideoView && share.videoTrack ? (
@@ -414,14 +418,45 @@ type ListItem =
  * Voice changer chips (Android native build only). Works before joining and
  * mid-call — the effect sits on the mic path below both voice backends.
  */
-function VoicePresetPicker() {
+function VoicePresetPicker({ inChannel }: { inChannel: boolean }) {
   const themed = useThemedStyles(voiceStyles);
   const [available] = useState(() => isVoiceChangerAvailable());
   const [preset, setPreset] = useState<VoicePreset>(() => getVoicePreset());
+  // Whether audio is genuinely flowing through the effect. Picking a preset
+  // and hearing no change used to be indistinguishable from the effect never
+  // having attached — now the picker says which it is.
+  const [live, setLive] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!available || preset === 'off' || !inChannel) {
+      setLive(null);
+      return;
+    }
+    // Poll briefly after a change: frames have to actually arrive before we
+    // can say it is working, and that takes a beat.
+    const seen = getVoiceChangerStatus()?.processedFrames ?? 0;
+    let cancelled = false;
+    const id = setInterval(() => {
+      const status = getVoiceChangerStatus();
+      if (cancelled || !status) return;
+      if (status.layoutUnsupported) {
+        setLive(false);
+        return;
+      }
+      if (status.processedFrames > seen) setLive(true);
+      else if (status.attached) setLive(false);
+    }, 700);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [available, preset, inChannel]);
+
   if (!available) return null;
 
   const choose = (id: VoicePreset) => {
     if (id === preset) return;
+    setLive(null);
     if (setVoicePreset(id)) setPreset(id);
   };
 
@@ -451,6 +486,14 @@ function VoicePresetPicker() {
           );
         })}
       </ScrollView>
+      {preset !== 'off' && !inChannel && (
+        <Text style={themed.mutedHint}>Applies when you join voice.</Text>
+      )}
+      {preset !== 'off' && inChannel && live === false && (
+        <Text style={themed.mutedHint}>
+          Effect is not reaching the mic — leave and rejoin voice.
+        </Text>
+      )}
     </View>
   );
 }
@@ -638,7 +681,7 @@ function VoiceChannelBody({
           )}
         </View>
 
-        <VoicePresetPicker />
+        <VoicePresetPicker inChannel={inChannel} />
 
         {!inChannel && lobbyOccupants.length > 0 && (
           <>
@@ -948,9 +991,12 @@ function VoiceChannelBody({
 function HostedVoiceChannel({
   config,
   room,
+  peer,
 }: {
   config: Extract<VoiceConfig, { mode: 'hosted' }>;
   room: VoiceRoomKind;
+  /** 1-on-1 only: who is on the other end. */
+  peer?: { id: string; name: string };
 }) {
   const { activate, deactivate, controller, activationRoom, setScreenFocused } =
     useVoiceContext();
@@ -967,9 +1013,11 @@ function HostedVoiceChannel({
   const effectiveToken = selectedRoom ? selectedRoom.token : config.token;
   const channelName = selectedRoom
     ? selectedRoom.name
-    : room === 'guild'
-      ? 'Guild Voice'
-      : 'Team Voice';
+    : room === 'direct'
+      ? (peer?.name ?? 'Direct Voice')
+      : room === 'guild'
+        ? 'Guild Voice'
+        : 'Team Voice';
   const canModerate = config.canModerate;
   const max = config.max;
 
@@ -980,9 +1028,30 @@ function HostedVoiceChannel({
   // so without this the screen sat on the skeleton below with no way back to
   // the Join button (nothing else re-runs while the screen stays focused).
   const hasSession = !!controller;
+  const peerId = peer?.id;
+  const peerName = peer?.name;
   useEffect(() => {
-    activate({ mode: 'hosted', url: effectiveUrl, token: effectiveToken, room, canModerate, max });
-  }, [effectiveUrl, effectiveToken, room, canModerate, max, activate, hasSession]);
+    activate({
+      mode: 'hosted',
+      url: effectiveUrl,
+      token: effectiveToken,
+      room,
+      canModerate,
+      max,
+      peerId,
+      peerName,
+    });
+  }, [
+    effectiveUrl,
+    effectiveToken,
+    room,
+    canModerate,
+    max,
+    peerId,
+    peerName,
+    activate,
+    hasSession,
+  ]);
 
   // Track screen focus so VoiceFloatingWidget only shows when user has
   // navigated away from this screen.
@@ -990,11 +1059,30 @@ function HostedVoiceChannel({
     useCallback(() => {
       setScreenFocused(true);
       // Re-activate if the user left via the floating widget then came back
-      activate({ mode: 'hosted', url: effectiveUrl, token: effectiveToken, room, canModerate, max });
+      activate({
+        mode: 'hosted',
+        url: effectiveUrl,
+        token: effectiveToken,
+        room,
+        canModerate,
+        max,
+        peerId,
+        peerName,
+      });
       return () => {
         setScreenFocused(false);
       };
-    }, [effectiveUrl, effectiveToken, room, canModerate, max, activate, setScreenFocused]),
+    }, [
+      effectiveUrl,
+      effectiveToken,
+      room,
+      canModerate,
+      max,
+      peerId,
+      peerName,
+      activate,
+      setScreenFocused,
+    ]),
   );
 
   // The shared session may still be the other room's (team ↔ guild) for one
@@ -1051,7 +1139,13 @@ function HostedVoiceChannel({
     <VoiceChannelBody
       voice={controller}
       channelName={channelName}
-      channelLabel={room === 'guild' ? 'GUILD VOICE' : 'VOICE CHANNEL'}
+      channelLabel={
+        room === 'guild'
+          ? 'GUILD VOICE'
+          : room === 'direct'
+            ? '1-ON-1 VOICE'
+            : 'VOICE CHANNEL'
+      }
       rooms={hasMultipleRooms ? config.rooms : undefined}
       selectedRoom={selectedRoom}
       onSelectRoom={handleSelectRoom}
@@ -1064,7 +1158,9 @@ function SelfHostedVoiceChannel({
   room,
 }: {
   authToken: string;
-  room: VoiceRoomKind;
+  // Self-hosted voice has no 1-on-1 room — the backend refuses `direct` on
+  // that path, so this screen never sees it.
+  room: 'team' | 'guild';
 }) {
   const { activate, deactivate, controller, activationRoom, setScreenFocused } =
     useVoiceContext();
@@ -1168,7 +1264,14 @@ function RoomSwitchGate({
   );
 }
 
-function VoiceChannelScreenInner({ room }: { room: VoiceRoomKind }) {
+function VoiceChannelScreenInner({
+  room,
+  peer,
+}: {
+  room: VoiceRoomKind;
+  /** 1-on-1 only: who is on the other end. */
+  peer?: { id: string; name: string };
+}) {
   const shared = useSharedStyles();
   const { colors } = useTheme();
   const [config, setConfig] = useState<VoiceConfig | null>(null);
@@ -1181,7 +1284,7 @@ function VoiceChannelScreenInner({ room }: { room: VoiceRoomKind }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([voiceApi.getVoiceConfig(room), getToken()])
+    Promise.all([voiceApi.getVoiceConfig(room, peer?.id), getToken()])
       .then(([cfg, token]) => {
         if (cancelled) return;
         if (!token) {
@@ -1212,7 +1315,7 @@ function VoiceChannelScreenInner({ room }: { room: VoiceRoomKind }) {
     return () => {
       cancelled = true;
     };
-  }, [room]);
+  }, [room, peer?.id]);
 
   if (nativeError || error) {
     return (
@@ -1235,17 +1338,28 @@ function VoiceChannelScreenInner({ room }: { room: VoiceRoomKind }) {
   }
 
   return config.mode === 'hosted' ? (
-    <HostedVoiceChannel config={config} room={room} />
+    <HostedVoiceChannel config={config} room={room} peer={peer} />
   ) : (
-    <SelfHostedVoiceChannel authToken={authToken} room={room} />
+    // `direct` never reaches here: the backend only serves it on hosted
+    // voice, so a self-hosted config means team or guild.
+    <SelfHostedVoiceChannel
+      authToken={authToken}
+      room={room === 'guild' ? 'guild' : 'team'}
+    />
   );
 }
 
-function VoiceScreenRoot({ room }: { room: VoiceRoomKind }) {
+export function VoiceScreenRoot({
+  room,
+  peer,
+}: {
+  room: VoiceRoomKind;
+  peer?: { id: string; name: string };
+}) {
   const [key, setKey] = useState(0);
   return (
     <VoiceErrorBoundary onRetry={() => setKey((k) => k + 1)}>
-      <VoiceChannelScreenInner key={key} room={room} />
+      <VoiceChannelScreenInner key={key} room={room} peer={peer} />
     </VoiceErrorBoundary>
   );
 }

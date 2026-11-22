@@ -910,6 +910,10 @@ export class AuthService {
         // point. Every /admin route re-checks the database for itself, so a
         // client that fakes this flag just gets a 403 on the first call.
         isPlatformAdmin: user.isPlatformAdmin,
+        // Same rule: it only decides whether the 1-on-1 voice section is
+        // drawn. The token for such a call re-checks the permission on BOTH
+        // people server-side.
+        canDirectVoice: user.canDirectVoice,
       },
       org: session.org,
       guild: session.guild,

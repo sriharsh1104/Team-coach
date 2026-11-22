@@ -65,6 +65,12 @@ model User {
   // trusting the token it was issued with.
   isPlatformAdmin Boolean @default(false)
 
+  // Opt-in, admin-granted: 1-on-1 voice outside any org. Both people need
+  // it before a call between them is possible (VoiceService.resolveRoom), so
+  // granting it to one person alone exposes nothing. Set from /admin or
+  // `npm run voice:direct:grant` — never from anything a client sends.
+  canDirectVoice Boolean @default(false)
+
   // Bumped on logout; embedded in every JWT at sign time and checked against
   // this column on every authenticated request (JwtStrategy.validate) — the
   // only server-side way to invalidate outstanding tokens before they expire.
