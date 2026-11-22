@@ -319,7 +319,15 @@ export type UploadProgress = {
   fraction: number;
 };
 
-type UploadOptions = { onProgress?: (p: UploadProgress) => void };
+type UploadOptions = {
+  onProgress?: (p: UploadProgress) => void;
+  /**
+   * Abort an upload in flight. The bytes often finish well before the CDN
+   * answers, which is why a stuck send sits on 95% — cancelling has to tear
+   * down the request itself, not just stop reporting progress.
+   */
+  signal?: AbortSignal;
+};
 
 function uploadFraction(evt: { loaded: number; total?: number }): number {
   if (!evt.total || evt.total <= 0) return 0;
@@ -351,15 +359,16 @@ export async function uploadChatMedia(
   }
 
   try {
-    return await uploadPrepared(prepared, report);
+    return await uploadPrepared(prepared, report, options.signal);
   } catch (err) {
+    if (options.signal?.aborted) throw err;
     // The compressed copy may be broken/unreadable — try the untouched
     // original once. Skip when the server said "too large" (original is
     // bigger, so it would only fail the same way).
     const status = (err as { response?: { status?: number } })?.response?.status;
     if (prepared.uri !== original.uri && status !== 413) {
       console.warn('Upload of compressed file failed, retrying original:', (err as Error)?.message);
-      return uploadPrepared(original, report);
+      return uploadPrepared(original, report, options.signal);
     }
     throw err;
   }
@@ -368,6 +377,7 @@ export async function uploadChatMedia(
 async function uploadPrepared(
   prepared: { uri: string; fileName: string; mimeType: string },
   report: (phase: UploadProgress['phase'], fraction: number) => void,
+  signal?: AbortSignal,
 ): Promise<ChatMediaUploadResult> {
   const resourceType = prepared.mimeType.startsWith('video/')
     ? ('video' as const)
@@ -382,6 +392,7 @@ async function uploadPrepared(
       .get<CloudinarySign>('/chat/media/upload-sign', {
         params: { resourceType },
         skipErrorToast: true,
+        signal,
       } as Record<string, unknown>)
       .then((res) => res.data);
 
@@ -405,6 +416,7 @@ async function uploadPrepared(
         transformRequest: stripMultipartContentType,
         onUploadProgress,
         validateStatus: () => true,
+        signal,
       });
       if (cloudRes.status < 200 || cloudRes.status >= 300) {
         throw new Error(`Cloudinary upload failed (${cloudRes.status})`);
@@ -415,15 +427,18 @@ async function uploadPrepared(
 
       report('finalizing', 0.96);
       const registered = await apiClient
-        .post<ChatMediaUploadResult>('/chat/media/register', {
-          publicId: cloudRes.data.public_id,
-          resourceType,
-        })
+        .post<ChatMediaUploadResult>(
+          '/chat/media/register',
+          { publicId: cloudRes.data.public_id, resourceType },
+          { signal },
+        )
         .then((res) => res.data);
       report('finalizing', 1);
       return registered;
     }
   } catch (err) {
+    // A cancel is not a CDN problem — do not quietly start a second upload.
+    if (signal?.aborted) throw err;
     // Fall through to backend proxy upload (local disk / Cloudinary via API).
     console.warn('Direct CDN upload unavailable, using API upload:', (err as Error)?.message);
     report('uploading', 0.05);
@@ -436,6 +451,7 @@ async function uploadPrepared(
     type: prepared.mimeType,
   });
   const res = await apiClient.post<ChatMediaUploadResult>('/chat/media', form, {
+    signal,
     timeout: 180_000,
     transformRequest: stripMultipartContentType,
     onUploadProgress,

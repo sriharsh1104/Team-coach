@@ -28,6 +28,8 @@ type Props = {
   selectMode: boolean;
   /** Set while this bubble's media is still uploading. */
   pending?: PendingUpload;
+  /** Cancel an upload that is still in flight (the ✕ on the progress ring). */
+  onCancelPending?: (message: ChatMessage) => void;
   avatarUri?: string | null;
   knownIgns: string[];
   /** Only the newest of my messages carries the delivery/seen ticks. */
@@ -61,6 +63,7 @@ function MessageBubbleInner({
   isHighlighted,
   selectMode,
   pending,
+  onCancelPending,
   avatarUri,
   knownIgns,
   showSeen,
@@ -75,6 +78,11 @@ function MessageBubbleInner({
   onAddMatch,
 }: Props) {
   const mediaUri = chatApi.resolveChatMediaUrl(message.mediaUrl);
+  const mediaOnly =
+    (message.mediaType === 'IMAGE' || message.mediaType === 'VIDEO') &&
+    !message.text?.trim() &&
+    !message.replyTo &&
+    !message.forwarded;
   return (
       <Pressable
         onPress={() => onPress(message)}
@@ -114,15 +122,19 @@ function MessageBubbleInner({
           </View>
         ) : null}
         <View style={styles.bubbleCol}>
+          {!isMine && mediaOnly ? (
+            <Text style={styles.sender}>{formatSenderLabel(message)}</Text>
+          ) : null}
           <View
             style={[
               styles.bubble,
               isMine && styles.bubbleMine,
+              mediaOnly && styles.bubbleMediaOnly,
               isHighlighted && styles.bubbleHit,
               isSelected && styles.bubbleSelected,
             ]}
           >
-            {!isMine && (
+            {!isMine && !mediaOnly && (
               <Text style={styles.sender}>{formatSenderLabel(message)}</Text>
             )}
             {message.forwarded ? (
@@ -179,7 +191,7 @@ function MessageBubbleInner({
               >
                 <Image
                   source={{ uri: mediaUri }}
-                  style={styles.media}
+                  style={mediaOnly ? styles.mediaFlush : styles.media}
                   contentFit="cover"
                   // Disk cache: first open hits the URL; later opens
                   // (and other chats reusing the same file) read cache.
@@ -197,13 +209,18 @@ function MessageBubbleInner({
                     status={pending.status}
                     progress={pending.progress}
                     label={pending.label}
+                    onCancel={
+                      onCancelPending
+                        ? () => onCancelPending(message)
+                        : undefined
+                    }
                   />
                 ) : null}
               </Pressable>
             ) : null}
             {message.mediaType === 'VIDEO' && mediaUri ? (
               <Pressable
-                style={styles.videoThumb}
+                style={mediaOnly ? styles.videoThumbFlush : styles.videoThumb}
                 onPress={() => {
                   if (pending || selectMode) {
                     onPress(message);
@@ -224,7 +241,7 @@ function MessageBubbleInner({
                   // while it uploads (paused, muted, no controls).
                   <Video
                     source={{ uri: mediaUri }}
-                    style={styles.videoFrame}
+                    style={mediaOnly ? styles.videoFrameFlush : styles.videoFrame}
                     resizeMode={ResizeMode.COVER}
                     shouldPlay={false}
                     isMuted
@@ -238,6 +255,11 @@ function MessageBubbleInner({
                     status={pending.status}
                     progress={pending.progress}
                     label={pending.label}
+                    onCancel={
+                      onCancelPending
+                        ? () => onCancelPending(message)
+                        : undefined
+                    }
                   />
                 ) : null}
               </Pressable>
@@ -304,19 +326,33 @@ function MessageBubbleInner({
                 onToggle={(emoji) => onToggleReaction(message.id, emoji)}
               />
             ) : null}
-            <View style={styles.metaRow}>
+            <View
+              style={[styles.metaRow, mediaOnly && styles.metaRowOnMedia]}
+            >
               {message.pinned ? (
                 <AppIcon
                   name="pin"
                   size={12}
-                  color={isMine ? colors.chromeInk : colors.textDim}
+                  color={
+                    mediaOnly
+                      ? '#fff'
+                      : isMine
+                        ? colors.chromeInk
+                        : colors.textDim
+                  }
                 />
               ) : null}
               {message.starred ? (
                 <AppIcon
                   name="star"
                   size={12}
-                  color={isMine ? colors.chromeInk : colors.textDim}
+                  color={
+                    mediaOnly
+                      ? '#fff'
+                      : isMine
+                        ? colors.chromeInk
+                        : colors.textDim
+                  }
                 />
               ) : null}
               {message.editedAt ? (
@@ -324,13 +360,18 @@ function MessageBubbleInner({
                   style={[
                     styles.editedLabel,
                     isMine && styles.editedLabelMine,
+                    mediaOnly && styles.timeLabelOnMedia,
                   ]}
                 >
                   edited
                 </Text>
               ) : null}
               <Text
-                style={[styles.timeLabel, isMine && styles.timeLabelMine]}
+                style={[
+                  styles.timeLabel,
+                  isMine && styles.timeLabelMine,
+                  mediaOnly && styles.timeLabelOnMedia,
+                ]}
                 accessibilityLabel={`Sent at ${formatMessageTime(message.createdAt)}`}
               >
                 {formatMessageTime(message.createdAt)}

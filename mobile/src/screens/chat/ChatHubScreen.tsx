@@ -7,6 +7,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
+import { registerBackInterceptor } from '../../navigation/backInterceptors';
 import { AppIcon } from '../../ui/AppIcon';
 import * as chatApi from '../../api/chat';
 import { CacheKeys, hasFreshEnough, revalidate } from '../../api/queryCache';
@@ -250,6 +251,37 @@ export function ChatHubScreen({ onLoadError }: Props) {
     // "No messages yet" preview until a manual pull-to-refresh.
     load({ force: true }).catch((err) => onLoadError?.(err));
   };
+
+  // Android back inside the chat hub: peel off overlays, then the open
+  // conversation, before the host screen's exit prompt ever sees the press.
+  useEffect(() => {
+    return registerBackInterceptor(() => {
+      if (overlayStack.length > 0) {
+        popOverlay();
+        return true;
+      }
+      if (settingsOpen) {
+        setSettingsOpen(false);
+        return true;
+      }
+      if (searchOpen) {
+        setSearchOpen(false);
+        return true;
+      }
+      if (active) {
+        backToInbox();
+        return true;
+      }
+      if (starredOnly) {
+        setStarredOnly(false);
+        return true;
+      }
+      return false;
+    });
+    // backToInbox / popOverlay are re-created each render; the deps that
+    // matter are the flags the interceptor reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlayStack.length, settingsOpen, searchOpen, active, starredOnly]);
 
   const openHeaderInfo = () => {
     if (!active) return;

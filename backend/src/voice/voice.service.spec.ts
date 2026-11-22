@@ -7,10 +7,19 @@ import {
 import { TokenVerifier } from 'livekit-server-sdk';
 import { VoiceService } from './voice.service';
 import { VoiceGateway } from './voice.gateway';
+import { PushNotificationService } from '../common/push-notification.service';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediasoupSfuService } from './mediasoup-sfu.service';
 import { MembershipService } from '../membership/membership.service';
+
+/** Voice never pushes in these tests — invite() has its own suite. */
+function stubPush() {
+  return {
+    tokensFor: () => [],
+    send: jest.fn().mockResolvedValue(undefined),
+  } as unknown as PushNotificationService;
+}
 
 // The hosted/self-hosted branch is picked by an env var that the e2e suite's
 // single running app can't safely flip mid-run (process.env is shared across
@@ -63,6 +72,7 @@ describe('VoiceService (unit)', () => {
       sfu,
       membership,
       gateway,
+      stubPush(),
     );
   }
 
@@ -264,6 +274,7 @@ describe('VoiceService hosted guild voice (unit)', () => {
       {
         listOccupants: jest.fn().mockResolvedValue([]),
       } as unknown as VoiceGateway,
+      stubPush(),
     );
     const lk = {
       createRoom: jest
@@ -321,7 +332,11 @@ describe('VoiceService hosted guild voice (unit)', () => {
     expect(claims.video?.room).toBe('guild:org-1');
     expect(claims.video?.canPublish).toBe(true);
     expect(claims.video?.canPublishSources).toEqual(
-      expect.arrayContaining(['microphone', 'screen_share', 'screen_share_audio']),
+      expect.arrayContaining([
+        'microphone',
+        'screen_share',
+        'screen_share_audio',
+      ]),
     );
   });
 
@@ -389,5 +404,140 @@ describe('VoiceService hosted guild voice (unit)', () => {
     await expect(
       service.moderate('u1', { room: 'team', action: 'muteAll' }),
     ).rejects.toThrow(ForbiddenException);
+  });
+});
+
+describe('VoiceService "ping to join" (unit)', () => {
+  const ME = 'me';
+
+  function build(opts: {
+    occupants?: { id: string; name: string; avatarUrl: string | null }[];
+    orgMemberIds?: string[];
+    pushTokensByUser?: Record<string, string[]>;
+  }) {
+    const occupants = opts.occupants ?? [
+      { id: ME, name: 'Me', avatarUrl: null },
+    ];
+    const send = jest.fn().mockResolvedValue(undefined);
+    const prisma = {
+      user: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ name: 'Alice', inGameName: 'Al' }),
+        findMany: jest.fn(({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(
+            where.id.in.map((id) => ({ id, expoPushToken: `tok:${id}` })),
+          ),
+        ),
+      },
+      membership: {
+        findMany: jest.fn(
+          ({ where }: { where: { userId: { in: string[] } } }) =>
+            Promise.resolve(
+              where.userId.in
+                .filter((id) =>
+                  (opts.orgMemberIds ?? where.userId.in).includes(id),
+                )
+                .map((userId) => ({ userId })),
+            ),
+        ),
+      },
+    } as unknown as PrismaService;
+
+    const push = {
+      tokensFor: (raw: string) => {
+        const userId = String(raw).replace('tok:', '');
+        return opts.pushTokensByUser
+          ? (opts.pushTokensByUser[userId] ?? [])
+          : [`expo:${userId}`];
+      },
+      send,
+    } as unknown as PushNotificationService;
+
+    const service = new VoiceService(
+      { get: () => undefined } as unknown as ConfigService,
+      {
+        getOrgIdForUser: jest.fn().mockResolvedValue('org-1'),
+      } as unknown as ChatService,
+      prisma,
+      { isSelfHosted: () => true } as unknown as MediasoupSfuService,
+      {
+        hasEditAccess: jest.fn().mockResolvedValue(false),
+      } as unknown as MembershipService,
+      {
+        listOccupants: jest.fn().mockResolvedValue(occupants),
+      } as unknown as VoiceGateway,
+      push,
+    );
+    return { service, send };
+  }
+
+  it('pushes a "waiting in Team Voice" nudge to the named teammates', async () => {
+    const { service, send } = build({});
+    const result = await service.invite(ME, { userIds: ['bob', 'cara'] });
+
+    expect(result).toEqual({ sent: 2, skipped: 0 });
+    const messages = send.mock.calls[0][0] as {
+      to: string;
+      title: string;
+      data: unknown;
+    }[];
+    expect(messages.map((m) => m.to).sort()).toEqual(['expo:bob', 'expo:cara']);
+    expect(messages[0].title).toBe('Al is waiting in Team Voice');
+    expect(messages[0].data).toMatchObject({
+      type: 'voice_invite',
+      voiceRoom: 'team',
+    });
+  });
+
+  it('refuses when the caller is not in the voice room', async () => {
+    const { service, send } = build({ occupants: [] });
+    await expect(service.invite(ME, { userIds: ['bob'] })).rejects.toThrow(
+      /Join the voice channel first/,
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('skips people already in the call and the caller themselves', async () => {
+    const { service, send } = build({
+      occupants: [
+        { id: ME, name: 'Me', avatarUrl: null },
+        { id: 'bob', name: 'Bob', avatarUrl: null },
+      ],
+    });
+    const result = await service.invite(ME, { userIds: ['bob', ME, 'cara'] });
+
+    expect(result).toEqual({ sent: 1, skipped: 0 });
+    const messages = send.mock.calls[0][0] as { to: string }[];
+    expect(messages.map((m) => m.to)).toEqual(['expo:cara']);
+  });
+
+  it('never pings someone outside the caller’s org', async () => {
+    const { service, send } = build({ orgMemberIds: ['bob'] });
+    const result = await service.invite(ME, { userIds: ['bob', 'stranger'] });
+
+    expect(result).toEqual({ sent: 1, skipped: 1 });
+    const messages = send.mock.calls[0][0] as { to: string }[];
+    expect(messages.map((m) => m.to)).toEqual(['expo:bob']);
+  });
+
+  it('holds a repeat ping of the same person behind the cooldown', async () => {
+    const { service, send } = build({});
+    await service.invite(ME, { userIds: ['bob'] });
+    const second = await service.invite(ME, { userIds: ['bob'] });
+
+    expect(second).toEqual({ sent: 0, skipped: 1 });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not burn the cooldown on someone with no registered device', async () => {
+    const { service } = build({ pushTokensByUser: { bob: [] } });
+    const first = await service.invite(ME, { userIds: ['bob'] });
+    expect(first).toEqual({ sent: 0, skipped: 1 });
+
+    // Bob installs the app; the very next ping must get through.
+    const { service: service2, send } = build({});
+    await service2.invite(ME, { userIds: ['bob'] });
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });

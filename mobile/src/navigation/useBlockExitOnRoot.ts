@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BackHandler, Platform } from 'react-native';
 import type { NavigationProp, ParamListBase } from '@react-navigation/native';
+import { runBackInterceptors } from './backInterceptors';
 
 /**
  * On the stack root (OrgHome / GuildHome), Android hardware back shows a
@@ -30,6 +31,10 @@ export function useBlockExitOnRoot(navigation: NavigationProp<ParamListBase>) {
     let backSub: { remove: () => void } | null = null;
 
     const onBack = () => {
+      // Anything open inside this screen (an open chat, an overlay on top of
+      // it) closes first — only a back press with nothing left to close is
+      // an attempt to leave the app.
+      if (runBackInterceptors()) return true;
       if (promptingRef.current) return true;
       promptingRef.current = true;
       setExitModalVisible(true);

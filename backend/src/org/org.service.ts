@@ -6,8 +6,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { customAlphabet } from 'nanoid';
-import { GuildRole, MembershipRole, Prisma } from '@prisma/client';
+import {
+  GuildJoinRequestStatus,
+  GuildRole,
+  MembershipRole,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  PushMessage,
+  PushNotificationService,
+} from '../common/push-notification.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { JoinOrgDto } from './dto/join-org.dto';
@@ -32,6 +41,10 @@ const ROLE_CAPS: Partial<Record<MembershipRole, number>> = {
 // the 5/min-per-IP join throttle (org.controller.ts) only resists a single
 // attacker IP; a wider keyspace is what actually matters against a
 // distributed guesser spread across many IPs.
+// Mirrors ChatService.GUILD_CHANNEL — imported by value would drag the whole
+// chat module into OrgModule for one string.
+const GUILD_CHANNEL_KEY = 'guild';
+
 const generateOrgCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 8);
 const generateReferralToken = customAlphabet(
   'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
@@ -132,6 +145,7 @@ export class OrgService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly pushNotifications: PushNotificationService,
   ) {}
 
   private notifyMembersChanged(orgId: string) {
@@ -566,18 +580,36 @@ export class OrgService {
         _count: {
           select: { guildMemberships: true, memberships: true },
         },
+        // The guild chat's group photo doubles as the org's logo — it is the
+        // only picture an owner can already set, and the list looked bare
+        // without it.
+        chatChannelMetas: {
+          where: { channelKey: GUILD_CHANNEL_KEY },
+          select: { avatarUrl: true },
+          take: 1,
+        },
       },
       orderBy: [{ guildMemberships: { _count: 'desc' } }, { name: 'asc' }],
       take: 50,
     });
 
+    // Which of these the user has already asked to join, so the list can show
+    // "Requested" instead of offering the button again.
+    const requests = await this.prisma.guildJoinRequest.findMany({
+      where: { userId, orgId: { in: orgs.map((o) => o.id) } },
+      select: { orgId: true, status: true },
+    });
+    const statusByOrg = new Map(requests.map((r) => [r.orgId, r.status]));
+
     return {
       guilds: orgs.map((o) => ({
         id: o.id,
         name: o.name,
+        logoUrl: o.chatChannelMetas[0]?.avatarUrl ?? null,
         memberCount: o._count.guildMemberships,
         rosterCount: o._count.memberships,
         createdAt: o.createdAt.toISOString(),
+        requestStatus: statusByOrg.get(o.id) ?? null,
       })),
     };
   }
@@ -614,25 +646,361 @@ export class OrgService {
     return { left: true, orgId: guild.org.id, name: guild.org.name };
   }
 
+  // ── Guild join requests ────────────────────────────────────────────────
+  // Browsing the public list and tapping "Join" used to drop the person
+  // straight into the guild. Now it asks: the owner (and guild leadership)
+  // decide. Having the org code or a personal invite link still joins
+  // directly — the code IS the owner's permission.
+
+  /** Everyone who should see this org's join-request inbox. */
+  private async assertCanDecideJoinRequests(userId: string, orgId: string) {
+    const [roster, guild] = await Promise.all([
+      this.prisma.membership.findFirst({
+        where: { userId, orgId },
+        select: { isOwner: true, role: true },
+      }),
+      this.prisma.guildMembership.findFirst({
+        where: { userId, orgId },
+        select: { role: true },
+      }),
+    ]);
+    const allowed =
+      roster?.isOwner ||
+      roster?.role === MembershipRole.COACH ||
+      guild?.role === GuildRole.LEADER ||
+      guild?.role === GuildRole.ACTIVE_LEADER;
+    if (!allowed) {
+      throw new ForbiddenException(
+        'Only the owner or guild leadership can review join requests',
+      );
+    }
+  }
+
+  private async notifyJoinRequestReceived(
+    orgId: string,
+    orgName: string,
+    requesterName: string,
+  ) {
+    const [owners, leaders] = await Promise.all([
+      this.prisma.membership.findMany({
+        where: {
+          orgId,
+          OR: [{ isOwner: true }, { role: MembershipRole.COACH }],
+        },
+        select: { user: { select: { id: true, expoPushToken: true } } },
+      }),
+      this.prisma.guildMembership.findMany({
+        where: {
+          orgId,
+          role: { in: [GuildRole.LEADER, GuildRole.ACTIVE_LEADER] },
+        },
+        select: { user: { select: { id: true, expoPushToken: true } } },
+      }),
+    ]);
+    const byId = new Map(
+      [...owners, ...leaders].map((m) => [m.user.id, m.user.expoPushToken]),
+    );
+
+    const messages: PushMessage[] = [];
+    for (const [id, token] of byId) {
+      for (const to of this.pushNotifications.tokensFor(token)) {
+        messages.push({
+          to,
+          title: 'New guild join request',
+          body: `${requesterName} wants to join ${orgName}.`,
+          data: { type: 'guild_join_request', orgId },
+          // Several requests shouldn't stack up a tray full of near-identical
+          // lines — one entry that keeps updating.
+          collapseId: `guild-join-request:${orgId}:${id}`,
+          channelId: 'default',
+          priority: 'high',
+        });
+      }
+    }
+    await this.pushNotifications.send(messages);
+  }
+
+  private async notifyJoinRequestDecided(
+    userId: string,
+    orgName: string,
+    accepted: boolean,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { expoPushToken: true },
+    });
+    const messages: PushMessage[] = this.pushNotifications
+      .tokensFor(user?.expoPushToken)
+      .map((to) => ({
+        to,
+        title: accepted ? `You're in — ${orgName}` : `${orgName} declined`,
+        body: accepted
+          ? 'Your guild join request was accepted. Tap to open the app.'
+          : 'Your guild join request was not accepted. You can try another guild.',
+        data: { type: 'guild_join_decision', accepted },
+        collapseId: `guild-join-decision:${userId}`,
+        channelId: 'default',
+        priority: 'high',
+      }));
+    await this.pushNotifications.send(messages);
+  }
+
+  /** Ask an org's leadership to let you into their guild. */
+  async requestGuildJoin(userId: string, orgId: string) {
+    const [guild, roster, org, user] = await Promise.all([
+      this.prisma.guildMembership.findFirst({ where: { userId } }),
+      this.prisma.membership.findFirst({ where: { userId } }),
+      this.prisma.org.findUnique({
+        where: { id: orgId },
+        select: { id: true, name: true },
+      }),
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { name: true, inGameName: true },
+      }),
+    ]);
+    if (!org) throw new NotFoundException('No guild found');
+    if (guild || roster) {
+      throw new ConflictException(
+        'Leave your current guild before requesting another',
+      );
+    }
+
+    const existing = await this.prisma.guildJoinRequest.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { id: true, status: true },
+    });
+    if (existing?.status === GuildJoinRequestStatus.PENDING) {
+      // Re-tapping is not an error — just report where it stands.
+      return { status: existing.status, orgId, orgName: org.name };
+    }
+
+    // A previous rejection is reopened rather than stacking a second row, so
+    // the inbox never shows the same person twice.
+    await this.prisma.guildJoinRequest.upsert({
+      where: { userId_orgId: { userId, orgId } },
+      create: { userId, orgId, status: GuildJoinRequestStatus.PENDING },
+      update: {
+        status: GuildJoinRequestStatus.PENDING,
+        decidedAt: null,
+        decidedById: null,
+      },
+    });
+    this.realtime.publish(orgId, 'members.changed');
+    await this.notifyJoinRequestReceived(
+      orgId,
+      org.name,
+      user.inGameName ?? user.name,
+    );
+    return {
+      status: GuildJoinRequestStatus.PENDING,
+      orgId,
+      orgName: org.name,
+    };
+  }
+
+  /** The requester's own view — drives the browse list's "Requested" chips. */
+  async myGuildJoinRequests(userId: string) {
+    const rows = await this.prisma.guildJoinRequest.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        org: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      requests: rows.map((r) => ({
+        id: r.id,
+        orgId: r.org.id,
+        orgName: r.org.name,
+        status: r.status,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /** Withdraw your own pending request. */
+  async cancelGuildJoinRequest(userId: string, requestId: string) {
+    const request = await this.prisma.guildJoinRequest.findUnique({
+      where: { id: requestId },
+      select: { id: true, userId: true, orgId: true, status: true },
+    });
+    if (!request || request.userId !== userId) {
+      throw new NotFoundException('Request not found');
+    }
+    if (request.status !== GuildJoinRequestStatus.PENDING) {
+      throw new BadRequestException('That request is no longer pending');
+    }
+    await this.prisma.guildJoinRequest.delete({ where: { id: requestId } });
+    this.realtime.publish(request.orgId, 'members.changed');
+    return { cancelled: true };
+  }
+
+  /** Pending requests for the caller's own org. */
+  async listGuildJoinRequests(userId: string) {
+    const guild = await this.prisma.guildMembership.findFirst({
+      where: { userId },
+      select: { orgId: true },
+    });
+    const roster = await this.prisma.membership.findFirst({
+      where: { userId },
+      select: { orgId: true },
+    });
+    const orgId = guild?.orgId ?? roster?.orgId;
+    if (!orgId) throw new NotFoundException('You are not part of a guild yet');
+    await this.assertCanDecideJoinRequests(userId, orgId);
+
+    const rows = await this.prisma.guildJoinRequest.findMany({
+      where: { orgId, status: GuildJoinRequestStatus.PENDING },
+      select: {
+        id: true,
+        createdAt: true,
+        user: {
+          select: { id: true, name: true, inGameName: true, avatarUrl: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return {
+      requests: rows.map((r) => ({
+        id: r.id,
+        userId: r.user.id,
+        name: r.user.name,
+        inGameName: r.user.inGameName,
+        avatarUrl: r.user.avatarUrl,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /** Accept or reject one request. Accepting creates the guild seat. */
+  async decideGuildJoinRequest(
+    userId: string,
+    requestId: string,
+    accept: boolean,
+  ) {
+    const request = await this.prisma.guildJoinRequest.findUnique({
+      where: { id: requestId },
+      select: {
+        id: true,
+        userId: true,
+        orgId: true,
+        status: true,
+        org: { select: { name: true } },
+      },
+    });
+    if (!request) throw new NotFoundException('Request not found');
+    await this.assertCanDecideJoinRequests(userId, request.orgId);
+    if (request.status !== GuildJoinRequestStatus.PENDING) {
+      throw new BadRequestException('That request was already decided');
+    }
+
+    if (!accept) {
+      await this.prisma.guildJoinRequest.update({
+        where: { id: requestId },
+        data: {
+          status: GuildJoinRequestStatus.REJECTED,
+          decidedAt: new Date(),
+          decidedById: userId,
+        },
+      });
+      this.realtime.publish(request.orgId, 'members.changed');
+      await this.notifyJoinRequestDecided(
+        request.userId,
+        request.org.name,
+        false,
+      );
+      return { status: GuildJoinRequestStatus.REJECTED };
+    }
+
+    // Someone else may have let them in (code, invite link, another guild)
+    // between the request and this tap.
+    const alreadySeated = await this.prisma.guildMembership.findFirst({
+      where: { userId: request.userId },
+      select: { orgId: true },
+    });
+    if (alreadySeated) {
+      await this.prisma.guildJoinRequest.update({
+        where: { id: requestId },
+        data: {
+          status:
+            alreadySeated.orgId === request.orgId
+              ? GuildJoinRequestStatus.ACCEPTED
+              : GuildJoinRequestStatus.SUPERSEDED,
+          decidedAt: new Date(),
+          decidedById: userId,
+        },
+      });
+      this.realtime.publish(request.orgId, 'members.changed');
+      throw new ConflictException(
+        alreadySeated.orgId === request.orgId
+          ? 'They are already in your guild'
+          : 'They already joined another guild',
+      );
+    }
+
+    // Seat + decision + withdrawal of their other asks in one transaction, so
+    // a half-applied accept can never leave them seated with live requests
+    // still sitting in other owners' inboxes.
+    await this.prisma.$transaction([
+      this.prisma.guildMembership.create({
+        data: {
+          userId: request.userId,
+          orgId: request.orgId,
+          role: GuildRole.MEMBER,
+        },
+      }),
+      this.prisma.guildJoinRequest.update({
+        where: { id: requestId },
+        data: {
+          status: GuildJoinRequestStatus.ACCEPTED,
+          decidedAt: new Date(),
+          decidedById: userId,
+        },
+      }),
+      this.prisma.guildJoinRequest.updateMany({
+        where: {
+          userId: request.userId,
+          status: GuildJoinRequestStatus.PENDING,
+          orgId: { not: request.orgId },
+        },
+        data: {
+          status: GuildJoinRequestStatus.SUPERSEDED,
+          decidedAt: new Date(),
+        },
+      }),
+    ]);
+
+    this.notifyMembersChanged(request.orgId);
+    await this.notifyJoinRequestDecided(request.userId, request.org.name, true);
+    return { status: GuildJoinRequestStatus.ACCEPTED, orgId: request.orgId };
+  }
+
   /**
    * Guild code / invite-link / browse-list join. Creates a guild seat only — the
    * esports roster stays unchanged until an owner or coach adds this person.
    * Optional invitedByUserId attributes the seat to a referrer.
    */
   async joinGuild(userId: string, dto: JoinOrgDto) {
-    if (!dto.orgId && !dto.orgCode && !dto.referralToken) {
+    if (!dto.orgCode && !dto.referralToken) {
+      // An orgId alone is just "I saw you in the public list" — that is a
+      // request for the owner to approve (requestGuildJoin), not a join.
+      // A code or invite link is the owner's permission, so those go through.
       throw new BadRequestException(
-        'Provide an orgId, orgCode, or referralToken',
+        dto.orgId
+          ? 'Joining from the guild list needs the owner’s approval — send a request, or use the guild code / invite link.'
+          : 'Provide an orgCode or referralToken',
       );
     }
 
     const referralToken = normalizeReferralToken(dto.referralToken);
     const org = await this.prisma.org.findFirst({
-      where: dto.orgId
-        ? { id: dto.orgId }
-        : dto.orgCode
-          ? { orgCode: dto.orgCode.toUpperCase() }
-          : { referralToken },
+      where: dto.orgCode
+        ? { orgCode: dto.orgCode.toUpperCase() }
+        : { referralToken },
     });
     if (!org) {
       throw new NotFoundException('No org found for that code or link');
@@ -666,6 +1034,16 @@ export class OrgService {
           orgId: org.id,
           role: GuildRole.MEMBER,
           invitedByUserId,
+        },
+      });
+      // They got in with a code while other owners still had their request
+      // sitting in an inbox — drop those so nobody accepts a seat that is
+      // already taken.
+      await this.prisma.guildJoinRequest.updateMany({
+        where: { userId, status: GuildJoinRequestStatus.PENDING },
+        data: {
+          status: GuildJoinRequestStatus.SUPERSEDED,
+          decidedAt: new Date(),
         },
       });
       this.notifyMembersChanged(org.id);

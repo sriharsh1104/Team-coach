@@ -33,6 +33,8 @@ import { MessageInfoModal } from './MessageInfoModal';
 import { CustomSticker } from './stickerStorage';
 import { ReactionPicker } from './ReactionPicker';
 import { ForwardSheet } from './ForwardSheet';
+import { ShareClipSheet } from './ShareClipSheet';
+import { shareChatMessageExternally } from './shareChatMessage';
 import { saveMediaToGallery } from './saveMediaToGallery';
 import { VoiceRecorderButton } from './VoiceRecorderButton';
 import { ChatStatusLine, presenceLabel, typingLabel } from './ChatStatusLine';
@@ -54,6 +56,7 @@ import { chatStyles } from './chatStyles';
 import { MessageBubble } from './MessageBubble';
 import { formatMessageTime } from './messageFormat';
 import { PendingUpload } from './pendingUpload';
+import { ImageCropModal, CroppedImage } from './ImageCropModal';
 
 // Re-exported from its own module so the message bubble can import it
 // without pulling this whole screen in.
@@ -165,6 +168,8 @@ export function ChatScreen({
   }, [channelKey]);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
   const [forwardTarget, setForwardTarget] = useState<ChatMessage | null>(null);
+  const [shareClipOpen, setShareClipOpen] = useState(false);
+  const [shareClipTarget, setShareClipTarget] = useState<ChatMessage | null>(null);
   // Which pinned message the top banner currently shows, when more than one
   // is pinned — cycled with the chevron, same idea as WhatsApp's pinned bar.
   const [pinnedCursor, setPinnedCursor] = useState(0);
@@ -957,11 +962,41 @@ export function ChatScreen({
     exitSelectMode();
   }, [canReply, exitSelectMode, selectedList]);
 
-  const onForwardPressSelected = useCallback(() => {
+  const onSharePressSelected = useCallback(() => {
     if (!canReply) return;
-    setForwardTarget(selectedList[0]);
+    setShareClipTarget(selectedList[0]);
+    setShareClipOpen(true);
+  }, [canReply, selectedList]);
+
+  const onShareOutside = useCallback(async () => {
+    const msg = shareClipTarget;
+    setShareClipOpen(false);
+    setShareClipTarget(null);
     exitSelectMode();
-  }, [canReply, exitSelectMode, selectedList]);
+    if (!msg) return;
+    const mediaUrl =
+      chatApi.resolveChatMediaUrl(msg.mediaUrl) ||
+      uploads[msg.id]?.asset.uri ||
+      null;
+    try {
+      await shareChatMessageExternally({
+        text: msg.text,
+        mediaUrl,
+        mediaType: msg.mediaType,
+      });
+    } catch {
+      emitToast('Could not share');
+    }
+  }, [exitSelectMode, shareClipTarget, uploads]);
+
+  const onForwardFromShareClip = useCallback(() => {
+    const msg = shareClipTarget;
+    setShareClipOpen(false);
+    setShareClipTarget(null);
+    if (!msg) return;
+    setForwardTarget(msg);
+    exitSelectMode();
+  }, [exitSelectMode, shareClipTarget]);
 
   const onEditSelected = useCallback(() => {
     if (!canEdit) return;
@@ -1345,9 +1380,17 @@ export function ChatScreen({
       const job = uploadJobsRef.current.get(clientId);
       // Only a fresh ('queued') or failed job may (re)start — never double-run.
       if (!job || (job.status !== 'queued' && job.status !== 'failed')) return;
-      patchPendingUpload(clientId, { status: 'uploading', progress: 0, label: 'Preparing…', error: undefined });
+      const controller = new AbortController();
+      patchPendingUpload(clientId, {
+        status: 'uploading',
+        progress: 0,
+        label: 'Preparing…',
+        error: undefined,
+        controller,
+      });
       try {
         const uploaded = await chatApi.uploadChatMedia(job.asset, {
+          signal: controller.signal,
           onProgress: ({ phase, fraction }) =>
             patchPendingUpload(clientId, {
               progress: fraction,
@@ -1377,6 +1420,9 @@ export function ChatScreen({
           void refreshHistory();
         }, 600);
       } catch (err: unknown) {
+        // The user cancelled: the bubble is already gone, so do not bring it
+        // back as a failure they have to dismiss.
+        if (controller.signal.aborted) return;
         patchPendingUpload(clientId, {
           status: 'failed',
           error: apiErrorMessage(err, 'Upload failed — file may be too large'),
@@ -1437,6 +1483,30 @@ export function ChatScreen({
       void runPendingUpload(clientId);
     },
     [channelKey, runPendingUpload, user],
+  );
+
+  /**
+   * Cancel an upload the user is tired of waiting on. Most of the "stuck"
+   * cases sit at 95%: every byte is sent and the CDN has not answered yet, so
+   * only aborting the request itself gets them out of it. The bubble goes
+   * away with it — the file is still in their gallery to send again.
+   */
+  const onCancelPendingMedia = useCallback(
+    (message: ChatMessage) => {
+      const clientId = message.id;
+      const job = uploadJobsRef.current.get(clientId);
+      if (!job || job.status === 'failed') return;
+      job.controller?.abort();
+      uploadJobsRef.current.delete(clientId);
+      setUploads((prev) => {
+        const next = { ...prev };
+        delete next[clientId];
+        return next;
+      });
+      setMessages((prev) => prev.filter((m) => m.id !== clientId));
+      emitToast('Upload cancelled');
+    },
+    [],
   );
 
   const onPressPendingMedia = useCallback(
@@ -1566,12 +1636,43 @@ export function ChatScreen({
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     // Ask "send this?" first for camera photos and videos instead of
-    // sending the instant they're captured/picked. Gallery photos send directly.
+    // sending the instant they're captured/picked.
     if (fromCamera || option === 'video') {
       setCameraShot({ asset, option });
       return;
     }
-    sendPickedAsset(asset, option);
+    // A picked photo opens the cropper, where Send is one tap away and an
+    // untouched frame skips the work entirely.
+    setCropShot({ asset, option });
+  };
+
+  /** Gallery photo waiting in the cropper. */
+  const [cropShot, setCropShot] = useState<{
+    asset: ImagePicker.ImagePickerAsset;
+    option: AttachOption;
+  } | null>(null);
+
+  const onCropDone = (out: CroppedImage) => {
+    const shot = cropShot;
+    setCropShot(null);
+    if (!shot) return;
+    sendPickedAsset(
+      {
+        ...shot.asset,
+        uri: out.uri,
+        width: out.width,
+        height: out.height,
+        // A cropped file is a fresh JPEG, so the original name/size no longer
+        // describe it.
+        fileName: shot.asset.fileName ?? `chat-${Date.now()}.jpg`,
+        mimeType:
+          out.uri === shot.asset.uri
+            ? (shot.asset.mimeType ?? 'image/jpeg')
+            : 'image/jpeg',
+        fileSize: out.uri === shot.asset.uri ? shot.asset.fileSize : undefined,
+      },
+      shot.option,
+    );
   };
 
   /** Bubble + upload for an asset the user picked (or confirmed from camera). */
@@ -1614,17 +1715,18 @@ export function ChatScreen({
     >
       {selectMode ? (
         <View style={styles.selectBar} accessibilityRole="toolbar" pointerEvents="box-none">
-          <Pressable
+          <IconActionButton
+            plain
+            icon="close"
+            label="Cancel selection"
+            tooltip="Close"
+            color={colors.link}
+            iconSize={18}
+            style={styles.selectBarClose}
             onPress={exitSelectMode}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel selection"
-            style={styles.selectBarBtn}
-          >
-            <Text style={styles.selectBarAction}>✕</Text>
-          </Pressable>
-          <Text style={styles.selectBarCount}>
-            {selectedIds.size} selected
+          />
+          <Text style={styles.selectBarCount} accessibilityLabel={`${selectedIds.size} selected`}>
+            {selectedIds.size}
           </Text>
           <View style={styles.selectBarActions}>
             <IconActionButton
@@ -1632,6 +1734,8 @@ export function ChatScreen({
               icon={selectedList[0]?.pinned ? 'pin' : 'pin-outline'}
               label={selectedList[0]?.pinned ? 'Unpin message' : 'Pin message'}
               color={colors.link}
+              iconSize={18}
+              style={styles.selectBarClose}
               disabled={!canPinStar}
               onPress={() => void onPinSelected()}
             />
@@ -1640,6 +1744,8 @@ export function ChatScreen({
               icon={selectedList[0]?.starred ? 'star' : 'star-outline'}
               label={selectedList[0]?.starred ? 'Unstar message' : 'Star message'}
               color={colors.link}
+              iconSize={18}
+              style={styles.selectBarClose}
               disabled={!canPinStar}
               onPress={() => void onStarSelected()}
             />
@@ -1648,6 +1754,8 @@ export function ChatScreen({
               icon="arrow-undo"
               label="Reply"
               color={colors.link}
+              iconSize={18}
+              style={styles.selectBarClose}
               disabled={!canReply}
               onPress={onReplySelected}
             />
@@ -1657,17 +1765,21 @@ export function ChatScreen({
               label="React"
               tooltip="React"
               color={colors.link}
+              iconSize={18}
+              style={styles.selectBarClose}
               disabled={!canReply}
               onPress={onReactSelected}
             />
             <IconActionButton
               plain
               icon="share-social-outline"
-              label="Forward"
-              tooltip="Forward"
+              label="Share"
+              tooltip="Share"
               color={colors.link}
+              iconSize={18}
+              style={styles.selectBarClose}
               disabled={!canReply}
-              onPress={onForwardPressSelected}
+              onPress={onSharePressSelected}
             />
             <IconActionButton
               plain
@@ -1675,6 +1787,8 @@ export function ChatScreen({
               label="Save to gallery"
               tooltip="Save"
               color={colors.link}
+              iconSize={18}
+              style={styles.selectBarClose}
               disabled={!canSaveToGallery}
               onPress={() => void onSaveSelectedToGallery()}
             />
@@ -1683,6 +1797,8 @@ export function ChatScreen({
               icon="pencil-outline"
               label="Edit"
               color={colors.link}
+              iconSize={18}
+              style={styles.selectBarClose}
               disabled={!canEdit}
               onPress={onEditSelected}
             />
@@ -1692,6 +1808,8 @@ export function ChatScreen({
               label="Message info"
               tooltip="Info"
               color={colors.link}
+              iconSize={18}
+              style={styles.selectBarClose}
               disabled={!canShowInfo}
               onPress={onInfoSelected}
             />
@@ -1701,6 +1819,8 @@ export function ChatScreen({
               label="Delete selected"
               tooltip="Delete"
               danger
+              iconSize={18}
+              style={styles.selectBarClose}
               disabled={!allSelectedAreMine}
               onPress={() => void onDeleteSelected()}
             />
@@ -1862,6 +1982,7 @@ export function ChatScreen({
             isHighlighted={highlightId === item.id}
             selectMode={selectMode}
             pending={uploads[item.id]}
+            onCancelPending={onCancelPendingMedia}
             avatarUri={avatarByUserId.get(item.senderId)}
             knownIgns={knownIgns}
             showSeen={item.senderId === user?.id && item.id === lastMineId}
@@ -1935,6 +2056,13 @@ export function ChatScreen({
         }}
         onCancel={() => setCameraShot(null)}
       />
+      <ImageCropModal
+        uri={cropShot?.asset.uri ?? null}
+        width={cropShot?.asset.width}
+        height={cropShot?.asset.height}
+        onCancel={() => setCropShot(null)}
+        onDone={onCropDone}
+      />
       <ReminderComposer
         visible={reminderOpen}
         channelKey={channelKey}
@@ -1946,6 +2074,15 @@ export function ChatScreen({
         onPick={(emoji) => {
           if (reactionTarget) onToggleReaction(reactionTarget.id, emoji);
         }}
+      />
+      <ShareClipSheet
+        visible={shareClipOpen}
+        onClose={() => {
+          setShareClipOpen(false);
+          setShareClipTarget(null);
+        }}
+        onShareOutside={() => void onShareOutside()}
+        onForwardToChat={onForwardFromShareClip}
       />
       <ForwardSheet
         visible={!!forwardTarget}

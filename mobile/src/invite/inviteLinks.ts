@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 
 /**
  * Roster / guild invite links.
@@ -84,9 +84,95 @@ export function usePendingInvite(): PendingInvite | null {
   return value;
 }
 
+// ── Already-handled links ───────────────────────────────────────────────
+// Android keeps the ACTION_VIEW intent that launched the app, so
+// getInitialURL() hands back the same /join/<token> on every later cold
+// start — long after the user joined. Replaying it put an "You are already
+// in a guild" toast on the screen at every single login. Remember which
+// tokens have been seen so a re-delivered launch intent is ignored; a link
+// the user taps while the app is running is always honoured.
+const HANDLED_FILE = 'team-coach.invite-handled.json';
+const HANDLED_KEY = 'team-coach.inviteHandled';
+/** Plenty for one device, and bounded so the file cannot grow forever. */
+const HANDLED_LIMIT = 50;
+
+let handled: string[] = [];
+let handledLoaded = false;
+
+function storageKey(invite: PendingInvite): string {
+  return `${invite.seat}:${invite.token}`;
+}
+
+async function readHandled(): Promise<string[]> {
+  try {
+    if (Platform.OS === 'web') {
+      const raw = localStorage.getItem(HANDLED_KEY);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const FileSystem = require('expo-file-system') as typeof import('expo-file-system');
+    const path = `${FileSystem.documentDirectory}${HANDLED_FILE}`;
+    const info = await FileSystem.getInfoAsync(path);
+    if (!info.exists) return [];
+    return JSON.parse(await FileSystem.readAsStringAsync(path)) as string[];
+  } catch {
+    return [];
+  }
+}
+
+async function writeHandled(next: string[]) {
+  try {
+    const body = JSON.stringify(next);
+    if (Platform.OS === 'web') {
+      localStorage.setItem(HANDLED_KEY, body);
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const FileSystem = require('expo-file-system') as typeof import('expo-file-system');
+    await FileSystem.writeAsStringAsync(
+      `${FileSystem.documentDirectory}${HANDLED_FILE}`,
+      body,
+    );
+  } catch {
+    // Private browsing / disk full — worst case the toast comes back once.
+  }
+}
+
+export function markInviteHandled(invite: PendingInvite) {
+  const key = storageKey(invite);
+  if (handled.includes(key)) return;
+  handled = [...handled, key].slice(-HANDLED_LIMIT);
+  void writeHandled(handled);
+}
+
+export function isInviteHandled(invite: PendingInvite): boolean {
+  return handled.includes(storageKey(invite));
+}
+
+/** Test seam — reset the in-memory record between cases. */
+export function resetHandledInvites() {
+  handled = [];
+  handledLoaded = false;
+}
+
 function handleIncomingUrl(url: string | null | undefined) {
   const invite = parseInviteLink(url);
-  if (invite) setPendingInvite(invite);
+  if (!invite) return;
+  // The user just tapped this link — act on it even if it was used before,
+  // so "join again" / a re-shared link still works.
+  markInviteHandled(invite);
+  setPendingInvite(invite);
+}
+
+/**
+ * The URL the app was launched with. Unlike a tapped link this can be a
+ * months-old intent Android is replaying, so it only counts the first time.
+ */
+function handleLaunchUrl(url: string | null | undefined) {
+  const invite = parseInviteLink(url);
+  if (!invite || isInviteHandled(invite)) return;
+  markInviteHandled(invite);
+  setPendingInvite(invite);
 }
 
 let installed = false;
@@ -96,7 +182,23 @@ export function installInviteLinkListener() {
   installed = true;
   try {
     Linking.addEventListener('url', ({ url }) => handleIncomingUrl(url));
-    void Linking.getInitialURL()?.then(handleIncomingUrl).catch(() => undefined);
+    const launch = () =>
+      Linking.getInitialURL()?.then(handleLaunchUrl).catch(() => undefined);
+    if (handledLoaded) {
+      void launch();
+      return;
+    }
+    // Read the record first: acting on the launch URL before we know what
+    // has already been seen is exactly the replay we are preventing.
+    void readHandled()
+      .then((stored) => {
+        handled = stored;
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        handledLoaded = true;
+        void launch();
+      });
   } catch {
     // Linking unavailable (tests / web) — pasting a link still works.
   }

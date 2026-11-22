@@ -36,13 +36,82 @@ export function joinGuild(code: {
     .then((res) => res.data);
 }
 
+export type GuildJoinRequestStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  /** Withdrawn because this person was accepted somewhere else. */
+  | 'SUPERSEDED';
+
 export type BrowseGuild = {
   id: string;
   name: string;
+  /** The guild chat's group photo, used as the org logo in the list. */
+  logoUrl: string | null;
   memberCount: number;
   rosterCount: number;
   createdAt: string;
+  /** Where the caller's own request to this guild stands (null = never asked). */
+  requestStatus: GuildJoinRequestStatus | null;
 };
+
+export type MyGuildJoinRequest = {
+  id: string;
+  orgId: string;
+  orgName: string;
+  status: GuildJoinRequestStatus;
+  createdAt: string;
+};
+
+export type IncomingGuildJoinRequest = {
+  id: string;
+  userId: string;
+  name: string;
+  inGameName: string | null;
+  avatarUrl: string | null;
+  createdAt: string;
+};
+
+/**
+ * Ask an org's leadership to let you in. Joining straight from the list is
+ * not possible — only a guild code or invite link joins outright.
+ */
+export function requestGuildJoin(orgId: string) {
+  return apiClient
+    .post<{ status: GuildJoinRequestStatus; orgId: string; orgName: string }>(
+      '/orgs/guild/request',
+      { orgId },
+    )
+    .then((res) => res.data);
+}
+
+export function myGuildJoinRequests() {
+  return apiClient
+    .get<{ requests: MyGuildJoinRequest[] }>('/orgs/guild/requests/mine')
+    .then((res) => res.data);
+}
+
+export function cancelGuildJoinRequest(requestId: string) {
+  return apiClient
+    .post<{ cancelled: boolean }>('/orgs/guild/requests/cancel', { requestId })
+    .then((res) => res.data);
+}
+
+/** Pending requests waiting on this org's leadership. */
+export function listGuildJoinRequests() {
+  return apiClient
+    .get<{ requests: IncomingGuildJoinRequest[] }>('/orgs/guild/requests')
+    .then((res) => res.data);
+}
+
+export function decideGuildJoinRequest(requestId: string, accept: boolean) {
+  return apiClient
+    .post<{ status: GuildJoinRequestStatus }>('/orgs/guild/requests/decide', {
+      requestId,
+      accept,
+    })
+    .then((res) => res.data);
+}
 
 /** Guilds you can join when you are not in one yet. */
 export function browseGuilds(q?: string) {

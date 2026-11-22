@@ -13,6 +13,11 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { OrgService } from './org.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { JoinOrgDto } from './dto/join-org.dto';
+import {
+  CancelGuildJoinDto,
+  DecideGuildJoinDto,
+  RequestGuildJoinDto,
+} from './dto/guild-join-request.dto';
 import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 import { RemoveMemberDto } from './dto/remove-member.dto';
@@ -66,6 +71,51 @@ export class OrgController {
   @Post('guild/join')
   joinGuild(@CurrentUser() user: { userId: string }, @Body() dto: JoinOrgDto) {
     return this.orgService.joinGuild(user.userId, dto);
+  }
+
+  /**
+   * Browse-list join is a request the owner approves — only a guild code or
+   * invite link joins outright (see OrgService.joinGuild).
+   */
+  @Throttle({ default: { limit: joinThrottleLimit, ttl: 60000 } })
+  @Post('guild/request')
+  requestGuildJoin(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: RequestGuildJoinDto,
+  ) {
+    return this.orgService.requestGuildJoin(user.userId, dto.orgId);
+  }
+
+  /** The caller's own outstanding / decided requests. */
+  @Get('guild/requests/mine')
+  myGuildJoinRequests(@CurrentUser() user: { userId: string }) {
+    return this.orgService.myGuildJoinRequests(user.userId);
+  }
+
+  @Post('guild/requests/cancel')
+  cancelGuildJoinRequest(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: CancelGuildJoinDto,
+  ) {
+    return this.orgService.cancelGuildJoinRequest(user.userId, dto.requestId);
+  }
+
+  /** Pending requests waiting on this org's leadership. */
+  @Get('guild/requests')
+  listGuildJoinRequests(@CurrentUser() user: { userId: string }) {
+    return this.orgService.listGuildJoinRequests(user.userId);
+  }
+
+  @Post('guild/requests/decide')
+  decideGuildJoinRequest(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: DecideGuildJoinDto,
+  ) {
+    return this.orgService.decideGuildJoinRequest(
+      user.userId,
+      dto.requestId,
+      dto.accept,
+    );
   }
 
   /** Leave guild (+ roster seat for that org). Owner must transfer first. */

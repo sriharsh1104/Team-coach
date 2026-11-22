@@ -1,7 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as orgApi from '../api/org';
+import { GuildDetail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
@@ -30,10 +33,33 @@ export function GuildHomeScreen({ navigation }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [detail, setDetail] = useState<GuildDetail | null>(null);
   const insets = useSafeAreaInsets();
   const { message: toastMessage, showToast } = useToast();
   const { exitModalVisible, confirmExit, cancelExit } = useBlockExitOnRoot(navigation);
   const { startRecording } = useRecording();
+
+  // Guild-only members had a bare "Guild · Chat" subtitle while roster
+  // members got their org identity on Home. Same block here: the guild code
+  // (when this member is allowed to share it) and the head count.
+  const loadDetail = useCallback(async () => {
+    try {
+      setDetail(await orgApi.getMyGuild());
+    } catch {
+      // Header identity is a nicety — the next focus retries.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDetail();
+    return navigation.addListener('focus', () => void loadDetail());
+  }, [navigation, loadDetail]);
+
+  const copyGuildCode = async () => {
+    if (!detail?.orgCode) return;
+    await Clipboard.setStringAsync(detail.orgCode);
+    showToast('Guild code copied');
+  };
 
   const drawerSections = useMemo((): SideDrawerSection[] => {
     return withActiveDrawerItem(
@@ -129,10 +155,37 @@ export function GuildHomeScreen({ navigation }: Props) {
   return (
     <Screen padBottom={false}>
       <AppShellHeader
-        title={guild?.name ?? 'Guild Chat'}
-        subtitle="Guild · Chat"
+        title={guild?.name ?? detail?.name ?? 'Guild Chat'}
+        showPing
         onMenu={() => setMenuOpen(true)}
         onSettings={() => setSettingsMenuOpen(true)}
+        subtitle={
+          detail ? (
+            <View style={styles.subtitleRow}>
+              {/* Plain members get no code from the API (leadership only) —
+                  show the head count alone rather than an empty label. */}
+              {detail.orgCode ? (
+                <SoftPressable
+                  onPress={() => void copyGuildCode()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy Guild Code"
+                  hitSlop={6}
+                  pressScale={0.97}
+                >
+                  <Text style={[styles.guildCode, { color: theme.link }]}>
+                    Guild Code: {detail.orgCode}
+                  </Text>
+                </SoftPressable>
+              ) : null}
+              <Text style={[styles.subtitle, { color: theme.textMuted }]}>
+                {detail.orgCode ? ' · ' : ''}
+                {detail.members.length} Member(s)
+              </Text>
+            </View>
+          ) : (
+            'Guild · Chat'
+          )
+        }
       />
 
       <View style={styles.chat}>
@@ -285,6 +338,9 @@ export function GuildHomeScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
+  subtitleRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
+  guildCode: { fontSize: 11, fontWeight: '700' },
+  subtitle: { fontSize: 11 },
   dropdownRoot: { flex: 1 },
   dropdownBackdrop: {
     ...StyleSheet.absoluteFillObject,

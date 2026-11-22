@@ -38,6 +38,8 @@ import { haptic } from '../../ui/haptics';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { SkeletonList } from '../../ui/Skeleton';
 import { ChannelAvatar } from '../chat/ChannelAvatar';
+import { AudioOutputPicker } from './AudioOutputPicker';
+import { VoicePingSheet } from './VoicePingSheet';
 import { useSharedStyles } from '../shared';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
@@ -481,6 +483,11 @@ function VoiceChannelBody({
   // Joining is asynchronous and the mic can take a second to come up — a
   // pulse on the actual transition tells the user they're live without
   // making them watch the status text.
+  const [pingOpen, setPingOpen] = useState(false);
+  // Pinging only makes sense for the team room — guild voice is org-wide, so
+  // this would be a megaphone rather than a nudge to the people you want in.
+  const canPing = inChannel && roomKind === 'team';
+
   const lastVoiceStatus = useRef(voice.status);
   useEffect(() => {
     const prev = lastVoiceStatus.current;
@@ -707,7 +714,24 @@ function VoiceChannelBody({
 
             <ScreenShareViewer voice={voice} />
 
-            <Text style={themed.sectionTitle}>In Channel</Text>
+            <View style={styles.sectionRow}>
+              <Text style={themed.sectionTitle}>In Channel</Text>
+              {canPing && (
+                <Pressable
+                  style={styles.pingBtn}
+                  onPress={() => {
+                    haptic('light');
+                    setPingOpen(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ping teammates to join voice"
+                >
+                  <ButtonLabel icon="person-add" color="#22c55e">
+                    Ping
+                  </ButtonLabel>
+                </Pressable>
+              )}
+            </View>
             <FlatList
               data={listData}
               keyExtractor={(item) => item.id}
@@ -876,6 +900,12 @@ function VoiceChannelBody({
                 <AppIcon name="phone-portrait-outline" size={22} color="#fff" />
               </Pressable>
 
+              {/* Audio output: speaker / phone / headphones / bluetooth */}
+              <AudioOutputPicker
+                enabled={inChannel}
+                style={StyleSheet.flatten([styles.iconBtn, themed.iconBtnDefault])}
+              />
+
               {/* Deafen */}
               <Pressable
                 style={[
@@ -901,6 +931,13 @@ function VoiceChannelBody({
                 <AppIcon name="phone-down" size={22} color="#fff" />
               </Pressable>
             </View>
+
+            <VoicePingSheet
+              visible={pingOpen}
+              onClose={() => setPingOpen(false)}
+              selfUserId={user?.id ?? null}
+              inCallUserIds={listData.map((p) => p.id)}
+            />
           </>
         )}
       </View>
@@ -1398,6 +1435,20 @@ const styles = StyleSheet.create({
   qualityBar: {
     width: 3,
     borderRadius: 1,
+  },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  pingBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(34,197,94,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.35)',
   },
   participantTap: {
     flex: 1,

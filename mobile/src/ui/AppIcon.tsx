@@ -5,6 +5,7 @@ export type AppIconName =
   | 'add-circle'
   | 'add-circle-outline'
   | 'alarm-outline'
+  | 'bluetooth'
   | 'camera-outline'
   | 'cart'
   | 'checkmark'
@@ -22,9 +23,12 @@ export type AppIconName =
   | 'happy-outline'
   | 'image-outline'
   | 'images-outline'
+  | 'ear'
+  | 'log-out'
   | 'mic'
   | 'mic-off'
   | 'notifications'
+  | 'volume-high'
   | 'notifications-off'
   | 'person-add'
   | 'person-outline'
@@ -399,6 +403,32 @@ const ICONS: Record<AppIconName, Renderer> = {
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Path d="M3 18v-6a9 9 0 0118 0v6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  // Audio output routes (speaker / bluetooth / earpiece) for the in-call
+  // output switcher. 'headset' above doubles as the wired-headset route.
+  // Door with an arrow heading out — "leave this guild / sign out".
+  'log-out': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M16 17l5-5-5-5M21 12H9" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'volume-high': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M11 5L6 9H2v6h4l5 4V5z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'bluetooth': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M6.5 7.5L17 16.5 12 21V3l5 4.5L6.5 16.5" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'ear': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M6 8.5a6 6 0 1112 0c0 2.5-1.6 3.7-2.8 4.8-1 .9-1.7 1.6-1.7 3.2a2.5 2.5 0 01-5 0" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M9.5 8.5a2.5 2.5 0 015 0c0 1.2-.8 1.8-1.5 2.4" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   ),
   'headset-off': (c, s) => (

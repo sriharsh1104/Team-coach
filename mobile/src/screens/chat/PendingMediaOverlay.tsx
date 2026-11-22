@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { AppIcon } from '../../ui/AppIcon';
 
@@ -11,6 +11,8 @@ type Props = {
   progress: number;
   /** Short caption under the ring, e.g. "Preparing…". */
   label?: string;
+  /** Cancel an upload still in flight. Omitted → no cancel control. */
+  onCancel?: () => void;
 };
 
 const RING = 48;
@@ -24,18 +26,28 @@ const CIRC = 2 * Math.PI * R;
  * the message itself is being sent, and a refresh ("try again") icon when
  * either step failed — tap the bubble to resend.
  */
-export function PendingMediaOverlay({ status, progress, label }: Props) {
+export function PendingMediaOverlay({
+  status,
+  progress,
+  label,
+  onCancel,
+}: Props) {
   const pct = Math.max(0, Math.min(1, progress));
   const failed = status === 'failed';
   const dash = failed ? CIRC : CIRC * (1 - pct);
+  // An upload that has handed over every byte but is still waiting on the
+  // server sits on 95% looking frozen. The cross is how you get out of that
+  // without force-quitting: tap it, then send again.
+  const canCancel = !!onCancel && !failed;
 
   return (
     <View
       style={styles.overlay}
-      pointerEvents="none"
-      // Parent bubble Pressable owns the a11y label / tap target.
-      importantForAccessibility="no-hide-descendants"
-      accessibilityElementsHidden
+      // box-none so the cancel button below can still be tapped while the
+      // rest of the overlay stays transparent to the bubble's own press.
+      pointerEvents={canCancel ? 'box-none' : 'none'}
+      importantForAccessibility={canCancel ? 'auto' : 'no-hide-descendants'}
+      accessibilityElementsHidden={!canCancel}
     >
       <View style={styles.ringWrap}>
         <Svg width={RING} height={RING} viewBox={`0 0 ${RING} ${RING}`}>
@@ -64,6 +76,16 @@ export function PendingMediaOverlay({ status, progress, label }: Props) {
         <View style={styles.ringCenter}>
           {failed ? (
             <AppIcon name="refresh" size={22} color="#ef4444" />
+          ) : canCancel ? (
+            <Pressable
+              style={styles.cancelHit}
+              onPress={onCancel}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel upload"
+            >
+              <AppIcon name="close" size={20} color="#fff" />
+            </Pressable>
           ) : (
             <Text style={styles.ringText}>
               {status === 'sending' ? '…' : `${Math.round(pct * 100)}%`}
@@ -74,7 +96,9 @@ export function PendingMediaOverlay({ status, progress, label }: Props) {
       <Text style={styles.caption} numberOfLines={1}>
         {failed
           ? 'Tap to try again'
-          : label ?? (status === 'sending' ? 'Sending…' : 'Uploading…')}
+          : canCancel
+            ? `${Math.round(pct * 100)}% · tap ✕ to cancel`
+            : (label ?? (status === 'sending' ? 'Sending…' : 'Uploading…'))}
       </Text>
     </View>
   );
@@ -96,6 +120,12 @@ const styles = StyleSheet.create({
   },
   ringCenter: {
     ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelHit: {
+    width: RING,
+    height: RING,
     alignItems: 'center',
     justifyContent: 'center',
   },

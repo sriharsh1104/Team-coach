@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { VoiceService } from './voice.service';
-import { VoiceModerateDto } from './dto';
+import { VoiceInviteDto, VoiceModerateDto } from './dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('voice')
@@ -43,5 +43,11 @@ export class VoiceController {
     @Body() dto: VoiceModerateDto,
   ) {
     return this.voiceService.moderate(user.userId, dto);
+  }
+
+  /** Ping teammates that you are waiting in team voice. */
+  @Post('invite')
+  invite(@CurrentUser() user: { userId: string }, @Body() dto: VoiceInviteDto) {
+    return this.voiceService.invite(user.userId, dto);
   }
 }

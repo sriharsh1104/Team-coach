@@ -21,9 +21,11 @@ beforeEach(() => {
       {
         id: 'org-1',
         name: 'Sacred Esports',
+        logoUrl: null,
         memberCount: 12,
         rosterCount: 5,
         createdAt: '2026-01-01T00:00:00.000Z',
+        requestStatus: null,
       },
     ],
   });
@@ -54,28 +56,71 @@ describe('OrgChoiceScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('JoinOrg');
   });
 
-  it('joins a guild from the browse list', async () => {
+  // Joining outright from the public list is gone — the owner has to accept.
+  it('sends a join request and flips the row to "waiting"', async () => {
     const setGuild = jest.fn();
-    const refreshOrg = jest.fn();
     mockedUseAuth.mockReturnValue({
       user: { name: 'Player One' },
       logout: jest.fn(),
       setGuild,
-      refreshOrg,
+      refreshOrg: jest.fn(),
     });
-    mockedOrgApi.joinGuild.mockResolvedValue({
-      id: 'org-1',
-      name: 'Sacred Esports',
-      role: 'MEMBER',
+    mockedOrgApi.requestGuildJoin.mockResolvedValue({
+      status: 'PENDING',
+      orgId: 'org-1',
+      orgName: 'Sacred Esports',
     });
     render(<OrgChoiceScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Sacred Esports');
-    fireEvent.press(screen.getByText('Join Guild'));
+    fireEvent.press(screen.getByText('Request to Join'));
+
     await waitFor(() =>
-      expect(mockedOrgApi.joinGuild).toHaveBeenCalledWith({ orgId: 'org-1' }),
+      expect(mockedOrgApi.requestGuildJoin).toHaveBeenCalledWith('org-1'),
     );
-    expect(setGuild).toHaveBeenCalled();
-    expect(refreshOrg).toHaveBeenCalled();
+    await screen.findByText('Waiting for the owner to accept.');
+    // No seat until the owner says yes.
+    expect(mockedOrgApi.joinGuild).not.toHaveBeenCalled();
+    expect(setGuild).not.toHaveBeenCalled();
+  });
+
+  it('shows a guild that already has a pending request as waiting', async () => {
+    mockedOrgApi.browseGuilds.mockResolvedValue({
+      guilds: [
+        {
+          id: 'org-1',
+          name: 'Sacred Esports',
+          logoUrl: null,
+          memberCount: 12,
+          rosterCount: 5,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          requestStatus: 'PENDING',
+        },
+      ],
+    });
+    render(<OrgChoiceScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Waiting for the owner to accept.');
+    expect(screen.queryByText('Request to Join')).toBeNull();
+  });
+
+  it('lets a declined request be sent again', async () => {
+    mockedOrgApi.browseGuilds.mockResolvedValue({
+      guilds: [
+        {
+          id: 'org-1',
+          name: 'Sacred Esports',
+          logoUrl: null,
+          memberCount: 12,
+          rosterCount: 5,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          requestStatus: 'REJECTED',
+        },
+      ],
+    });
+    render(<OrgChoiceScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Ask Again');
+    expect(
+      screen.getByText('This guild declined — you can ask again.'),
+    ).toBeTruthy();
   });
 
   it('calls logout when the link is pressed', async () => {

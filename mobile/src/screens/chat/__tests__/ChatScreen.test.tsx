@@ -412,6 +412,10 @@ describe('ChatScreen', () => {
       expect(mockedImagePicker.launchImageLibraryAsync).toHaveBeenCalledWith(
         expect.objectContaining({ mediaTypes: 'Images' }),
       );
+      // A picked photo lands in the cropper first; Send is one tap away.
+      await act(async () => {
+        fireEvent.press(await screen.findByLabelText('Send photo'));
+      });
       // The bubble is optimistic now: it carries a pending clientId so the
       // server echo (message:new) can swap it for the stored row.
       await waitFor(() =>
@@ -451,6 +455,9 @@ describe('ChatScreen', () => {
       await act(async () => {
         fireEvent.press(screen.getByLabelText('Photo'));
       });
+      await act(async () => {
+        fireEvent.press(await screen.findByLabelText('Send photo'));
+      });
 
       await waitFor(() =>
         expect(screen.getByLabelText('Upload failed, tap to try again')).toBeTruthy(),
@@ -464,6 +471,27 @@ describe('ChatScreen', () => {
       await waitFor(() =>
         expect(mockedChatApi.uploadChatMedia).toHaveBeenCalledTimes(2),
       );
+    });
+
+    it('discarding in the cropper sends nothing', async () => {
+      await connectAndSettle();
+      mockedImagePicker.requestMediaLibraryPermissionsAsync.mockResolvedValue({
+        granted: true,
+      } as any);
+      mockedImagePicker.launchImageLibraryAsync.mockResolvedValue({
+        canceled: false,
+        assets: [{ uri: 'file://x.jpg', fileName: 'x.jpg', mimeType: 'image/jpeg' }],
+      } as any);
+
+      fireEvent.press(screen.getByLabelText('Attach'));
+      await act(async () => {
+        fireEvent.press(screen.getByLabelText('Photo'));
+      });
+      await act(async () => {
+        fireEvent.press(await screen.findByLabelText('Discard photo'));
+      });
+
+      expect(mockedChatApi.uploadChatMedia).not.toHaveBeenCalled();
     });
 
     it('picks a video restricted to videos', async () => {

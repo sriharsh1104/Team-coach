@@ -1,7 +1,10 @@
 import {
   inviteToJoinInput,
+  isInviteHandled,
+  markInviteHandled,
   parseInviteLink,
   peekPendingInvite,
+  resetHandledInvites,
   setPendingInvite,
   takePendingInvite,
 } from '../inviteLinks';
@@ -46,5 +49,46 @@ describe('pending invite store', () => {
     expect(peekPendingInvite()?.token).toBe('t');
     expect(takePendingInvite()?.token).toBe('t');
     expect(takePendingInvite()).toBeNull();
+  });
+});
+
+describe('replayed launch links', () => {
+  beforeEach(() => {
+    resetHandledInvites();
+    setPendingInvite(null);
+  });
+
+  // Android hands the same ACTION_VIEW intent back from getInitialURL() on
+  // every later cold start, which put "You are already in a guild" on screen
+  // at every single login.
+  it('remembers a link it has already acted on', () => {
+    const invite = parseInviteLink('teamcoach://join/abc123')!;
+    expect(isInviteHandled(invite)).toBe(false);
+    markInviteHandled(invite);
+    expect(isInviteHandled(invite)).toBe(true);
+  });
+
+  it('treats the guild and roster seats of one token as different links', () => {
+    const guild = parseInviteLink('teamcoach://join/abc123')!;
+    const roster = parseInviteLink('teamcoach://join/abc123?seat=roster')!;
+    markInviteHandled(guild);
+
+    expect(isInviteHandled(guild)).toBe(true);
+    // A roster invite for the same org is a real, separate thing to accept.
+    expect(isInviteHandled(roster)).toBe(false);
+  });
+
+  it('does not block a different invite', () => {
+    markInviteHandled(parseInviteLink('teamcoach://join/abc123')!);
+    expect(isInviteHandled(parseInviteLink('teamcoach://join/xyz789')!)).toBe(
+      false,
+    );
+  });
+
+  it('is idempotent — marking twice is not an error', () => {
+    const invite = parseInviteLink('teamcoach://join/abc123')!;
+    markInviteHandled(invite);
+    markInviteHandled(invite);
+    expect(isInviteHandled(invite)).toBe(true);
   });
 });

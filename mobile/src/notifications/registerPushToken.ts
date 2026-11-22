@@ -69,6 +69,12 @@ async function doRegister() {
         name: 'General',
         ...channel,
       });
+      // "X is waiting in Team Voice" — separate channel so people can keep
+      // voice pings on while muting chat (or the other way round).
+      await Notifications.setNotificationChannelAsync('voice', {
+        name: 'Voice channel',
+        ...channel,
+      });
     }
 
     // Inline Reply on the notification shade (DM pushes set categoryId).

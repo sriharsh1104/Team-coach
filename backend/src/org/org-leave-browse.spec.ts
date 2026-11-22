@@ -7,16 +7,27 @@ import { MembershipRole } from '@prisma/client';
 import { OrgService } from './org.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { PushNotificationService } from '../common/push-notification.service';
 
 describe('OrgService leave + browse guilds', () => {
   function build(opts: {
-    guild?: { id: string; orgId: string; org: { id: string; name: string } } | null;
-    roster?: { id: string; orgId: string; isOwner: boolean; role: MembershipRole } | null;
+    guild?: {
+      id: string;
+      orgId: string;
+      org: { id: string; name: string };
+    } | null;
+    roster?: {
+      id: string;
+      orgId: string;
+      isOwner: boolean;
+      role: MembershipRole;
+    } | null;
     orgs?: Array<{
       id: string;
       name: string;
       createdAt: Date;
       _count: { guildMemberships: number; memberships: number };
+      chatChannelMetas?: { avatarUrl: string | null }[];
     }>;
   }) {
     const prisma = {
@@ -29,7 +40,14 @@ describe('OrgService leave + browse guilds', () => {
         delete: jest.fn().mockResolvedValue({}),
       },
       org: {
-        findMany: jest.fn().mockResolvedValue(opts.orgs ?? []),
+        findMany: jest
+          .fn()
+          .mockResolvedValue(
+            (opts.orgs ?? []).map((o) => ({ chatChannelMetas: [], ...o })),
+          ),
+      },
+      guildJoinRequest: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
@@ -39,9 +57,14 @@ describe('OrgService leave + browse guilds', () => {
       ),
     } as unknown as PrismaService;
 
-    const service = new OrgService(prisma, {
-      publish: jest.fn(),
-    } as unknown as RealtimeService);
+    const service = new OrgService(
+      prisma,
+      { publish: jest.fn() } as unknown as RealtimeService,
+      {
+        tokensFor: () => [],
+        send: jest.fn().mockResolvedValue(undefined),
+      } as unknown as PushNotificationService,
+    );
     return { service, prisma };
   }
 
@@ -64,9 +87,11 @@ describe('OrgService leave + browse guilds', () => {
       {
         id: 'o1',
         name: 'Sacred',
+        logoUrl: null,
         memberCount: 10,
         rosterCount: 5,
         createdAt: '2026-01-01T00:00:00.000Z',
+        requestStatus: null,
       },
     ]);
   });

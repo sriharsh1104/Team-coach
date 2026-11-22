@@ -23,7 +23,8 @@ import { InviteQr } from '../ui/InviteQr';
 import { MarqueeText } from '../ui/MarqueeText';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { SoftPressable } from '../ui/SoftPressable';
-import { ButtonLabel } from '../ui/ButtonLabel';
+import { IconActionButton } from '../ui/IconActionButton';
+import { GuildJoinRequestsPanel } from './GuildJoinRequestsPanel';
 import { emitToast } from '../ui/toastBus';
 import { confirmAsync } from '../ui/confirmAsync';
 import { ChannelAvatar } from './chat/ChannelAvatar';
@@ -200,6 +201,9 @@ export function GuildScreen({ navigation }: Props) {
         ListHeaderComponent={
           <View>
             <Text style={shared.title}>{detail?.name ?? 'Guild'}</Text>
+            {/* Renders nothing unless this member can decide and someone is
+                actually waiting. */}
+            <GuildJoinRequestsPanel onAccepted={() => void load()} />
             {detail ? (
               <Text style={styles.summary}>
                 {GUILD_ROLE_LABEL[detail.myGuildRole]} · {members.length} member
@@ -325,20 +329,18 @@ export function GuildScreen({ navigation }: Props) {
                   Members settings before you can leave.
                 </Text>
               ) : (
-                <SoftPressable
-                  style={[
-                    shared.button,
-                    { backgroundColor: colors.danger, opacity: leaving ? 0.6 : 1 },
-                  ]}
-                  disabled={leaving}
-                  onPress={() => void onLeaveGuild()}
-                  pressScale={0.98}
-                  accessibilityLabel="Leave Guild"
-                >
-                  <ButtonLabel icon="logout" color="#fff">
-                    {leaving ? 'Leaving…' : 'Leave Guild'}
-                  </ButtonLabel>
-                </SoftPressable>
+                // Icon, not a full-width red bar: leaving is a rare action
+                // and the slab read like the screen's primary button.
+                <View style={staticStyles.leaveRow}>
+                  <IconActionButton
+                    icon="log-out"
+                    label="Leave Guild"
+                    danger
+                    loading={leaving}
+                    disabled={leaving}
+                    onPress={() => void onLeaveGuild()}
+                  />
+                </View>
               )}
             </View>
           ) : null
@@ -528,6 +530,7 @@ const staticStyles = StyleSheet.create({
   list: { flex: 1, minWidth: 0, backgroundColor: 'transparent' },
   listContent: { paddingHorizontal: 16, paddingBottom: 40 },
   leaveBlock: { marginTop: 20, marginBottom: 12, gap: 8 },
+  leaveRow: { alignItems: 'center' },
   inviteCard: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',

@@ -18,4 +18,6 @@ export type PendingUpload = {
   progress: number;
   label?: string;
   error?: string;
+  /** Live request for this attempt — cancelling the bubble aborts it. */
+  controller?: AbortController;
 };

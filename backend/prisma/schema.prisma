@@ -100,6 +100,8 @@ model User {
   memberships        Membership[]
   guildMemberships   GuildMembership[]
   guildInvites       GuildMembership[] @relation("GuildInvites")
+  guildJoinRequests  GuildJoinRequest[] @relation("GuildJoinRequests")
+  guildJoinDecisions GuildJoinRequest[] @relation("GuildJoinDecisions")
   devices            Device[]
   mediaPosts         MediaPost[]
   chatMessages       ChatMessage[]
@@ -233,6 +235,7 @@ model Org {
   mapImages          OrgMapImage[]
   customMaps         OrgCustomMap[]
   mapDropPoints      OrgMapDropPoint[]
+  guildJoinRequests  GuildJoinRequest[]
 }
 
 // Org overrides for shared catalog images (Cloudinary / local fileKey).
@@ -637,6 +640,40 @@ model Membership {
 // Community seat inside an org. Separate from Membership, which is the
 // esports roster (chat, records, scrims). Joining with a guild code creates
 // only this row.
+enum GuildJoinRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  // Auto-withdrawn because the user was accepted somewhere else. Keeps the
+  // row (so the requester can see what happened) while dropping it out of
+  // every other owner's inbox.
+  SUPERSEDED
+}
+
+// Joining a guild from the public browse list is a request the owner has to
+// accept. Joining with the org code or a personal invite link stays direct —
+// having the code is itself the owner's permission.
+model GuildJoinRequest {
+  id        String                 @id @default(cuid())
+  userId    String
+  orgId     String
+  status    GuildJoinRequestStatus @default(PENDING)
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  decidedAt DateTime?
+  decidedById String?
+
+  user      User @relation("GuildJoinRequests", fields: [userId], references: [id], onDelete: Cascade)
+  org       Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  decidedBy User? @relation("GuildJoinDecisions", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  // Asking the same guild again reuses the row rather than stacking rows in
+  // the owner's inbox.
+  @@unique([userId, orgId])
+  @@index([orgId, status])
+  @@index([userId, status])
+}
+
 model GuildMembership {
   id        String    @id @default(cuid())
   role      GuildRole @default(MEMBER)

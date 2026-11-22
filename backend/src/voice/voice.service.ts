@@ -12,11 +12,15 @@ import {
   TrackSource,
 } from 'livekit-server-sdk';
 import { ChatService } from '../chat/chat.service';
+import {
+  PushMessage,
+  PushNotificationService,
+} from '../common/push-notification.service';
 import { MembershipService } from '../membership/membership.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediasoupSfuService } from './mediasoup-sfu.service';
 import { VoiceGateway } from './voice.gateway';
-import { VoiceModerateDto, VoiceRoomName } from './dto';
+import { VoiceInviteDto, VoiceModerateDto, VoiceRoomName } from './dto';
 import { resolveGuildAccess } from './guild-access';
 import {
   applyModeration,
@@ -28,6 +32,9 @@ import {
   ModerationAction,
   parseRoomState,
 } from './hosted-room-state';
+
+/** How long before the same person can be pinged by the same teammate again. */
+const VOICE_INVITE_COOLDOWN_MS = 5 * 60 * 1000;
 
 interface LiveKitCreds {
   url: string;
@@ -53,6 +60,8 @@ export class VoiceService {
   private readonly logger = new Logger(VoiceService.name);
   /** Serialises read-modify-write of one room's mute state. */
   private readonly roomLocks = new Map<string, Promise<unknown>>();
+  /** `senderId>targetId` → when that pair was last pinged (ms). */
+  private readonly inviteCooldowns = new Map<string, number>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -61,6 +70,7 @@ export class VoiceService {
     private readonly sfu: MediasoupSfuService,
     private readonly membershipService: MembershipService,
     private readonly voiceGateway: VoiceGateway,
+    private readonly pushNotifications: PushNotificationService,
   ) {}
 
   private creds(): LiveKitCreds {
@@ -224,6 +234,94 @@ export class VoiceService {
       canModerate: ctx.canModerate,
       max,
     };
+  }
+
+  /**
+   * "Ping to join" — tell specific teammates you are waiting in team voice.
+   *
+   * Deliberately narrow so it stays a nudge between friends rather than a
+   * broadcast: the caller must already be in the room, targets must be in the
+   * caller's own org, anyone already in the call is skipped, and the same
+   * pair cannot be pinged again for a few minutes.
+   */
+  async invite(userId: string, dto: VoiceInviteDto) {
+    const ctx = await this.resolveRoom(userId, 'team');
+    const occupancy = await this.getOccupancy(userId, 'team');
+    const inRoom = new Set(occupancy.participants.map((p) => p.id));
+    if (!inRoom.has(userId)) {
+      throw new BadRequestException(
+        'Join the voice channel first, then ping your team.',
+      );
+    }
+
+    const wanted = [...new Set(dto.userIds)].filter(
+      (id) => id !== userId && !inRoom.has(id),
+    );
+    if (wanted.length === 0) return { sent: 0, skipped: 0 };
+
+    // Org membership is checked here, never trusted from the request: the
+    // list the client shows could be stale or tampered with.
+    const [sender, members] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { name: true, inGameName: true },
+      }),
+      this.prisma.membership.findMany({
+        where: { orgId: ctx.orgId, userId: { in: wanted } },
+        select: { userId: true },
+      }),
+    ]);
+    const teammateIds = members.map((m) => m.userId);
+    if (teammateIds.length === 0) return { sent: 0, skipped: wanted.length };
+
+    const now = Date.now();
+    this.pruneInviteCooldowns(now);
+    const allowed = teammateIds.filter((id) => {
+      const last = this.inviteCooldowns.get(`${userId}>${id}`);
+      return last === undefined || now - last >= VOICE_INVITE_COOLDOWN_MS;
+    });
+    if (allowed.length === 0) {
+      return { sent: 0, skipped: wanted.length };
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: allowed } },
+      select: { id: true, expoPushToken: true },
+    });
+    const senderName = sender.inGameName ?? sender.name ?? 'A teammate';
+
+    const messages: PushMessage[] = [];
+    const pinged: string[] = [];
+    for (const u of users) {
+      const pushTokens = this.pushNotifications.tokensFor(u.expoPushToken);
+      if (pushTokens.length === 0) continue;
+      pinged.push(u.id);
+      for (const to of pushTokens) {
+        messages.push({
+          to,
+          title: `${senderName} is waiting in Team Voice`,
+          body: 'Tap to join the voice channel.',
+          data: { type: 'voice_invite', voiceRoom: 'team', senderId: userId },
+          // One pending nudge per sender in the tray, not a stack of them.
+          collapseId: `voice-invite:${ctx.orgId}:${userId}:${u.id}`,
+          channelId: 'voice',
+          priority: 'high',
+        });
+      }
+    }
+
+    // Only start the cooldown for people a push actually went to, so someone
+    // without a registered device does not silently burn their window.
+    for (const id of pinged) this.inviteCooldowns.set(`${userId}>${id}`, now);
+    await this.pushNotifications.send(messages);
+    return { sent: pinged.length, skipped: wanted.length - pinged.length };
+  }
+
+  private pruneInviteCooldowns(now: number) {
+    for (const [key, at] of this.inviteCooldowns) {
+      if (now - at >= VOICE_INVITE_COOLDOWN_MS)
+        this.inviteCooldowns.delete(key);
+    }
   }
 
   /**

@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatScreen } from './ChatScreen';
@@ -62,6 +62,32 @@ export function ChatScreenWithMedia({ channelKey, title }: Props) {
 
   return (
     <View style={staticStyles.root}>
+      {starredOnly ? (
+        <View
+          style={[
+            staticStyles.starredBanner,
+            {
+              backgroundColor: theme.surface,
+              borderBottomColor: theme.border,
+            },
+          ]}
+        >
+          <Text style={[staticStyles.starredBannerText, { color: theme.text }]}>
+            Starred messages
+          </Text>
+          <SoftPressable
+            onPress={() => setStarredOnly(false)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Show all messages"
+            pressScale={0.95}
+          >
+            <Text style={[staticStyles.starredBannerAction, { color: theme.link }]}>
+              Show all
+            </Text>
+          </SoftPressable>
+        </View>
+      ) : null}
       <ChatScreen
         key={`${channelKey}:${starredOnly ? 'starred' : 'all'}:${chatEpoch}`}
         channelKey={channelKey}
@@ -108,4 +134,14 @@ const staticStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  starredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  starredBannerText: { fontSize: 14, fontWeight: '700' },
+  starredBannerAction: { fontSize: 13, fontWeight: '600' },
 });

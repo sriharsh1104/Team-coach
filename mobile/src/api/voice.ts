@@ -34,6 +34,24 @@ export function moderateVoice(room: VoiceRoomKind, action: VoiceModerateAction, 
     .then((res) => res.data);
 }
 
+export type VoiceInviteResult = {
+  /** Teammates a push actually went out to. */
+  sent: number;
+  /** Named but skipped — not in the org, or already pinged recently. */
+  skipped: number;
+};
+
+/**
+ * "Ping to join": nudge teammates that you are waiting in team voice. The
+ * server re-checks that the caller is really in the room, that the targets
+ * share the org, and rate-limits repeats — so this cannot be used to spam.
+ */
+export function inviteToVoice(userIds: string[]) {
+  return apiClient
+    .post<VoiceInviteResult>('/voice/invite', { userIds })
+    .then((res) => res.data);
+}
+
 export function connectVoiceSocket(token: string, room: VoiceRoomKind = 'team'): Socket {
   return io(`${apiBaseUrl}/voice`, {
     auth: room === 'guild' ? { token, room } : { token },
