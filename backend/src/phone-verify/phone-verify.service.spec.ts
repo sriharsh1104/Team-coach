@@ -4,11 +4,21 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { PhoneVerifyService, PHONE_CODE_MAX_ATTEMPTS } from './phone-verify.service';
+import {
+  PhoneVerifyService,
+  PHONE_CODE_MAX_ATTEMPTS,
+} from './phone-verify.service';
 import { TelegramBot } from './telegram-bot';
 import { PrismaService } from '../prisma/prisma.service';
 
-function build(opts: { configured?: boolean; link?: any; takenBy?: any; counted?: number } = {}) {
+function build(
+  opts: {
+    configured?: boolean;
+    link?: any;
+    takenBy?: any;
+    counted?: number;
+  } = {},
+) {
   const prisma = {
     $transaction: jest.fn().mockResolvedValue([]),
     telegramPhoneLink: {
@@ -53,9 +63,9 @@ describe('PhoneVerifyService (Telegram + code)', () => {
   describe('startTelegramLink', () => {
     it('refuses to start when the bot is not configured', async () => {
       const { service } = build({ configured: false });
-      await expect(service.startTelegramLink('u1', '9876543210')).rejects.toThrow(
-        ServiceUnavailableException,
-      );
+      await expect(
+        service.startTelegramLink('u1', '9876543210'),
+      ).rejects.toThrow(ServiceUnavailableException);
     });
 
     it('rejects an implausible number', async () => {
@@ -67,9 +77,9 @@ describe('PhoneVerifyService (Telegram + code)', () => {
 
     it('rejects a number already used by another account', async () => {
       const { service, prisma } = build({ takenBy: { id: 'other' } });
-      await expect(service.startTelegramLink('u1', '98765 43210')).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.startTelegramLink('u1', '98765 43210'),
+      ).rejects.toThrow(ConflictException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
@@ -80,14 +90,21 @@ describe('PhoneVerifyService (Telegram + code)', () => {
       expect(prisma.telegramPhoneLink.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ userId: 'u1', phone: '9876543210' }),
       });
-      expect(res.deepLink).toMatch(/^https:\/\/t\.me\/TeamCoachBot\?start=[A-Za-z0-9_-]{32}$/);
+      expect(res.deepLink).toMatch(
+        /^https:\/\/t\.me\/TeamCoachBot\?start=[A-Za-z0-9_-]{32}$/,
+      );
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 
   describe('bot webhook', () => {
     it('/start with a valid token records the chat and asks for the contact', async () => {
-      const link = { token: 'tok', userId: 'u1', usedAt: null, expiresAt: future() };
+      const link = {
+        token: 'tok',
+        userId: 'u1',
+        usedAt: null,
+        expiresAt: future(),
+      };
       const { service, prisma, bot } = build({ link });
       await service.handleUpdate({
         message: { chat: { id: CHAT }, from: { id: 1 }, text: '/start tok' },
@@ -108,7 +125,12 @@ describe('PhoneVerifyService (Telegram + code)', () => {
     });
 
     it('/start with an expired token does not link anything', async () => {
-      const expired = { token: 'tok', userId: 'u1', usedAt: null, expiresAt: new Date(0) };
+      const expired = {
+        token: 'tok',
+        userId: 'u1',
+        usedAt: null,
+        expiresAt: new Date(0),
+      };
       const { service, prisma, bot } = build({ link: expired });
       await service.handleUpdate({
         message: { chat: { id: CHAT }, from: { id: 1 }, text: '/start tok' },
@@ -139,9 +161,9 @@ describe('PhoneVerifyService (Telegram + code)', () => {
           attempts: 0,
         }),
       });
-      expect(JSON.stringify(prisma.telegramPhoneLink.update.mock.calls)).not.toContain(
-        `"${code}"`,
-      );
+      expect(
+        JSON.stringify(prisma.telegramPhoneLink.update.mock.calls),
+      ).not.toContain(`"${code}"`);
       expect(prisma.user.update).not.toHaveBeenCalled();
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
@@ -157,11 +179,19 @@ describe('PhoneVerifyService (Telegram + code)', () => {
       const { service, prisma, bot } = build({ link });
       await service.handleUpdate(contactMsg('919876543210'));
       expect(prisma.telegramPhoneLink.update).not.toHaveBeenCalled();
-      expect(bot.sendMessage.mock.calls[0][1]).toMatch(/different from the number/i);
+      expect(bot.sendMessage.mock.calls[0][1]).toMatch(
+        /different from the number/i,
+      );
     });
 
     it('rejects a forwarded contact that belongs to someone else', async () => {
-      const link = { token: 'tok', userId: 'u1', phone: '9876543210', usedAt: null, expiresAt: future() };
+      const link = {
+        token: 'tok',
+        userId: 'u1',
+        phone: '9876543210',
+        usedAt: null,
+        expiresAt: future(),
+      };
       const { service, prisma, bot } = build({ link });
       await service.handleUpdate(contactMsg('919876543210', 99));
       expect(prisma.telegramPhoneLink.update).not.toHaveBeenCalled();
@@ -172,12 +202,23 @@ describe('PhoneVerifyService (Telegram + code)', () => {
       const { service, prisma, bot } = build({ link: null });
       await service.handleUpdate(contactMsg('919876543210'));
       expect(prisma.telegramPhoneLink.update).not.toHaveBeenCalled();
-      expect(bot.sendMessage.mock.calls[0][1]).toMatch(/No pending verification/);
+      expect(bot.sendMessage.mock.calls[0][1]).toMatch(
+        /No pending verification/,
+      );
     });
 
     it('refuses a number already linked to another account', async () => {
-      const link = { token: 'tok', userId: 'u1', phone: '9876543210', usedAt: null, expiresAt: future() };
-      const { service, prisma, bot } = build({ link, takenBy: { id: 'someone-else' } });
+      const link = {
+        token: 'tok',
+        userId: 'u1',
+        phone: '9876543210',
+        usedAt: null,
+        expiresAt: future(),
+      };
+      const { service, prisma, bot } = build({
+        link,
+        takenBy: { id: 'someone-else' },
+      });
       await service.handleUpdate(contactMsg('919876543210'));
       expect(prisma.telegramPhoneLink.update).not.toHaveBeenCalled();
       expect(bot.sendMessage.mock.calls[0][1]).toMatch(/already linked/i);
@@ -185,7 +226,9 @@ describe('PhoneVerifyService (Telegram + code)', () => {
 
     it('ignores unrelated messages', async () => {
       const { service, bot, prisma } = build();
-      await service.handleUpdate({ message: { chat: { id: CHAT }, text: 'hello' } });
+      await service.handleUpdate({
+        message: { chat: { id: CHAT }, text: 'hello' },
+      });
       await service.handleUpdate({});
       expect(bot.sendMessage).not.toHaveBeenCalled();
       expect(prisma.telegramPhoneLink.findFirst).not.toHaveBeenCalled();
@@ -221,7 +264,9 @@ describe('PhoneVerifyService (Telegram + code)', () => {
 
     it('rejects a wrong code without verifying', async () => {
       const { service, prisma } = build({ link: live() });
-      await expect(service.confirmCode('u1', '000000')).rejects.toThrow(/Incorrect code/);
+      await expect(service.confirmCode('u1', '000000')).rejects.toThrow(
+        /Incorrect code/,
+      );
       expect(prisma.telegramPhoneLink.updateMany).toHaveBeenCalledWith({
         where: { token: 'tok', attempts: { lt: PHONE_CODE_MAX_ATTEMPTS } },
         data: { attempts: { increment: 1 } },
@@ -231,24 +276,37 @@ describe('PhoneVerifyService (Telegram + code)', () => {
 
     it('stops after too many attempts, even if the code would have been right', async () => {
       const { service, prisma } = build({ link: live(), counted: 0 });
-      await expect(service.confirmCode('u1', '123456')).rejects.toThrow(/Too many wrong codes/);
+      await expect(service.confirmCode('u1', '123456')).rejects.toThrow(
+        /Too many wrong codes/,
+      );
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('rejects an expired code', async () => {
-      const { service, prisma } = build({ link: live({ codeExpiresAt: new Date(0) }) });
-      await expect(service.confirmCode('u1', '123456')).rejects.toThrow(/expired/);
+      const { service, prisma } = build({
+        link: live({ codeExpiresAt: new Date(0) }),
+      });
+      await expect(service.confirmCode('u1', '123456')).rejects.toThrow(
+        /expired/,
+      );
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('asks to start again when no code was ever sent', async () => {
       const { service } = build({ link: null });
-      await expect(service.confirmCode('u1', '123456')).rejects.toThrow(/No code is waiting/);
+      await expect(service.confirmCode('u1', '123456')).rejects.toThrow(
+        /No code is waiting/,
+      );
     });
 
     it('refuses if someone else claimed the number in the meantime', async () => {
-      const { service, prisma } = build({ link: live(), takenBy: { id: 'other' } });
-      await expect(service.confirmCode('u1', '123456')).rejects.toThrow(ConflictException);
+      const { service, prisma } = build({
+        link: live(),
+        takenBy: { id: 'other' },
+      });
+      await expect(service.confirmCode('u1', '123456')).rejects.toThrow(
+        ConflictException,
+      );
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });

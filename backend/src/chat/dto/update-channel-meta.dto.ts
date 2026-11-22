@@ -1,4 +1,10 @@
-import { IsInt, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateIf,
+} from 'class-validator';
 
 export class UpdateChannelMetaDto {
   @IsOptional()

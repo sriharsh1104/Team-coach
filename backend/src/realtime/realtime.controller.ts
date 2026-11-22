@@ -17,9 +17,7 @@ export class RealtimeController {
    */
   @SkipThrottle()
   @Sse('stream')
-  stream(
-    @CurrentUser() user: { userId: string },
-  ): Observable<MessageEvent> {
+  stream(@CurrentUser() user: { userId: string }): Observable<MessageEvent> {
     return this.realtime.streamForUser(user.userId);
   }
 }

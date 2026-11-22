@@ -59,13 +59,16 @@ export class PhoneVerifyService {
       where: { phone, id: { not: userId } },
       select: { id: true },
     });
-    if (taken) throw new ConflictException('That phone number is already in use');
+    if (taken)
+      throw new ConflictException('That phone number is already in use');
 
     // Only one live link per user, so an old QR/link can't be used after a retry.
     const token = randomBytes(24).toString('base64url'); // 32 chars: valid in t.me start payloads
     const expiresAt = new Date(Date.now() + PHONE_LINK_TTL_MS);
     await this.prisma.$transaction([
-      this.prisma.telegramPhoneLink.deleteMany({ where: { userId, usedAt: null } }),
+      this.prisma.telegramPhoneLink.deleteMany({
+        where: { userId, usedAt: null },
+      }),
       this.prisma.telegramPhoneLink.create({
         data: { token, userId, phone, expiresAt },
       }),
@@ -112,14 +115,17 @@ export class PhoneVerifyService {
     const given = Buffer.from(hashCode(link.token, code));
     const expected = Buffer.from(link.codeHash);
     if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
-      throw new BadRequestException('Incorrect code. Check Telegram and try again.');
+      throw new BadRequestException(
+        'Incorrect code. Check Telegram and try again.',
+      );
     }
 
     const taken = await this.prisma.user.findFirst({
       where: { phone: link.phone, id: { not: userId } },
       select: { id: true },
     });
-    if (taken) throw new ConflictException('That phone number is already in use');
+    if (taken)
+      throw new ConflictException('That phone number is already in use');
 
     try {
       await this.prisma.$transaction([
@@ -134,7 +140,10 @@ export class PhoneVerifyService {
       ]);
     } catch (err) {
       // Lost a race with another account claiming the same number.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
         throw new ConflictException('That phone number is already in use');
       }
       throw err;
@@ -160,7 +169,9 @@ export class PhoneVerifyService {
       );
       return;
     }
-    const link = await this.prisma.telegramPhoneLink.findUnique({ where: { token } });
+    const link = await this.prisma.telegramPhoneLink.findUnique({
+      where: { token },
+    });
     if (!link || link.usedAt || link.expiresAt <= new Date()) {
       await this.bot.sendMessage(
         chatId,
@@ -197,7 +208,11 @@ export class PhoneVerifyService {
     }
 
     const link = await this.prisma.telegramPhoneLink.findFirst({
-      where: { telegramChatId: chatId, usedAt: null, expiresAt: { gt: new Date() } },
+      where: {
+        telegramChatId: chatId,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: 'desc' },
     });
     if (!link || !link.phone) {
@@ -211,7 +226,11 @@ export class PhoneVerifyService {
 
     const shared = normalizePhone(contact.phone_number);
     if (!isPlausiblePhone(shared)) {
-      await this.bot.sendMessage(chatId, 'That number does not look valid.', REMOVE_KEYBOARD);
+      await this.bot.sendMessage(
+        chatId,
+        'That number does not look valid.',
+        REMOVE_KEYBOARD,
+      );
       return;
     }
     if (shared !== link.phone) {

@@ -45,6 +45,7 @@ function toAuthUser(me: AuthUser): AuthUser {
     hasPassword: me.hasPassword,
     hasGoogle: me.hasGoogle,
     twoFactorEnabled: me.twoFactorEnabled,
+    isPlatformAdmin: me.isPlatformAdmin ?? false,
   };
 }
 
@@ -172,7 +173,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const applyAuthResponse = useCallback(async (response: AuthResponse) => {
     await setToken(response.accessToken);
-    setUser(response.user);
+    // Through the same normaliser as the /auth/me paths so isPlatformAdmin
+    // is always a real boolean, whichever way the session started.
+    setUser(toAuthUser(response.user));
     setOrgState(response.org);
     setGuildState(response.guild ?? null);
     registerPushTokenWithBackend();

@@ -2,7 +2,13 @@ import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import * as speakeasy from 'speakeasy';
 import * as bcrypt from 'bcrypt';
-import { createTestApp, getPrisma, resetDatabase, uniqueEmail, uniqueOrgName } from './utils/test-app';
+import {
+  createTestApp,
+  getPrisma,
+  resetDatabase,
+  uniqueEmail,
+  uniqueOrgName,
+} from './utils/test-app';
 import { sentOtps } from './utils/mailer-mock';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -26,13 +32,18 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
     await resetDatabase(prisma);
   });
 
-  async function signup(overrides: Partial<{ email: string; password: string; name: string }> = {}) {
+  async function signup(
+    overrides: Partial<{ email: string; password: string; name: string }> = {},
+  ) {
     const body = {
       email: overrides.email ?? uniqueEmail('user'),
       password: overrides.password ?? 'Password123!',
       name: overrides.name ?? 'Test User',
     };
-    const signupRes = await request(server).post('/auth/signup').send(body).expect(201);
+    const signupRes = await request(server)
+      .post('/auth/signup')
+      .send(body)
+      .expect(201);
     const code = sentOtps.get(body.email);
     const res = await request(server)
       .post('/auth/verify-email')
@@ -153,40 +164,55 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
     });
 
     it('does not crash or misbehave on SQL-injection-shaped input', async () => {
-      const res = await request(server).post('/auth/signup').send({
-        email: `inject${Date.now()}@example.com`,
-        password: "pwd123'; DROP TABLE \"User\"; --",
-        name: "Robert'); DROP TABLE Students;--",
-      });
+      const res = await request(server)
+        .post('/auth/signup')
+        .send({
+          email: `inject${Date.now()}@example.com`,
+          password: 'pwd123\'; DROP TABLE "User"; --',
+          name: "Robert'); DROP TABLE Students;--",
+        });
       // Either validated away or accepted as a literal string — never a 500.
       expect([201, 400]).toContain(res.status);
 
-      const stillWorks = await request(server).post('/auth/signup').send({
-        email: uniqueEmail('after-injection'),
-        password: 'Password123!',
-        name: 'Still Works',
-      });
+      const stillWorks = await request(server)
+        .post('/auth/signup')
+        .send({
+          email: uniqueEmail('after-injection'),
+          password: 'Password123!',
+          name: 'Still Works',
+        });
       expect(stillWorks.status).toBe(201);
     });
   });
 
   describe('Email verification (signup OTP)', () => {
-    async function rawSignup(overrides: Partial<{ email: string; password: string; name: string }> = {}) {
+    async function rawSignup(
+      overrides: Partial<{
+        email: string;
+        password: string;
+        name: string;
+      }> = {},
+    ) {
       const body = {
         email: overrides.email ?? uniqueEmail('verify'),
         password: overrides.password ?? 'Password123!',
         name: overrides.name ?? 'Verify Me',
       };
-      const res = await request(server).post('/auth/signup').send(body).expect(201);
+      const res = await request(server)
+        .post('/auth/signup')
+        .send(body)
+        .expect(201);
       return { ...body, challengeToken: res.body.challengeToken };
     }
 
     it('signup returns a challenge, not a usable session', async () => {
-      const res = await request(server).post('/auth/signup').send({
-        email: uniqueEmail('nosession'),
-        password: 'Password123!',
-        name: 'No Session',
-      });
+      const res = await request(server)
+        .post('/auth/signup')
+        .send({
+          email: uniqueEmail('nosession'),
+          password: 'Password123!',
+          name: 'No Session',
+        });
       expect(res.body.requiresEmailVerification).toBe(true);
       expect(res.body.challengeToken).toEqual(expect.any(String));
       expect(res.body.accessToken).toBeUndefined();
@@ -306,7 +332,11 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
 
     it('a second signup for the same still-unverified email does not overwrite the original password or name', async () => {
       const email = uniqueEmail('resignup');
-      await rawSignup({ email, password: 'OriginalPass1!', name: 'First Name' });
+      await rawSignup({
+        email,
+        password: 'OriginalPass1!',
+        name: 'First Name',
+      });
 
       // Clear the per-email resend cooldown (see EMAIL_OTP_RESEND_COOLDOWN_SECONDS)
       // so this second signup isn't rejected for an unrelated reason — this
@@ -319,7 +349,11 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       // No proof of email ownership exists yet at this point (that's the
       // whole point of the OTP that's about to be sent) — this must only
       // resend a fresh code, never change the stored credentials.
-      const second = await rawSignup({ email, password: 'AttackerPass1!', name: 'Attacker Name' });
+      const second = await rawSignup({
+        email,
+        password: 'AttackerPass1!',
+        name: 'Attacker Name',
+      });
       const code = sentOtps.get(email);
 
       const res = await request(server)
@@ -345,7 +379,10 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       const { email, password } = await signup();
       // 201, not 200 — Nest's default for any @Post() handler without an
       // explicit @HttpCode(), and consistent with every other POST in this app.
-      const res = await request(server).post('/auth/login').send({ email, password }).expect(201);
+      const res = await request(server)
+        .post('/auth/login')
+        .send({ email, password })
+        .expect(201);
       expect(res.body.accessToken).toEqual(expect.any(String));
     });
 
@@ -660,7 +697,9 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .get('/orgs/me')
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
-      expect(roster.body.members.filter((m: any) => m.role === 'PLAYER')).toHaveLength(5);
+      expect(
+        roster.body.members.filter((m: any) => m.role === 'PLAYER'),
+      ).toHaveLength(5);
     }, 30000);
 
     it('lets the owner promote members to COACH / ANALYST, capped at 2 / 1', async () => {
@@ -761,7 +800,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server).get('/orgs/me').expect(401);
     });
 
-    it('404s for a user not yet in any org, never another org\'s data', async () => {
+    it("404s for a user not yet in any org, never another org's data", async () => {
       const outsider = await signup();
       await request(server)
         .get('/orgs/me')
@@ -784,13 +823,17 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
 
-      const coachMember = res.body.members.find((m: any) => m.userId === coach.user.id);
-      const playerMember = res.body.members.find((m: any) => m.userId === player.user.id);
+      const coachMember = res.body.members.find(
+        (m: any) => m.userId === coach.user.id,
+      );
+      const playerMember = res.body.members.find(
+        (m: any) => m.userId === player.user.id,
+      );
       expect(coachMember.isOwner).toBe(true);
       expect(playerMember.isOwner).toBe(false);
     });
 
-    it('roster includes each member\'s in-game role tag alongside their org role', async () => {
+    it("roster includes each member's in-game role tag alongside their org role", async () => {
       const coach = await signup();
       const org = await createOrgAs(coach.accessToken);
       const player = await signup();
@@ -813,8 +856,12 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
 
-      const coachMember = res.body.members.find((m: any) => m.userId === coach.user.id);
-      const playerMember = res.body.members.find((m: any) => m.userId === player.user.id);
+      const coachMember = res.body.members.find(
+        (m: any) => m.userId === coach.user.id,
+      );
+      const playerMember = res.body.members.find(
+        (m: any) => m.userId === player.user.id,
+      );
       expect(coachMember.inGameRoles).toEqual([]);
       expect(playerMember.inGameRoles).toEqual(['SNIPER']);
     });
@@ -822,7 +869,10 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
 
   describe('POST /orgs/transfer-ownership', () => {
     it('requires authentication', async () => {
-      await request(server).post('/orgs/transfer-ownership').send({ targetUserId: 'x' }).expect(401);
+      await request(server)
+        .post('/orgs/transfer-ownership')
+        .send({ targetUserId: 'x' })
+        .expect(401);
     });
 
     it('transfers ownership from the current owner to a teammate', async () => {
@@ -845,8 +895,12 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .get('/orgs/me')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .expect(200);
-      const coachMember = roster.body.members.find((m: any) => m.userId === coach.user.id);
-      const playerMember = roster.body.members.find((m: any) => m.userId === player.user.id);
+      const coachMember = roster.body.members.find(
+        (m: any) => m.userId === coach.user.id,
+      );
+      const playerMember = roster.body.members.find(
+        (m: any) => m.userId === player.user.id,
+      );
       expect(coachMember.isOwner).toBe(false);
       expect(playerMember.isOwner).toBe(true);
       // The old owner's own role is untouched by the transfer — only isOwner moves.
@@ -932,7 +986,9 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .get('/orgs/me')
         .set('Authorization', `Bearer ${owner.accessToken}`)
         .expect(200);
-      const playerMember = roster.body.members.find((m: any) => m.userId === player.user.id);
+      const playerMember = roster.body.members.find(
+        (m: any) => m.userId === player.user.id,
+      );
       expect(playerMember.role).toBe('COACH');
     });
 
@@ -1034,7 +1090,9 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .get('/orgs/me')
         .set('Authorization', `Bearer ${owner.accessToken}`)
         .expect(200);
-      expect(roster.body.members.map((m: any) => m.userId)).not.toContain(player.user.id);
+      expect(roster.body.members.map((m: any) => m.userId)).not.toContain(
+        player.user.id,
+      );
 
       // Removed member is no longer part of any org — can join (or a new one) again.
       await request(server)
@@ -1176,7 +1234,10 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
     it('requires authentication', async () => {
       await request(server)
         .patch('/auth/password')
-        .send({ currentPassword: 'Password123!', newPassword: 'NewPassword123!' })
+        .send({
+          currentPassword: 'Password123!',
+          newPassword: 'NewPassword123!',
+        })
         .expect(401);
     });
 
@@ -1185,7 +1246,10 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ currentPassword: 'wrong-password', newPassword: 'NewPassword123!' })
+        .send({
+          currentPassword: 'wrong-password',
+          newPassword: 'NewPassword123!',
+        })
         .expect(401);
     });
 
@@ -1208,12 +1272,18 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
     });
 
     it('changes the password, invalidates the old session token, and returns a fresh working one', async () => {
-      const user = await signup({ email: 'changeme@example.com', password: 'Password123!' });
+      const user = await signup({
+        email: 'changeme@example.com',
+        password: 'Password123!',
+      });
 
       const res = await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ currentPassword: 'Password123!', newPassword: 'NewPassword123!' })
+        .send({
+          currentPassword: 'Password123!',
+          newPassword: 'NewPassword123!',
+        })
         .expect(200);
       const freshToken = res.body.accessToken;
       expect(freshToken).toEqual(expect.any(String));
@@ -1255,7 +1325,10 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .patch('/auth/password')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ currentPassword: 'Password123!', newPassword: 'NewPassword123!' })
+        .send({
+          currentPassword: 'Password123!',
+          newPassword: 'NewPassword123!',
+        })
         .expect(400);
     });
   });
@@ -1268,7 +1341,11 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
         .set('Authorization', `Bearer ${user.accessToken}`)
         .send({ password: user.password })
         .expect(201);
-      return { user, secret: setup.body.secret, qrCodeDataUrl: setup.body.qrCodeDataUrl };
+      return {
+        user,
+        secret: setup.body.secret,
+        qrCodeDataUrl: setup.body.qrCodeDataUrl,
+      };
     }
 
     // `stepOffset` generates the code for a later 30s window — needed when a

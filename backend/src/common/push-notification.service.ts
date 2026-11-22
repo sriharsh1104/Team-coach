@@ -52,7 +52,10 @@ const MAX_MESSAGES_PER_REQUEST = 100;
 // projects (e.g. phones still running an APK built under an older EAS
 // account/owner next to phones on the current one).
 const MIXED_PROJECTS_CODE = 'PUSH_TOO_MANY_EXPERIENCE_IDS';
-const DEAD_TOKEN_ERRORS = new Set(['DeviceNotRegistered', 'InvalidCredentials']);
+const DEAD_TOKEN_ERRORS = new Set([
+  'DeviceNotRegistered',
+  'InvalidCredentials',
+]);
 
 @Injectable()
 export class PushNotificationService {
@@ -138,7 +141,11 @@ export class PushNotificationService {
       return;
     }
 
-    if (res.status === 400 && chunk.length > 1 && text.includes(MIXED_PROJECTS_CODE)) {
+    if (
+      res.status === 400 &&
+      chunk.length > 1 &&
+      text.includes(MIXED_PROJECTS_CODE)
+    ) {
       const groups = this.splitByProject(chunk, text);
       let firstError: Error | null = null;
       for (const group of groups) {
@@ -160,7 +167,10 @@ export class PushNotificationService {
    * (old APK, uninstalled, FCM revoked) does not keep filling the multi-device
    * list and crowd out a working device.
    */
-  private async pruneFromTickets(chunk: ExpoMessage[], body: string): Promise<void> {
+  private async pruneFromTickets(
+    chunk: ExpoMessage[],
+    body: string,
+  ): Promise<void> {
     let tickets: ExpoTicket[] = [];
     try {
       const parsed = JSON.parse(body) as { data?: ExpoTicket[] };
@@ -192,7 +202,9 @@ export class PushNotificationService {
           });
         }
       } catch (err) {
-        this.logger.warn(`Failed to prune dead push token: ${(err as Error).message}`);
+        this.logger.warn(
+          `Failed to prune dead push token: ${(err as Error).message}`,
+        );
       }
     }
   }
@@ -208,7 +220,9 @@ export class PushNotificationService {
       const parsed = JSON.parse(body) as {
         errors?: Array<{ code?: string; details?: Record<string, unknown> }>;
       };
-      const details = parsed.errors?.find((e) => e.code === MIXED_PROJECTS_CODE)?.details;
+      const details = parsed.errors?.find(
+        (e) => e.code === MIXED_PROJECTS_CODE,
+      )?.details;
       if (details && typeof details === 'object') {
         const byToken = new Map<string, string>();
         for (const [project, tokens] of Object.entries(details)) {

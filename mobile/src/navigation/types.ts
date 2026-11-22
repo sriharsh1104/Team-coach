@@ -27,6 +27,8 @@ export type MainStackParamList = {
   Guild: undefined;
   OrgSettings: undefined;
   AccountSettings: undefined;
+  /** Platform admin — only reachable when the server says isPlatformAdmin. */
+  Admin: undefined;
   TwoFactorSetup: undefined;
   MemberProfile: { userId: string; name: string };
   MediaFeed: undefined;

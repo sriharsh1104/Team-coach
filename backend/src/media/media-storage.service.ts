@@ -45,7 +45,10 @@ function fallbackExtFor(mimetype: string): string {
 }
 
 export function localMediaType(fileKey: string): string {
-  return LOCAL_MEDIA_TYPES[extname(fileKey).toLowerCase()] ?? 'application/octet-stream';
+  return (
+    LOCAL_MEDIA_TYPES[extname(fileKey).toLowerCase()] ??
+    'application/octet-stream'
+  );
 }
 
 export type StoredMedia = {
@@ -126,7 +129,9 @@ export class MediaStorageService {
         'Cloudinary not configured — uploads go to local disk. On Render/PaaS this disk is EPHEMERAL: media will vanish on restart. Set CLOUDINARY_* or run on a VPS with the uploads volume.',
       );
     } else {
-      this.logger.log('Cloudinary not configured — using local MEDIA_UPLOAD_DIR');
+      this.logger.log(
+        'Cloudinary not configured — using local MEDIA_UPLOAD_DIR',
+      );
     }
   }
 
@@ -247,7 +252,9 @@ export class MediaStorageService {
       });
       const res = await fetch(url);
       if (!res.ok) {
-        throw new Error(`Cloudinary fetch failed (${res.status}) for ${publicId}`);
+        throw new Error(
+          `Cloudinary fetch failed (${res.status}) for ${publicId}`,
+        );
       }
       const buffer = Buffer.from(await res.arrayBuffer());
       const mediaType =
@@ -278,7 +285,8 @@ export class MediaStorageService {
           overwrite: false,
         },
         (err, uploaded) => {
-          if (err || !uploaded) reject(err ?? new Error('Cloudinary upload failed'));
+          if (err || !uploaded)
+            reject(err ?? new Error('Cloudinary upload failed'));
           else resolve(uploaded);
         },
       );

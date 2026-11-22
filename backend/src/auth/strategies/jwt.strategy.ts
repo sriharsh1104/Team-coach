@@ -4,6 +4,16 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 
+/** What `@CurrentUser()` resolves to on an authenticated request. */
+export interface AuthenticatedUser {
+  userId: string;
+  email: string;
+  jti: string;
+  exp?: number;
+  /** Straight from the database on this request — never from the token. */
+  isPlatformAdmin: boolean;
+}
+
 export interface JwtPayload {
   sub: string;
   email: string;
@@ -36,7 +46,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const [user, revoked] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: payload.sub },
-        select: { tokenVersion: true },
+        // isPlatformAdmin is read here, on every request, and never taken
+        // from the JWT. A token minted before the grant (or after it was
+        // revoked) therefore carries no authority of its own — forging the
+        // claim achieves nothing because nothing reads it.
+        select: { tokenVersion: true, isPlatformAdmin: true },
       }),
       payload.jti
         ? this.prisma.revokedToken.findUnique({ where: { jti: payload.jti } })
@@ -50,6 +64,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: payload.email,
       jti: payload.jti,
       exp: payload.exp,
+      isPlatformAdmin: user.isPlatformAdmin,
     };
   }
 }

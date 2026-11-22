@@ -43,7 +43,10 @@ async function bootstrap() {
   }
   // Invite / QR links are built from WEB_PUBLIC_URL; without it they silently
   // become http://localhost:5173/join/... on a live API.
-  if (process.env.NODE_ENV === 'production' && !process.env.WEB_PUBLIC_URL?.trim()) {
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !process.env.WEB_PUBLIC_URL?.trim()
+  ) {
     throw new Error('WEB_PUBLIC_URL must be set when NODE_ENV=production');
   }
   app.enableCors({

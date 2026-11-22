@@ -1,4 +1,8 @@
-import { mergePushToken, parsePushTokens, removePushToken } from './push-tokens';
+import {
+  mergePushToken,
+  parsePushTokens,
+  removePushToken,
+} from './push-tokens';
 
 describe('push-tokens', () => {
   it('parses pipe-separated tokens', () => {

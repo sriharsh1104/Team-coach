@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -22,10 +30,7 @@ export class OrgController {
   constructor(private readonly orgService: OrgService) {}
 
   @Post()
-  create(
-    @CurrentUser() user: { userId: string },
-    @Body() dto: CreateOrgDto,
-  ) {
+  create(@CurrentUser() user: { userId: string }, @Body() dto: CreateOrgDto) {
     return this.orgService.createOrg(user.userId, dto);
   }
 
@@ -48,13 +53,25 @@ export class OrgController {
     return this.orgService.setOwnRosterRole(user.userId, dto);
   }
 
+  /** Searchable guild list for users who are not in a guild yet. */
+  @Get('guild/browse')
+  browseGuilds(
+    @CurrentUser() user: { userId: string },
+    @Query('q') q?: string,
+  ) {
+    return this.orgService.browseGuilds(user.userId, q);
+  }
+
   @Throttle({ default: { limit: joinThrottleLimit, ttl: 60000 } })
   @Post('guild/join')
-  joinGuild(
-    @CurrentUser() user: { userId: string },
-    @Body() dto: JoinOrgDto,
-  ) {
+  joinGuild(@CurrentUser() user: { userId: string }, @Body() dto: JoinOrgDto) {
     return this.orgService.joinGuild(user.userId, dto);
+  }
+
+  /** Leave guild (+ roster seat for that org). Owner must transfer first. */
+  @Post('guild/leave')
+  leaveGuild(@CurrentUser() user: { userId: string }) {
+    return this.orgService.leaveGuild(user.userId);
   }
 
   @Get('guild/me')

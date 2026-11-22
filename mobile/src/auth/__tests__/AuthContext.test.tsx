@@ -50,6 +50,9 @@ const fakeUser = {
   profileComplete: true,
   hasPassword: true,
   twoFactorEnabled: false,
+  // Normalised to a boolean by toAuthUser on every path, so it is part of
+  // the user shape these assertions compare against.
+  isPlatformAdmin: false,
 };
 
 beforeEach(() => {

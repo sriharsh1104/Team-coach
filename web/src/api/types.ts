@@ -12,6 +12,12 @@ export interface AuthUser {
   hasPassword: boolean;
   hasGoogle?: boolean;
   twoFactorEnabled: boolean;
+  /**
+   * Platform-wide admin. Display only — it decides whether the Admin link is
+   * shown. Every /admin call is re-checked against the database on the
+   * server, so flipping this in devtools gets you a link and then a 403.
+   */
+  isPlatformAdmin?: boolean;
 }
 
 export interface OrgSummary {

@@ -64,14 +64,16 @@ const GUILD_TABS = [
  */
 export function GuildScreen({ navigation }: Props) {
   const shared = useSharedStyles();
-  const { user } = useAuth();
+  const { user, org, refreshOrg } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(guildStyles);
   const [detail, setDetail] = useState<GuildDetail | null>(null);
   const [guildTab, setGuildTab] = useState<GuildTab>('members');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const realtime = useOrgRealtimeOptional();
+  const isOrgOwner = !!org?.isOwner;
 
   const load = useCallback(async () => {
     const data = await orgApi.getMyGuild();
@@ -143,6 +145,30 @@ export function GuildScreen({ navigation }: Props) {
       emitToast(errorMessage(err, 'Could not remove them from the roster'));
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const onLeaveGuild = async () => {
+    if (isOrgOwner) {
+      emitToast('Transfer ownership before leaving — you own this org’s roster');
+      return;
+    }
+    const confirmed = await confirmAsync(
+      'Leave Guild',
+      'Leave this guild? You will also leave the esports roster for this org.',
+      'Leave',
+      'Cancel',
+    );
+    if (!confirmed) return;
+    setLeaving(true);
+    try {
+      await orgApi.leaveGuild();
+      emitToast('You left the guild');
+      await refreshOrg();
+    } catch (err: unknown) {
+      emitToast(errorMessage(err, 'Could not leave the guild'));
+    } finally {
+      setLeaving(false);
     }
   };
 
@@ -287,6 +313,32 @@ export function GuildScreen({ navigation }: Props) {
                 ? 'No guild members yet.'
                 : 'No one is on the roster yet.'}
             </Text>
+          ) : null
+        }
+        ListFooterComponent={
+          detail ? (
+            <View style={staticStyles.leaveBlock}>
+              {isOrgOwner ? (
+                <Text style={styles.manageHint}>
+                  You own this org’s roster — transfer ownership in Roster /
+                  Members settings before you can leave.
+                </Text>
+              ) : (
+                <SoftPressable
+                  style={[
+                    shared.button,
+                    { backgroundColor: colors.danger, opacity: leaving ? 0.6 : 1 },
+                  ]}
+                  disabled={leaving}
+                  onPress={() => void onLeaveGuild()}
+                  pressScale={0.98}
+                >
+                  <Text style={[shared.buttonText, { color: '#fff' }]}>
+                    {leaving ? 'Leaving…' : 'Leave Guild'}
+                  </Text>
+                </SoftPressable>
+              )}
+            </View>
           ) : null
         }
       />
@@ -473,6 +525,7 @@ function RosterRow({
 const staticStyles = StyleSheet.create({
   list: { flex: 1, minWidth: 0, backgroundColor: 'transparent' },
   listContent: { paddingHorizontal: 16, paddingBottom: 40 },
+  leaveBlock: { marginTop: 20, marginBottom: 12, gap: 8 },
   inviteCard: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',

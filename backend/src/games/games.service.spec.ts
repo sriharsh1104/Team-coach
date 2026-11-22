@@ -20,7 +20,12 @@ describe('GamesService — several rooms at once', () => {
     games.startGame(r2.id, 'c');
 
     // Everyone sees both rooms in the lobby list / both are running.
-    expect(games.listRooms('org').map((r) => r.id).sort()).toEqual([r1.id, r2.id].sort());
+    expect(
+      games
+        .listRooms('org')
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual([r1.id, r2.id].sort());
 
     // Room 1 plays a round; room 2 is untouched.
     games.rpsPick(r1.id, 'a', 'stone');
@@ -42,14 +47,21 @@ describe('GamesService — several rooms at once', () => {
     games.joinRoom(r2.id, 'org', p('d'));
 
     games.leaveRoom('a');
-    expect(games.roomViewById(r1.id)?.players.map((x) => x.userId)).toEqual(['b']);
-    expect(games.roomViewById(r2.id)?.players.map((x) => x.userId)).toEqual(['c', 'd']);
+    expect(games.roomViewById(r1.id)?.players.map((x) => x.userId)).toEqual([
+      'b',
+    ]);
+    expect(games.roomViewById(r2.id)?.players.map((x) => x.userId)).toEqual([
+      'c',
+      'd',
+    ]);
   });
 
   it('rooms of another guild are never listed or joinable', () => {
     const r1 = games.createRoom('org1', p('a'), 'rps');
     games.createRoom('org2', p('c'), 'rps');
     expect(games.listRooms('org1')).toHaveLength(1);
-    expect(() => games.joinRoom(r1.id, 'org2', p('d'))).toThrow('Room not found');
+    expect(() => games.joinRoom(r1.id, 'org2', p('d'))).toThrow(
+      'Room not found',
+    );
   });
 });

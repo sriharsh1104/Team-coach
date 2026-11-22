@@ -188,7 +188,8 @@ export class AuthService {
       // expiresAt is always (last-issued time + TTL) — back that out to get
       // when this address was last actually emailed, without needing a
       // dedicated column.
-      const lastSentAt = existing.expiresAt.getTime() - EMAIL_OTP_TTL_MINUTES * 60 * 1000;
+      const lastSentAt =
+        existing.expiresAt.getTime() - EMAIL_OTP_TTL_MINUTES * 60 * 1000;
       const sinceLastSend = Date.now() - lastSentAt;
       if (sinceLastSend < EMAIL_OTP_RESEND_COOLDOWN_SECONDS * 1000) {
         throw new ConflictException(
@@ -226,7 +227,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid verification challenge');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+    });
     if (!user) {
       throw new UnauthorizedException('Invalid verification challenge');
     }
@@ -234,7 +237,9 @@ export class AuthService {
   }
 
   async verifyEmailSignup(dto: VerifyEmailDto, mobile = false) {
-    const user = await this.resolveEmailVerificationChallenge(dto.challengeToken);
+    const user = await this.resolveEmailVerificationChallenge(
+      dto.challengeToken,
+    );
     if (user.emailVerified) {
       // Minting a session here with no code check at all — on the strength
       // of nothing but holding a (possibly stale, leaked, or long-expired-
@@ -243,7 +248,9 @@ export class AuthService {
       // happens to be verified by any means. A legitimate double-submit
       // (two tabs, a retried request) just needs to be told to log in
       // normally instead, not silently handed a free session.
-      throw new ConflictException('This email is already verified — please log in');
+      throw new ConflictException(
+        'This email is already verified — please log in',
+      );
     }
 
     const record = await this.prisma.emailVerificationCode.findUnique({
@@ -255,7 +262,9 @@ export class AuthService {
       );
     }
     if (record.attempts >= MAX_EMAIL_OTP_ATTEMPTS) {
-      await this.prisma.emailVerificationCode.delete({ where: { userId: user.id } });
+      await this.prisma.emailVerificationCode.delete({
+        where: { userId: user.id },
+      });
       throw new UnauthorizedException(
         'Too many incorrect attempts — request a new code',
       );
@@ -270,7 +279,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid code');
     }
 
-    await this.prisma.emailVerificationCode.delete({ where: { userId: user.id } });
+    await this.prisma.emailVerificationCode.delete({
+      where: { userId: user.id },
+    });
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { emailVerified: true },
@@ -279,7 +290,9 @@ export class AuthService {
   }
 
   async resendEmailVerification(dto: ResendEmailVerificationDto) {
-    const user = await this.resolveEmailVerificationChallenge(dto.challengeToken);
+    const user = await this.resolveEmailVerificationChallenge(
+      dto.challengeToken,
+    );
     if (user.emailVerified) {
       throw new BadRequestException('This email is already verified');
     }
@@ -359,7 +372,9 @@ export class AuthService {
       );
     }
     if (record.attempts >= MAX_PASSWORD_RESET_ATTEMPTS) {
-      await this.prisma.passwordResetCode.delete({ where: { userId: user.id } });
+      await this.prisma.passwordResetCode.delete({
+        where: { userId: user.id },
+      });
       throw new UnauthorizedException(
         'Too many incorrect attempts — request a new code',
       );
@@ -461,7 +476,9 @@ export class AuthService {
       // has none (legacy Google-only rows created before we started mailing).
       this.logger.log(
         `Google login: existing googleId for ${email}${
-          user.passwordHash ? ' — no password email' : ' — backfilling password email'
+          user.passwordHash
+            ? ' — no password email'
+            : ' — backfilling password email'
         }`,
       );
       if (!user.passwordHash) {
@@ -539,7 +556,9 @@ export class AuthService {
             .catch((deleteErr) => {
               this.logger.error(
                 `Failed to roll back Google user ${user.id} after mail failure`,
-                deleteErr instanceof Error ? deleteErr.stack : String(deleteErr),
+                deleteErr instanceof Error
+                  ? deleteErr.stack
+                  : String(deleteErr),
               );
             });
           throw new ServiceUnavailableException(
@@ -612,13 +631,17 @@ export class AuthService {
         dto.challengeToken,
       );
     } catch {
-      throw new UnauthorizedException('That login challenge has expired — please log in again');
+      throw new UnauthorizedException(
+        'That login challenge has expired — please log in again',
+      );
     }
     if (payload.purpose !== '2fa-challenge') {
       throw new UnauthorizedException('Invalid login challenge');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+    });
     if (!user || !user.twoFactorEnabled) {
       throw new UnauthorizedException('Invalid login challenge');
     }
@@ -661,7 +684,9 @@ export class AuthService {
   // remove a victim's 2FA, since a token can be stolen/leaked independently
   // of the account password.
   private async assertCurrentPassword(userId: string, password: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
     if (!user.passwordHash) {
       throw new BadRequestException('This account has no password set');
     }
@@ -762,13 +787,18 @@ export class AuthService {
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto, mobile = false) {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
     if (!user.passwordHash) {
       throw new BadRequestException(
         'This account signs in with Google and has no password to change',
       );
     }
-    const matches = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    const matches = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
     if (!matches) {
       throw new UnauthorizedException('Current password is incorrect');
     }
@@ -876,6 +906,10 @@ export class AuthService {
         hasPassword: !!user.passwordHash,
         hasGoogle: !!user.googleId,
         twoFactorEnabled: user.twoFactorEnabled,
+        // Display only — it decides whether the clients show an Admin entry
+        // point. Every /admin route re-checks the database for itself, so a
+        // client that fakes this flag just gets a 403 on the first call.
+        isPlatformAdmin: user.isPlatformAdmin,
       },
       org: session.org,
       guild: session.guild,

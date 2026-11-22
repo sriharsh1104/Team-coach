@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { StatExtractionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StatsService } from './stats.service';
@@ -16,7 +21,9 @@ const BATCH_SIZE = 3;
  * same extraction.
  */
 @Injectable()
-export class StatsExtractionWorkerService implements OnModuleInit, OnModuleDestroy {
+export class StatsExtractionWorkerService
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(StatsExtractionWorkerService.name);
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -28,7 +35,9 @@ export class StatsExtractionWorkerService implements OnModuleInit, OnModuleDestr
   onModuleInit() {
     this.timer = setInterval(() => {
       void this.tick().catch((err) =>
-        this.logger.warn(`Extraction worker tick failed: ${(err as Error).message}`),
+        this.logger.warn(
+          `Extraction worker tick failed: ${(err as Error).message}`,
+        ),
       );
     }, TICK_MS);
   }

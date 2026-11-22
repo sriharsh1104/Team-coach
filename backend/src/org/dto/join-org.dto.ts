@@ -1,8 +1,12 @@
 import { IsOptional, IsString } from 'class-validator';
 
 export class JoinOrgDto {
-  // Guild join: orgCode / referralToken (guild fields).
+  // Guild join: orgId (browse list) / orgCode / referralToken.
   // Roster join (joinOrg): rosterCode / referralToken (rosterReferralToken).
+  @IsOptional()
+  @IsString()
+  orgId?: string;
+
   @IsOptional()
   @IsString()
   orgCode?: string;

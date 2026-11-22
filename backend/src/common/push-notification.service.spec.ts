@@ -1,4 +1,7 @@
-import { PushNotificationService, PushMessage } from './push-notification.service';
+import {
+  PushNotificationService,
+  PushMessage,
+} from './push-notification.service';
 
 const A = 'ExponentPushToken[aaaaaaaaaaaaaaaaaaaaaa]';
 const B = 'ExponentPushToken[bbbbbbbbbbbbbbbbbbbbbb]';
@@ -16,14 +19,20 @@ const MIXED_BODY = JSON.stringify({
 });
 
 function res(status: number, body: string) {
-  return { ok: status >= 200 && status < 300, status, text: async () => body } as Response;
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => body,
+  } as Response;
 }
 
 describe('PushNotificationService', () => {
   let fetchMock: jest.Mock;
   const sentTokens = () =>
-    fetchMock.mock.calls.map(
-      ([, init]) => (JSON.parse((init as RequestInit).body as string) as { to: string }[]).map((m) => m.to),
+    fetchMock.mock.calls.map(([, init]) =>
+      (
+        JSON.parse((init as RequestInit).body as string) as { to: string }[]
+      ).map((m) => m.to),
     );
 
   beforeEach(() => {
@@ -72,7 +81,9 @@ describe('PushNotificationService', () => {
 
   it('still throws for other Expo errors', async () => {
     fetchMock.mockResolvedValue(res(500, 'boom'));
-    await expect(new PushNotificationService().send([msg(A)])).rejects.toThrow(/500/);
+    await expect(new PushNotificationService().send([msg(A)])).rejects.toThrow(
+      /500/,
+    );
   });
 
   it('drops DeviceNotRegistered tokens so a dead phone stops receiving later sends', async () => {

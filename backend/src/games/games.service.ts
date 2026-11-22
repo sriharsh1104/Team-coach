@@ -22,7 +22,10 @@ import {
 
 export type GameKind = 'rps' | 'ludo';
 
-export const GAME_CATALOG: Record<GameKind, { title: string; minPlayers: number; maxPlayers: number }> = {
+export const GAME_CATALOG: Record<
+  GameKind,
+  { title: string; minPlayers: number; maxPlayers: number }
+> = {
   rps: { title: 'Stone Paper Scissors', minPlayers: 2, maxPlayers: 2 },
   ludo: { title: 'Ludo', minPlayers: 2, maxPlayers: 4 },
 };
@@ -69,7 +72,10 @@ export interface RoomView {
   deadline: number | null;
 }
 
-export type RoomListener = (room: RoomView, event?: { type: string; payload?: unknown }) => void;
+export type RoomListener = (
+  room: RoomView,
+  event?: { type: string; payload?: unknown },
+) => void;
 export type OrgListener = (orgId: string) => void;
 
 const RPS_REVEAL_MS = 2600;
@@ -90,7 +96,10 @@ export class GamesService {
   private readonly rooms = new Map<string, Room>();
   /** userId -> roomId (a user is in at most one room at a time). */
   private readonly userRoom = new Map<string, string>();
-  private readonly disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly disconnectTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly deadlines = new Map<string, number>();
   private onRoom: RoomListener = () => {};
   private onOrg: OrgListener = () => {};
@@ -105,7 +114,12 @@ export class GamesService {
   listRooms(orgId: string): RoomView[] {
     const now = Date.now();
     return [...this.rooms.values()]
-      .filter((r) => r.orgId === orgId && r.status !== 'finished' && now - r.createdAt < ROOM_TTL_MS)
+      .filter(
+        (r) =>
+          r.orgId === orgId &&
+          r.status !== 'finished' &&
+          now - r.createdAt < ROOM_TTL_MS,
+      )
       .sort((a, b) => b.createdAt - a.createdAt)
       .map((r) => this.view(r));
   }
@@ -124,7 +138,12 @@ export class GamesService {
     return room ? this.view(room) : null;
   }
 
-  createRoom(orgId: string, host: Omit<RoomPlayer, 'seat' | 'connected'>, game: GameKind, maxPlayers?: number): RoomView {
+  createRoom(
+    orgId: string,
+    host: Omit<RoomPlayer, 'seat' | 'connected'>,
+    game: GameKind,
+    maxPlayers?: number,
+  ): RoomView {
     const spec = GAME_CATALOG[game];
     if (!spec) throw new Error('Unknown game');
     this.leaveRoom(host.userId); // one room at a time
@@ -132,8 +151,13 @@ export class GamesService {
     // maxPlayers (object, NaN, string that doesn't coerce) must not become
     // NaN here, or `players.length >= room.maxPlayers` is false forever and
     // the room never closes to new joiners.
-    const requested = Number.isFinite(maxPlayers) ? (maxPlayers as number) : spec.maxPlayers;
-    const max = Math.min(spec.maxPlayers, Math.max(spec.minPlayers, Math.trunc(requested)));
+    const requested = Number.isFinite(maxPlayers)
+      ? (maxPlayers as number)
+      : spec.maxPlayers;
+    const max = Math.min(
+      spec.maxPlayers,
+      Math.max(spec.minPlayers, Math.trunc(requested)),
+    );
     const room: Room = {
       id: randomBytes(6).toString('hex'),
       orgId,
@@ -153,7 +177,11 @@ export class GamesService {
     return this.view(room);
   }
 
-  joinRoom(roomId: string, orgId: string, player: Omit<RoomPlayer, 'seat' | 'connected'>): RoomView {
+  joinRoom(
+    roomId: string,
+    orgId: string,
+    player: Omit<RoomPlayer, 'seat' | 'connected'>,
+  ): RoomView {
     const room = this.rooms.get(roomId);
     if (!room || room.orgId !== orgId) throw new Error('Room not found');
     const existing = room.players.find((p) => p.userId === player.userId);
@@ -168,7 +196,11 @@ export class GamesService {
     if (room.status !== 'lobby') throw new Error('Game already started');
     if (room.players.length >= room.maxPlayers) throw new Error('Room is full');
     this.leaveRoom(player.userId);
-    room.players.push({ ...player, seat: room.players.length, connected: true });
+    room.players.push({
+      ...player,
+      seat: room.players.length,
+      connected: true,
+    });
     this.userRoom.set(player.userId, room.id);
     this.emit(room);
     this.onOrg(orgId);
@@ -280,7 +312,8 @@ export class GamesService {
 
   rpsPick(roomId: string, userId: string, choice: unknown): RoomView {
     const room = this.rooms.get(roomId);
-    if (!room?.rps || room.status !== 'playing') throw new Error('No match in progress');
+    if (!room?.rps || room.status !== 'playing')
+      throw new Error('No match in progress');
     if (!isRpsChoice(choice)) throw new Error('Pick stone, paper or scissors');
     const complete = rpsPick(room.rps, userId, choice);
     if (complete) {
@@ -307,7 +340,8 @@ export class GamesService {
 
   ludoRoll(roomId: string, userId: string, rng?: () => number): RoomView {
     const room = this.rooms.get(roomId);
-    if (!room?.ludo || room.status !== 'playing') throw new Error('No game in progress');
+    if (!room?.ludo || room.status !== 'playing')
+      throw new Error('No game in progress');
     const dice = rollDice(rng);
     ludoRoll(room.ludo, userId, dice);
     this.emit(room, { type: 'ludo:roll', payload: { userId, dice } });
@@ -317,9 +351,13 @@ export class GamesService {
 
   ludoMove(roomId: string, userId: string, tokenIndex: number): RoomView {
     const room = this.rooms.get(roomId);
-    if (!room?.ludo || room.status !== 'playing') throw new Error('No game in progress');
+    if (!room?.ludo || room.status !== 'playing')
+      throw new Error('No game in progress');
     const result = ludoMove(room.ludo, userId, Number(tokenIndex));
-    this.emit(room, { type: 'ludo:move', payload: { userId, tokenIndex, ...result } });
+    this.emit(room, {
+      type: 'ludo:move',
+      payload: { userId, tokenIndex, ...result },
+    });
     this.afterLudoStep(room);
     return this.view(room);
   }
@@ -383,7 +421,8 @@ export class GamesService {
     this.clearTimer(room);
     this.deadlines.delete(room.id);
     this.rooms.delete(room.id);
-    for (const [uid, rid] of this.userRoom) if (rid === room.id) this.userRoom.delete(uid);
+    for (const [uid, rid] of this.userRoom)
+      if (rid === room.id) this.userRoom.delete(uid);
     this.onOrg(room.orgId);
   }
 
@@ -420,13 +459,20 @@ export class GamesService {
       maxPlayers: room.maxPlayers,
       createdAt: room.createdAt,
       rps: room.rps ? rpsPublicState(room.rps) : null,
-      ludo: room.ludo ? { ...room.ludo, tokens: cloneTokens(room.ludo.tokens) } : null,
-      deadline: room.ludo && room.ludo.phase !== 'done' ? (this.deadlines.get(room.id) ?? null) : null,
+      ludo: room.ludo
+        ? { ...room.ludo, tokens: cloneTokens(room.ludo.tokens) }
+        : null,
+      deadline:
+        room.ludo && room.ludo.phase !== 'done'
+          ? (this.deadlines.get(room.id) ?? null)
+          : null,
     };
   }
 }
 
-function cloneTokens(tokens: Record<string, number[]>): Record<string, number[]> {
+function cloneTokens(
+  tokens: Record<string, number[]>,
+): Record<string, number[]> {
   const out: Record<string, number[]> = {};
   for (const [k, v] of Object.entries(tokens)) out[k] = [...v];
   return out;

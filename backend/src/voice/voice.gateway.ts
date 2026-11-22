@@ -10,11 +10,7 @@ import {
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
-import {
-  Consumer,
-  Producer,
-  WebRtcTransport,
-} from 'mediasoup/node/lib/types';
+import { Consumer, Producer, WebRtcTransport } from 'mediasoup/node/lib/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatService } from '../chat/chat.service';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
@@ -156,7 +152,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
         await this.sfu.getOrCreateRoom(roomKey);
         next();
       } catch (err) {
-        this.logger.warn(`Rejected voice connection: ${(err as Error).message}`);
+        this.logger.warn(
+          `Rejected voice connection: ${(err as Error).message}`,
+        );
         next(err as Error);
       }
     });
@@ -181,7 +179,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
 
     const hands = this.raisedHands.get(data.roomKey);
     if (hands?.delete(data.userId)) {
-      this.server.to(room).emit('handRaised', { userId: data.userId, raised: false });
+      this.server
+        .to(room)
+        .emit('handRaised', { userId: data.userId, raised: false });
       if (hands.size === 0) this.raisedHands.delete(data.roomKey);
     }
 
@@ -205,7 +205,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
         await this.afterGuildLeave(data, remaining);
       }
     } catch (err) {
-      this.logger.warn(`fetchSockets failed on disconnect: ${(err as Error).message}`);
+      this.logger.warn(
+        `fetchSockets failed on disconnect: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -335,7 +337,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
 
     const room = await this.sfu.getOrCreateRoom(data.roomKey);
     const rtpCapabilities = body.rtpCapabilities as never;
-    if (!room.router.canConsume({ producerId: body.producerId, rtpCapabilities })) {
+    if (
+      !room.router.canConsume({ producerId: body.producerId, rtpCapabilities })
+    ) {
       throw new Error('Cannot consume this producer');
     }
 
@@ -392,7 +396,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   async onGetVoiceState(@ConnectedSocket() client: Socket) {
     this.assertNotRateLimited(client);
     const data = client.data as VoiceSocketData;
-    const sockets = await this.server.in(this.roomFor(data.roomKey)).fetchSockets();
+    const sockets = await this.server
+      .in(this.roomFor(data.roomKey))
+      .fetchSockets();
     return {
       ...this.buildVoiceState(data.roomKey, sockets),
       userId: data.userId,
@@ -435,7 +441,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (!targetId || typeof body.muted !== 'boolean') {
       throw new Error('Invalid mute request');
     }
-    const sockets = await this.server.in(this.roomFor(data.roomKey)).fetchSockets();
+    const sockets = await this.server
+      .in(this.roomFor(data.roomKey))
+      .fetchSockets();
     const target = sockets.find(
       (s) => (s.data as Partial<VoiceSocketData>)?.userId === targetId,
     );
@@ -484,7 +492,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
       );
     }
 
-    const sockets = await this.server.in(this.roomFor(data.roomKey)).fetchSockets();
+    const sockets = await this.server
+      .in(this.roomFor(data.roomKey))
+      .fetchSockets();
     let kicked = 0;
     for (const s of sockets) {
       if ((s.data as Partial<VoiceSocketData>)?.userId !== targetId) continue;
@@ -553,7 +563,11 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   private buildVoiceState(roomKey: string, sockets: Array<{ data: unknown }>) {
     const mutedIds: string[] = [];
     const moderatorIds: string[] = [];
-    const members: Array<{ id: string; name: string; avatarUrl: string | null }> = [];
+    const members: Array<{
+      id: string;
+      name: string;
+      avatarUrl: string | null;
+    }> = [];
     const seen = new Set<string>();
     for (const s of sockets) {
       const d = s.data as Partial<VoiceSocketData>;
@@ -567,7 +581,8 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
         });
       }
       if (d.canModerate) moderatorIds.push(d.userId);
-      else if (this.isHostMuted(roomKey, d as VoiceSocketData)) mutedIds.push(d.userId);
+      else if (this.isHostMuted(roomKey, d as VoiceSocketData))
+        mutedIds.push(d.userId);
     }
     return {
       listenOnly: this.guildRooms.get(roomKey)?.listenOnly ?? false,
@@ -597,7 +612,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
           if (!muted && producer.paused) await producer.resume();
         }
       }
-      this.server.to(room).emit('voiceState', this.buildVoiceState(roomKey, sockets));
+      this.server
+        .to(room)
+        .emit('voiceState', this.buildVoiceState(roomKey, sockets));
     } catch (err) {
       this.logger.warn(`broadcastVoiceState failed: ${(err as Error).message}`);
     }
@@ -637,10 +654,15 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   ): Promise<Array<{ id: string; name: string; avatarUrl: string | null }>> {
     if (!this.server) return [];
     try {
-      const sockets = await this.server.in(this.roomFor(roomKey)).fetchSockets();
+      const sockets = await this.server
+        .in(this.roomFor(roomKey))
+        .fetchSockets();
       const seen = new Set<string>();
-      const members: Array<{ id: string; name: string; avatarUrl: string | null }> =
-        [];
+      const members: Array<{
+        id: string;
+        name: string;
+        avatarUrl: string | null;
+      }> = [];
       for (const s of sockets) {
         const d = s.data as Partial<VoiceSocketData>;
         if (!d?.userId || seen.has(d.userId)) continue;

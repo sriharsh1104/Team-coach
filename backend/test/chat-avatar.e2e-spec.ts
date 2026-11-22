@@ -51,7 +51,10 @@ describe('Chat channel avatar + profile avatar (e2e)', () => {
       .post('/chat/meta/avatar')
       .set('Authorization', `Bearer ${coach.accessToken}`)
       .field('channelKey', 'org')
-      .attach('file', TINY_JPEG, { filename: 'group.jpg', contentType: 'image/jpeg' })
+      .attach('file', TINY_JPEG, {
+        filename: 'group.jpg',
+        contentType: 'image/jpeg',
+      })
       .expect(201);
     expect(upload.body.channelKey).toBe('org');
     expect(upload.body.avatarUrl).toEqual(expect.any(String));
@@ -66,7 +69,9 @@ describe('Chat channel avatar + profile avatar (e2e)', () => {
       .get('/chat/channels')
       .set('Authorization', `Bearer ${player.accessToken}`)
       .expect(200);
-    const orgChannel = channels.body.channels.find((c: any) => c.channelKey === 'org');
+    const orgChannel = channels.body.channels.find(
+      (c: any) => c.channelKey === 'org',
+    );
     expect(orgChannel.peerAvatarUrl).toEqual(expect.any(String));
 
     // The bit the app actually renders: the URL must serve the image.
@@ -80,7 +85,10 @@ describe('Chat channel avatar + profile avatar (e2e)', () => {
       .post('/chat/meta/avatar')
       .set('Authorization', `Bearer ${player.accessToken}`)
       .field('channelKey', 'org')
-      .attach('file', TINY_JPEG, { filename: 'group.jpg', contentType: 'image/jpeg' })
+      .attach('file', TINY_JPEG, {
+        filename: 'group.jpg',
+        contentType: 'image/jpeg',
+      })
       .expect(403);
   });
 
@@ -89,7 +97,10 @@ describe('Chat channel avatar + profile avatar (e2e)', () => {
     const upload = await request(server)
       .post('/users/me/avatar')
       .set('Authorization', `Bearer ${coach.accessToken}`)
-      .attach('file', TINY_JPEG, { filename: 'me.jpg', contentType: 'image/jpeg' })
+      .attach('file', TINY_JPEG, {
+        filename: 'me.jpg',
+        contentType: 'image/jpeg',
+      })
       .expect(201);
     expect(upload.body.avatarUrl).toEqual(expect.any(String));
 

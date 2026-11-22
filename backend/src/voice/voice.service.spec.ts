@@ -19,7 +19,11 @@ import { MembershipService } from '../membership/membership.service';
 // is the more idiomatic place for isolated branch logic anyway.
 describe('VoiceService (unit)', () => {
   function mockGateway(
-    occupants: Array<{ id: string; name: string; avatarUrl: string | null }> = [],
+    occupants: Array<{
+      id: string;
+      name: string;
+      avatarUrl: string | null;
+    }> = [],
   ) {
     return {
       listOccupants: jest.fn().mockResolvedValue(occupants),
@@ -31,7 +35,9 @@ describe('VoiceService (unit)', () => {
     selfHosted: boolean,
     gateway: VoiceGateway = mockGateway(),
   ) {
-    const configService = { get: (key: string) => config[key] } as unknown as ConfigService;
+    const configService = {
+      get: (key: string) => config[key],
+    } as unknown as ConfigService;
     const chatService = {
       getOrgIdForUser: jest.fn().mockResolvedValue('org-123'),
     } as unknown as ChatService;
@@ -78,7 +84,11 @@ describe('VoiceService (unit)', () => {
 
   it('throws the same clean error when only some LiveKit vars are set', async () => {
     const service = buildService(
-      { LIVEKIT_URL: 'wss://example.livekit.cloud', LIVEKIT_API_KEY: '', LIVEKIT_API_SECRET: '' },
+      {
+        LIVEKIT_URL: 'wss://example.livekit.cloud',
+        LIVEKIT_API_KEY: '',
+        LIVEKIT_API_SECRET: '',
+      },
       false,
     );
     await expect(service.getConfig('user-123')).rejects.toThrow(
@@ -99,7 +109,10 @@ describe('VoiceService (unit)', () => {
     );
     const lk = { createRoom: jest.fn().mockResolvedValue({ metadata: '' }) };
     jest
-      .spyOn(service as unknown as { roomClient: () => unknown }, 'roomClient' as never)
+      .spyOn(
+        service as unknown as { roomClient: () => unknown },
+        'roomClient' as never,
+      )
       .mockReturnValue(lk as never);
 
     const result = (await service.getConfig('user-123')) as {
@@ -140,11 +153,17 @@ describe('VoiceService (unit)', () => {
     );
     const lk = { createRoom: jest.fn().mockResolvedValue({ metadata: '' }) };
     jest
-      .spyOn(service as unknown as { roomClient: () => unknown }, 'roomClient' as never)
+      .spyOn(
+        service as unknown as { roomClient: () => unknown },
+        'roomClient' as never,
+      )
       .mockReturnValue(lk as never);
     const result = (await service.getConfig('user-123')) as { token: string };
 
-    const wrongVerifier = new TokenVerifier('test-key', 'a-completely-different-secret-value');
+    const wrongVerifier = new TokenVerifier(
+      'test-key',
+      'a-completely-different-secret-value',
+    );
     await expect(wrongVerifier.verify(result.token)).rejects.toThrow();
   });
 
@@ -186,7 +205,10 @@ describe('VoiceService (unit)', () => {
       ]),
     };
     jest
-      .spyOn(service as unknown as { roomClient: () => unknown }, 'roomClient' as never)
+      .spyOn(
+        service as unknown as { roomClient: () => unknown },
+        'roomClient' as never,
+      )
       .mockReturnValue(lk as never);
 
     const result = await service.getOccupancy('user-123', 'team');
@@ -214,7 +236,11 @@ describe('VoiceService hosted guild voice (unit)', () => {
 
   function build(opts: { canModerate: boolean; roomMetadata?: string }) {
     const prisma = {
-      user: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'u1', name: 'Alice' }) },
+      user: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ id: 'u1', name: 'Alice' }),
+      },
       membership: {
         findFirst: jest.fn().mockResolvedValue({
           orgId: 'org-1',
@@ -226,41 +252,71 @@ describe('VoiceService hosted guild voice (unit)', () => {
     } as unknown as PrismaService;
     const service = new VoiceService(
       { get: (k: string) => config[k] } as unknown as ConfigService,
-      { getOrgIdForUser: jest.fn().mockResolvedValue('org-1') } as unknown as ChatService,
+      {
+        getOrgIdForUser: jest.fn().mockResolvedValue('org-1'),
+      } as unknown as ChatService,
       prisma,
       { isSelfHosted: () => false } as unknown as MediasoupSfuService,
-      { hasEditAccess: jest.fn().mockResolvedValue(opts.canModerate) } as unknown as MembershipService,
-      { listOccupants: jest.fn().mockResolvedValue([]) } as unknown as VoiceGateway,
+      {
+        hasEditAccess: jest.fn().mockResolvedValue(opts.canModerate),
+      } as unknown as MembershipService,
+      {
+        listOccupants: jest.fn().mockResolvedValue([]),
+      } as unknown as VoiceGateway,
     );
     const lk = {
-      createRoom: jest.fn().mockResolvedValue({ metadata: opts.roomMetadata ?? '' }),
-      listRooms: jest.fn().mockResolvedValue([{ metadata: opts.roomMetadata ?? '' }]),
+      createRoom: jest
+        .fn()
+        .mockResolvedValue({ metadata: opts.roomMetadata ?? '' }),
+      listRooms: jest
+        .fn()
+        .mockResolvedValue([{ metadata: opts.roomMetadata ?? '' }]),
       updateRoomMetadata: jest.fn().mockResolvedValue({}),
       listParticipants: jest.fn().mockResolvedValue([
-        { identity: 'host', attributes: { mod: '1' }, permission: { canPublish: true } },
-        { identity: 'p2', attributes: { mod: '0' }, permission: { canPublish: true } },
+        {
+          identity: 'host',
+          attributes: { mod: '1' },
+          permission: { canPublish: true },
+        },
+        {
+          identity: 'p2',
+          attributes: { mod: '0' },
+          permission: { canPublish: true },
+        },
       ]),
-      getParticipant: jest.fn().mockImplementation(async (_r: string, id: string) => ({
-        identity: id,
-        attributes: { mod: id === 'host' ? '1' : '0' },
-      })),
+      getParticipant: jest
+        .fn()
+        .mockImplementation(async (_r: string, id: string) => ({
+          identity: id,
+          attributes: { mod: id === 'host' ? '1' : '0' },
+        })),
       updateParticipant: jest.fn().mockResolvedValue({}),
       removeParticipant: jest.fn().mockResolvedValue(undefined),
     };
     jest
-      .spyOn(service as unknown as { roomClient: () => unknown }, 'roomClient' as never)
+      .spyOn(
+        service as unknown as { roomClient: () => unknown },
+        'roomClient' as never,
+      )
       .mockReturnValue(lk as never);
     return { service, lk };
   }
 
   it('guild token: own-org guild room, 50 cap, host flag', async () => {
     const { service, lk } = build({ canModerate: true });
-    const res = (await service.getConfig('u1', 'guild')) as { token: string; canModerate: boolean; room: string };
+    const res = (await service.getConfig('u1', 'guild')) as {
+      token: string;
+      canModerate: boolean;
+      room: string;
+    };
     expect(lk.createRoom).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'guild:org-1', maxParticipants: 50 }),
     );
     expect(res.canModerate).toBe(true);
-    const claims = await new TokenVerifier(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET).verify(res.token);
+    const claims = await new TokenVerifier(
+      config.LIVEKIT_API_KEY,
+      config.LIVEKIT_API_SECRET,
+    ).verify(res.token);
     expect(claims.video?.room).toBe('guild:org-1');
     expect(claims.video?.canPublish).toBe(true);
   });
@@ -268,10 +324,17 @@ describe('VoiceService hosted guild voice (unit)', () => {
   it('a muted user cannot rejoin with publish rights', async () => {
     const { service } = build({
       canModerate: false,
-      roomMetadata: JSON.stringify({ listenOnly: false, muted: ['u1'], speakers: [] }),
+      roomMetadata: JSON.stringify({
+        listenOnly: false,
+        muted: ['u1'],
+        speakers: [],
+      }),
     });
     const res = (await service.getConfig('u1', 'guild')) as { token: string };
-    const claims = await new TokenVerifier(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET).verify(res.token);
+    const claims = await new TokenVerifier(
+      config.LIVEKIT_API_KEY,
+      config.LIVEKIT_API_SECRET,
+    ).verify(res.token);
     expect(claims.video?.canPublish).toBe(false);
   });
 
@@ -306,7 +369,11 @@ describe('VoiceService hosted guild voice (unit)', () => {
     await expect(
       service.moderate('u1', { room: 'guild', action: 'mute', userId: 'host' }),
     ).rejects.toThrow(BadRequestException);
-    await service.moderate('u1', { room: 'guild', action: 'kick', userId: 'p2' });
+    await service.moderate('u1', {
+      room: 'guild',
+      action: 'kick',
+      userId: 'p2',
+    });
     expect(lk.removeParticipant).toHaveBeenCalledWith('guild:org-1', 'p2');
     await expect(
       service.moderate('u1', { room: 'guild', action: 'kick', userId: 'u1' }),

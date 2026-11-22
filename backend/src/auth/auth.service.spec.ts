@@ -29,15 +29,23 @@ describe('AuthService (unit)', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest
           .fn()
-          .mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
-            id: 'new-user-id',
-            tokenVersion: 0,
-            ...data,
-          })),
+          .mockImplementation(
+            ({ data }: { data: Record<string, unknown> }) => ({
+              id: 'new-user-id',
+              tokenVersion: 0,
+              ...data,
+            }),
+          ),
         update: jest
           .fn()
           .mockImplementation(
-            ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => ({
+            ({
+              where,
+              data,
+            }: {
+              where: { id: string };
+              data: Record<string, unknown>;
+            }) => ({
               id: where.id,
               tokenVersion: 0,
               ...data,
@@ -84,7 +92,12 @@ describe('AuthService (unit)', () => {
       sendPasswordReset: jest.fn().mockResolvedValue(undefined),
     } as unknown as MailerService;
 
-    const service = new AuthService(prisma, jwtService, configService, mailerService);
+    const service = new AuthService(
+      prisma,
+      jwtService,
+      configService,
+      mailerService,
+    );
     return { service, prisma, jwtService, mailerService };
   }
 
@@ -142,16 +155,19 @@ describe('AuthService (unit)', () => {
         }),
       );
       expect('accessToken' in result && result.accessToken).toBe('signed-jwt');
-      expect(
-        'passwordEmailSent' in result && result.passwordEmailSent,
-      ).toBe(true);
+      expect('passwordEmailSent' in result && result.passwordEmailSent).toBe(
+        true,
+      );
       expect(mailerService.sendGeneratedPassword).toHaveBeenCalledWith(
         'player@example.com',
         expect.any(String),
       );
       // The emailed password must be the plaintext, not the stored hash.
-      const [, emailedPassword] = (mailerService.sendGeneratedPassword as jest.Mock).mock.calls[0];
-      const createdData = (prisma.user.create as jest.Mock).mock.calls[0][0].data;
+      const [, emailedPassword] = (
+        mailerService.sendGeneratedPassword as jest.Mock
+      ).mock.calls[0];
+      const createdData = (prisma.user.create as jest.Mock).mock.calls[0][0]
+        .data;
       expect(createdData.passwordHash).not.toBe(emailedPassword);
       await expect(
         bcrypt.compare(emailedPassword, createdData.passwordHash),
@@ -188,7 +204,9 @@ describe('AuthService (unit)', () => {
             .fn()
             .mockResolvedValueOnce(null) // lookup by googleId: no linked account yet
             .mockResolvedValueOnce(existingUser), // lookup by email: existing password account
-          update: jest.fn().mockResolvedValue({ ...existingUser, googleId: 'google-sub-123' }),
+          update: jest
+            .fn()
+            .mockResolvedValue({ ...existingUser, googleId: 'google-sub-123' }),
           create: jest.fn(),
         },
       });
@@ -217,12 +235,14 @@ describe('AuthService (unit)', () => {
       const { service, prisma, mailerService } = buildService({
         user: {
           findUnique: jest.fn().mockResolvedValue(legacyUser),
-          update: jest.fn().mockImplementation(
-            ({ data }: { data: Record<string, unknown> }) => ({
-              ...legacyUser,
-              ...data,
-            }),
-          ),
+          update: jest
+            .fn()
+            .mockImplementation(
+              ({ data }: { data: Record<string, unknown> }) => ({
+                ...legacyUser,
+                ...data,
+              }),
+            ),
           create: jest.fn(),
         },
       });
@@ -240,9 +260,9 @@ describe('AuthService (unit)', () => {
           data: expect.objectContaining({ passwordHash: expect.any(String) }),
         }),
       );
-      expect(
-        'passwordEmailSent' in result && result.passwordEmailSent,
-      ).toBe(true);
+      expect('passwordEmailSent' in result && result.passwordEmailSent).toBe(
+        true,
+      );
     });
   });
 
@@ -338,7 +358,9 @@ describe('AuthService (unit)', () => {
     });
 
     it('rejects an incorrect code and increments the attempt counter', async () => {
-      const { service, prisma } = await buildVerifiedChallenge({ storedCode: '654321' });
+      const { service, prisma } = await buildVerifiedChallenge({
+        storedCode: '654321',
+      });
 
       await expect(
         service.verifyEmailSignup({ challengeToken: 'token', code: '123456' }),
@@ -387,7 +409,9 @@ describe('AuthService (unit)', () => {
         purpose: 'email-verification',
       });
 
-      const result = await service.resendEmailVerification({ challengeToken: 'token' });
+      const result = await service.resendEmailVerification({
+        challengeToken: 'token',
+      });
 
       expect(result).toEqual({ success: true });
       expect(prisma.emailVerificationCode.upsert).toHaveBeenCalled();
@@ -512,7 +536,9 @@ describe('AuthService (unit)', () => {
     });
 
     it('rejects an incorrect code and increments the attempt counter', async () => {
-      const { service, prisma } = await buildResetChallenge({ storedCode: '654321' });
+      const { service, prisma } = await buildResetChallenge({
+        storedCode: '654321',
+      });
 
       await expect(
         service.resetPassword({

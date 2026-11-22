@@ -24,7 +24,10 @@
     "prisma:migrate:deploy:stage": "dotenv -e .env.stage -- prisma migrate deploy",
     "prisma:migrate:deploy:prod": "dotenv -e .env.production -- prisma migrate deploy",
     "prisma:migrate:deploy:test": "dotenv -e .env.test -- prisma migrate deploy",
-    "prisma:studio": "dotenv -e .env.development -- prisma studio"
+    "prisma:studio": "dotenv -e .env.development -- prisma studio",
+    "admin:list": "dotenv -e .env.development -- ts-node scripts/platform-admin.ts list",
+    "admin:grant": "dotenv -e .env.development -- ts-node scripts/platform-admin.ts grant",
+    "admin:revoke": "dotenv -e .env.development -- ts-node scripts/platform-admin.ts revoke"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

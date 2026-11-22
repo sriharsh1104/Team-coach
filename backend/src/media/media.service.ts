@@ -2,7 +2,10 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { MembershipRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { PushNotificationService, PushMessage } from '../common/push-notification.service';
+import {
+  PushNotificationService,
+  PushMessage,
+} from '../common/push-notification.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { MediaStorageService } from './media-storage.service';
 import { UploadMediaDto } from './dto/upload-media.dto';
@@ -25,11 +28,7 @@ export class MediaService {
     private readonly storage: MediaStorageService,
   ) {}
 
-  async saveUpload(
-    userId: string,
-    fileKey: string,
-    dto: UploadMediaDto,
-  ) {
+  async saveUpload(userId: string, fileKey: string, dto: UploadMediaDto) {
     return this.createPost(userId, fileKey, dto.type, dto.caption);
   }
 
@@ -64,8 +63,13 @@ export class MediaService {
       `[media] MediaPost created id=${post.id} org=${membership.orgId} uploader=${userId} type=${type} fileKey=${fileKey}`,
     );
 
-    this.notifyCoaches(membership.orgId, userId, membership.user.name, type).catch(
-      (err) => this.logger.warn(`Push notification failed: ${err.message}`),
+    this.notifyCoaches(
+      membership.orgId,
+      userId,
+      membership.user.name,
+      type,
+    ).catch((err) =>
+      this.logger.warn(`Push notification failed: ${err.message}`),
     );
     this.realtime.publish(membership.orgId, 'media.changed');
 
@@ -98,13 +102,22 @@ export class MediaService {
     const cloudUrl = this.storage.buildDeliveryUrl(fileKey);
     if (cloudUrl) return cloudUrl;
 
-    const payload: FileTokenPayload = { sub: userId, fileKey, purpose: 'media-file' };
-    const token = await this.jwtService.signAsync(payload, { expiresIn: '15m' });
+    const payload: FileTokenPayload = {
+      sub: userId,
+      fileKey,
+      purpose: 'media-file',
+    };
+    const token = await this.jwtService.signAsync(payload, {
+      expiresIn: '15m',
+    });
     // Encode so Cloudinary-style keys with `/` survive path params if ever used.
     return `/media/files/${encodeURIComponent(fileKey)}?token=${token}`;
   }
 
-  async getFileForDownload(fileKey: string, token: string | undefined): Promise<{
+  async getFileForDownload(
+    fileKey: string,
+    token: string | undefined,
+  ): Promise<{
     filePath?: string;
     redirectUrl?: string;
   }> {
@@ -116,7 +129,11 @@ export class MediaService {
         payload = undefined;
       }
     }
-    if (!payload || payload.purpose !== 'media-file' || payload.fileKey !== fileKey) {
+    if (
+      !payload ||
+      payload.purpose !== 'media-file' ||
+      payload.fileKey !== fileKey
+    ) {
       throw new NotFoundException('File not found');
     }
 
@@ -144,12 +161,23 @@ export class MediaService {
    * old post-only check 404'd every locally-stored avatar — the mobile app
    * then silently fell back to the placeholder after a "successful" upload.
    */
-  private async viewerMayDownload(viewerId: string, fileKey: string): Promise<boolean> {
+  private async viewerMayDownload(
+    viewerId: string,
+    fileKey: string,
+  ): Promise<boolean> {
     const [rosterOrgs, guildOrgs] = await Promise.all([
-      this.prisma.membership.findMany({ where: { userId: viewerId }, select: { orgId: true } }),
-      this.prisma.guildMembership.findMany({ where: { userId: viewerId }, select: { orgId: true } }),
+      this.prisma.membership.findMany({
+        where: { userId: viewerId },
+        select: { orgId: true },
+      }),
+      this.prisma.guildMembership.findMany({
+        where: { userId: viewerId },
+        select: { orgId: true },
+      }),
     ]);
-    const viewerOrgIds = new Set([...rosterOrgs, ...guildOrgs].map((m) => m.orgId));
+    const viewerOrgIds = new Set(
+      [...rosterOrgs, ...guildOrgs].map((m) => m.orgId),
+    );
 
     const post = await this.prisma.mediaPost.findUnique({
       where: { fileKey },

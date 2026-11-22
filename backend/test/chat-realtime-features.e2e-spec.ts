@@ -49,10 +49,14 @@ describe('Chat real-time features (e2e)', () => {
   }
 
   async function sendMessage(socket: Socket, payload: Record<string, unknown>) {
-    return emitAck<{ ok: boolean; id?: string; error?: string }>(socket, 'message:send', {
-      channelKey: 'org',
-      ...payload,
-    });
+    return emitAck<{ ok: boolean; id?: string; error?: string }>(
+      socket,
+      'message:send',
+      {
+        channelKey: 'org',
+        ...payload,
+      },
+    );
   }
 
   describe('Typing indicator', () => {
@@ -79,9 +83,15 @@ describe('Chat real-time features (e2e)', () => {
       const [update] = await Promise.all([othersSee, selfShouldNotSeeIt]);
       expect(update).toMatchObject({ userId: player.user.id, typing: true });
 
-      const stopSeen = waitForEvent<{ userId: string; typing: boolean }>(coachSocket, 'typing:update');
+      const stopSeen = waitForEvent<{ userId: string; typing: boolean }>(
+        coachSocket,
+        'typing:update',
+      );
       playerSocket.emit('typing:stop', { channelKey: 'org' });
-      expect(await stopSeen).toMatchObject({ userId: player.user.id, typing: false });
+      expect(await stopSeen).toMatchObject({
+        userId: player.user.id,
+        typing: false,
+      });
     });
 
     it('clears the indicator automatically when the typer sends a message instead of explicitly stopping', async () => {
@@ -95,7 +105,10 @@ describe('Chat real-time features (e2e)', () => {
       playerSocket.emit('typing:start', { channelKey: 'org' });
       await waitForEvent(coachSocket, 'typing:update');
 
-      const stopSeen = waitForEvent<{ typing: boolean }>(coachSocket, 'typing:update');
+      const stopSeen = waitForEvent<{ typing: boolean }>(
+        coachSocket,
+        'typing:update',
+      );
       await sendMessage(playerSocket, { text: 'done typing, sending now' });
       expect(await stopSeen).toMatchObject({ typing: false });
     });
@@ -111,7 +124,10 @@ describe('Chat real-time features (e2e)', () => {
       playerSocket.emit('typing:start', { channelKey: 'org' });
       await waitForEvent(coachSocket, 'typing:update');
 
-      const stopSeen = waitForEvent<{ typing: boolean }>(coachSocket, 'typing:update');
+      const stopSeen = waitForEvent<{ typing: boolean }>(
+        coachSocket,
+        'typing:update',
+      );
       playerSocket.disconnect();
       expect(await stopSeen).toMatchObject({ typing: false });
     });
@@ -133,10 +149,14 @@ describe('Chat real-time features (e2e)', () => {
         playerSocket,
         'message:reaction',
       );
-      const ack = await emitAck<{ ok: boolean; reactions: any[] }>(playerSocket, 'message:react', {
-        messageId,
-        emoji: '👍',
-      });
+      const ack = await emitAck<{ ok: boolean; reactions: any[] }>(
+        playerSocket,
+        'message:react',
+        {
+          messageId,
+          emoji: '👍',
+        },
+      );
       expect(ack).toMatchObject({ ok: true });
       expect(ack.reactions).toEqual([
         { emoji: '👍', count: 1, userIds: [player.user.id], reactedByMe: true },
@@ -144,19 +164,27 @@ describe('Chat real-time features (e2e)', () => {
       expect((await sawReaction).reactions).toHaveLength(1);
 
       // Same user, different emoji → replaces (not adds a second reaction).
-      const changed = await emitAck<{ reactions: any[] }>(playerSocket, 'message:react', {
-        messageId,
-        emoji: '🔥',
-      });
+      const changed = await emitAck<{ reactions: any[] }>(
+        playerSocket,
+        'message:react',
+        {
+          messageId,
+          emoji: '🔥',
+        },
+      );
       expect(changed.reactions).toEqual([
         { emoji: '🔥', count: 1, userIds: [player.user.id], reactedByMe: true },
       ]);
 
       // Same emoji again → removes it.
-      const removed = await emitAck<{ reactions: any[] }>(playerSocket, 'message:react', {
-        messageId,
-        emoji: '🔥',
-      });
+      const removed = await emitAck<{ reactions: any[] }>(
+        playerSocket,
+        'message:react',
+        {
+          messageId,
+          emoji: '🔥',
+        },
+      );
       expect(removed.reactions).toEqual([]);
     });
 
@@ -168,10 +196,14 @@ describe('Chat real-time features (e2e)', () => {
       openSockets.push(coachSocket, outsiderSocket);
 
       const sent = await sendMessage(coachSocket, { text: 'secret team gg' });
-      const ack = await emitAck<{ ok: boolean; error?: string }>(outsiderSocket, 'message:react', {
-        messageId: sent.id,
-        emoji: '👍',
-      });
+      const ack = await emitAck<{ ok: boolean; error?: string }>(
+        outsiderSocket,
+        'message:react',
+        {
+          messageId: sent.id,
+          emoji: '👍',
+        },
+      );
       expect(ack.ok).toBe(false);
     });
 
@@ -180,7 +212,10 @@ describe('Chat real-time features (e2e)', () => {
       const coachSocket = await connectSocket(baseUrl, coach.accessToken);
       openSockets.push(coachSocket);
       const sent = await sendMessage(coachSocket, { text: 'react to this' });
-      await emitAck(coachSocket, 'message:react', { messageId: sent.id, emoji: '🎉' });
+      await emitAck(coachSocket, 'message:react', {
+        messageId: sent.id,
+        emoji: '🎉',
+      });
 
       const history = await request(server)
         .get('/chat/messages?channelKey=org')
@@ -205,29 +240,45 @@ describe('Chat real-time features (e2e)', () => {
       playerSocket.emit('channel:join', { channelKey: dmKey });
 
       const dmSees = waitForEvent<any>(playerSocket, 'message:new');
-      const ack = await emitAck<{ ok: boolean; results: Array<{ channelKey: string; ok: boolean }> }>(
-        coachSocket,
-        'message:forward',
-        { messageId: sent.id, toChannelKeys: [dmKey] },
-      );
-      expect(ack).toMatchObject({ ok: true, results: [{ channelKey: dmKey, ok: true }] });
+      const ack = await emitAck<{
+        ok: boolean;
+        results: Array<{ channelKey: string; ok: boolean }>;
+      }>(coachSocket, 'message:forward', {
+        messageId: sent.id,
+        toChannelKeys: [dmKey],
+      });
+      expect(ack).toMatchObject({
+        ok: true,
+        results: [{ channelKey: dmKey, ok: true }],
+      });
       const dmMessage = await dmSees;
-      expect(dmMessage).toMatchObject({ text: 'forward me', forwarded: true, channelKey: dmKey });
+      expect(dmMessage).toMatchObject({
+        text: 'forward me',
+        forwarded: true,
+        channelKey: dmKey,
+      });
     });
 
     it('SECURITY: cannot forward a message you never had access to', async () => {
       const { coach } = await setUpOrgWithTwoPlayers();
-      const { coach: otherCoach, player: otherPlayer } = await setUpOrgWithTwoPlayers();
+      const { coach: otherCoach, player: otherPlayer } =
+        await setUpOrgWithTwoPlayers();
       const coachSocket = await connectSocket(baseUrl, coach.accessToken);
       const otherSocket = await connectSocket(baseUrl, otherCoach.accessToken);
       openSockets.push(coachSocket, otherSocket);
 
-      const sent = await sendMessage(coachSocket, { text: 'not yours to forward' });
-      const otherDm = `dm:${[otherCoach.user.id, otherPlayer.user.id].sort().join(':')}`;
-      const ack = await emitAck<{ ok: boolean }>(otherSocket, 'message:forward', {
-        messageId: sent.id,
-        toChannelKeys: [otherDm],
+      const sent = await sendMessage(coachSocket, {
+        text: 'not yours to forward',
       });
+      const otherDm = `dm:${[otherCoach.user.id, otherPlayer.user.id].sort().join(':')}`;
+      const ack = await emitAck<{ ok: boolean }>(
+        otherSocket,
+        'message:forward',
+        {
+          messageId: sent.id,
+          toChannelKeys: [otherDm],
+        },
+      );
       expect(ack.ok).toBe(false);
     });
 
@@ -237,10 +288,14 @@ describe('Chat real-time features (e2e)', () => {
       openSockets.push(coachSocket);
       const sent = await sendMessage(coachSocket, { text: 'spam attempt' });
       const tooMany = Array.from({ length: 11 }, (_, i) => `dm:x:${i}`);
-      const ack = await emitAck<{ ok: boolean; error?: string }>(coachSocket, 'message:forward', {
-        messageId: sent.id,
-        toChannelKeys: tooMany,
-      });
+      const ack = await emitAck<{ ok: boolean; error?: string }>(
+        coachSocket,
+        'message:forward',
+        {
+          messageId: sent.id,
+          toChannelKeys: tooMany,
+        },
+      );
       expect(ack.ok).toBe(false);
       expect(ack.error).toMatch(/at most/i);
     });
@@ -253,20 +308,19 @@ describe('Chat real-time features (e2e)', () => {
       const playerSocket = await connectSocket(baseUrl, player.accessToken);
       openSockets.push(coachSocket);
 
-      const whilePlayerOnline = await emitAck<{ presence: Record<string, any> }>(
-        coachSocket,
-        'presence:get',
-        { userIds: [player.user.id] },
-      );
+      const whilePlayerOnline = await emitAck<{
+        presence: Record<string, any>;
+      }>(coachSocket, 'presence:get', { userIds: [player.user.id] });
       expect(whilePlayerOnline.presence[player.user.id]).toMatchObject({
         online: true,
         lastSeenAt: null,
       });
 
-      const offlineUpdate = waitForEvent<{ userId: string; online: boolean; lastSeenAt: string }>(
-        coachSocket,
-        'presence:update',
-      );
+      const offlineUpdate = waitForEvent<{
+        userId: string;
+        online: boolean;
+        lastSeenAt: string;
+      }>(coachSocket, 'presence:update');
       playerSocket.disconnect();
       const update = await offlineUpdate;
       expect(update.userId).toBe(player.user.id);
@@ -279,7 +333,9 @@ describe('Chat real-time features (e2e)', () => {
         { userIds: [player.user.id] },
       );
       expect(afterDisconnect.presence[player.user.id].online).toBe(false);
-      expect(afterDisconnect.presence[player.user.id].lastSeenAt).toEqual(expect.any(String));
+      expect(afterDisconnect.presence[player.user.id].lastSeenAt).toEqual(
+        expect.any(String),
+      );
     });
 
     it('a second device does not re-broadcast "online" (already was), and only going offline on the LAST device fires an update', async () => {
@@ -293,7 +349,9 @@ describe('Chat real-time features (e2e)', () => {
         const t = setTimeout(resolve, 500);
         coachSocket.once('presence:update', () => {
           clearTimeout(t);
-          reject(new Error('should not re-announce online for a second device'));
+          reject(
+            new Error('should not re-announce online for a second device'),
+          );
         });
       });
       await noSecondOnlineUpdate; // playerDeviceA already connected before B joined above
@@ -385,7 +443,9 @@ describe('Chat real-time features (e2e)', () => {
         .get('/chat/messages?channelKey=org')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .expect(200);
-      expect(history.body.find((m: any) => m.id === sent.id)?.mediaType).toBe('AUDIO');
+      expect(history.body.find((m: any) => m.id === sent.id)?.mediaType).toBe(
+        'AUDIO',
+      );
     });
 
     it('still rejects disallowed file types (e.g. SVG) even with audio now allowed', async () => {
@@ -406,7 +466,10 @@ describe('Chat real-time features (e2e)', () => {
     const upload = await request(server)
       .post('/chat/media')
       .set('Authorization', `Bearer ${coach.accessToken}`)
-      .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+      .attach('file', TINY_JPEG, {
+        filename: 'shot.jpg',
+        contentType: 'image/jpeg',
+      })
       .expect(201);
     expect(upload.body.mediaType).toBe('IMAGE');
   });

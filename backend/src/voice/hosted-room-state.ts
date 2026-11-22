@@ -29,13 +29,17 @@ export const EMPTY_ROOM_STATE: HostedRoomState = {
   speakers: [],
 };
 
-export function parseRoomState(metadata: string | undefined | null): HostedRoomState {
+export function parseRoomState(
+  metadata: string | undefined | null,
+): HostedRoomState {
   if (!metadata) return { ...EMPTY_ROOM_STATE, muted: [], speakers: [] };
   try {
     const raw = JSON.parse(metadata) as Partial<HostedRoomState>;
     return {
       listenOnly: raw.listenOnly === true,
-      muted: Array.isArray(raw.muted) ? raw.muted.filter((x) => typeof x === 'string') : [],
+      muted: Array.isArray(raw.muted)
+        ? raw.muted.filter((x) => typeof x === 'string')
+        : [],
       speakers: Array.isArray(raw.speakers)
         ? raw.speakers.filter((x) => typeof x === 'string')
         : [],
@@ -73,7 +77,9 @@ export function applyModeration(
       if (!targetId) throw new Error('Missing target');
       return {
         ...state,
-        muted: state.muted.includes(targetId) ? state.muted : [...state.muted, targetId],
+        muted: state.muted.includes(targetId)
+          ? state.muted
+          : [...state.muted, targetId],
         speakers: state.speakers.filter((id) => id !== targetId),
       };
     }

@@ -1,6 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { createTestApp, getPrisma, resetDatabase, cleanUploadsDir } from './utils/test-app';
+import {
+  createTestApp,
+  getPrisma,
+  resetDatabase,
+  cleanUploadsDir,
+} from './utils/test-app';
 import { signup, createOrgAs, joinOrgAs, TINY_JPEG } from './utils/fixtures';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -38,7 +43,10 @@ describe('Phase 1C — Media upload (e2e)', () => {
       await request(server)
         .post('/media')
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(401);
     });
 
@@ -50,7 +58,10 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .set('Authorization', `Bearer ${player.accessToken}`)
         .field('type', 'IMAGE')
         .field('caption', 'Scrim scoreboard')
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
 
       expect(res.body.type).toBe('IMAGE');
@@ -87,7 +98,10 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .field('type', 'SCREENSHOT') // not IMAGE or VIDEO
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(400);
     });
 
@@ -106,7 +120,10 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${outsider.accessToken}`)
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(404);
     });
 
@@ -123,7 +140,10 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
       const elapsedMs = Date.now() - start;
 
@@ -154,14 +174,20 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .set('Authorization', `Bearer ${player.accessToken}`)
         .field('type', 'IMAGE')
         .field('caption', 'First')
-        .attach('file', TINY_JPEG, { filename: 'a.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'a.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
       await request(server)
         .post('/media')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .field('type', 'IMAGE')
         .field('caption', 'Second')
-        .attach('file', TINY_JPEG, { filename: 'b.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'b.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
 
       const res = await request(server)
@@ -182,13 +208,19 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'p1.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'p1.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
       await request(server)
         .post('/media')
         .set('Authorization', `Bearer ${player2.accessToken}`)
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'p2.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'p2.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
 
       const res = await request(server)
@@ -199,14 +231,17 @@ describe('Phase 1C — Media upload (e2e)', () => {
       expect(res.body[0].uploaderId).toBe(player.user.id);
     });
 
-    it('SECURITY: never shows another org\'s media', async () => {
+    it("SECURITY: never shows another org's media", async () => {
       const { player: playerA } = await setUpOrgWithPlayer();
       await request(server)
         .post('/media')
         .set('Authorization', `Bearer ${playerA.accessToken}`)
         .field('type', 'IMAGE')
         .field('caption', 'Org A secret scoreboard')
-        .attach('file', TINY_JPEG, { filename: 'a.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'a.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
 
       const { player: playerB } = await setUpOrgWithPlayer();
@@ -220,7 +255,9 @@ describe('Phase 1C — Media upload (e2e)', () => {
 
   describe('GET /media/files/:fileKey (guarded)', () => {
     it('404s for an unknown file key', async () => {
-      await request(server).get('/media/files/this-file-does-not-exist.jpg').expect(404);
+      await request(server)
+        .get('/media/files/this-file-does-not-exist.jpg')
+        .expect(404);
     });
 
     it('SECURITY: 404s for a real file key with no token at all', async () => {
@@ -229,7 +266,10 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
       const fileKey = (uploadRes.body.url as string).split('?')[0];
 
@@ -242,11 +282,16 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
       const fileKey = (uploadRes.body.url as string).split('?')[0];
 
-      await request(server).get(`${fileKey}?token=not-a-real-token`).expect(404);
+      await request(server)
+        .get(`${fileKey}?token=not-a-real-token`)
+        .expect(404);
     });
 
     it("SECURITY: a token signed for one org's file can't be reused for another org's file key", async () => {
@@ -255,7 +300,10 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${playerA.accessToken}`)
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'a.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'a.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
       const [, tokenA] = (uploadA.body.url as string).split('?token=');
 
@@ -264,7 +312,10 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${playerB.accessToken}`)
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'b.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'b.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
       const fileKeyB = (uploadB.body.url as string).split('?')[0];
 
@@ -279,7 +330,10 @@ describe('Phase 1C — Media upload (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .field('type', 'IMAGE')
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
 
       // listOrgMedia re-signs a fresh, teammate-scoped token for the same

@@ -299,3 +299,54 @@ While the app is shared as an APK (no Play Store), existing users get an
 
 Only builds that already contain this feature can show the popup, so the first
 build with it must still be shared manually.
+
+---
+
+## 7. Platform admin
+
+A platform admin sees every org's data through `/admin` (web sidebar →
+**Admin**, mobile drawer → **Platform › Admin**). It is separate from org
+roles — owning a team does not grant it, and an admin is not automatically a
+member of anything.
+
+### Granting it
+
+There is no API for this, by design. Run it on the server, against the
+database:
+
+```bash
+cd backend
+npm run admin:list
+npm run admin:grant  -- someone@example.com
+npm run admin:revoke -- someone@example.com
+```
+
+The user has to have signed up first — the script flips a flag on an
+existing account, it does not create one.
+
+For stage/production, swap the env file the script loads:
+
+```bash
+dotenv -e .env.production -- ts-node scripts/platform-admin.ts grant someone@example.com
+```
+
+### Why it can't be bypassed
+
+- **The flag lives only in the database.** `User.isPlatformAdmin` has no DTO,
+  no endpoint and no profile field that writes it. The global
+  `ValidationPipe` runs with `forbidNonWhitelisted`, so sending
+  `isPlatformAdmin` in any request body is a 400, not a silent no-op.
+- **It is never read from the token.** `JwtStrategy.validate` loads it from
+  the database on every single request. A JWT with `isPlatformAdmin: true`
+  forged into its claims — even one signed with the real secret — gets a 403,
+  because nothing reads that claim. There is a test for exactly this.
+- **`PlatformAdminGuard` fails closed.** It requires the literal boolean
+  `true`; a missing or oddly-typed value is refused.
+- **Revoking is immediate.** Since the flag is re-read per request, revoking
+  takes effect on the admin's next call — no waiting for a token to expire.
+- **The client flag is cosmetic.** `isPlatformAdmin` in `/auth/me` only
+  decides whether the Admin link renders. Faking it in devtools shows the
+  link and then 403s on every call behind it.
+
+`/admin` is read-only today. Keep it that way unless there's a real need —
+a cross-org write path is a much bigger blast radius than a read one.

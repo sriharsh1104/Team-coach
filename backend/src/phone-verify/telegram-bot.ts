@@ -57,13 +57,17 @@ export class TelegramBot {
     const token = this.config.get<string>('TELEGRAM_BOT_TOKEN');
     if (!token) return;
     try {
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId.toString(), text, ...extra }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) this.logger.warn(`Telegram sendMessage failed: HTTP ${res.status}`);
+      const res = await fetch(
+        `https://api.telegram.org/bot${token}/sendMessage`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId.toString(), text, ...extra }),
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (!res.ok)
+        this.logger.warn(`Telegram sendMessage failed: HTTP ${res.status}`);
     } catch (err) {
       this.logger.warn(`Telegram sendMessage error: ${(err as Error).message}`);
     }

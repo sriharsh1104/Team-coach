@@ -106,11 +106,17 @@ export function extractInviteSeat(raw?: string): 'guild' | 'roster' {
   if (!raw?.trim()) return 'guild';
   const trimmed = raw.trim();
   try {
-    if (trimmed.includes('://') || trimmed.startsWith('/join/') || trimmed.includes('?')) {
+    if (
+      trimmed.includes('://') ||
+      trimmed.startsWith('/join/') ||
+      trimmed.includes('?')
+    ) {
       const url = trimmed.includes('://')
         ? new URL(trimmed)
         : new URL(
-            trimmed.startsWith('/') ? trimmed : `/?${trimmed.replace(/^\?/, '')}`,
+            trimmed.startsWith('/')
+              ? trimmed
+              : `/?${trimmed.replace(/^\?/, '')}`,
             'http://localhost',
           );
       if (url.searchParams.get('seat') === 'roster') return 'roster';
@@ -218,7 +224,9 @@ export class OrgService {
       throw new NotFoundException('You are not part of an org yet');
     }
     if (!membership.isOwner) {
-      throw new ForbiddenException('Only the owner can choose their roster role');
+      throw new ForbiddenException(
+        'Only the owner can choose their roster role',
+      );
     }
 
     const role = dto.role ?? null;
@@ -279,7 +287,9 @@ export class OrgService {
         : { rosterReferralToken: referralToken },
     });
     if (!org) {
-      throw new NotFoundException('No roster invite found for that code or link');
+      throw new NotFoundException(
+        'No roster invite found for that code or link',
+      );
     }
 
     const [existingRoster, existingGuild] = await Promise.all([
@@ -378,7 +388,10 @@ export class OrgService {
     };
   }
 
-  async updateHistorySetting(currentUserId: string, historyVisibleToNewMembers: boolean) {
+  async updateHistorySetting(
+    currentUserId: string,
+    historyVisibleToNewMembers: boolean,
+  ) {
     const current = await this.prisma.membership.findFirst({
       where: { userId: currentUserId },
     });
@@ -386,7 +399,9 @@ export class OrgService {
       throw new NotFoundException('You are not part of an org yet');
     }
     if (!current.isOwner) {
-      throw new ForbiddenException('Only the org owner can change this setting');
+      throw new ForbiddenException(
+        'Only the org owner can change this setting',
+      );
     }
 
     await this.prisma.org.update({
@@ -405,7 +420,9 @@ export class OrgService {
       throw new NotFoundException('You are not part of an org yet');
     }
     if (!current.isOwner) {
-      throw new ForbiddenException('Only the org owner can change member roles');
+      throw new ForbiddenException(
+        'Only the org owner can change member roles',
+      );
     }
 
     const target = await this.prisma.membership.findFirst({
@@ -459,7 +476,9 @@ export class OrgService {
       throw new NotFoundException('You are not part of an org yet');
     }
     if (!current.isOwner) {
-      throw new ForbiddenException('Only the current owner can transfer ownership');
+      throw new ForbiddenException(
+        'Only the current owner can transfer ownership',
+      );
     }
     if (current.userId === dto.targetUserId) {
       throw new BadRequestException('You already own this org');
@@ -521,22 +540,99 @@ export class OrgService {
   }
 
   /**
-   * Guild code / invite-link join. Creates a guild seat only — the esports
-   * roster stays unchanged until an owner or coach adds this person from the
-   * guild list. Optional invitedByUserId attributes the seat to a referrer.
+   * Discoverable guilds for someone who is not in one yet — searchable by name,
+   * with basic counts so Join can show a list instead of only a code box.
+   */
+  async browseGuilds(userId: string, q?: string) {
+    const [guild, roster] = await Promise.all([
+      this.prisma.guildMembership.findFirst({ where: { userId } }),
+      this.prisma.membership.findFirst({ where: { userId } }),
+    ]);
+    if (guild || roster) {
+      throw new ConflictException(
+        'Leave your current guild before browsing others',
+      );
+    }
+
+    const query = q?.trim();
+    const orgs = await this.prisma.org.findMany({
+      where: query
+        ? { name: { contains: query, mode: 'insensitive' } }
+        : undefined,
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        _count: {
+          select: { guildMemberships: true, memberships: true },
+        },
+      },
+      orderBy: [{ guildMemberships: { _count: 'desc' } }, { name: 'asc' }],
+      take: 50,
+    });
+
+    return {
+      guilds: orgs.map((o) => ({
+        id: o.id,
+        name: o.name,
+        memberCount: o._count.guildMemberships,
+        rosterCount: o._count.memberships,
+        createdAt: o.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * Leave the current guild. Also drops the esports roster seat for that org.
+   * Org owners must transfer ownership first.
+   */
+  async leaveGuild(userId: string) {
+    const guild = await this.prisma.guildMembership.findFirst({
+      where: { userId },
+      include: { org: { select: { id: true, name: true } } },
+    });
+    if (!guild) {
+      throw new NotFoundException('You are not part of a guild');
+    }
+
+    const roster = await this.prisma.membership.findFirst({
+      where: { userId, orgId: guild.orgId },
+    });
+    if (roster?.isOwner) {
+      throw new ForbiddenException(
+        'Transfer ownership before leaving — you own this org’s roster',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (roster) {
+        await tx.membership.delete({ where: { id: roster.id } });
+      }
+      await tx.guildMembership.delete({ where: { id: guild.id } });
+    });
+    this.notifyMembersChanged(guild.orgId);
+    return { left: true, orgId: guild.org.id, name: guild.org.name };
+  }
+
+  /**
+   * Guild code / invite-link / browse-list join. Creates a guild seat only — the
+   * esports roster stays unchanged until an owner or coach adds this person.
+   * Optional invitedByUserId attributes the seat to a referrer.
    */
   async joinGuild(userId: string, dto: JoinOrgDto) {
-    if (!dto.orgCode && !dto.referralToken) {
+    if (!dto.orgId && !dto.orgCode && !dto.referralToken) {
       throw new BadRequestException(
-        'Provide either an orgCode or a referralToken',
+        'Provide an orgId, orgCode, or referralToken',
       );
     }
 
     const referralToken = normalizeReferralToken(dto.referralToken);
     const org = await this.prisma.org.findFirst({
-      where: dto.orgCode
-        ? { orgCode: dto.orgCode.toUpperCase() }
-        : { referralToken },
+      where: dto.orgId
+        ? { id: dto.orgId }
+        : dto.orgCode
+          ? { orgCode: dto.orgCode.toUpperCase() }
+          : { referralToken },
     });
     if (!org) {
       throw new NotFoundException('No org found for that code or link');
@@ -622,7 +718,9 @@ export class OrgService {
       throw new NotFoundException('You are not part of a guild yet');
     }
     if (roster && roster.orgId !== guild.orgId) {
-      throw new ConflictException('Your guild and roster are in different orgs');
+      throw new ConflictException(
+        'Your guild and roster are in different orgs',
+      );
     }
 
     const orgId = guild.orgId;
@@ -646,7 +744,8 @@ export class OrgService {
     ]);
 
     const rosterByUser = new Map(rosterMembers.map((m) => [m.userId, m]));
-    const canManage = !!roster && (roster.isOwner || roster.role === MembershipRole.COACH);
+    const canManage =
+      !!roster && (roster.isOwner || roster.role === MembershipRole.COACH);
     const leadership =
       guild.role === GuildRole.LEADER ||
       guild.role === GuildRole.ELDER ||
@@ -756,7 +855,9 @@ export class OrgService {
   async removeFromRoster(currentUserId: string, dto: RemoveMemberDto) {
     const actor = await this.assertRosterManager(currentUserId);
     if (actor.userId === dto.targetUserId) {
-      throw new BadRequestException('You cannot remove yourself from the roster');
+      throw new BadRequestException(
+        'You cannot remove yourself from the roster',
+      );
     }
 
     const target = await this.prisma.membership.findFirst({
@@ -766,7 +867,9 @@ export class OrgService {
       throw new NotFoundException('That person is not on the roster');
     }
     if (target.isOwner) {
-      throw new ForbiddenException('Transfer ownership before removing the owner');
+      throw new ForbiddenException(
+        'Transfer ownership before removing the owner',
+      );
     }
 
     await this.prisma.membership.delete({ where: { id: target.id } });

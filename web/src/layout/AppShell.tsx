@@ -108,6 +108,18 @@ export function AppShell() {
             {item.label}
           </NavLink>
         ))}
+        {user?.isPlatformAdmin ? (
+          <>
+            <div className="sidebar-split">Platform</div>
+            <NavLink
+              to="/admin"
+              viewTransition
+              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+            >
+              Admin
+            </NavLink>
+          </>
+        ) : null}
         <div className="sidebar-foot">
           <div className="muted" style={{ padding: '0 10px 10px' }}>
             {user?.name}

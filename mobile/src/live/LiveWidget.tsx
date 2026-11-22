@@ -17,13 +17,16 @@ function fmt(sec: number) {
  * Separate from RecordingWidget (REC).
  */
 export function LiveWidget() {
-  const { live, elapsedSec, stopLive } = useLive();
+  const { live, paused, elapsedSec, stopLive, pauseLive, resumeLive } = useLive();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (!live) return;
+    if (!live || paused) {
+      pulse.setValue(1);
+      return;
+    }
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, {
@@ -40,7 +43,7 @@ export function LiveWidget() {
     );
     anim.start();
     return () => anim.stop();
-  }, [live, pulse]);
+  }, [live, paused, pulse]);
 
   if (!live) return null;
 
@@ -58,15 +61,38 @@ export function LiveWidget() {
           },
         ]}
       >
-        <Animated.View style={[styles.dot, { opacity: pulse }]} />
-        <Text style={styles.liveLabel}>LIVE</Text>
+        <Animated.View
+          style={[
+            styles.dot,
+            { opacity: paused ? 1 : pulse, backgroundColor: paused ? '#f59e0b' : '#ef4444' },
+          ]}
+        />
+        <Text style={[styles.liveLabel, paused && styles.pausedLabel]}>
+          {paused ? 'PAUSED' : 'LIVE'}
+        </Text>
         <Text style={[styles.timer, { color: colors.text }]}>{fmt(elapsedSec)}</Text>
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <Pressable
+          onPress={() => void (paused ? resumeLive() : pauseLive())}
+          hitSlop={10}
+          accessibilityLabel={paused ? 'Resume live' : 'Pause live'}
+          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
+        >
+          <AppIcon
+            name={paused ? 'play' : 'pause'}
+            size={15}
+            color={colors.text}
+          />
+          <Text style={[styles.actionLabel, { color: colors.text }]}>
+            {paused ? 'Resume' : 'Pause'}
+          </Text>
+        </Pressable>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <Pressable
           onPress={() => void stopLive()}
           hitSlop={10}
           accessibilityLabel="End live"
-          style={({ pressed }) => [styles.stopBtn, pressed && styles.stopBtnPressed]}
+          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
         >
           <AppIcon name="stop-circle" size={16} color="#ef4444" />
           <Text style={styles.stopLabel}>End</Text>
@@ -103,13 +129,15 @@ const styles = StyleSheet.create({
     width: 9,
     height: 9,
     borderRadius: 5,
-    backgroundColor: '#ef4444',
   },
   liveLabel: {
     color: '#ef4444',
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.5,
+  },
+  pausedLabel: {
+    color: '#f59e0b',
   },
   timer: {
     fontSize: 14,
@@ -122,13 +150,17 @@ const styles = StyleSheet.create({
     height: 16,
     marginHorizontal: 2,
   },
-  stopBtn: {
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  stopBtnPressed: {
+  actionPressed: {
     opacity: 0.6,
+  },
+  actionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   stopLabel: {
     color: '#ef4444',

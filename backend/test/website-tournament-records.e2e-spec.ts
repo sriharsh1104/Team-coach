@@ -37,7 +37,10 @@ describe('Tournament records authorization', () => {
   };
 
   function stubPrimaryOrgId(orgId: string | undefined) {
-    jest.spyOn(configService, 'get').mockImplementation(((key: string, ...rest: any[]) => {
+    jest.spyOn(configService, 'get').mockImplementation(((
+      key: string,
+      ...rest: any[]
+    ) => {
       if (key === 'PRIMARY_ORG_ID') return orgId;
       return (realGet as any)(key, ...rest);
     }) as any);

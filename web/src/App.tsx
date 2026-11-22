@@ -2,6 +2,7 @@ import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { postAuthPath } from './auth/postAuthPath';
 import { AppShell } from './layout/AppShell';
+import { AdminPage } from './pages/admin/AdminPage';
 import { ChatPage } from './pages/ChatPage';
 import { GuildSpacePage } from './pages/guild/GuildSpacePage';
 import { HomePage } from './pages/HomePage';
@@ -44,6 +45,18 @@ function RequireProfileComplete({ children }: { children: React.ReactNode }) {
   if (user && !user.profileComplete) {
     return <Navigate to="/profile" replace />;
   }
+  return children;
+}
+
+/**
+ * Platform admin area. This only hides the UI — it is not the security
+ * boundary. Every /admin request is authorised server-side against the
+ * database, so editing the flag in devtools gets you an empty page and 403s.
+ */
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const { isLoading, user } = useAuth();
+  if (isLoading) return <SesLoader label="Loading" />;
+  if (!user?.isPlatformAdmin) return <Navigate to="/app" replace />;
   return children;
 }
 
@@ -157,6 +170,14 @@ export default function App() {
           <Route path="/guild/chat" element={<ChatPage variant="guild" />} />
         </Route>
         <Route path="/profile" element={<ProfilePage />} />
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <AdminPage />
+            </RequireAdmin>
+          }
+        />
         <Route
           path="/members/:userId"
           element={

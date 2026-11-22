@@ -107,9 +107,14 @@ export class VoiceService {
    * Who is already in the voice room — for lobby + chat indicators.
    * Does not join the caller; only lists current occupants.
    */
-  async getOccupancy(userId: string, room: VoiceRoomName = 'team'): Promise<VoiceOccupancy> {
+  async getOccupancy(
+    userId: string,
+    room: VoiceRoomName = 'team',
+  ): Promise<VoiceOccupancy> {
     const max =
-      room === 'guild' ? GUILD_VOICE_MAX_PARTICIPANTS : TEAM_VOICE_MAX_PARTICIPANTS;
+      room === 'guild'
+        ? GUILD_VOICE_MAX_PARTICIPANTS
+        : TEAM_VOICE_MAX_PARTICIPANTS;
     const ctx = await this.resolveRoom(userId, room);
 
     if (this.sfu.isSelfHosted()) {
@@ -126,7 +131,9 @@ export class VoiceService {
         let avatarUrl: string | null = null;
         if (p.metadata) {
           try {
-            const meta = JSON.parse(p.metadata) as { avatarUrl?: string | null };
+            const meta = JSON.parse(p.metadata) as {
+              avatarUrl?: string | null;
+            };
             avatarUrl = meta.avatarUrl ?? null;
           } catch {
             // ignore malformed metadata
@@ -149,7 +156,9 @@ export class VoiceService {
 
   async getConfig(userId: string, room: VoiceRoomName = 'team') {
     const max =
-      room === 'guild' ? GUILD_VOICE_MAX_PARTICIPANTS : TEAM_VOICE_MAX_PARTICIPANTS;
+      room === 'guild'
+        ? GUILD_VOICE_MAX_PARTICIPANTS
+        : TEAM_VOICE_MAX_PARTICIPANTS;
 
     if (this.sfu.isSelfHosted()) {
       return { mode: 'self' as const, max, room };
@@ -158,7 +167,9 @@ export class VoiceService {
     // Config check first so a missing LiveKit setup fails cleanly before any lookups.
     const creds = this.creds();
     const ctx = await this.resolveRoom(userId, room);
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
 
     let canPublish = true;
     let state: HostedRoomState | undefined;
@@ -207,7 +218,9 @@ export class VoiceService {
    */
   async moderate(userId: string, dto: VoiceModerateDto) {
     if (this.sfu.isSelfHosted()) {
-      throw new BadRequestException('Moderation runs over the voice socket in self-hosted mode');
+      throw new BadRequestException(
+        'Moderation runs over the voice socket in self-hosted mode',
+      );
     }
     const creds = this.creds();
     const ctx = await this.resolveRoom(userId, dto.room);
@@ -233,7 +246,9 @@ export class VoiceService {
     }
 
     if (ctx.kind !== 'guild' || !ctx.canModerate) {
-      throw new ForbiddenException('Only the owner or guild leaders can do that');
+      throw new ForbiddenException(
+        'Only the owner or guild leaders can do that',
+      );
     }
     const action = dto.action as ModerationAction;
     if ((action === 'mute' || action === 'unmute') && !dto.userId) {
@@ -263,7 +278,11 @@ export class VoiceService {
   }
 
   /** Make every participant's publish permission match the room state. */
-  private async enforce(client: RoomServiceClient, roomName: string, state: HostedRoomState) {
+  private async enforce(
+    client: RoomServiceClient,
+    roomName: string,
+    state: HostedRoomState,
+  ) {
     const participants = await client.listParticipants(roomName);
     await Promise.all(
       participants.map(async (p) => {

@@ -12,8 +12,11 @@ import { PrismaService } from '../src/prisma/prisma.service';
 
 type Ack = { ok: boolean; room?: any; error?: string };
 
-
-function waitForRoomUpdate(socket: Socket, pred: (u: any) => boolean, timeoutMs = 4000): Promise<any> {
+function waitForRoomUpdate(
+  socket: Socket,
+  pred: (u: any) => boolean,
+  timeoutMs = 4000,
+): Promise<any> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => {
       socket.off('room:update', handler);
@@ -73,7 +76,8 @@ describe('Games (/games namespace) (e2e)', () => {
   }
 
   it('rejects a garbage token', async () => {
-    const { connectAndExpectRejection } = await import('./utils/socket-helpers');
+    const { connectAndExpectRejection } =
+      await import('./utils/socket-helpers');
     await connectAndExpectRejection(baseUrl, 'nope', '/games');
   });
 
@@ -82,19 +86,28 @@ describe('Games (/games namespace) (e2e)', () => {
     const [host, p1, p2, p3] = sockets;
     // A buggy or malicious client could send anything here — must clamp to
     // the game's real max (2 for rps here), never NaN.
-    const created = await emitAck<Ack>(host, 'room:create', { game: 'rps', maxPlayers: {} });
+    const created = await emitAck<Ack>(host, 'room:create', {
+      game: 'rps',
+      maxPlayers: {},
+    });
     expect(created).toMatchObject({ ok: true });
     expect(created.room.maxPlayers).toBe(2);
 
-    const joined = await emitAck<Ack>(p1, 'room:join', { roomId: created.room.id });
+    const joined = await emitAck<Ack>(p1, 'room:join', {
+      roomId: created.room.id,
+    });
     expect(joined).toMatchObject({ ok: true });
     expect(joined.room.players).toHaveLength(2);
 
-    const overfull = await emitAck<Ack>(p2, 'room:join', { roomId: created.room.id });
+    const overfull = await emitAck<Ack>(p2, 'room:join', {
+      roomId: created.room.id,
+    });
     expect(overfull.ok).toBe(false);
     expect(overfull.error).toMatch(/full/i);
 
-    const alsoOverfull = await emitAck<Ack>(p3, 'room:join', { roomId: created.room.id });
+    const alsoOverfull = await emitAck<Ack>(p3, 'room:join', {
+      roomId: created.room.id,
+    });
     expect(alsoOverfull.ok).toBe(false);
   });
 
@@ -115,31 +128,49 @@ describe('Games (/games namespace) (e2e)', () => {
     expect(list.room).toHaveLength(1);
     expect(list.room[0].id).toBe(created.room.id);
 
-    const hostSeesJoin = waitForRoomUpdate(host, (u) => u.room.players.length === 2);
-    const joined = await emitAck<Ack>(guest, 'room:join', { roomId: created.room.id });
+    const hostSeesJoin = waitForRoomUpdate(
+      host,
+      (u) => u.room.players.length === 2,
+    );
+    const joined = await emitAck<Ack>(guest, 'room:join', {
+      roomId: created.room.id,
+    });
     expect(joined).toMatchObject({ ok: true });
-    expect(joined.room.players.map((p: any) => p.name)).toEqual(['Coach', 'Player1']);
+    expect(joined.room.players.map((p: any) => p.name)).toEqual([
+      'Coach',
+      'Player1',
+    ]);
     expect((await hostSeesJoin).room.players).toHaveLength(2);
 
     // Only the host can start.
-    const notHost = await emitAck<Ack>(guest, 'room:start', { roomId: created.room.id });
+    const notHost = await emitAck<Ack>(guest, 'room:start', {
+      roomId: created.room.id,
+    });
     expect(notHost.ok).toBe(false);
 
-    const started = await emitAck<Ack>(host, 'room:start', { roomId: created.room.id });
+    const started = await emitAck<Ack>(host, 'room:start', {
+      roomId: created.room.id,
+    });
     expect(started).toMatchObject({ ok: true });
     expect(started.room.status).toBe('playing');
     expect(started.room.rps.round).toBe(1);
     expect(started.room.rps.phase).toBe('picking');
 
     // Host picks: guest sees "picked" but never the choice.
-    const guestSeesPick = waitForRoomUpdate(guest, (u) => u.room.rps?.picked?.[hostUser.user.id] === true);
+    const guestSeesPick = waitForRoomUpdate(
+      guest,
+      (u) => u.room.rps?.picked?.[hostUser.user.id] === true,
+    );
     const picked = await emitAck<Ack>(host, 'rps:pick', { choice: 'paper' });
     expect(picked).toMatchObject({ ok: true });
     const upd = await guestSeesPick;
     expect(upd.room.rps.picked[hostUser.user.id]).toBe(true);
     expect(JSON.stringify(upd.room.rps)).not.toContain('paper');
 
-    const reveal = waitForRoomUpdate(host, (u) => u.event?.type === 'rps:reveal');
+    const reveal = waitForRoomUpdate(
+      host,
+      (u) => u.event?.type === 'rps:reveal',
+    );
     const second = await emitAck<Ack>(guest, 'rps:pick', { choice: 'stone' });
     expect(second).toMatchObject({ ok: true });
     const rev = await reveal;
@@ -156,13 +187,22 @@ describe('Games (/games namespace) (e2e)', () => {
   it('Ludo: 3 players start, colours assigned, only the current player may roll, and leaving removes the seat', async () => {
     const { players, sockets } = await setUp(3);
     const [host, p1, p2] = sockets;
-    const created = await emitAck<Ack>(host, 'room:create', { game: 'ludo', maxPlayers: 4 });
+    const created = await emitAck<Ack>(host, 'room:create', {
+      game: 'ludo',
+      maxPlayers: 4,
+    });
     await emitAck<Ack>(p1, 'room:join', { roomId: created.room.id });
     await emitAck<Ack>(p2, 'room:join', { roomId: created.room.id });
-    const started = await emitAck<Ack>(host, 'room:start', { roomId: created.room.id });
+    const started = await emitAck<Ack>(host, 'room:start', {
+      roomId: created.room.id,
+    });
     expect(started).toMatchObject({ ok: true });
     expect(started.room.ludo.turnOrder).toEqual(players.map((p) => p.user.id));
-    expect(Object.values(started.room.ludo.colors)).toEqual(['red', 'green', 'yellow']);
+    expect(Object.values(started.room.ludo.colors)).toEqual([
+      'red',
+      'green',
+      'yellow',
+    ]);
     expect(started.room).toMatchObject({ deadline: expect.any(Number) });
     expect(started.room.deadline).toBeGreaterThan(Date.now());
 
@@ -198,14 +238,18 @@ describe('Games (/games namespace) (e2e)', () => {
     const [host, guest] = sockets;
     await emitAck<Ack>(host, 'room:create', { game: 'rps' });
     const invited = waitForEvent<any>(guest, 'room:invite');
-    const ok = await emitAck<Ack>(host, 'room:invite', { userId: players[1].user.id });
+    const ok = await emitAck<Ack>(host, 'room:invite', {
+      userId: players[1].user.id,
+    });
     expect(ok).toMatchObject({ ok: true });
     const inv = await invited;
     expect(inv.from.name).toBe('Coach');
     expect(inv.room.game).toBe('rps');
 
     const outsider = await signup(server, { name: 'Outsider' });
-    const refused = await emitAck<Ack>(host, 'room:invite', { userId: outsider.user.id });
+    const refused = await emitAck<Ack>(host, 'room:invite', {
+      userId: outsider.user.id,
+    });
     expect(refused.ok).toBe(false);
   });
   it('notify cooldown: same teammate only once per 5 min per room; a new game is allowed; notify-all skips cooled-down users', async () => {
@@ -220,9 +264,13 @@ describe('Games (/games namespace) (e2e)', () => {
       [players[1].user.id, players[2].user.id].sort(),
     );
 
-    const first = await emitAck<Ack>(host, 'room:invite', { userId: players[1].user.id });
+    const first = await emitAck<Ack>(host, 'room:invite', {
+      userId: players[1].user.id,
+    });
     expect(first).toMatchObject({ ok: true });
-    const again = await emitAck<Ack>(host, 'room:invite', { userId: players[1].user.id });
+    const again = await emitAck<Ack>(host, 'room:invite', {
+      userId: players[1].user.id,
+    });
     expect(again.ok).toBe(false);
     expect(again.error).toMatch(/already notified/i);
 
@@ -235,7 +283,9 @@ describe('Games (/games namespace) (e2e)', () => {
     await emitAck<Ack>(host, 'room:leave', {});
     const other = await emitAck<Ack>(host, 'room:create', { game: 'rps' });
     expect(other.ok).toBe(true);
-    const crossGame = await emitAck<Ack>(host, 'room:invite', { userId: players[1].user.id });
+    const crossGame = await emitAck<Ack>(host, 'room:invite', {
+      userId: players[1].user.id,
+    });
     expect(crossGame).toMatchObject({ ok: true });
   });
 });

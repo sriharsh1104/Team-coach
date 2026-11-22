@@ -52,7 +52,8 @@ export function PhoneField({ value, onChange, disabled }: Props) {
         }}
         phoneInputStyles={{
           container: {
-            backgroundColor: 'rgba(0,0,0,0.28)',
+            // Same theme-tracking surface as every other input.
+            backgroundColor: colors.surface,
             borderWidth: 1,
             borderColor: colors.border,
             borderRadius: 12,

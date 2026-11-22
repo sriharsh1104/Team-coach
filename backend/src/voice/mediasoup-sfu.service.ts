@@ -57,8 +57,12 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
 
     try {
       this.worker = await mediasoup.createWorker({
-        rtcMinPort: Number(this.configService.get('MEDIASOUP_MIN_PORT', '40000')),
-        rtcMaxPort: Number(this.configService.get('MEDIASOUP_MAX_PORT', '40200')),
+        rtcMinPort: Number(
+          this.configService.get('MEDIASOUP_MIN_PORT', '40000'),
+        ),
+        rtcMaxPort: Number(
+          this.configService.get('MEDIASOUP_MAX_PORT', '40200'),
+        ),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -70,7 +74,9 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
     this.worker.on('died', () => {
       this.logger.error('mediasoup worker died, restart the server');
     });
-    const announcedIp = this.configService.get<string>('MEDIASOUP_ANNOUNCED_IP');
+    const announcedIp = this.configService.get<string>(
+      'MEDIASOUP_ANNOUNCED_IP',
+    );
     if (!announcedIp || announcedIp === '127.0.0.1') {
       this.logger.warn(
         'MEDIASOUP_ANNOUNCED_IP is unset/127.0.0.1 — only clients on this same machine will get audio. Set it to the server public IP in production.',
@@ -98,7 +104,9 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
     }
     let room = this.rooms.get(orgId);
     if (!room) {
-      const router = await this.worker.createRouter({ mediaCodecs: MEDIA_CODECS });
+      const router = await this.worker.createRouter({
+        mediaCodecs: MEDIA_CODECS,
+      });
       const audioLevelObserver = await router.createAudioLevelObserver({
         maxEntries: 8,
         threshold: -55,
@@ -159,7 +167,9 @@ export class MediasoupSfuService implements OnModuleInit, OnModuleDestroy {
       await room.audioLevelObserver.addProducer({ producerId: producer.id });
     } catch (err) {
       // Non-fatal: speaking highlight just won't light up for this producer.
-      this.logger.warn(`audioLevelObserver.addProducer failed: ${(err as Error).message}`);
+      this.logger.warn(
+        `audioLevelObserver.addProducer failed: ${(err as Error).message}`,
+      );
     }
   }
 

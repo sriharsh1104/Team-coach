@@ -83,7 +83,9 @@ export class WebsiteService {
       membership.orgId === primaryOrgId &&
       (membership.isOwner || membership.role === MembershipRole.COACH);
     if (!allowed) {
-      throw new ForbiddenException('Only coaches can update tournament records');
+      throw new ForbiddenException(
+        'Only coaches can update tournament records',
+      );
     }
     return membership;
   }

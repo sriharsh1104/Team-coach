@@ -41,7 +41,9 @@ describe('link-preview SSRF guards', () => {
   });
 
   it('only accepts http(s) URLs, rejecting other schemes', () => {
-    expect(isFetchableUrl('https://example.com/post')?.hostname).toBe('example.com');
+    expect(isFetchableUrl('https://example.com/post')?.hostname).toBe(
+      'example.com',
+    );
     expect(isFetchableUrl('http://example.com')?.hostname).toBe('example.com');
     expect(isFetchableUrl('file:///etc/passwd')).toBeNull();
     expect(isFetchableUrl('javascript:alert(1)')).toBeNull();
@@ -83,7 +85,10 @@ describe('parseOpenGraph', () => {
   });
 
   it('returns all-null fields for a page with no usable metadata, without throwing', () => {
-    const data = parseOpenGraph('<html><body>hi</body></html>', 'https://example.com');
+    const data = parseOpenGraph(
+      '<html><body>hi</body></html>',
+      'https://example.com',
+    );
     expect(data.title).toBeNull();
     expect(data.description).toBeNull();
     expect(data.image).toBeNull();

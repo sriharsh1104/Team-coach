@@ -17,7 +17,10 @@ export async function signup(
     password: overrides.password ?? 'Password123!',
     name: overrides.name ?? 'Test User',
   };
-  const signupRes = await request(server).post('/auth/signup').send(body).expect(201);
+  const signupRes = await request(server)
+    .post('/auth/signup')
+    .send(body)
+    .expect(201);
   const code = sentOtps.get(body.email);
   const res = await request(server)
     .post('/auth/verify-email')
@@ -42,7 +45,11 @@ export async function createOrgAs(
 
 // Joiners are always PLAYER — elevated roles are assigned by the owner.
 // Pass the org's rosterCode (not guild orgCode).
-export async function joinOrgAs(server: any, token: string, rosterCode: string) {
+export async function joinOrgAs(
+  server: any,
+  token: string,
+  rosterCode: string,
+) {
   const res = await request(server)
     .post('/orgs/join')
     .set('Authorization', `Bearer ${token}`)
@@ -81,7 +88,10 @@ export async function uploadMedia(
     .post('/media')
     .set('Authorization', `Bearer ${token}`)
     .field('type', type)
-    .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+    .attach('file', TINY_JPEG, {
+      filename: 'shot.jpg',
+      contentType: 'image/jpeg',
+    })
     .expect(201);
   return res.body;
 }

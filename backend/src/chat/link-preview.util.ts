@@ -23,7 +23,13 @@ export function isDisallowedAddress(address: string): boolean {
   const a = address.toLowerCase();
 
   // IPv6 loopback / unspecified / link-local / unique-local.
-  if (a === '::1' || a === '::' || a.startsWith('fe80:') || a.startsWith('fc') || a.startsWith('fd')) {
+  if (
+    a === '::1' ||
+    a === '::' ||
+    a.startsWith('fe80:') ||
+    a.startsWith('fc') ||
+    a.startsWith('fd')
+  ) {
     return true;
   }
   // IPv4-mapped IPv6 (::ffff:127.0.0.1) — recurse on the embedded IPv4 part.
@@ -47,12 +53,14 @@ export function isDisallowedAddress(address: string): boolean {
   return false;
 }
 
-const DISALLOWED_HOSTNAME_RE = /(^|\.)(localhost|local|internal|intranet|lan)$/i;
+const DISALLOWED_HOSTNAME_RE =
+  /(^|\.)(localhost|local|internal|intranet|lan)$/i;
 
 /** Hostname-level check, before any DNS lookup even happens. */
 export function isDisallowedHostname(hostname: string): boolean {
   const h = hostname.toLowerCase().replace(/\.$/, '');
-  if (h === 'localhost' || h === '0.0.0.0' || h === '[::1]' || h === '::1') return true;
+  if (h === 'localhost' || h === '0.0.0.0' || h === '[::1]' || h === '::1')
+    return true;
   if (DISALLOWED_HOSTNAME_RE.test(h)) return true;
   if (isDisallowedAddress(h)) return true;
   return false;
@@ -94,7 +102,10 @@ function firstMatch(html: string, patterns: RegExp[]): string | null {
  * (no DOM parser dependency) since we only need four well-known tags and
  * the input is a size-capped HTML string, not something we execute.
  */
-export function parseOpenGraph(html: string, sourceUrl: string): LinkPreviewData {
+export function parseOpenGraph(
+  html: string,
+  sourceUrl: string,
+): LinkPreviewData {
   const metaContent = (prop: string) =>
     new RegExp(
       `<meta[^>]+(?:property|name)=["']${prop}["'][^>]*content=["']([^"']*)["']`,
@@ -107,16 +118,24 @@ export function parseOpenGraph(html: string, sourceUrl: string): LinkPreviewData
     );
 
   const title =
-    firstMatch(html, [metaContent('og:title'), metaContentReversed('og:title')]) ??
-    firstMatch(html, [/<title[^>]*>([^<]*)<\/title>/i]);
+    firstMatch(html, [
+      metaContent('og:title'),
+      metaContentReversed('og:title'),
+    ]) ?? firstMatch(html, [/<title[^>]*>([^<]*)<\/title>/i]);
   const description = firstMatch(html, [
     metaContent('og:description'),
     metaContentReversed('og:description'),
     metaContent('description'),
     metaContentReversed('description'),
   ]);
-  const image = firstMatch(html, [metaContent('og:image'), metaContentReversed('og:image')]);
-  const siteName = firstMatch(html, [metaContent('og:site_name'), metaContentReversed('og:site_name')]);
+  const image = firstMatch(html, [
+    metaContent('og:image'),
+    metaContentReversed('og:image'),
+  ]);
+  const siteName = firstMatch(html, [
+    metaContent('og:site_name'),
+    metaContentReversed('og:site_name'),
+  ]);
 
   let absoluteImage = image;
   if (image) {

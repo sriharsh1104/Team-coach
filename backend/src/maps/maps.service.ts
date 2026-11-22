@@ -97,7 +97,9 @@ export class MapsService {
     return membership;
   }
 
-  private normalizeTier(tier: string | undefined): 'primary' | 'secondary' | 'extra' {
+  private normalizeTier(
+    tier: string | undefined,
+  ): 'primary' | 'secondary' | 'extra' {
     if (tier === 'primary' || tier === 'secondary') return tier;
     return 'extra';
   }
@@ -129,7 +131,9 @@ export class MapsService {
       : [[], [], []];
 
     const byKey = new Map(
-      overrides.map((row) => [`${row.mapId}:${row.slot}`, row.fileKey] as const),
+      overrides.map(
+        (row) => [`${row.mapId}:${row.slot}`, row.fileKey] as const,
+      ),
     );
 
     const resolve = (mapId: string, slot: string, fallbackPath: string) => {
@@ -176,11 +180,7 @@ export class MapsService {
         drops: [primary, secondary, ...extras],
         vendingMachines: map.vendingMachines.map((machine) => ({
           ...machine,
-          imageUrl: resolve(
-            map.id,
-            `vending:${machine.id}`,
-            machine.imagePath,
-          ),
+          imageUrl: resolve(map.id, `vending:${machine.id}`, machine.imagePath),
         })),
       };
     });
@@ -196,8 +196,7 @@ export class MapsService {
         y: d.y,
         isCustomDrop: true,
       }));
-      const primary =
-        dropDtos.find((d) => d.tier === 'primary') ??
+      const primary = dropDtos.find((d) => d.tier === 'primary') ??
         dropDtos[0] ?? {
           id: `${map.id}-primary`,
           name: 'Primary drop',
@@ -208,8 +207,9 @@ export class MapsService {
           y: 0.5,
           isCustomDrop: true,
         };
-      const secondary =
-        dropDtos.find((d) => d.tier === 'secondary' && d.id !== primary.id) ??
+      const secondary = dropDtos.find(
+        (d) => d.tier === 'secondary' && d.id !== primary.id,
+      ) ??
         dropDtos.find((d) => d.id !== primary.id) ?? {
           id: `${map.id}-secondary`,
           name: 'Secondary drop',

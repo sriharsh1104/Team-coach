@@ -185,6 +185,7 @@ export class AuthController {
       hasPassword: !!user.passwordHash,
       hasGoogle: !!user.googleId,
       twoFactorEnabled: user.twoFactorEnabled,
+      isPlatformAdmin: user.isPlatformAdmin,
       org: session.org,
       guild: session.guild,
     };

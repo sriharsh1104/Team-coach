@@ -7,7 +7,12 @@ import {
   resetDatabase,
   listenOnEphemeralPort,
 } from './utils/test-app';
-import { signup, createOrgAs, joinOrgAs, changeMemberRoleAs } from './utils/fixtures';
+import {
+  signup,
+  createOrgAs,
+  joinOrgAs,
+  changeMemberRoleAs,
+} from './utils/fixtures';
 import {
   connectSocket,
   connectAndExpectRejection,
@@ -93,7 +98,11 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
 
     it('SECURITY: rejects a token sent only as a query-string param, even a valid one', async () => {
       const { player } = await setUpOrgWithTwoPlayers();
-      await connectViaQueryTokenAndExpectRejection(baseUrl, player.accessToken, '/voice');
+      await connectViaQueryTokenAndExpectRejection(
+        baseUrl,
+        player.accessToken,
+        '/voice',
+      );
     });
   });
 
@@ -169,11 +178,22 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
   describe('Disconnect notifications', () => {
     it('notifies the rest of the org when a peer disconnects', async () => {
       const { coach, player } = await setUpOrgWithTwoPlayers();
-      const coachSocket = await connectSocket(baseUrl, coach.accessToken, '/voice');
-      const playerSocket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      const coachSocket = await connectSocket(
+        baseUrl,
+        coach.accessToken,
+        '/voice',
+      );
+      const playerSocket = await connectSocket(
+        baseUrl,
+        player.accessToken,
+        '/voice',
+      );
       openSockets.push(coachSocket);
 
-      const peerLeft = waitForEvent<{ userId: string }>(coachSocket, 'peerLeft');
+      const peerLeft = waitForEvent<{ userId: string }>(
+        coachSocket,
+        'peerLeft',
+      );
       playerSocket.disconnect();
       const payload = await peerLeft;
       expect(payload.userId).toBe(player.user.id);
@@ -183,8 +203,16 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       const { player: playerA } = await setUpOrgWithTwoPlayers();
       const { player: playerB } = await setUpOrgWithTwoPlayers();
 
-      const socketA = await connectSocket(baseUrl, playerA.accessToken, '/voice');
-      const socketB = await connectSocket(baseUrl, playerB.accessToken, '/voice');
+      const socketA = await connectSocket(
+        baseUrl,
+        playerA.accessToken,
+        '/voice',
+      );
+      const socketB = await connectSocket(
+        baseUrl,
+        playerB.accessToken,
+        '/voice',
+      );
       openSockets.push(socketB);
 
       const bShouldNotHear = assertNoEvent(socketB, 'peerLeft');
@@ -196,24 +224,50 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
   describe('Hand raise + kick (room-level signaling)', () => {
     it('broadcasts hand raise (and lowering) to the rest of the org', async () => {
       const { coach, player } = await setUpOrgWithTwoPlayers();
-      const coachSocket = await connectSocket(baseUrl, coach.accessToken, '/voice');
-      const playerSocket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      const coachSocket = await connectSocket(
+        baseUrl,
+        coach.accessToken,
+        '/voice',
+      );
+      const playerSocket = await connectSocket(
+        baseUrl,
+        player.accessToken,
+        '/voice',
+      );
       openSockets.push(coachSocket, playerSocket);
 
-      const raised = waitForEvent<{ userId: string; raised: boolean }>(coachSocket, 'handRaised');
-      const ack = await emitAck<{ raised: boolean }>(playerSocket, 'setHandRaised', { raised: true });
+      const raised = waitForEvent<{ userId: string; raised: boolean }>(
+        coachSocket,
+        'handRaised',
+      );
+      const ack = await emitAck<{ raised: boolean }>(
+        playerSocket,
+        'setHandRaised',
+        { raised: true },
+      );
       expect(ack).toEqual({ raised: true });
       expect(await raised).toEqual({ userId: player.user.id, raised: true });
 
-      const lowered = waitForEvent<{ userId: string; raised: boolean }>(coachSocket, 'handRaised');
+      const lowered = waitForEvent<{ userId: string; raised: boolean }>(
+        coachSocket,
+        'handRaised',
+      );
       await emitAck(playerSocket, 'setHandRaised', { raised: false });
       expect(await lowered).toEqual({ userId: player.user.id, raised: false });
     });
 
     it('SECURITY: a plain player cannot kick anyone', async () => {
       const { coach, player } = await setUpOrgWithTwoPlayers();
-      const coachSocket = await connectSocket(baseUrl, coach.accessToken, '/voice');
-      const playerSocket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      const coachSocket = await connectSocket(
+        baseUrl,
+        coach.accessToken,
+        '/voice',
+      );
+      const playerSocket = await connectSocket(
+        baseUrl,
+        player.accessToken,
+        '/voice',
+      );
       openSockets.push(coachSocket, playerSocket);
 
       const coachStaysConnected = assertNoEvent(coachSocket, 'kicked');
@@ -228,17 +282,30 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
 
     it('the org owner/coach can kick: target gets "kicked", is disconnected, and the room sees peerLeft', async () => {
       const { coach, player } = await setUpOrgWithTwoPlayers();
-      const coachSocket = await connectSocket(baseUrl, coach.accessToken, '/voice');
-      const playerSocket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      const coachSocket = await connectSocket(
+        baseUrl,
+        coach.accessToken,
+        '/voice',
+      );
+      const playerSocket = await connectSocket(
+        baseUrl,
+        player.accessToken,
+        '/voice',
+      );
       openSockets.push(coachSocket, playerSocket);
 
       const kicked = waitForEvent<{ by: string }>(playerSocket, 'kicked');
-      const peerLeft = waitForEvent<{ userId: string }>(coachSocket, 'peerLeft');
+      const peerLeft = waitForEvent<{ userId: string }>(
+        coachSocket,
+        'peerLeft',
+      );
       const playerDisconnected = new Promise<void>((resolve) =>
         playerSocket.once('disconnect', () => resolve()),
       );
 
-      const ack = await emitAck<{ kicked: number }>(coachSocket, 'kick', { userId: player.user.id });
+      const ack = await emitAck<{ kicked: number }>(coachSocket, 'kick', {
+        userId: player.user.id,
+      });
       expect(ack).toEqual({ kicked: 1 });
       expect(await kicked).toEqual({ by: 'Coach' });
       expect(await peerLeft).toEqual({ userId: player.user.id });
@@ -255,7 +322,10 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
           transports: ['websocket'],
           reconnection: false,
         });
-        const timer = setTimeout(() => reject(new Error('connect timeout')), 5000);
+        const timer = setTimeout(
+          () => reject(new Error('connect timeout')),
+          5000,
+        );
         socket.on('connect', () => {
           clearTimeout(timer);
           resolve(socket);
@@ -273,18 +343,19 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       const playerSocket = await connectGuild(player.accessToken);
       openSockets.push(coachSocket, playerSocket);
 
-      const host = await emitAck<{ canModerate: boolean; userId: string; max: number }>(
-        coachSocket,
-        'getVoiceState',
-      );
+      const host = await emitAck<{
+        canModerate: boolean;
+        userId: string;
+        max: number;
+      }>(coachSocket, 'getVoiceState');
       expect(host.canModerate).toBe(true);
       expect(host.userId).toBe(coach.user.id);
       expect(host.max).toBe(50);
 
-      const member = await emitAck<{ canModerate: boolean; moderatorIds: string[] }>(
-        playerSocket,
-        'getVoiceState',
-      );
+      const member = await emitAck<{
+        canModerate: boolean;
+        moderatorIds: string[];
+      }>(playerSocket, 'getVoiceState');
       expect(member.canModerate).toBe(false);
       expect(member.moderatorIds).toEqual([coach.user.id]);
     });
@@ -292,7 +363,11 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
     it('keeps guild voice separate from team voice (a team socket never sees guild rooms)', async () => {
       const { coach, player } = await setUpOrgWithTwoPlayers();
       const guildSocket = await connectGuild(coach.accessToken);
-      const teamSocket = await connectSocket(baseUrl, player.accessToken, '/voice');
+      const teamSocket = await connectSocket(
+        baseUrl,
+        player.accessToken,
+        '/voice',
+      );
       openSockets.push(guildSocket, teamSocket);
 
       const leftTeam = assertNoEvent(teamSocket, 'peerLeft');
@@ -329,12 +404,21 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       const playerSocket = await connectGuild(player.accessToken);
       openSockets.push(coachSocket, playerSocket);
 
-      let next = waitForEvent<{ mutedIds: string[] }>(playerSocket, 'voiceState');
-      await emitAck(coachSocket, 'muteUser', { userId: player.user.id, muted: true });
+      let next = waitForEvent<{ mutedIds: string[] }>(
+        playerSocket,
+        'voiceState',
+      );
+      await emitAck(coachSocket, 'muteUser', {
+        userId: player.user.id,
+        muted: true,
+      });
       expect((await next).mutedIds).toEqual([player.user.id]);
 
       next = waitForEvent<{ mutedIds: string[] }>(playerSocket, 'voiceState');
-      await emitAck(coachSocket, 'muteUser', { userId: player.user.id, muted: false });
+      await emitAck(coachSocket, 'muteUser', {
+        userId: player.user.id,
+        muted: false,
+      });
       expect((await next).mutedIds).toEqual([]);
 
       // listen-only, then give this one person the mic back. muteAll's own
@@ -346,7 +430,10 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       await next;
 
       next = waitForEvent<{ mutedIds: string[] }>(playerSocket, 'voiceState');
-      await emitAck(coachSocket, 'muteUser', { userId: player.user.id, muted: false });
+      await emitAck(coachSocket, 'muteUser', {
+        userId: player.user.id,
+        muted: false,
+      });
       expect((await next).mutedIds).toEqual([]);
     });
 
@@ -357,9 +444,16 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       openSockets.push(coachSocket, playerSocket);
 
       const coachUnaffected = assertNoEvent(coachSocket, 'voiceState');
-      await expect(emitAck(playerSocket, 'muteAll', undefined, 2000)).rejects.toBeTruthy();
       await expect(
-        emitAck(playerSocket, 'muteUser', { userId: coach.user.id, muted: true }, 2000),
+        emitAck(playerSocket, 'muteAll', undefined, 2000),
+      ).rejects.toBeTruthy();
+      await expect(
+        emitAck(
+          playerSocket,
+          'muteUser',
+          { userId: coach.user.id, muted: true },
+          2000,
+        ),
       ).rejects.toBeTruthy();
       await expect(
         emitAck(playerSocket, 'kick', { userId: coach.user.id }, 2000),
@@ -372,7 +466,12 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       const { coach, org } = await setUpOrgWithTwoPlayers();
       const other = await signup(server, { name: 'Second Host' });
       await joinOrgAs(server, other.accessToken, org.rosterCode);
-      await changeMemberRoleAs(server, coach.accessToken, other.user.id, 'COACH');
+      await changeMemberRoleAs(
+        server,
+        coach.accessToken,
+        other.user.id,
+        'COACH',
+      );
       const a = await connectGuild(coach.accessToken);
       const b = await connectGuild(other.accessToken);
       openSockets.push(a, b);

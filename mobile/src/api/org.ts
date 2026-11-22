@@ -24,14 +24,40 @@ export function joinOrg(code: {
     .then((res) => res.data);
 }
 
-/** Guild invite — guild seat only (orgCode / guild referralToken). */
+/** Guild invite — guild seat only (orgId from browse / orgCode / referralToken). */
 export function joinGuild(code: {
+  orgId?: string;
   orgCode?: string;
   referralToken?: string;
   invitedByUserId?: string;
 }) {
   return apiClient
     .post<GuildJoinResponse>('/orgs/guild/join', code)
+    .then((res) => res.data);
+}
+
+export type BrowseGuild = {
+  id: string;
+  name: string;
+  memberCount: number;
+  rosterCount: number;
+  createdAt: string;
+};
+
+/** Guilds you can join when you are not in one yet. */
+export function browseGuilds(q?: string) {
+  return apiClient
+    .get<{ guilds: BrowseGuild[] }>('/orgs/guild/browse', {
+      params: q?.trim() ? { q: q.trim() } : undefined,
+      skipErrorToast: true,
+    } as Record<string, unknown>)
+    .then((res) => res.data);
+}
+
+/** Leave current guild and drop that org’s roster seat. */
+export function leaveGuild() {
+  return apiClient
+    .post<{ left: boolean; orgId: string; name: string }>('/orgs/guild/leave')
     .then((res) => res.data);
 }
 

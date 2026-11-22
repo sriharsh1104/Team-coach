@@ -42,7 +42,11 @@ export function sharedStylesFactory(c: ThemeColors) {
     input: {
       borderWidth: 1,
       borderColor: c.border,
-      backgroundColor: 'rgba(0,0,0,0.28)',
+      // Was a hardcoded rgba(0,0,0,0.28), which is a dark well under dark
+      // text on the white and lavender palettes. `surface` is already what
+      // every other field in the app uses (OtpBoxes, ScheduleDateTimeField,
+      // ReminderComposer), and it tracks the theme.
+      backgroundColor: c.surface,
       borderRadius: 12,
       paddingHorizontal: 14,
       paddingVertical: 13,
@@ -67,12 +71,16 @@ export function sharedStylesFactory(c: ThemeColors) {
       fontWeight: '700' as const,
       fontSize: 16,
     },
+    // Both of these were white overlays — visible on the black palette, all
+    // but invisible on white and lavender, where a white wash over a light
+    // background leaves no card edge at all. `surface` is the palette's own
+    // raised tone and already inverts per theme.
     card: {
       borderRadius: 16,
       padding: 16,
-      backgroundColor: 'rgba(255,255,255,0.045)',
+      backgroundColor: c.surface,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
+      borderColor: c.border,
     },
     listRow: {
       flexDirection: 'row' as const,
@@ -81,9 +89,9 @@ export function sharedStylesFactory(c: ThemeColors) {
       paddingHorizontal: 12,
       marginBottom: 6,
       borderRadius: 12,
-      backgroundColor: 'rgba(255,255,255,0.035)',
+      backgroundColor: c.surface,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.05)',
+      borderColor: c.border,
     },
     link: {
       marginTop: 16,

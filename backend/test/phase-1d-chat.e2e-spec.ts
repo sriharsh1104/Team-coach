@@ -51,7 +51,7 @@ describe('Phase 1D — Chat (e2e)', () => {
     return { coach, org, player };
   }
 
-  describe('GET /chat/messages respects the org\'s historyVisibleToNewMembers setting', () => {
+  describe("GET /chat/messages respects the org's historyVisibleToNewMembers setting", () => {
     it('hides messages from before a member joined once the owner turns history off, and restores them when turned back on', async () => {
       const coach = await signup(server, { name: 'Coach' });
       const org = await createOrgAs(server, coach.accessToken, 'COACH');
@@ -155,7 +155,10 @@ describe('Phase 1D — Chat (e2e)', () => {
       const upload = await request(server)
         .post('/chat/media')
         .set('Authorization', `Bearer ${coach.accessToken}`)
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
       expect(upload.body.mediaUrl).toContain('/chat/files/');
       expect(upload.body.mediaPostId).toEqual(expect.any(String));
@@ -184,7 +187,10 @@ describe('Phase 1D — Chat (e2e)', () => {
         // localMediaType resolves it the same way a real crafted upload
         // would — the point of this test is the response headers, not the
         // actual bytes, which is why this still reaches the download route.
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
 
       // Local storage in test env (no Cloudinary creds) returns a relative
@@ -196,13 +202,16 @@ describe('Phase 1D — Chat (e2e)', () => {
       expect(download.headers['x-content-type-options']).toBe('nosniff');
     });
 
-    it("a chat file link re-scoped to a viewer who has since left the org stops working for them, even though the original uploader is still a member", async () => {
+    it('a chat file link re-scoped to a viewer who has since left the org stops working for them, even though the original uploader is still a member', async () => {
       const { coach, org, player } = await setUpOrgWithPlayer();
 
       const upload = await request(server)
         .post('/chat/media')
         .set('Authorization', `Bearer ${coach.accessToken}`)
-        .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+        .attach('file', TINY_JPEG, {
+          filename: 'shot.jpg',
+          contentType: 'image/jpeg',
+        })
         .expect(201);
 
       // The message as it would be persisted by ChatGateway's message:send —
@@ -240,7 +249,9 @@ describe('Phase 1D — Chat (e2e)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .send({ targetUserId: player.user.id })
         .expect(201);
-      await prisma.guildMembership.deleteMany({ where: { userId: player.user.id } });
+      await prisma.guildMembership.deleteMany({
+        where: { userId: player.user.id },
+      });
 
       // The link scoped to the now-departed player is rejected...
       await request(server).get(playerScopedUrl).expect(404);
@@ -320,7 +331,11 @@ describe('Phase 1D — Chat (e2e)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
       expect(page1.body.map((m: any) => m.text)).toEqual([
-        'msg-0', 'msg-1', 'msg-2', 'msg-3', 'msg-4',
+        'msg-0',
+        'msg-1',
+        'msg-2',
+        'msg-3',
+        'msg-4',
       ]);
 
       // Ask for anything older than msg-3 — should get only msg-0..msg-2.
@@ -330,7 +345,9 @@ describe('Phase 1D — Chat (e2e)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
       expect(page2.body.map((m: any) => m.text)).toEqual([
-        'msg-0', 'msg-1', 'msg-2',
+        'msg-0',
+        'msg-1',
+        'msg-2',
       ]);
     });
   });
@@ -390,7 +407,11 @@ describe('Phase 1D — Chat (e2e)', () => {
       });
 
       await prisma.chatMessage.create({
-        data: { orgId: membership.orgId, senderId: player.user.id, text: 'just text' },
+        data: {
+          orgId: membership.orgId,
+          senderId: player.user.id,
+          text: 'just text',
+        },
       });
       await prisma.chatMessage.create({
         data: {
@@ -414,7 +435,10 @@ describe('Phase 1D — Chat (e2e)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
       expect(res.body).toHaveLength(2);
-      expect(res.body.map((m: any) => m.mediaType).sort()).toEqual(['IMAGE', 'VIDEO']);
+      expect(res.body.map((m: any) => m.mediaType).sort()).toEqual([
+        'IMAGE',
+        'VIDEO',
+      ]);
     });
 
     it("SECURITY: never returns another channel's or another org's media", async () => {
@@ -452,7 +476,11 @@ describe('Phase 1D — Chat (e2e)', () => {
       });
 
       await prisma.chatMessage.create({
-        data: { orgId: membership.orgId, senderId: player.user.id, text: 'gg no re' },
+        data: {
+          orgId: membership.orgId,
+          senderId: player.user.id,
+          text: 'gg no re',
+        },
       });
       await prisma.chatMessage.create({
         data: {
@@ -498,7 +526,10 @@ describe('Phase 1D — Chat (e2e)', () => {
         .expect(200);
 
       expect(res.body.channels).toHaveLength(1);
-      expect(res.body.channels[0]).toMatchObject({ channelKey: 'org', type: 'ORG' });
+      expect(res.body.channels[0]).toMatchObject({
+        channelKey: 'org',
+        type: 'ORG',
+      });
       expect(res.body.teammates).toHaveLength(1);
       expect(res.body.teammates[0].userId).toBe(player.user.id);
       expect(res.body.teammates[0].channelKey).toMatch(/^dm:/);
@@ -527,14 +558,19 @@ describe('Phase 1D — Chat (e2e)', () => {
       await emitAck(coachSocket, 'channel:join', { channelKey: dmChannelKey });
       await emitAck(playerSocket, 'channel:join', { channelKey: dmChannelKey });
       const received = waitForEvent(playerSocket, 'message:new');
-      coachSocket.emit('message:send', { channelKey: dmChannelKey, text: 'hey, got a sec?' });
+      coachSocket.emit('message:send', {
+        channelKey: dmChannelKey,
+        text: 'hey, got a sec?',
+      });
       await received;
 
       const res = await request(server)
         .get('/chat/channels')
         .set('Authorization', `Bearer ${player.accessToken}`)
         .expect(200);
-      const dmEntry = res.body.channels.find((c: any) => c.channelKey === dmChannelKey);
+      const dmEntry = res.body.channels.find(
+        (c: any) => c.channelKey === dmChannelKey,
+      );
       expect(dmEntry).toBeDefined();
       expect(dmEntry.unreadCount).toBe(1);
       expect(dmEntry.lastPreview).toBe('hey, got a sec?');
@@ -576,7 +612,10 @@ describe('Phase 1D — Chat (e2e)', () => {
 
       playerSocket.emit('message:send', { text: 'Ready for scrim at 8pm?' });
 
-      const [fromCoach, fromSender] = await Promise.all([coachReceived, senderReceived]);
+      const [fromCoach, fromSender] = await Promise.all([
+        coachReceived,
+        senderReceived,
+      ]);
       expect(fromCoach.text).toBe('Ready for scrim at 8pm?');
       expect(fromCoach.senderName).toBe('Player');
       expect(fromSender.id).toBe(fromCoach.id);
@@ -701,7 +740,10 @@ describe('Phase 1D — Chat (e2e)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
       expect(res.body).toHaveLength(1);
-      expect(res.body[0]).toMatchObject({ userId: player.user.id, name: 'Player' });
+      expect(res.body[0]).toMatchObject({
+        userId: player.user.id,
+        name: 'Player',
+      });
       expect(res.body[0].lastReadAt).toEqual(expect.any(String));
 
       // The requester's own read-state is never included in their own list.
@@ -791,7 +833,7 @@ describe('Phase 1D — Chat (e2e)', () => {
       expect(receipts.body[0].userId).toBe(player.user.id);
     });
 
-    it("SECURITY: never broadcasts a chat:delivered event to a socket in a different org", async () => {
+    it('SECURITY: never broadcasts a chat:delivered event to a socket in a different org', async () => {
       const { player: playerA } = await setUpOrgWithPlayer();
       const { player: playerB } = await setUpOrgWithPlayer();
       const socketA = await connectSocket(baseUrl, playerA.accessToken);
@@ -828,7 +870,7 @@ describe('Phase 1D — Chat (e2e)', () => {
       expect(receipts.body[0].userId).toBe(player.user.id);
     });
 
-    it("SECURITY: never broadcasts a chat:read event to a socket in a different org", async () => {
+    it('SECURITY: never broadcasts a chat:read event to a socket in a different org', async () => {
       const { player: playerA } = await setUpOrgWithPlayer();
       const { player: playerB } = await setUpOrgWithPlayer();
       const socketA = await connectSocket(baseUrl, playerA.accessToken);

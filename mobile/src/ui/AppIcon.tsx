@@ -62,7 +62,8 @@ export type AppIconName =
   | 'play'
   | 'pause'
   | 'chatbubble-outline'
-  | 'game-controller-outline';
+  | 'game-controller-outline'
+  | 'shield-outline';
 
 type Props = {
   name: AppIconName;
@@ -227,6 +228,12 @@ const ICONS: Record<AppIconName, Renderer> = {
       <Circle cx="12" cy="12" r="10" stroke={c} strokeWidth={2} />
       <Path d="M12 16v-4" stroke={c} strokeWidth={2} strokeLinecap="round" />
       <Line x1="12" y1="8" x2="12.01" y2="8" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'shield-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3l7 3v5.5c0 4.3-2.9 8.1-7 9.5-4.1-1.4-7-5.2-7-9.5V6l7-3z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M9 12l2 2 4-4" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   ),
   'crown-outline': (c, s) => (

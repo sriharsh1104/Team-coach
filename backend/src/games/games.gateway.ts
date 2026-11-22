@@ -13,10 +13,18 @@ import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatService } from '../chat/chat.service';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
-import { PushMessage, PushNotificationService } from '../common/push-notification.service';
+import {
+  PushMessage,
+  PushNotificationService,
+} from '../common/push-notification.service';
 import { WsRateLimiter } from '../common/ws-rate-limiter';
 import { corsOrigin } from '../common/cors-origin';
-import { GAME_CATALOG, GameKind, GamesService, RoomView } from './games.service';
+import {
+  GAME_CATALOG,
+  GameKind,
+  GamesService,
+  RoomView,
+} from './games.service';
 
 /**
  * One user may notify one specific teammate for the *same room* at most once
@@ -111,7 +119,9 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
         const token = socket.handshake.auth?.token as string | undefined;
         if (!token) throw new Error('No token provided');
         const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
-        const user = await this.prisma.user.findUniqueOrThrow({ where: { id: payload.sub } });
+        const user = await this.prisma.user.findUniqueOrThrow({
+          where: { id: payload.sub },
+        });
         if (user.tokenVersion !== payload.tokenVersion) {
           throw new Error('Session has been logged out');
         }
@@ -127,7 +137,9 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
         await socket.join(this.userChannel(user.id));
         next();
       } catch (err) {
-        this.logger.warn(`Rejected games connection: ${(err as Error).message}`);
+        this.logger.warn(
+          `Rejected games connection: ${(err as Error).message}`,
+        );
         next(err as Error);
       }
     });
@@ -179,18 +191,25 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   private guard(client: Socket): GamesSocketData {
-    if (!this.limiter.allow(client.id)) throw new Error('Too many requests — slow down');
+    if (!this.limiter.allow(client.id))
+      throw new Error('Too many requests — slow down');
     const data = client.data as GamesSocketData;
     if (!data?.orgId) throw new Error('Not connected');
     return data;
   }
 
-  private async run<T>(client: Socket, fn: (data: GamesSocketData) => Promise<T> | T): Promise<Ack<T>> {
+  private async run<T>(
+    client: Socket,
+    fn: (data: GamesSocketData) => Promise<T> | T,
+  ): Promise<Ack<T>> {
     try {
       const data = this.guard(client);
       return { ok: true, room: await fn(data) };
     } catch (err) {
-      return { ok: false, error: (err as Error).message || 'Something went wrong' };
+      return {
+        ok: false,
+        error: (err as Error).message || 'Something went wrong',
+      };
     }
   }
 
@@ -224,7 +243,10 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('room:join')
-  onJoin(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId?: string }) {
+  onJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
     return this.run(client, async (data) => {
       if (!body?.roomId) throw new Error('roomId is required');
       // Join the Socket.IO room *before* the broadcast so this client (and
@@ -250,13 +272,23 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('room:start')
-  onStart(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId?: string }) {
-    return this.run(client, (data) => this.games.startGame(this.roomIdOf(body, data), data.userId));
+  onStart(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.startGame(this.roomIdOf(body, data), data.userId),
+    );
   }
 
   @SubscribeMessage('room:rematch')
-  onRematch(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId?: string }) {
-    return this.run(client, (data) => this.games.rematch(this.roomIdOf(body, data), data.userId));
+  onRematch(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.rematch(this.roomIdOf(body, data), data.userId),
+    );
   }
 
   /** Everyone in this org (roster + guild-only), minus the caller — the invite pool. */
@@ -264,16 +296,39 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     const [roster, guild] = await Promise.all([
       this.prisma.membership.findMany({
         where: { orgId },
-        select: { user: { select: { id: true, name: true, avatarUrl: true, expoPushToken: true } } },
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+              expoPushToken: true,
+            },
+          },
+        },
       }),
       this.prisma.guildMembership.findMany({
         where: { orgId },
-        select: { user: { select: { id: true, name: true, avatarUrl: true, expoPushToken: true } } },
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+              expoPushToken: true,
+            },
+          },
+        },
       }),
     ]);
     const byId = new Map<
       string,
-      { id: string; name: string; avatarUrl: string | null; expoPushToken: string | null }
+      {
+        id: string;
+        name: string;
+        avatarUrl: string | null;
+        expoPushToken: string | null;
+      }
     >();
     for (const row of [...roster, ...guild]) {
       if (row.user.id !== selfId) byId.set(row.user.id, row.user);
@@ -282,7 +337,11 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   /** Remaining cooldown (ms) before `fromId` may notify `targetId` for this room again; 0 = allowed. */
-  private notifyCooldownLeft(fromId: string, targetId: string, roomId: string): number {
+  private notifyCooldownLeft(
+    fromId: string,
+    targetId: string,
+    roomId: string,
+  ): number {
     const last = this.lastNotified.get(`${fromId}:${targetId}:${roomId}`);
     if (!last) return 0;
     return Math.max(0, last + NOTIFY_COOLDOWN_MS - Date.now());
@@ -291,7 +350,8 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   private pruneNotifyLog() {
     if (this.lastNotified.size < 500) return;
     const cutoff = Date.now() - NOTIFY_COOLDOWN_MS;
-    for (const [k, at] of this.lastNotified) if (at < cutoff) this.lastNotified.delete(k);
+    for (const [k, at] of this.lastNotified)
+      if (at < cutoff) this.lastNotified.delete(k);
   }
 
   /** Live event + offline queue + push for one target. Caller has already validated + rate-limited. */
@@ -307,7 +367,9 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     });
     // Offline right now → hold the invite and hand it over when they connect.
     if (!this.userSockets.get(target.id)?.size) {
-      const queue = (this.pendingInvites.get(target.id) ?? []).filter((i) => i.roomId !== room.id);
+      const queue = (this.pendingInvites.get(target.id) ?? []).filter(
+        (i) => i.roomId !== room.id,
+      );
       queue.push({
         roomId: room.id,
         fromUserId: data.userId,
@@ -343,7 +405,9 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (!list.length) return Promise.resolve();
     return this.push
       .send(list)
-      .catch((err) => this.logger.warn(`invite push failed: ${(err as Error).message}`));
+      .catch((err) =>
+        this.logger.warn(`invite push failed: ${(err as Error).message}`),
+      );
   }
 
   @SubscribeMessage('room:members')
@@ -351,7 +415,11 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     return this.run(client, async (data) => {
       const list = await this.orgCandidates(data.orgId, data.userId);
       return list
-        .map((u) => ({ userId: u.id, name: u.name, avatarUrl: u.avatarUrl ?? null }))
+        .map((u) => ({
+          userId: u.id,
+          name: u.name,
+          avatarUrl: u.avatarUrl ?? null,
+        }))
         .sort((a, b) => a.name.localeCompare(b.name));
     });
   }
@@ -363,17 +431,22 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   ) {
     return this.run(client, async (data) => {
       const room = this.games.roomOf(data.userId);
-      if (!room || room.id !== (body?.roomId ?? room.id)) throw new Error('You are not in that room');
+      if (!room || room.id !== (body?.roomId ?? room.id))
+        throw new Error('You are not in that room');
       const targetId = body?.userId?.trim();
-      if (!targetId || targetId === data.userId) throw new Error('Pick a teammate to invite');
+      if (!targetId || targetId === data.userId)
+        throw new Error('Pick a teammate to invite');
       const target = await this.prisma.user.findUnique({
         where: { id: targetId },
         select: { id: true, name: true, expoPushToken: true },
       });
       if (!target) throw new Error('Teammate not found');
       // Same-org check: the target must resolve to this org.
-      const ctx = await this.chatService.getChatContext(targetId).catch(() => null);
-      if (!ctx || ctx.orgId !== data.orgId) throw new Error('Teammate is not in your org');
+      const ctx = await this.chatService
+        .getChatContext(targetId)
+        .catch(() => null);
+      if (!ctx || ctx.orgId !== data.orgId)
+        throw new Error('Teammate is not in your org');
 
       const left = this.notifyCooldownLeft(data.userId, targetId, room.id);
       if (left > 0) {
@@ -392,15 +465,19 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
    * anyone this user already notified for *this room* within the cooldown window.
    */
   @SubscribeMessage('room:invite-all')
-  onInviteAll(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId?: string }) {
+  onInviteAll(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
     return this.run(client, async (data) => {
       const room = this.games.roomOf(data.userId);
-      if (!room || room.id !== (body?.roomId ?? room.id)) throw new Error('You are not in that room');
+      if (!room || room.id !== (body?.roomId ?? room.id))
+        throw new Error('You are not in that room');
       if (room.status !== 'lobby') throw new Error('Game already started');
       const inRoom = new Set(room.players.map((p) => p.userId));
-      const candidates = (await this.orgCandidates(data.orgId, data.userId)).filter(
-        (u) => !inRoom.has(u.id),
-      );
+      const candidates = (
+        await this.orgCandidates(data.orgId, data.userId)
+      ).filter((u) => !inRoom.has(u.id));
       this.pruneNotifyLog();
       const sentIds: string[] = [];
       const skippedIds: string[] = [];
@@ -429,8 +506,13 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('ludo:roll')
-  onLudoRoll(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId?: string }) {
-    return this.run(client, (data) => this.games.ludoRoll(this.roomIdOf(body, data), data.userId));
+  onLudoRoll(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.ludoRoll(this.roomIdOf(body, data), data.userId),
+    );
   }
 
   @SubscribeMessage('ludo:move')
@@ -439,23 +521,34 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     @MessageBody() body: { roomId?: string; tokenIndex?: number },
   ) {
     return this.run(client, (data) =>
-      this.games.ludoMove(this.roomIdOf(body, data), data.userId, Number(body?.tokenIndex)),
+      this.games.ludoMove(
+        this.roomIdOf(body, data),
+        data.userId,
+        Number(body?.tokenIndex),
+      ),
     );
   }
 
-  private roomIdOf(body: { roomId?: string } | undefined, data: GamesSocketData): string {
+  private roomIdOf(
+    body: { roomId?: string } | undefined,
+    data: GamesSocketData,
+  ): string {
     const id = body?.roomId?.trim() || this.games.roomOf(data.userId)?.id;
     if (!id) throw new Error('You are not in a room');
     return id;
   }
 
   private async rejoinSocketsOf(userId: string, roomId: string) {
-    const sockets = await this.server.in(this.userChannel(userId)).fetchSockets();
+    const sockets = await this.server
+      .in(this.userChannel(userId))
+      .fetchSockets();
     await Promise.all(sockets.map((s) => s.join(this.roomChannel(roomId))));
   }
 
   private async leaveSocketsOf(userId: string, roomId: string) {
-    const sockets = await this.server.in(this.userChannel(userId)).fetchSockets();
+    const sockets = await this.server
+      .in(this.userChannel(userId))
+      .fetchSockets();
     await Promise.all(sockets.map((s) => s.leave(this.roomChannel(roomId))));
   }
 

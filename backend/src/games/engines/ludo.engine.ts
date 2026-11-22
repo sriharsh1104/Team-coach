@@ -14,11 +14,21 @@
  */
 export type LudoColor = 'red' | 'green' | 'yellow' | 'blue';
 
-export const LUDO_COLORS: readonly LudoColor[] = ['red', 'green', 'yellow', 'blue'];
+export const LUDO_COLORS: readonly LudoColor[] = [
+  'red',
+  'green',
+  'yellow',
+  'blue',
+];
 export const LUDO_TRACK_LEN = 52;
 export const LUDO_HOME_STEP = 57;
 /** Absolute track index where each colour enters and starts counting. */
-export const LUDO_START: Record<LudoColor, number> = { red: 0, green: 13, yellow: 26, blue: 39 };
+export const LUDO_START: Record<LudoColor, number> = {
+  red: 0,
+  green: 13,
+  yellow: 26,
+  blue: 39,
+};
 /** Start squares + star squares: tokens here can't be captured. */
 export const LUDO_SAFE_SQUARES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
 
@@ -49,7 +59,9 @@ export function createLudoState(playerIds: string[]): LudoState {
   }
   // 2 players sit opposite each other (red vs yellow) so the board feels balanced.
   const seatColors: LudoColor[] =
-    playerIds.length === 2 ? ['red', 'yellow'] : LUDO_COLORS.slice(0, playerIds.length);
+    playerIds.length === 2
+      ? ['red', 'yellow']
+      : LUDO_COLORS.slice(0, playerIds.length);
   const colors: Record<string, LudoColor> = {};
   const tokens: Record<string, number[]> = {};
   playerIds.forEach((id, i) => {
@@ -87,7 +99,11 @@ export function canLeaveBase(dice: number): boolean {
   return dice === 1 || dice === 6;
 }
 
-export function movableTokens(state: LudoState, userId: string, dice: number): number[] {
+export function movableTokens(
+  state: LudoState,
+  userId: string,
+  dice: number,
+): number[] {
   const out: number[] = [];
   state.tokens[userId].forEach((step, i) => {
     if (step === LUDO_HOME_STEP) return;
@@ -108,7 +124,11 @@ export function rollDice(rng: () => number = Math.random): number {
  * Current player rolls. Returns the dice value. If nothing can move (or the
  * third consecutive 6), the turn passes automatically.
  */
-export function ludoRoll(state: LudoState, userId: string, dice: number): number {
+export function ludoRoll(
+  state: LudoState,
+  userId: string,
+  dice: number,
+): number {
   if (state.phase !== 'roll') throw new Error('Not time to roll');
   if (currentPlayer(state) !== userId) throw new Error('Not your turn');
   if (dice < 1 || dice > 6) throw new Error('Invalid dice');
@@ -144,10 +164,15 @@ export interface LudoMoveResult {
   extraTurn: boolean;
 }
 
-export function ludoMove(state: LudoState, userId: string, tokenIndex: number): LudoMoveResult {
+export function ludoMove(
+  state: LudoState,
+  userId: string,
+  tokenIndex: number,
+): LudoMoveResult {
   if (state.phase !== 'move') throw new Error('Roll first');
   if (currentPlayer(state) !== userId) throw new Error('Not your turn');
-  if (!state.movable.includes(tokenIndex)) throw new Error('That token cannot move');
+  if (!state.movable.includes(tokenIndex))
+    throw new Error('That token cannot move');
   const dice = state.dice!;
   const color = state.colors[userId];
   const tokens = state.tokens[userId];
@@ -156,7 +181,11 @@ export function ludoMove(state: LudoState, userId: string, tokenIndex: number): 
   tokens[tokenIndex] = to;
   state.version += 1;
 
-  const result: LudoMoveResult = { captured: [], reachedHome: false, extraTurn: false };
+  const result: LudoMoveResult = {
+    captured: [],
+    reachedHome: false,
+    extraTurn: false,
+  };
 
   const square = absoluteSquare(color, to);
   if (square !== null && !LUDO_SAFE_SQUARES.has(square)) {
@@ -182,7 +211,8 @@ export function ludoMove(state: LudoState, userId: string, tokenIndex: number): 
     return result;
   }
 
-  result.extraTurn = dice === 6 || result.captured.length > 0 || result.reachedHome;
+  result.extraTurn =
+    dice === 6 || result.captured.length > 0 || result.reachedHome;
   state.lastEvent = result.captured.length
     ? `Captured ${result.captured.length} token${result.captured.length > 1 ? 's' : ''}!`
     : result.reachedHome
@@ -238,5 +268,8 @@ export function ludoRemovePlayer(state: LudoState, userId: string): void {
 
 /** Steps-based progress (0..228) — used for ranking players who did not finish. */
 export function ludoProgress(state: LudoState, userId: string): number {
-  return (state.tokens[userId] ?? []).reduce((sum, s) => sum + Math.max(0, s + 1), 0);
+  return (state.tokens[userId] ?? []).reduce(
+    (sum, s) => sum + Math.max(0, s + 1),
+    0,
+  );
 }

@@ -84,7 +84,11 @@ export function connectViaQueryTokenAndExpectRejection(
     socket.on('connect', () => {
       clearTimeout(timer);
       socket.disconnect();
-      reject(new Error('expected rejection, but socket connected via query-string token'));
+      reject(
+        new Error(
+          'expected rejection, but socket connected via query-string token',
+        ),
+      );
     });
   });
 }
@@ -99,10 +103,12 @@ export function emitAck<T = any>(
   timeoutMs = 5000,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    socket.timeout(timeoutMs).emit(event, payload, (err: unknown, response: T) => {
-      if (err) reject(err);
-      else resolve(response);
-    });
+    socket
+      .timeout(timeoutMs)
+      .emit(event, payload, (err: unknown, response: T) => {
+        if (err) reject(err);
+        else resolve(response);
+      });
   });
 }
 

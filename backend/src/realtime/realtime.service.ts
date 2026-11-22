@@ -51,12 +51,10 @@ export class RealtimeService {
           this.listeners.set(orgId, (this.listeners.get(orgId) ?? 0) + 1);
 
           const heartbeat$ = interval(25_000).pipe(
-            map(
-              (): OrgRealtimeEvent => ({
-                type: 'heartbeat',
-                at: new Date().toISOString(),
-              }),
-            ),
+            map((): OrgRealtimeEvent => ({
+              type: 'heartbeat',
+              at: new Date().toISOString(),
+            })),
           );
 
           const sub = merge(channel.asObservable(), heartbeat$)

@@ -27,6 +27,7 @@ function toAuthUser(me: AuthUser): AuthUser {
     hasPassword: me.hasPassword,
     hasGoogle: me.hasGoogle,
     twoFactorEnabled: me.twoFactorEnabled,
+    isPlatformAdmin: me.isPlatformAdmin ?? false,
   };
 }
 

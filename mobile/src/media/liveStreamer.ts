@@ -4,10 +4,18 @@ import { Platform } from 'react-native';
 type NativeLiveStreamer = {
   start: (rtmpUrl: string, streamKey: string) => Promise<void>;
   stop: () => Promise<void>;
+  pause: () => Promise<void>;
+  resume: () => Promise<void>;
   isLive: () => boolean;
+  isPaused: () => boolean;
   addListener: (
-    event: 'onStarted' | 'onStopped' | 'onError',
-    listener: (event: { message?: string; code?: string; error?: string }) => void,
+    event: 'onStarted' | 'onStopped' | 'onError' | 'onPaused',
+    listener: (event: {
+      message?: string;
+      code?: string;
+      error?: string;
+      paused?: boolean;
+    }) => void,
   ) => { remove: () => void };
 };
 
@@ -41,8 +49,22 @@ export function stopLiveStream(): Promise<void> {
   return native.stop();
 }
 
+export function pauseLiveStream(): Promise<void> {
+  if (!native?.pause) return Promise.resolve();
+  return native.pause();
+}
+
+export function resumeLiveStream(): Promise<void> {
+  if (!native?.resume) return Promise.resolve();
+  return native.resume();
+}
+
 export function isLiveStreaming(): boolean {
   return !!native?.isLive();
+}
+
+export function isLivePaused(): boolean {
+  return !!native?.isPaused?.();
 }
 
 export function addLiveStartedListener(listener: () => void): () => void {
@@ -65,6 +87,16 @@ export function addLiveErrorListener(listener: (message: string) => void): () =>
   if (!native) return () => undefined;
   const sub = native.addListener('onError', (event) => {
     listener(event?.message || event?.error || 'Live stream error');
+  });
+  return () => sub.remove();
+}
+
+export function addLivePausedListener(
+  listener: (paused: boolean) => void,
+): () => void {
+  if (!native) return () => undefined;
+  const sub = native.addListener('onPaused', (event) => {
+    listener(!!event?.paused);
   });
   return () => sub.remove();
 }

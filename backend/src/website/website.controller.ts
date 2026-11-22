@@ -58,10 +58,7 @@ export class WebsiteController {
 
   @UseGuards(JwtAuthGuard)
   @Delete('tournament-records/:id')
-  remove(
-    @CurrentUser() user: { userId: string },
-    @Param('id') id: string,
-  ) {
+  remove(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
     return this.websiteService.removeTournamentRecord(user.userId, id);
   }
 }

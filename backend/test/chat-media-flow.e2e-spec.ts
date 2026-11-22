@@ -61,7 +61,10 @@ describe('Chat media send flow (e2e)', () => {
     const upload = await request(server)
       .post('/chat/media')
       .set('Authorization', `Bearer ${coach.accessToken}`)
-      .attach('file', TINY_JPEG, { filename: 'shot.jpg', contentType: 'image/jpeg' })
+      .attach('file', TINY_JPEG, {
+        filename: 'shot.jpg',
+        contentType: 'image/jpeg',
+      })
       .expect(201);
     expect(upload.body.mediaType).toBe('IMAGE');
     expect(upload.body.mediaUrl).toMatch(/^\/chat\/files\//);
@@ -72,7 +75,12 @@ describe('Chat media send flow (e2e)', () => {
     const ack = await emitAck<{ ok: boolean; id?: string; clientId?: string }>(
       coachSocket,
       'message:send',
-      { channelKey: 'org', mediaUrl: upload.body.mediaUrl, mediaType: 'IMAGE', clientId },
+      {
+        channelKey: 'org',
+        mediaUrl: upload.body.mediaUrl,
+        mediaType: 'IMAGE',
+        clientId,
+      },
     );
     expect(ack.ok).toBe(true);
     expect(ack.clientId).toBe(clientId);
@@ -105,7 +113,10 @@ describe('Chat media send flow (e2e)', () => {
     const upload = await request(server)
       .post('/chat/media')
       .set('Authorization', `Bearer ${coach.accessToken}`)
-      .attach('file', Buffer.from('not really mp4 bytes'), { filename: 'clip.mp4', contentType: 'video/mp4' })
+      .attach('file', Buffer.from('not really mp4 bytes'), {
+        filename: 'clip.mp4',
+        contentType: 'video/mp4',
+      })
       .expect(201);
     expect(upload.body.mediaType).toBe('VIDEO');
     expect(upload.body.mediaUrl).toMatch(/^\/chat\/files\//);

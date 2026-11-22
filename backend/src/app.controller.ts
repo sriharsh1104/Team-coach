@@ -16,6 +16,10 @@ export class AppController {
   // is alive and responsive.
   @Get('health')
   getHealth() {
-    return { status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() };
+    return {
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
   }
 }

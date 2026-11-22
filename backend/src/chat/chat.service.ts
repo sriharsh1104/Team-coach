@@ -8,7 +8,10 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { MembershipRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { PushNotificationService, PushMessage } from '../common/push-notification.service';
+import {
+  PushNotificationService,
+  PushMessage,
+} from '../common/push-notification.service';
 import { MediaStorageService } from '../media/media-storage.service';
 import { ChatPresenceTracker } from './chat-presence.tracker';
 
@@ -42,7 +45,10 @@ const MENTION_TOKEN_RE = /@([^\s@]+)/g;
 const ALL_MENTION_KEY = 'all';
 
 function normalizeIgnKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s~_\-.]+/g, '');
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s~_\-.]+/g, '');
 }
 
 function truncatePushBody(
@@ -159,7 +165,9 @@ export class ChatService {
         where: { userId, orgId },
       });
       if (!roster) {
-        throw new ForbiddenException('Roster chat is only for the esports roster');
+        throw new ForbiddenException(
+          'Roster chat is only for the esports roster',
+        );
       }
       return;
     }
@@ -181,7 +189,9 @@ export class ChatService {
       throw new ForbiddenException('Not a member of this DM');
     }
     const [peerGuild, peerRoster] = await Promise.all([
-      this.prisma.guildMembership.findFirst({ where: { userId: peerId, orgId } }),
+      this.prisma.guildMembership.findFirst({
+        where: { userId: peerId, orgId },
+      }),
       this.prisma.membership.findFirst({ where: { userId: peerId, orgId } }),
     ]);
     if (!peerGuild && !peerRoster) {
@@ -228,11 +238,18 @@ export class ChatService {
     // candidate for everyone else here) de-duplicated by user.
     const peerById = new Map<
       string,
-      { id: string; name: string; avatarUrl: string | null; inGameName: string | null }
+      {
+        id: string;
+        name: string;
+        avatarUrl: string | null;
+        inGameName: string | null;
+      }
     >();
     for (const m of rosterRows) peerById.set(m.user.id, m.user);
     for (const g of guildSeats) peerById.set(g.user.id, g.user);
-    const peers = [...peerById.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const peers = [...peerById.values()].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
 
     const [selfRoster, selfGuild] = await Promise.all([
       roster
@@ -265,7 +282,11 @@ export class ChatService {
     for (const m of channelMetas) {
       avatarByChannel.set(
         m.channelKey,
-        await this.resolveChannelAvatarUrl(m.avatarUrl, m.avatarFileKey, userId),
+        await this.resolveChannelAvatarUrl(
+          m.avatarUrl,
+          m.avatarFileKey,
+          userId,
+        ),
       );
     }
 
@@ -317,8 +338,7 @@ export class ChatService {
     // "Start new chat" / DM candidate pool — every guild member, roster or not.
     const teammates = peers.map(toMentionable);
 
-    const guildJoinedAt =
-      selfGuild?.createdAt ?? selfRoster?.createdAt;
+    const guildJoinedAt = selfGuild?.createdAt ?? selfRoster?.createdAt;
     const guildCutoff = guildJoinedAt
       ? await this.historyCutoffFor(orgId, GUILD_CHANNEL, guildJoinedAt)
       : undefined;
@@ -433,7 +453,9 @@ export class ChatService {
     let lowerBound = historyCutoff;
     if (clear?.clearedAt) {
       lowerBound =
-        !lowerBound || clear.clearedAt > lowerBound ? clear.clearedAt : lowerBound;
+        !lowerBound || clear.clearedAt > lowerBound
+          ? clear.clearedAt
+          : lowerBound;
     }
 
     const starredIds = opts?.starredOnly
@@ -499,19 +521,17 @@ export class ChatService {
     );
 
     return this.rescopeForViewer(
-      messages
-        .reverse()
-        .map((m) => ({
-          ...this.toResponse(
-            m,
-            m.sender.name,
-            roleByUserId.get(m.senderId),
-            m.replyToId ? replyMap.get(m.replyToId) : undefined,
-            reactionsByMessage.get(m.id),
-          ),
-          starred: starSet.has(m.id),
-          pinned: pinSet.has(m.id),
-        })),
+      messages.reverse().map((m) => ({
+        ...this.toResponse(
+          m,
+          m.sender.name,
+          roleByUserId.get(m.senderId),
+          m.replyToId ? replyMap.get(m.replyToId) : undefined,
+          reactionsByMessage.get(m.id),
+        ),
+        starred: starSet.has(m.id),
+        pinned: pinSet.has(m.id),
+      })),
       userId,
     );
   }
@@ -767,7 +787,8 @@ export class ChatService {
       });
     }
 
-    const reactions = (await this.loadReactions([messageId], userId)).get(messageId) ?? [];
+    const reactions =
+      (await this.loadReactions([messageId], userId)).get(messageId) ?? [];
     return {
       orgId: message.orgId,
       channelKey: message.channelKey,
@@ -801,7 +822,9 @@ export class ChatService {
     }
 
     const targets = [
-      ...new Set(toChannelKeys.map((k) => k?.trim()).filter((k): k is string => !!k)),
+      ...new Set(
+        toChannelKeys.map((k) => k?.trim()).filter((k): k is string => !!k),
+      ),
     ];
     if (targets.length === 0) {
       throw new BadRequestException('Pick at least one chat to forward to');
@@ -821,13 +844,19 @@ export class ChatService {
     }> = [];
     for (const target of targets) {
       try {
-        const { orgId, message } = await this.createMessage(userId, senderName, {
-          channelKey: target,
-          text: source.text ?? undefined,
-          mediaUrl: source.mediaUrl ?? undefined,
-          mediaType: (source.mediaType as 'IMAGE' | 'VIDEO' | 'AUDIO' | null) ?? undefined,
-          forwarded: true,
-        });
+        const { orgId, message } = await this.createMessage(
+          userId,
+          senderName,
+          {
+            channelKey: target,
+            text: source.text ?? undefined,
+            mediaUrl: source.mediaUrl ?? undefined,
+            mediaType:
+              (source.mediaType as 'IMAGE' | 'VIDEO' | 'AUDIO' | null) ??
+              undefined,
+            forwarded: true,
+          },
+        );
         results.push({ channelKey: target, ok: true, orgId, message });
       } catch (err) {
         results.push({
@@ -1097,7 +1126,9 @@ export class ChatService {
     let disappearAfterSec = input.disappearAfterSec;
     if (disappearAfterSec != null) {
       if (
-        !(DISAPPEAR_OPTIONS_SEC as readonly number[]).includes(disappearAfterSec)
+        !(DISAPPEAR_OPTIONS_SEC as readonly number[]).includes(
+          disappearAfterSec,
+        )
       ) {
         throw new BadRequestException('Invalid disappearing-message timer');
       }
@@ -1122,9 +1153,7 @@ export class ChatService {
       },
       update: {
         ...(description !== undefined ? { description } : {}),
-        ...(input.disappearAfterSec !== undefined
-          ? { disappearAfterSec }
-          : {}),
+        ...(input.disappearAfterSec !== undefined ? { disappearAfterSec } : {}),
         updatedById: userId,
       },
     });
@@ -1229,7 +1258,9 @@ export class ChatService {
       },
     });
     if (guild) return;
-    throw new ForbiddenException('Only coaches / owners can edit group settings');
+    throw new ForbiddenException(
+      'Only coaches / owners can edit group settings',
+    );
   }
 
   /**
@@ -1283,7 +1314,9 @@ export class ChatService {
       select: { id: true, channelKey: true, orgId: true },
     });
     if (rows.length === 0) {
-      return { deleted: [] as Array<{ id: string; channelKey: string; orgId: string }> };
+      return {
+        deleted: [] as Array<{ id: string; channelKey: string; orgId: string }>,
+      };
     }
     await this.prisma.chatMessage.deleteMany({
       where: { id: { in: rows.map((r) => r.id) } },
@@ -1400,10 +1433,7 @@ export class ChatService {
     });
   }
 
-  private preview(message: {
-    text: string | null;
-    mediaType: string | null;
-  }) {
+  private preview(message: { text: string | null; mediaType: string | null }) {
     if (message.text) return message.text.slice(0, 80);
     if (message.mediaType === 'IMAGE') return '📷 Photo';
     if (message.mediaType === 'VIDEO') return '🎬 Video';
@@ -1420,12 +1450,17 @@ export class ChatService {
     const tokens = extractMentionTokens(text);
     if (tokens.length === 0) return [];
 
-    const candidates = await this.loadMentionCandidates(orgId, channelKey, senderId);
+    const candidates = await this.loadMentionCandidates(
+      orgId,
+      channelKey,
+      senderId,
+    );
     if (candidates.length === 0) return [];
 
     // @all in a group chat (not a DM, where it'd be redundant) mentions
     // every other member — IGN or not.
-    const isGroupChannel = channelKey === ORG_CHANNEL || channelKey === GUILD_CHANNEL;
+    const isGroupChannel =
+      channelKey === ORG_CHANNEL || channelKey === GUILD_CHANNEL;
     if (
       isGroupChannel &&
       tokens.some((t) => normalizeIgnKey(t) === ALL_MENTION_KEY)
@@ -1515,7 +1550,9 @@ export class ChatService {
       if (this.presence.isViewing(u.id, channelKey)) continue;
       if (await this.isChannelMuted(u.id, orgId, channelKey)) continue;
       const ign = u.inGameName ?? 'you';
-      const allToken = tokens.find((t) => normalizeIgnKey(t) === ALL_MENTION_KEY);
+      const allToken = tokens.find(
+        (t) => normalizeIgnKey(t) === ALL_MENTION_KEY,
+      );
       const matched =
         allToken ??
         tokens.find(
@@ -1578,7 +1615,10 @@ export class ChatService {
         where: { orgId, userId: { not: senderId } },
         include: { user: { select: { expoPushToken: true } } },
       });
-      const byId = new Map<string, { userId: string; expoPushToken: string | null }>();
+      const byId = new Map<
+        string,
+        { userId: string; expoPushToken: string | null }
+      >();
       for (const member of guildMembers) {
         byId.set(member.userId, {
           userId: member.userId,
@@ -1619,19 +1659,28 @@ export class ChatService {
                 where: { userId: m.userId, orgId },
                 select: { createdAt: true },
               })
-            : (await this.prisma.guildMembership.findFirst({
+            : ((await this.prisma.guildMembership.findFirst({
                 where: { userId: m.userId, orgId },
                 select: { createdAt: true },
               })) ??
               (await this.prisma.membership.findFirst({
                 where: { userId: m.userId, orgId },
                 select: { createdAt: true },
-              }));
+              })));
         if (seat) {
-          cutoff = await this.historyCutoffFor(orgId, channelKey, seat.createdAt);
+          cutoff = await this.historyCutoffFor(
+            orgId,
+            channelKey,
+            seat.createdAt,
+          );
         }
       }
-      const unread = await this.countUnread(m.userId, orgId, channelKey, cutoff);
+      const unread = await this.countUnread(
+        m.userId,
+        orgId,
+        channelKey,
+        cutoff,
+      );
       if (unread <= 0) continue;
       const isDm = channelKey.startsWith('dm:');
       // Heading = who wrote it. Channel name used to be the title ("Direct
@@ -1715,20 +1764,18 @@ export class ChatService {
       take: limit,
       select: { text: true, mediaType: true },
     });
-    return rows
-      .reverse()
-      .map((r) => {
-        const line =
-          truncatePushBody(r.text, 80) ||
-          (r.mediaType === 'VIDEO'
-            ? 'Sent a video'
-            : r.mediaType === 'IMAGE'
-              ? 'Sent a photo'
-              : r.mediaType === 'AUDIO'
-                ? 'Sent a voice note'
-                : 'New message');
-        return line;
-      });
+    return rows.reverse().map((r) => {
+      const line =
+        truncatePushBody(r.text, 80) ||
+        (r.mediaType === 'VIDEO'
+          ? 'Sent a video'
+          : r.mediaType === 'IMAGE'
+            ? 'Sent a photo'
+            : r.mediaType === 'AUDIO'
+              ? 'Sent a voice note'
+              : 'New message');
+      return line;
+    });
   }
 
   // Batched role/isOwner lookup for a page of messages — keyed by userId so
@@ -1832,7 +1879,12 @@ export class ChatService {
     const unique = [...new Set(ids.filter(Boolean))];
     const map = new Map<
       string,
-      { id: string; text: string | null; senderName: string; mediaType: string | null }
+      {
+        id: string;
+        text: string | null;
+        senderName: string;
+        mediaType: string | null;
+      }
     >();
     if (unique.length === 0) return map;
     const rows = await this.prisma.chatMessage.findMany({

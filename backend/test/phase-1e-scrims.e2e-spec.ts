@@ -38,7 +38,11 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
     it('requires authentication', async () => {
       await request(server)
         .post('/scrims')
-        .send({ type: 'SCRIM', title: 'x', scheduledAt: '2026-11-01T10:00:00.000Z' })
+        .send({
+          type: 'SCRIM',
+          title: 'x',
+          scheduledAt: '2026-11-01T10:00:00.000Z',
+        })
         .expect(401);
     });
 
@@ -47,7 +51,11 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
       await request(server)
         .post('/scrims')
         .set('Authorization', `Bearer ${outsider.accessToken}`)
-        .send({ type: 'SCRIM', title: 'x', scheduledAt: '2026-11-01T10:00:00.000Z' })
+        .send({
+          type: 'SCRIM',
+          title: 'x',
+          scheduledAt: '2026-11-01T10:00:00.000Z',
+        })
         .expect(404);
     });
 
@@ -74,7 +82,11 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
       const res = await request(server)
         .post('/scrims')
         .set('Authorization', `Bearer ${player1.accessToken}`)
-        .send({ type: 'TOURNAMENT', title: 'Weekend Cup', scheduledAt: '2026-11-02T15:00:00.000Z' })
+        .send({
+          type: 'TOURNAMENT',
+          title: 'Weekend Cup',
+          scheduledAt: '2026-11-02T15:00:00.000Z',
+        })
         .expect(201);
       expect(res.body.platform).toBeNull();
       expect(res.body.notes).toBeNull();
@@ -85,7 +97,11 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
       await request(server)
         .post('/scrims')
         .set('Authorization', `Bearer ${player1.accessToken}`)
-        .send({ type: 'FRIENDLY', title: 'x', scheduledAt: '2026-11-01T10:00:00.000Z' })
+        .send({
+          type: 'FRIENDLY',
+          title: 'x',
+          scheduledAt: '2026-11-01T10:00:00.000Z',
+        })
         .expect(400);
     });
 
@@ -94,7 +110,11 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
       await request(server)
         .post('/scrims')
         .set('Authorization', `Bearer ${player1.accessToken}`)
-        .send({ type: 'SCRIM', title: '', scheduledAt: '2026-11-01T10:00:00.000Z' })
+        .send({
+          type: 'SCRIM',
+          title: '',
+          scheduledAt: '2026-11-01T10:00:00.000Z',
+        })
         .expect(400);
     });
 
@@ -140,12 +160,20 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
       await request(server)
         .post('/scrims')
         .set('Authorization', `Bearer ${player1.accessToken}`)
-        .send({ type: 'SCRIM', title: 'Later', scheduledAt: '2026-12-01T10:00:00.000Z' })
+        .send({
+          type: 'SCRIM',
+          title: 'Later',
+          scheduledAt: '2026-12-01T10:00:00.000Z',
+        })
         .expect(201);
       await request(server)
         .post('/scrims')
         .set('Authorization', `Bearer ${player1.accessToken}`)
-        .send({ type: 'SCRIM', title: 'Sooner', scheduledAt: '2026-11-01T10:00:00.000Z' })
+        .send({
+          type: 'SCRIM',
+          title: 'Sooner',
+          scheduledAt: '2026-11-01T10:00:00.000Z',
+        })
         .expect(201);
 
       const res = await request(server)
@@ -160,7 +188,11 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
       await request(server)
         .post('/scrims')
         .set('Authorization', `Bearer ${player1.accessToken}`)
-        .send({ type: 'SCRIM', title: 'Org A secret scrim', scheduledAt: '2026-11-01T10:00:00.000Z' })
+        .send({
+          type: 'SCRIM',
+          title: 'Org A secret scrim',
+          scheduledAt: '2026-11-01T10:00:00.000Z',
+        })
         .expect(201);
 
       const { player1: otherOrgPlayer } = await setUpOrgWithTwoPlayers();
@@ -173,7 +205,11 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
   });
 
   describe('PATCH /scrims/:id', () => {
-    async function createScrimAs(server: any, token: string, title = 'Original title') {
+    async function createScrimAs(
+      server: any,
+      token: string,
+      title = 'Original title',
+    ) {
       const res = await request(server)
         .post('/scrims')
         .set('Authorization', `Bearer ${token}`)
@@ -273,7 +309,11 @@ describe('Phase 1E — Scrims & tournaments (e2e)', () => {
       const res = await request(server)
         .post('/scrims')
         .set('Authorization', `Bearer ${token}`)
-        .send({ type: 'SCRIM', title: 'To be deleted', scheduledAt: '2026-11-01T10:00:00.000Z' })
+        .send({
+          type: 'SCRIM',
+          title: 'To be deleted',
+          scheduledAt: '2026-11-01T10:00:00.000Z',
+        })
         .expect(201);
       return res.body;
     }

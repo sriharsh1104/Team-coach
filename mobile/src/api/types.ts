@@ -12,6 +12,12 @@ export interface AuthUser {
   hasPassword: boolean;
   hasGoogle?: boolean;
   twoFactorEnabled: boolean;
+  /**
+   * Platform-wide admin. Display only — it decides whether the Admin drawer
+   * item shows. Every /admin call is authorised server-side against the
+   * database, so a faked flag here just yields a 403.
+   */
+  isPlatformAdmin?: boolean;
 }
 
 export interface OrgSummary {

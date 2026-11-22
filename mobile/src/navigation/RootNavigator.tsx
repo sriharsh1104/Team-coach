@@ -17,6 +17,7 @@ import { OrgChoiceScreen } from '../screens/OrgChoiceScreen';
 import { CreateOrgScreen } from '../screens/CreateOrgScreen';
 import { JoinOrgScreen } from '../screens/JoinOrgScreen';
 import { OrgHomeScreen } from '../screens/OrgHomeScreen';
+import { AdminScreen } from '../screens/admin/AdminScreen';
 import { MembersScreen } from '../screens/MembersScreen';
 import { GuildHomeScreen } from '../screens/GuildHomeScreen';
 import { GuildScreen } from '../screens/GuildScreen';
@@ -346,6 +347,11 @@ export function RootNavigator() {
                 title: titleCase(route.params.name),
               }))}
             />
+            <MainStack.Screen
+              name="Admin"
+              component={AdminScreen}
+              options={detailOptions(() => ({ title: 'Admin' }))}
+            />
           </MainStack.Navigator>
           <SideDrawer
             open={guildDrawer.open}
@@ -544,6 +550,11 @@ export function RootNavigator() {
                 require('../screens/live/GoLiveScreen').GoLiveScreen
               }
               options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Go Live' }))}
+            />
+            <MainStack.Screen
+              name="Admin"
+              component={AdminScreen}
+              options={detailOptions(() => ({ title: 'Admin' }))}
             />
           </MainStack.Navigator>
           <SideDrawer

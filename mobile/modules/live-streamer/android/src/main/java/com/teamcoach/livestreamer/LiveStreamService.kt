@@ -26,6 +26,7 @@ import com.pedro.encoder.input.sources.video.NoVideoSource
 import com.pedro.encoder.input.sources.video.ScreenSource
 import com.pedro.library.generic.GenericStream
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Foreground live stream: screen (MediaProjection) + mic mixed with game/
@@ -39,6 +40,7 @@ class LiveStreamService : Service(), ConnectChecker {
   private var stream: GenericStream? = null
   private var wakeLock: PowerManager.WakeLock? = null
   private val stopping = AtomicBoolean(false)
+  private val videoBitrateBeforePause = AtomicInteger(2_500_000)
   private var endpoint: String? = null
 
   override fun onBind(intent: Intent?): IBinder? = null
@@ -49,9 +51,78 @@ class LiveStreamService : Service(), ConnectChecker {
         stopLive("Stopped")
         return START_NOT_STICKY
       }
+      ACTION_PAUSE -> {
+        pauseLive()
+        return START_NOT_STICKY
+      }
+      ACTION_RESUME -> {
+        resumeLive()
+        return START_NOT_STICKY
+      }
       ACTION_START -> startLive(intent)
     }
     return START_NOT_STICKY
+  }
+
+  /** Mute outbound audio while keeping the RTMP session + screen capture up. */
+  private fun pauseLive() {
+    val s = stream ?: return
+    try {
+      setAudioMuted(s, true)
+      // Soft-pause video: drop bitrate so the feed looks idle while PAUSED UI shows.
+      try {
+        videoBitrateBeforePause.set(2_500_000)
+        s.setVideoBitrateOnFly(50_000)
+      } catch (_: Exception) {
+      }
+      LiveBridge.paused.set(true)
+      LiveBridge.emitPaused(true)
+      val manager = getSystemService(NotificationManager::class.java)
+      manager.notify(
+        NOTIF_ID,
+        buildNotification("PAUSED", "Stream paused. Tap Resume in the app."),
+      )
+    } catch (err: Exception) {
+      Log.w(TAG, "pause failed", err)
+    }
+  }
+
+  private fun resumeLive() {
+    val s = stream ?: return
+    try {
+      setAudioMuted(s, false)
+      try {
+        val bitrate = videoBitrateBeforePause.get().takeIf { it > 0 } ?: 2_500_000
+        s.setVideoBitrateOnFly(bitrate)
+      } catch (_: Exception) {
+      }
+      LiveBridge.paused.set(false)
+      LiveBridge.emitPaused(false)
+      val manager = getSystemService(NotificationManager::class.java)
+      manager.notify(
+        NOTIF_ID,
+        buildNotification("LIVE", "Streaming to your channel. Tap End to stop."),
+      )
+    } catch (err: Exception) {
+      Log.w(TAG, "resume failed", err)
+    }
+  }
+
+  private fun setAudioMuted(s: GenericStream, muted: Boolean) {
+    when (val src = s.getAudioSource()) {
+      is MixAudioSource -> {
+        if (muted) {
+          src.muteMicrophone()
+          src.muteInternalAudio()
+        } else {
+          src.unMuteMicrophone()
+          src.unMuteInternalAudio()
+        }
+      }
+      is MicrophoneSource -> {
+        if (muted) src.mute() else src.unMute()
+      }
+    }
   }
 
   private fun startLive(intent: Intent) {
@@ -295,6 +366,8 @@ class LiveStreamService : Service(), ConnectChecker {
   companion object {
     const val ACTION_START = "com.teamcoach.livestreamer.START"
     const val ACTION_STOP = "com.teamcoach.livestreamer.STOP"
+    const val ACTION_PAUSE = "com.teamcoach.livestreamer.PAUSE"
+    const val ACTION_RESUME = "com.teamcoach.livestreamer.RESUME"
     const val EXTRA_RESULT_CODE = "resultCode"
     const val EXTRA_DATA = "data"
     const val EXTRA_ENDPOINT = "endpoint"

@@ -57,7 +57,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     channelKey: string,
     message: Record<string, unknown>,
   ) {
-    this.server.to(this.roomFor(orgId, channelKey)).emit('message:new', message);
+    this.server
+      .to(this.roomFor(orgId, channelKey))
+      .emit('message:new', message);
     this.server.to(this.roomFor(orgId, channelKey)).emit('chat:unread', {
       channelKey,
     });
@@ -99,7 +101,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
         }
         next();
       } catch (err) {
-        this.logger.warn(`Rejected socket connection: ${(err as Error).message}`);
+        this.logger.warn(
+          `Rejected socket connection: ${(err as Error).message}`,
+        );
         next(err as Error);
       }
     });
@@ -117,12 +121,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     const typingIn = this.typingChannels.get(client.id);
     if (typingIn) {
       for (const channelKey of typingIn) {
-        this.server.to(this.roomFor(data.orgId, channelKey)).emit('typing:update', {
-          channelKey,
-          userId: data.userId,
-          userName: data.userName,
-          typing: false,
-        });
+        this.server
+          .to(this.roomFor(data.orgId, channelKey))
+          .emit('typing:update', {
+            channelKey,
+            userId: data.userId,
+            userName: data.userName,
+            typing: false,
+          });
       }
       this.typingChannels.delete(client.id);
     }
@@ -131,12 +137,22 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     // offline — record when, so "last seen" has something to show.
     if (this.presence.markOffline(data.userId, client.id)) {
       void this.prisma.user
-        .update({ where: { id: data.userId }, data: { lastSeenAt: new Date() } })
+        .update({
+          where: { id: data.userId },
+          data: { lastSeenAt: new Date() },
+        })
         .then((updated) => {
-          this.broadcastPresence(data.orgId, data.userId, false, updated.lastSeenAt);
+          this.broadcastPresence(
+            data.orgId,
+            data.userId,
+            false,
+            updated.lastSeenAt,
+          );
         })
         .catch((err) => {
-          this.logger.warn(`lastSeenAt update failed for ${data.userId}: ${(err as Error).message}`);
+          this.logger.warn(
+            `lastSeenAt update failed for ${data.userId}: ${(err as Error).message}`,
+          );
         });
     }
   }
@@ -148,7 +164,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     lastSeenAt: Date | null,
   ) {
     this.server
-      .to([this.roomFor(orgId, ORG_CHANNEL), this.roomFor(orgId, GUILD_CHANNEL)])
+      .to([
+        this.roomFor(orgId, ORG_CHANNEL),
+        this.roomFor(orgId, GUILD_CHANNEL),
+      ])
       .emit('presence:update', {
         userId,
         online,
@@ -165,7 +184,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     const data = client.data as SocketData;
     if (!data?.orgId) return { ok: false as const, error: 'Not connected' };
     const ids = [
-      ...new Set((Array.isArray(body?.userIds) ? body.userIds : []).filter(Boolean)),
+      ...new Set(
+        (Array.isArray(body?.userIds) ? body.userIds : []).filter(Boolean),
+      ),
     ].slice(0, 100);
     if (ids.length === 0) return { ok: true as const, presence: {} };
 
@@ -173,7 +194,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
       where: { id: { in: ids } },
       select: { id: true, lastSeenAt: true },
     });
-    const presence: Record<string, { online: boolean; lastSeenAt: string | null }> = {};
+    const presence: Record<
+      string,
+      { online: boolean; lastSeenAt: string | null }
+    > = {};
     for (const row of rows) {
       presence[row.id] = {
         online: this.presence.isOnline(row.id),
@@ -191,7 +215,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     const data = client.data as SocketData;
     if (!data?.orgId) return;
     const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
-    await this.chatService.assertChannelAccess(data.userId, data.orgId, channelKey);
+    await this.chatService.assertChannelAccess(
+      data.userId,
+      data.orgId,
+      channelKey,
+    );
     await client.join(this.roomFor(data.orgId, channelKey));
     // Only the actively-viewed channel suppresses pushes — leave any other
     // channel this socket previously marked as open.
@@ -224,7 +252,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     const data = client.data as SocketData;
     if (!data?.orgId) return;
     const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
-    const { lastReadAt } = await this.chatService.markRead(data.userId, channelKey);
+    const { lastReadAt } = await this.chatService.markRead(
+      data.userId,
+      channelKey,
+    );
     this.server
       .to(this.receiptRooms(data.orgId, data.userId, channelKey))
       .emit('chat:read', {
@@ -317,7 +348,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
 
     const channelKey = body?.channelKey?.trim() || ORG_CHANNEL;
     const text = (body?.text ?? '').trim();
-    if (text.length > 2000) return { ok: false as const, error: 'Message too long' };
+    if (text.length > 2000)
+      return { ok: false as const, error: 'Message too long' };
     if (!text && !body?.mediaUrl) {
       return { ok: false as const, error: 'Message text or media is required' };
     }
@@ -371,7 +403,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
       if (peerId) rooms.push(this.userRoom(peerId));
       this.server.to(rooms).emit('chat:unread', { channelKey });
     }
-    return { ok: true as const, id: message.id, ...(clientId ? { clientId } : {}) };
+    return {
+      ok: true as const,
+      id: message.id,
+      ...(clientId ? { clientId } : {}),
+    };
   }
 
   @SubscribeMessage('message:edit')
@@ -447,13 +483,20 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     }
     try {
       const { orgId, channelKey, messageId, reactions } =
-        await this.chatService.reactToMessage(data.userId, body.messageId, body.emoji);
+        await this.chatService.reactToMessage(
+          data.userId,
+          body.messageId,
+          body.emoji,
+        );
       this.server
         .to(this.roomFor(orgId, channelKey))
         .emit('message:reaction', { messageId, reactions });
       return { ok: true as const, reactions };
     } catch (err) {
-      return { ok: false as const, error: (err as Error).message || 'Could not react' };
+      return {
+        ok: false as const,
+        error: (err as Error).message || 'Could not react',
+      };
     }
   }
 
@@ -469,7 +512,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
       return { ok: false as const, error: 'Too many requests — slow down' };
     }
     if (!body?.messageId || !Array.isArray(body?.toChannelKeys)) {
-      return { ok: false as const, error: 'messageId and toChannelKeys are required' };
+      return {
+        ok: false as const,
+        error: 'messageId and toChannelKeys are required',
+      };
     }
     try {
       const results = await this.chatService.forwardMessage(
@@ -481,24 +527,38 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
       for (const r of results) {
         if (!r.ok || !r.orgId || !r.message) continue;
         await client.join(this.roomFor(r.orgId, r.channelKey));
-        this.server.to(this.roomFor(r.orgId, r.channelKey)).emit('message:new', r.message);
+        this.server
+          .to(this.roomFor(r.orgId, r.channelKey))
+          .emit('message:new', r.message);
         if (r.channelKey === ORG_CHANNEL) {
           this.server
             .to(this.roomFor(r.orgId, ORG_CHANNEL))
             .emit('chat:unread', { channelKey: r.channelKey });
         } else {
-          const peerId = this.chatService.parseDmPeer(r.channelKey, data.userId);
+          const peerId = this.chatService.parseDmPeer(
+            r.channelKey,
+            data.userId,
+          );
           const rooms = [this.roomFor(r.orgId, r.channelKey)];
           if (peerId) rooms.push(this.userRoom(peerId));
-          this.server.to(rooms).emit('chat:unread', { channelKey: r.channelKey });
+          this.server
+            .to(rooms)
+            .emit('chat:unread', { channelKey: r.channelKey });
         }
       }
       return {
         ok: true as const,
-        results: results.map(({ channelKey, ok, error }) => ({ channelKey, ok, error })),
+        results: results.map(({ channelKey, ok, error }) => ({
+          channelKey,
+          ok,
+          error,
+        })),
       };
     } catch (err) {
-      return { ok: false as const, error: (err as Error).message || 'Could not forward' };
+      return {
+        ok: false as const,
+        error: (err as Error).message || 'Could not forward',
+      };
     }
   }
 

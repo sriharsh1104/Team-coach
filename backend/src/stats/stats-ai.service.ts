@@ -17,7 +17,9 @@ const ExtractedStatsSchema = z.object({
       // out through the one string field.
       name: z
         .string()
-        .transform((v) => v.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LENGTH)),
+        .transform((v) =>
+          v.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LENGTH),
+        ),
       kills: z.number().int().min(0),
       deaths: z.number().int().min(0),
       assists: z.number().int().min(0),

@@ -235,7 +235,8 @@ export class StatsService {
         where: { id: extractionId },
         data: {
           status: StatExtractionStatus.FAILED,
-          failureReason: 'Could not read stats from this screenshot — try retrying or a clearer image.',
+          failureReason:
+            'Could not read stats from this screenshot — try retrying or a clearer image.',
         },
       });
       this.notifyStatsChanged(extraction.orgId);
@@ -424,7 +425,10 @@ export class StatsService {
     const targetMembership = await this.prisma.membership.findFirst({
       where: { userId: targetUserId },
     });
-    if (!targetMembership || targetMembership.orgId !== requesterMembership.orgId) {
+    if (
+      !targetMembership ||
+      targetMembership.orgId !== requesterMembership.orgId
+    ) {
       throw new ForbiddenException(
         'You can only view stats for members of your own org',
       );

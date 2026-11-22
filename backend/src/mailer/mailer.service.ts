@@ -24,7 +24,10 @@ function escapeHtml(value: string) {
  */
 function normalizeFromAddress(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
-  const cleaned = raw.trim().replace(/^(["'])(.*)\1$/s, '$2').trim();
+  const cleaned = raw
+    .trim()
+    .replace(/^(["'])(.*)\1$/s, '$2')
+    .trim();
   return cleaned || undefined;
 }
 

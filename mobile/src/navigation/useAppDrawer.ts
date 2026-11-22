@@ -41,8 +41,10 @@ function useDrawerHeader() {
 // don't get the Guild shortcut from secondary screens; they still have it
 // from OrgHome itself.
 export function useOrgDrawer() {
-  const { org } = useAuth();
+  const { org, user } = useAuth();
   const isOwner = !!org?.isOwner;
+  // Display only — /admin is authorised server-side on every request.
+  const isAdmin = !!user?.isPlatformAdmin;
   const { open, navigation, openWith, close, routeName, setRouteName } =
     useDrawerHeader();
 
@@ -185,17 +187,35 @@ export function useOrgDrawer() {
       ],
     });
 
+    if (isAdmin) {
+      sections.push({
+        key: 'platform',
+        label: 'Platform',
+        split: true,
+        items: [
+          {
+            key: 'admin',
+            label: 'Admin',
+            icon: 'shield-outline' as const,
+            onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Admin' }),
+          },
+        ],
+      });
+    }
+
     return withActiveDrawerItem(
       sections,
       drawerItemKeyForRoute(routeName ?? undefined),
     );
-  }, [navigation, isOwner, routeName]);
+  }, [navigation, isOwner, isAdmin, routeName]);
 
   return { open, sections, openWith, close, setRouteName };
 }
 
 // Same sections GuildHomeScreen shows (guild-only members have no org).
 export function useGuildDrawer() {
+  const { user } = useAuth();
+  const isAdmin = !!user?.isPlatformAdmin;
   const { open, navigation, openWith, close, routeName, setRouteName } =
     useDrawerHeader();
 
@@ -267,11 +287,26 @@ export function useGuildDrawer() {
         ],
       },
     ];
+    if (isAdmin) {
+      base.push({
+        key: 'platform',
+        label: 'Platform',
+        split: true,
+        items: [
+          {
+            key: 'admin',
+            label: 'Admin',
+            icon: 'shield-outline' as const,
+            onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Admin' }),
+          },
+        ],
+      });
+    }
     return withActiveDrawerItem(
       base,
       drawerItemKeyForRoute(routeName ?? undefined),
     );
-  }, [navigation, routeName]);
+  }, [navigation, isAdmin, routeName]);
 
   return { open, sections, openWith, close, setRouteName };
 }

@@ -7,7 +7,10 @@ import { PrismaService } from '../prisma/prisma.service';
  * Shared by the self-hosted gateway and the hosted (LiveKit) service so both
  * transports apply exactly the same rules.
  */
-export async function resolveGuildAccess(prisma: PrismaService, userId: string) {
+export async function resolveGuildAccess(
+  prisma: PrismaService,
+  userId: string,
+) {
   const [roster, guild] = await Promise.all([
     prisma.membership.findFirst({ where: { userId } }),
     prisma.guildMembership.findFirst({ where: { userId } }),

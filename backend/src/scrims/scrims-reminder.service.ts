@@ -7,7 +7,10 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { PushNotificationService, PushMessage } from '../common/push-notification.service';
+import {
+  PushNotificationService,
+  PushMessage,
+} from '../common/push-notification.service';
 import { ChatService, ORG_CHANNEL } from '../chat/chat.service';
 import { ChatGateway } from '../chat/chat.gateway';
 

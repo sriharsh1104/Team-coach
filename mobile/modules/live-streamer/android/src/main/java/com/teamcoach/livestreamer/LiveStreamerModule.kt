@@ -8,7 +8,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 class LiveStreamerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("LiveStreamer")
-    Events("onStarted", "onStopped", "onError")
+    Events("onStarted", "onStopped", "onError", "onPaused")
 
     OnCreate {
       LiveBridge.module = this@LiveStreamerModule
@@ -22,6 +22,10 @@ class LiveStreamerModule : Module() {
 
     Function("isLive") {
       LiveBridge.live.get()
+    }
+
+    Function("isPaused") {
+      LiveBridge.paused.get()
     }
 
     AsyncFunction("start") { rtmpUrl: String, streamKey: String, promise: Promise ->
@@ -72,6 +76,40 @@ class LiveStreamerModule : Module() {
         action = LiveStreamService.ACTION_STOP
       }
       context.startService(intent)
+    }
+
+    AsyncFunction("pause") { promise: Promise ->
+      if (!LiveBridge.live.get()) {
+        promise.resolve(null)
+        return@AsyncFunction
+      }
+      val context = appContext.reactContext ?: run {
+        promise.reject("NO_CONTEXT", "App is not running", null)
+        return@AsyncFunction
+      }
+      context.startService(
+        Intent(context, LiveStreamService::class.java).apply {
+          action = LiveStreamService.ACTION_PAUSE
+        },
+      )
+      promise.resolve(null)
+    }
+
+    AsyncFunction("resume") { promise: Promise ->
+      if (!LiveBridge.live.get()) {
+        promise.resolve(null)
+        return@AsyncFunction
+      }
+      val context = appContext.reactContext ?: run {
+        promise.reject("NO_CONTEXT", "App is not running", null)
+        return@AsyncFunction
+      }
+      context.startService(
+        Intent(context, LiveStreamService::class.java).apply {
+          action = LiveStreamService.ACTION_RESUME
+        },
+      )
+      promise.resolve(null)
     }
   }
 }

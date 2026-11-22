@@ -15,6 +15,7 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { RecordingProvider } from './src/recording/RecordingContext';
 import { RecordingWidget } from './src/recording/RecordingWidget';
 import { LiveProvider } from './src/live/LiveContext';
+import { LiveOverlay } from './src/live/LiveOverlay';
 import { LiveWidget } from './src/live/LiveWidget';
 import { useAppPermissions } from './src/hooks/useAppPermissions';
 import { useServerWakePing } from './src/hooks/useServerWakePing';
@@ -70,6 +71,7 @@ function AppShell() {
                       <RootNavigator />
                     </VoiceProvider>
                     <RecordingWidget />
+                    <LiveOverlay />
                     <LiveWidget />
                   </LiveProvider>
                 </RecordingProvider>

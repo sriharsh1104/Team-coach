@@ -56,6 +56,15 @@ model User {
   // for Phase 1 testing; move to a per-device table if multi-device push matters later.
   expoPushToken String?
 
+  // Platform-wide admin (not an org role). Grants read access to every org's
+  // data through /admin. Deliberately a plain column with no API that can
+  // write it: it is set only by `npm run admin:grant`, run on the server by
+  // someone who already has database access. Nothing a client sends — a
+  // request body, a profile field, or a JWT claim — can turn this on, and
+  // JwtStrategy re-reads it from here on every single request rather than
+  // trusting the token it was issued with.
+  isPlatformAdmin Boolean @default(false)
+
   // Bumped on logout; embedded in every JWT at sign time and checked against
   // this column on every authenticated request (JwtStrategy.validate) — the
   // only server-side way to invalidate outstanding tokens before they expire.

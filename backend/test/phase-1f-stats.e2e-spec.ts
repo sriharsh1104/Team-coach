@@ -1,7 +1,18 @@
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { createTestApp, getPrisma, resetDatabase, cleanUploadsDir } from './utils/test-app';
-import { signup, createOrgAs, joinOrgAs, uploadMedia, TINY_JPEG } from './utils/fixtures';
+import {
+  createTestApp,
+  getPrisma,
+  resetDatabase,
+  cleanUploadsDir,
+} from './utils/test-app';
+import {
+  signup,
+  createOrgAs,
+  joinOrgAs,
+  uploadMedia,
+  TINY_JPEG,
+} from './utils/fixtures';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { StatsService } from '../src/stats/stats.service';
 
@@ -72,7 +83,10 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
   describe('POST /stats/extractions', () => {
     it('requires authentication', async () => {
-      await request(server).post('/stats/extractions').send({ mode: 'BR', mediaPostIds: ['x'] }).expect(401);
+      await request(server)
+        .post('/stats/extractions')
+        .send({ mode: 'BR', mediaPostIds: ['x'] })
+        .expect(401);
     });
 
     it('404s for a user not in any org', async () => {
@@ -93,7 +107,7 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
         .expect(404);
     });
 
-    it("SECURITY: 404s for a media post that belongs to a different org", async () => {
+    it('SECURITY: 404s for a media post that belongs to a different org', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
       const media = await uploadMedia(server, player1.accessToken);
 
@@ -111,7 +125,10 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
         .post('/media')
         .set('Authorization', `Bearer ${player1.accessToken}`)
         .field('type', 'VIDEO')
-        .attach('file', TINY_JPEG, { filename: 'clip.mp4', contentType: 'video/mp4' })
+        .attach('file', TINY_JPEG, {
+          filename: 'clip.mp4',
+          contentType: 'video/mp4',
+        })
         .expect(201);
 
       await request(server)
@@ -126,7 +143,10 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
       await request(server)
         .post('/stats/extractions')
         .set('Authorization', `Bearer ${player1.accessToken}`)
-        .send({ mode: 'BR', mediaPostIds: Array.from({ length: 11 }, (_, i) => `id-${i}`) })
+        .send({
+          mode: 'BR',
+          mediaPostIds: Array.from({ length: 11 }, (_, i) => `id-${i}`),
+        })
         .expect(400);
     });
 
@@ -151,7 +171,9 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('skips (does not fail the batch for) a screenshot that already has an extraction', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      const org = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const org = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const dup = await uploadMedia(server, player1.accessToken);
       await seedExtraction(org.orgId, dup.id, player1.user.id, []);
       const fresh = await uploadMedia(server, player1.accessToken);
@@ -202,7 +224,9 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
   describe('POST /stats/extractions/:id/retry', () => {
     async function seedFailedExtraction(player1: any) {
-      const org = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const org = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
       return prisma.statExtraction.create({
         data: {
@@ -241,9 +265,16 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('rejects retrying an extraction that is not FAILED', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      const org = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const org = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(org.orgId, media.id, player1.user.id, []);
+      const extraction = await seedExtraction(
+        org.orgId,
+        media.id,
+        player1.user.id,
+        [],
+      );
 
       await request(server)
         .post(`/stats/extractions/${extraction.id}/retry`)
@@ -267,10 +298,18 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('lists a seeded extraction with the right shape', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
       await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 10, deaths: 5, assists: 2 },
+        {
+          rawName: 'Player 1',
+          matchedUserId: player1.user.id,
+          kills: 10,
+          deaths: 5,
+          assists: 2,
+        },
       ]);
 
       const res = await request(server)
@@ -287,7 +326,9 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it("SECURITY: never lists another org's extractions", async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
       await seedExtraction(membership.orgId, media.id, player1.user.id, []);
 
@@ -303,19 +344,41 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
   describe('GET /stats/extractions/:id', () => {
     it('requires authentication', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, []);
-      await request(server).get(`/stats/extractions/${extraction.id}`).expect(401);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [],
+      );
+      await request(server)
+        .get(`/stats/extractions/${extraction.id}`)
+        .expect(401);
     });
 
     it('fetches a single extraction by id, for polling after upload', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 1, deaths: 0, assists: 0 },
-      ]);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'Player 1',
+            matchedUserId: player1.user.id,
+            kills: 1,
+            deaths: 0,
+            assists: 0,
+          },
+        ],
+      );
 
       const res = await request(server)
         .get(`/stats/extractions/${extraction.id}`)
@@ -327,9 +390,16 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it("SECURITY: 404s for another org's extraction", async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, []);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [],
+      );
 
       const { player1: outsider } = await setUpOrgWithTwoPlayers();
       await request(server)
@@ -342,9 +412,16 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
   describe('PATCH /stats/extractions/:id (edit rows)', () => {
     it('SECURITY: the original requester alone can no longer edit — coach or owner only', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, []);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [],
+      );
 
       await request(server)
         .patch(`/stats/extractions/${extraction.id}`)
@@ -355,18 +432,37 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('lets a coach correct an unmatched name, even when they did not request the extraction', async () => {
       const { coach, player1, player2 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'XxUnknownXx', matchedUserId: null, kills: 9, deaths: 11, assists: 2 },
-      ]);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'XxUnknownXx',
+            matchedUserId: null,
+            kills: 9,
+            deaths: 11,
+            assists: 2,
+          },
+        ],
+      );
 
       const res = await request(server)
         .patch(`/stats/extractions/${extraction.id}`)
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .send({
           rows: [
-            { rawName: 'Player 2', matchedUserId: player2.user.id, kills: 9, deaths: 11, assists: 2 },
+            {
+              rawName: 'Player 2',
+              matchedUserId: player2.user.id,
+              kills: 9,
+              deaths: 11,
+              assists: 2,
+            },
           ],
         })
         .expect(200);
@@ -375,9 +471,16 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('SECURITY: refuses edit from a teammate who did not request it and is not a coach', async () => {
       const { player1, player2 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, []);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [],
+      );
 
       await request(server)
         .patch(`/stats/extractions/${extraction.id}`)
@@ -388,9 +491,16 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('lets a coach edit even if they did not request the extraction', async () => {
       const { coach, player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, []);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [],
+      );
 
       await request(server)
         .patch(`/stats/extractions/${extraction.id}`)
@@ -399,14 +509,21 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
         .expect(200);
     });
 
-    it("lets the org owner edit even when their own functional role is PLAYER, not COACH", async () => {
+    it('lets the org owner edit even when their own functional role is PLAYER, not COACH', async () => {
       const owner = await signup(server, { name: 'Owner-Player' });
       const org = await createOrgAs(server, owner.accessToken, 'PLAYER');
       const teammate = await signup(server, { name: 'Teammate' });
       await joinOrgAs(server, teammate.accessToken, org.rosterCode);
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: teammate.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: teammate.user.id },
+      });
       const media = await uploadMedia(server, teammate.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, teammate.user.id, []);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        teammate.user.id,
+        [],
+      );
 
       await request(server)
         .patch(`/stats/extractions/${extraction.id}`)
@@ -417,29 +534,60 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('rejects a negative stat value', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, []);
-
-      await request(server)
-        .patch(`/stats/extractions/${extraction.id}`)
-        .set('Authorization', `Bearer ${player1.accessToken}`)
-        .send({ rows: [{ rawName: 'x', matchedUserId: null, kills: -1, deaths: 0, assists: 0 }] })
-        .expect(400);
-    });
-
-    it('rejects unexpected fields on a row (mass-assignment guard)', async () => {
-      const { player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
-      const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, []);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [],
+      );
 
       await request(server)
         .patch(`/stats/extractions/${extraction.id}`)
         .set('Authorization', `Bearer ${player1.accessToken}`)
         .send({
           rows: [
-            { rawName: 'x', matchedUserId: null, kills: 1, deaths: 0, assists: 0, extraField: 'nope' },
+            {
+              rawName: 'x',
+              matchedUserId: null,
+              kills: -1,
+              deaths: 0,
+              assists: 0,
+            },
+          ],
+        })
+        .expect(400);
+    });
+
+    it('rejects unexpected fields on a row (mass-assignment guard)', async () => {
+      const { player1 } = await setUpOrgWithTwoPlayers();
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
+      const media = await uploadMedia(server, player1.accessToken);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [],
+      );
+
+      await request(server)
+        .patch(`/stats/extractions/${extraction.id}`)
+        .set('Authorization', `Bearer ${player1.accessToken}`)
+        .send({
+          rows: [
+            {
+              rawName: 'x',
+              matchedUserId: null,
+              kills: 1,
+              deaths: 0,
+              assists: 0,
+              extraField: 'nope',
+            },
           ],
         })
         .expect(400);
@@ -449,9 +597,16 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
   describe('POST /stats/extractions/:id/confirm', () => {
     it('SECURITY: refuses confirm from a teammate who did not request it and is not a coach', async () => {
       const { player1, player2 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, []);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [],
+      );
 
       await request(server)
         .post(`/stats/extractions/${extraction.id}/confirm`)
@@ -461,13 +616,40 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('creates a PlayerStat only for matched rows (including damage), and skips unmatched ones', async () => {
       const { coach, player1, player2 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 18, deaths: 10, assists: 4, damage: 1200 },
-        { rawName: 'Player 2', matchedUserId: player2.user.id, kills: 12, deaths: 14, assists: 7, damage: 900 },
-        { rawName: 'XxUnknownXx', matchedUserId: null, kills: 9, deaths: 11, assists: 2 },
-      ]);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'Player 1',
+            matchedUserId: player1.user.id,
+            kills: 18,
+            deaths: 10,
+            assists: 4,
+            damage: 1200,
+          },
+          {
+            rawName: 'Player 2',
+            matchedUserId: player2.user.id,
+            kills: 12,
+            deaths: 14,
+            assists: 7,
+            damage: 900,
+          },
+          {
+            rawName: 'XxUnknownXx',
+            matchedUserId: null,
+            kills: 9,
+            deaths: 11,
+            assists: 2,
+          },
+        ],
+      );
 
       const res = await request(server)
         .post(`/stats/extractions/${extraction.id}/confirm`)
@@ -476,12 +658,18 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
       expect(res.body.confirmedRows).toBe(2);
       expect(res.body.skippedRows).toBe(1);
 
-      const stats = await prisma.playerStat.findMany({ where: { extractionId: extraction.id } });
+      const stats = await prisma.playerStat.findMany({
+        where: { extractionId: extraction.id },
+      });
       expect(stats).toHaveLength(2);
-      expect(stats.find((s) => s.userId === player1.user.id)?.damage).toBe(1200);
+      expect(stats.find((s) => s.userId === player1.user.id)?.damage).toBe(
+        1200,
+      );
       expect(stats.find((s) => s.userId === player2.user.id)?.damage).toBe(900);
 
-      const updated = await prisma.statExtraction.findUniqueOrThrow({ where: { id: extraction.id } });
+      const updated = await prisma.statExtraction.findUniqueOrThrow({
+        where: { id: extraction.id },
+      });
       expect(updated.status).toBe('CONFIRMED');
       // Unmatched outsiders are dropped from the stored rows on confirm.
       expect(updated.rows as any[]).toHaveLength(2);
@@ -490,7 +678,9 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('SECURITY: drops a row whose matchedUserId was hand-edited to someone outside this org, instead of writing a PlayerStat for them', async () => {
       const { coach, player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
 
       // A real member of a COMPLETELY different org — simulates a coach's
@@ -498,10 +688,27 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
       // arbitrary string, which the API only validates as @IsString().
       const { player1: outsider } = await setUpOrgWithTwoPlayers();
 
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 5, deaths: 1, assists: 1 },
-        { rawName: 'Not Actually A Member', matchedUserId: outsider.user.id, kills: 99, deaths: 0, assists: 0 },
-      ]);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'Player 1',
+            matchedUserId: player1.user.id,
+            kills: 5,
+            deaths: 1,
+            assists: 1,
+          },
+          {
+            rawName: 'Not Actually A Member',
+            matchedUserId: outsider.user.id,
+            kills: 99,
+            deaths: 0,
+            assists: 0,
+          },
+        ],
+      );
 
       const res = await request(server)
         .post(`/stats/extractions/${extraction.id}/confirm`)
@@ -510,36 +717,70 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
       expect(res.body.confirmedRows).toBe(1);
       expect(res.body.skippedRows).toBe(1);
 
-      const stats = await prisma.playerStat.findMany({ where: { extractionId: extraction.id } });
+      const stats = await prisma.playerStat.findMany({
+        where: { extractionId: extraction.id },
+      });
       expect(stats).toHaveLength(1);
       expect(stats[0].userId).toBe(player1.user.id);
-      expect(await prisma.playerStat.findFirst({ where: { userId: outsider.user.id } })).toBeNull();
+      expect(
+        await prisma.playerStat.findFirst({
+          where: { userId: outsider.user.id },
+        }),
+      ).toBeNull();
     });
 
     it('refuses to confirm when no rows are matched to teammates', async () => {
       const { coach, player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'RandomLobbyPlayer', matchedUserId: null, kills: 9, deaths: 1, assists: 0 },
-      ]);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'RandomLobbyPlayer',
+            matchedUserId: null,
+            kills: 9,
+            deaths: 1,
+            assists: 0,
+          },
+        ],
+      );
 
       await request(server)
         .post(`/stats/extractions/${extraction.id}/confirm`)
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(400);
 
-      const stats = await prisma.playerStat.findMany({ where: { extractionId: extraction.id } });
+      const stats = await prisma.playerStat.findMany({
+        where: { extractionId: extraction.id },
+      });
       expect(stats).toHaveLength(0);
     });
 
     it('refuses to confirm the same extraction twice', async () => {
       const { coach, player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 1, deaths: 1, assists: 1 },
-      ]);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'Player 1',
+            matchedUserId: player1.user.id,
+            kills: 1,
+            deaths: 1,
+            assists: 1,
+          },
+        ],
+      );
 
       await request(server)
         .post(`/stats/extractions/${extraction.id}/confirm`)
@@ -551,7 +792,9 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
         .expect(400);
 
       // Confirming twice must never double-count the stats.
-      const stats = await prisma.playerStat.findMany({ where: { extractionId: extraction.id } });
+      const stats = await prisma.playerStat.findMany({
+        where: { extractionId: extraction.id },
+      });
       expect(stats).toHaveLength(1);
     });
   });
@@ -559,18 +802,33 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
   describe('POST /stats/extractions/:id/reject', () => {
     it('marks the extraction rejected and creates no PlayerStat rows', async () => {
       const { coach, player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 1, deaths: 1, assists: 1 },
-      ]);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'Player 1',
+            matchedUserId: player1.user.id,
+            kills: 1,
+            deaths: 1,
+            assists: 1,
+          },
+        ],
+      );
 
       await request(server)
         .post(`/stats/extractions/${extraction.id}/reject`)
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(201);
 
-      const stats = await prisma.playerStat.findMany({ where: { extractionId: extraction.id } });
+      const stats = await prisma.playerStat.findMany({
+        where: { extractionId: extraction.id },
+      });
       expect(stats).toHaveLength(0);
 
       const leaderboard = await request(server)
@@ -582,11 +840,24 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('refuses to reject an already-confirmed extraction', async () => {
       const { coach, player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 1, deaths: 1, assists: 1 },
-      ]);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'Player 1',
+            matchedUserId: player1.user.id,
+            kills: 1,
+            deaths: 1,
+            assists: 1,
+          },
+        ],
+      );
 
       await request(server)
         .post(`/stats/extractions/${extraction.id}/confirm`)
@@ -606,22 +877,55 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('aggregates confirmed stats (including damage) across matches, sorted by kills descending', async () => {
       const { coach, player1, player2 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
 
       const media1 = await uploadMedia(server, player1.accessToken);
-      const extraction1 = await seedExtraction(membership.orgId, media1.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 10, deaths: 5, assists: 1, damage: 500 },
-        { rawName: 'Player 2', matchedUserId: player2.user.id, kills: 20, deaths: 2, assists: 3, damage: 800 },
-      ]);
+      const extraction1 = await seedExtraction(
+        membership.orgId,
+        media1.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'Player 1',
+            matchedUserId: player1.user.id,
+            kills: 10,
+            deaths: 5,
+            assists: 1,
+            damage: 500,
+          },
+          {
+            rawName: 'Player 2',
+            matchedUserId: player2.user.id,
+            kills: 20,
+            deaths: 2,
+            assists: 3,
+            damage: 800,
+          },
+        ],
+      );
       await request(server)
         .post(`/stats/extractions/${extraction1.id}/confirm`)
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(201);
 
       const media2 = await uploadMedia(server, player1.accessToken);
-      const extraction2 = await seedExtraction(membership.orgId, media2.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 15, deaths: 3, assists: 2, damage: 650 },
-      ]);
+      const extraction2 = await seedExtraction(
+        membership.orgId,
+        media2.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'Player 1',
+            matchedUserId: player1.user.id,
+            kills: 15,
+            deaths: 3,
+            assists: 2,
+            damage: 650,
+          },
+        ],
+      );
       await request(server)
         .post(`/stats/extractions/${extraction2.id}/confirm`)
         .set('Authorization', `Bearer ${coach.accessToken}`)
@@ -644,16 +948,32 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
   describe('GET /stats/players/:id', () => {
     it('requires authentication', async () => {
       const { player1 } = await setUpOrgWithTwoPlayers();
-      await request(server).get(`/stats/players/${player1.user.id}`).expect(401);
+      await request(server)
+        .get(`/stats/players/${player1.user.id}`)
+        .expect(401);
     });
 
     it("lets a teammate view another player's stat history and totals (including damage)", async () => {
       const { coach, player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
       const media = await uploadMedia(server, player1.accessToken);
-      const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-        { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 18, deaths: 10, assists: 4, damage: 1100 },
-      ]);
+      const extraction = await seedExtraction(
+        membership.orgId,
+        media.id,
+        player1.user.id,
+        [
+          {
+            rawName: 'Player 1',
+            matchedUserId: player1.user.id,
+            kills: 18,
+            deaths: 10,
+            assists: 4,
+            damage: 1100,
+          },
+        ],
+      );
       await request(server)
         .post(`/stats/extractions/${extraction.id}/confirm`)
         .set('Authorization', `Bearer ${coach.accessToken}`)
@@ -664,7 +984,12 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
       expect(res.body.mode).toBe('BR');
-      expect(res.body.totals).toEqual({ kills: 18, deaths: 10, assists: 4, damage: 1100 });
+      expect(res.body.totals).toEqual({
+        kills: 18,
+        deaths: 10,
+        assists: 4,
+        damage: 1100,
+      });
       expect(res.body.matches).toBe(1);
       expect(res.body.nextCursor).toBeNull();
     });
@@ -681,13 +1006,27 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
 
     it('paginates match history with a cursor, while totals always reflect the FULL history', async () => {
       const { coach, player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
 
       for (let i = 0; i < 3; i++) {
         const media = await uploadMedia(server, player1.accessToken);
-        const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-          { rawName: 'Player 1', matchedUserId: player1.user.id, kills: 10, deaths: 1, assists: 1, damage: 100 },
-        ]);
+        const extraction = await seedExtraction(
+          membership.orgId,
+          media.id,
+          player1.user.id,
+          [
+            {
+              rawName: 'Player 1',
+              matchedUserId: player1.user.id,
+              kills: 10,
+              deaths: 1,
+              assists: 1,
+              damage: 100,
+            },
+          ],
+        );
         await request(server)
           .post(`/stats/extractions/${extraction.id}/confirm`)
           .set('Authorization', `Bearer ${coach.accessToken}`)
@@ -704,13 +1043,17 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
       expect(page1.body.nextCursor).toEqual(expect.any(String));
 
       const page2 = await request(server)
-        .get(`/stats/players/${player1.user.id}?mode=BR&limit=2&cursor=${page1.body.nextCursor}`)
+        .get(
+          `/stats/players/${player1.user.id}?mode=BR&limit=2&cursor=${page1.body.nextCursor}`,
+        )
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
       expect(page2.body.entries).toHaveLength(1);
       expect(page2.body.nextCursor).toBeNull();
 
-      const pagedIds = [...page1.body.entries, ...page2.body.entries].map((e: any) => e.id);
+      const pagedIds = [...page1.body.entries, ...page2.body.entries].map(
+        (e: any) => e.id,
+      );
       expect(new Set(pagedIds).size).toBe(3);
     });
   });
@@ -718,13 +1061,26 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
   describe('GET /stats/history', () => {
     it('paginates with a cursor, newest first', async () => {
       const { coach, player1 } = await setUpOrgWithTwoPlayers();
-      const membership = await prisma.membership.findFirstOrThrow({ where: { userId: player1.user.id } });
+      const membership = await prisma.membership.findFirstOrThrow({
+        where: { userId: player1.user.id },
+      });
 
       for (let i = 0; i < 3; i++) {
         const media = await uploadMedia(server, player1.accessToken);
-        const extraction = await seedExtraction(membership.orgId, media.id, player1.user.id, [
-          { rawName: 'Player 1', matchedUserId: player1.user.id, kills: i, deaths: 0, assists: 0 },
-        ]);
+        const extraction = await seedExtraction(
+          membership.orgId,
+          media.id,
+          player1.user.id,
+          [
+            {
+              rawName: 'Player 1',
+              matchedUserId: player1.user.id,
+              kills: i,
+              deaths: 0,
+              assists: 0,
+            },
+          ],
+        );
         await request(server)
           .post(`/stats/extractions/${extraction.id}/confirm`)
           .set('Authorization', `Bearer ${coach.accessToken}`)
@@ -745,7 +1101,9 @@ describe('Phase 1F — AI stat extraction (e2e)', () => {
       expect(page2.body.entries).toHaveLength(1);
       expect(page2.body.nextCursor).toBeNull();
 
-      const pagedIds = [...page1.body.entries, ...page2.body.entries].map((e: any) => e.id);
+      const pagedIds = [...page1.body.entries, ...page2.body.entries].map(
+        (e: any) => e.id,
+      );
       expect(new Set(pagedIds).size).toBe(3);
     });
   });

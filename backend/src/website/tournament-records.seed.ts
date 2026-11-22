@@ -148,8 +148,7 @@ export const SACRED_TOURNAMENT_RECORD_SEED: Array<{
     name: 'Apex 5k Tournament',
     status: 'Final',
     kind: 'qualified',
-    progress:
-      'Qualify for next round → Semi final → Final (choked in final)',
+    progress: 'Qualify for next round → Semi final → Final (choked in final)',
     qualifierDate: null,
     sortOrder: 16,
   },

@@ -77,8 +77,13 @@ export function isRpsChoice(value: unknown): value is RpsChoice {
  * Records a pick. Returns whether the round is now complete (both picked),
  * in which case the state has moved to 'reveal' (or 'done').
  */
-export function rpsPick(state: RpsState, userId: string, choice: RpsChoice): boolean {
-  if (state.phase !== 'picking') throw new Error('Not accepting picks right now');
+export function rpsPick(
+  state: RpsState,
+  userId: string,
+  choice: RpsChoice,
+): boolean {
+  if (state.phase !== 'picking')
+    throw new Error('Not accepting picks right now');
   if (!(userId in state.picks)) throw new Error('Not a player in this match');
   if (state.picks[userId]) throw new Error('You already picked this round');
   state.picks[userId] = choice;

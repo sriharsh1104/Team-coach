@@ -10,6 +10,7 @@ internal object LiveBridge {
   private val main = Handler(Looper.getMainLooper())
   val live = AtomicBoolean(false)
   val starting = AtomicBoolean(false)
+  val paused = AtomicBoolean(false)
 
   var startPromise: Promise? = null
   var stopPromise: Promise? = null
@@ -23,6 +24,7 @@ internal object LiveBridge {
     main.post {
       starting.set(false)
       live.set(true)
+      paused.set(false)
       startPromise?.resolve(null)
       startPromise = null
       module?.sendEvent("onStarted", emptyMap<String, Any?>())
@@ -33,6 +35,7 @@ internal object LiveBridge {
     main.post {
       starting.set(false)
       live.set(false)
+      paused.set(false)
       pendingEndpoint = null
       startPromise?.reject(code, message, null)
       startPromise = null
@@ -44,6 +47,7 @@ internal object LiveBridge {
     main.post {
       live.set(false)
       starting.set(false)
+      paused.set(false)
       pendingEndpoint = null
       module?.sendEvent("onStopped", emptyMap<String, Any?>())
       stopPromise?.resolve(null)
@@ -55,6 +59,7 @@ internal object LiveBridge {
     main.post {
       live.set(false)
       starting.set(false)
+      paused.set(false)
       pendingEndpoint = null
       module?.sendEvent("onError", mapOf("message" to message))
       module?.sendEvent("onStopped", mapOf("error" to message))
@@ -62,6 +67,12 @@ internal object LiveBridge {
       stopPromise = null
       startPromise?.reject("LIVE_FAILED", message, null)
       startPromise = null
+    }
+  }
+
+  fun emitPaused(isPaused: Boolean) {
+    main.post {
+      module?.sendEvent("onPaused", mapOf("paused" to isPaused))
     }
   }
 }

@@ -22,7 +22,10 @@ import { createReadStream, existsSync } from 'fs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MediaService } from '../media/media.service';
-import { MediaStorageService, localMediaType } from '../media/media-storage.service';
+import {
+  MediaStorageService,
+  localMediaType,
+} from '../media/media-storage.service';
 import { mediaFileInterceptorOptions } from '../media/multer-options';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatService, ORG_CHANNEL } from './chat.service';
@@ -260,7 +263,9 @@ export class ChatController {
 
   @UseGuards(JwtAuthGuard)
   @Post('meta/avatar')
-  @UseInterceptors(FileInterceptor('file', mediaFileInterceptorOptions(8 * 1024 * 1024)))
+  @UseInterceptors(
+    FileInterceptor('file', mediaFileInterceptorOptions(8 * 1024 * 1024)),
+  )
   async uploadChannelAvatar(
     @CurrentUser() user: { userId: string },
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -348,10 +353,7 @@ export class ChatController {
 
   @UseGuards(JwtAuthGuard)
   @Post('read')
-  markRead(
-    @CurrentUser() user: { userId: string },
-    @Body() dto: MarkReadDto,
-  ) {
+  markRead(@CurrentUser() user: { userId: string }, @Body() dto: MarkReadDto) {
     return this.chatService.markRead(
       user.userId,
       dto.channelKey?.trim() || ORG_CHANNEL,
@@ -407,7 +409,10 @@ export class ChatController {
     // allowAudio: this is the only upload route voice notes go through —
     // they're small enough (a minute of AAC is well under a megabyte) that
     // there's no need for the Cloudinary-direct-upload path images/video use.
-    FileInterceptor('file', mediaFileInterceptorOptions(50 * 1024 * 1024, true)),
+    FileInterceptor(
+      'file',
+      mediaFileInterceptorOptions(50 * 1024 * 1024, true),
+    ),
   )
   async uploadChatMedia(
     @CurrentUser() user: { userId: string },
@@ -418,7 +423,9 @@ export class ChatController {
       `[chat-media] POST /chat/media (guild/org/DM attachment) user=${user.userId} mime=${file.mimetype} bytes=${file.buffer?.length ?? file.size ?? 0}`,
     );
     await this.chatService.getChatContext(user.userId);
-    const mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO' = file.mimetype.startsWith('audio/')
+    const mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO' = file.mimetype.startsWith(
+      'audio/',
+    )
       ? 'AUDIO'
       : file.mimetype.startsWith('video/')
         ? 'VIDEO'

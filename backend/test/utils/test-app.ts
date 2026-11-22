@@ -70,10 +70,13 @@ export async function resetDatabase(prisma: PrismaService) {
 // uploads_test/ — call this in afterAll so repeated runs don't accumulate
 // junk. Safe to call from multiple spec files; each just clears what's there.
 export async function cleanUploadsDir() {
-  await rm(join(process.cwd(), process.env.MEDIA_UPLOAD_DIR ?? 'uploads_test'), {
-    recursive: true,
-    force: true,
-  });
+  await rm(
+    join(process.cwd(), process.env.MEDIA_UPLOAD_DIR ?? 'uploads_test'),
+    {
+      recursive: true,
+      force: true,
+    },
+  );
 }
 
 let emailCounter = 0;

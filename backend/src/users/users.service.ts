@@ -119,10 +119,7 @@ export class UsersService {
       select: { ...PROFILE_SELECT, avatarFileKey: true },
     });
 
-    if (
-      existing?.avatarFileKey &&
-      existing.avatarFileKey !== stored.fileKey
-    ) {
+    if (existing?.avatarFileKey && existing.avatarFileKey !== stored.fileKey) {
       await this.storage.deleteFile(existing.avatarFileKey);
     }
 
@@ -239,7 +236,9 @@ export class UsersService {
 
   private uniqueConflictMessage(err: Prisma.PrismaClientKnownRequestError) {
     const target = err.meta?.target;
-    const fields = Array.isArray(target) ? target.join(',') : String(target ?? '');
+    const fields = Array.isArray(target)
+      ? target.join(',')
+      : String(target ?? '');
     if (fields.includes('phone')) return 'That phone number is already in use';
     if (fields.includes('inGameName')) {
       return 'That in-game name is already in use';
@@ -311,17 +310,17 @@ export class UsersService {
       return this.getMyProfile(requesterId);
     }
 
-    const [
-      requesterMembership,
-      targetMembership,
-      requesterGuild,
-      targetGuild,
-    ] = await Promise.all([
-      this.prisma.membership.findFirst({ where: { userId: requesterId } }),
-      this.prisma.membership.findFirst({ where: { userId: targetUserId } }),
-      this.prisma.guildMembership.findFirst({ where: { userId: requesterId } }),
-      this.prisma.guildMembership.findFirst({ where: { userId: targetUserId } }),
-    ]);
+    const [requesterMembership, targetMembership, requesterGuild, targetGuild] =
+      await Promise.all([
+        this.prisma.membership.findFirst({ where: { userId: requesterId } }),
+        this.prisma.membership.findFirst({ where: { userId: targetUserId } }),
+        this.prisma.guildMembership.findFirst({
+          where: { userId: requesterId },
+        }),
+        this.prisma.guildMembership.findFirst({
+          where: { userId: targetUserId },
+        }),
+      ]);
 
     // Same org via either seat counts. A roster player may not have a
     // guildMembership row yet, and a guild-only joiner has no roster seat —

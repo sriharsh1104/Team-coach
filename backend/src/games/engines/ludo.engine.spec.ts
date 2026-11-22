@@ -14,7 +14,12 @@ describe('Ludo engine', () => {
     const two = createLudoState(['a', 'b']);
     expect(two.colors).toEqual({ a: 'red', b: 'yellow' });
     const four = createLudoState(['a', 'b', 'c', 'd']);
-    expect(Object.values(four.colors)).toEqual(['red', 'green', 'yellow', 'blue']);
+    expect(Object.values(four.colors)).toEqual([
+      'red',
+      'green',
+      'yellow',
+      'blue',
+    ]);
     expect(() => createLudoState(['a'])).toThrow();
   });
 

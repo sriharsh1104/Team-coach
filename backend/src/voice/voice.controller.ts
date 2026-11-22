@@ -15,7 +15,10 @@ export class VoiceController {
     @CurrentUser() user: { userId: string },
     @Query('room') room?: string,
   ) {
-    return this.voiceService.getConfig(user.userId, room === 'guild' ? 'guild' : 'team');
+    return this.voiceService.getConfig(
+      user.userId,
+      room === 'guild' ? 'guild' : 'team',
+    );
   }
 
   /**
@@ -35,7 +38,10 @@ export class VoiceController {
 
   /** Hosted-voice moderation (mute all / mute one / kick). Enforced server-side. */
   @Post('moderate')
-  moderate(@CurrentUser() user: { userId: string }, @Body() dto: VoiceModerateDto) {
+  moderate(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: VoiceModerateDto,
+  ) {
     return this.voiceService.moderate(user.userId, dto);
   }
 }

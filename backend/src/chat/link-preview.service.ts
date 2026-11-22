@@ -30,7 +30,10 @@ const USER_AGENT =
 @Injectable()
 export class LinkPreviewService {
   private readonly logger = new Logger(LinkPreviewService.name);
-  private readonly cache = new Map<string, { data: LinkPreviewData; expiresAt: number }>();
+  private readonly cache = new Map<
+    string,
+    { data: LinkPreviewData; expiresAt: number }
+  >();
 
   async fetchPreview(rawUrl: string): Promise<LinkPreviewData> {
     const url = isFetchableUrl(rawUrl);
@@ -78,7 +81,9 @@ export class LinkPreviewService {
         );
       }
       if (!res.ok) {
-        throw new BadRequestException(`Could not load that page (${res.status})`);
+        throw new BadRequestException(
+          `Could not load that page (${res.status})`,
+        );
       }
       const contentType = res.headers.get('content-type') ?? '';
       if (!contentType.toLowerCase().includes('text/html')) {
@@ -88,14 +93,19 @@ export class LinkPreviewService {
       return parseOpenGraph(html, url.toString());
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
-      this.logger.warn(`Link preview fetch failed for ${url.hostname}: ${(err as Error).message}`);
+      this.logger.warn(
+        `Link preview fetch failed for ${url.hostname}: ${(err as Error).message}`,
+      );
       throw new BadRequestException('Could not load a preview for that link');
     } finally {
       clearTimeout(timeout);
     }
   }
 
-  private async readCapped(res: globalThis.Response, maxBytes: number): Promise<string> {
+  private async readCapped(
+    res: globalThis.Response,
+    maxBytes: number,
+  ): Promise<string> {
     const reader = res.body?.getReader();
     if (!reader) return res.text();
     const chunks: Uint8Array[] = [];

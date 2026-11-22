@@ -16,7 +16,9 @@ export function mergePushToken(
   next: string,
 ): string {
   const rest = parsePushTokens(existing).filter((t) => t !== next);
-  return [next, ...rest].slice(0, MAX_PUSH_TOKENS_PER_USER).join(PUSH_TOKEN_SEP);
+  return [next, ...rest]
+    .slice(0, MAX_PUSH_TOKENS_PER_USER)
+    .join(PUSH_TOKEN_SEP);
 }
 
 export function removePushToken(

@@ -1,7 +1,12 @@
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import { createTestApp, getPrisma, resetDatabase } from './utils/test-app';
-import { signup, createOrgAs, joinOrgAs, setVerifiedPhone } from './utils/fixtures';
+import {
+  signup,
+  createOrgAs,
+  joinOrgAs,
+  setVerifiedPhone,
+} from './utils/fixtures';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Phase 1B — Profile, roles, devices (e2e)', () => {
@@ -232,12 +237,19 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ roles: ['IGL'], id: 'attacker-chosen-id', passwordHash: 'hijacked' })
+        .send({
+          roles: ['IGL'],
+          id: 'attacker-chosen-id',
+          passwordHash: 'hijacked',
+        })
         .expect(400);
     });
 
     it('requires authentication', async () => {
-      await request(server).patch('/users/me').send({ roles: ['IGL'] }).expect(401);
+      await request(server)
+        .patch('/users/me')
+        .send({ roles: ['IGL'] })
+        .expect(401);
     });
 
     it("cannot be used to modify another user's profile — the target is always the caller, never body-controlled", async () => {
@@ -352,7 +364,9 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
   describe('GET /users/:id/profile (member profile)', () => {
     it('requires authentication', async () => {
       const someone = await signup(server);
-      await request(server).get(`/users/${someone.user.id}/profile`).expect(401);
+      await request(server)
+        .get(`/users/${someone.user.id}/profile`)
+        .expect(401);
     });
 
     it('lets a user view their own profile via this route even with no org yet', async () => {
@@ -389,7 +403,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       expect(playerSeesCoach.body.id).toBe(coach.user.id);
     });
 
-    it('includes the viewed member\'s org role and owner status', async () => {
+    it("includes the viewed member's org role and owner status", async () => {
       const coach = await signup(server, { name: 'Coach' });
       const org = await createOrgAs(server, coach.accessToken, 'COACH');
       const player = await signup(server, { name: 'Player' });

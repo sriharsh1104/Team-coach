@@ -38,6 +38,8 @@ export function drawerItemKeyForRoute(routeName: string | undefined): string | n
       return 'profile';
     case 'SocialHandles':
       return 'socialHandles';
+    case 'Admin':
+      return 'admin';
     case 'Chat':
       return 'teamChat';
     default:
