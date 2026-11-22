@@ -213,6 +213,25 @@ Render (and most PaaS free tiers) cannot host this: they don't expose UDP
 port ranges. Either run the backend on a VPS like this, or set
 `VOICE_SELF_HOSTED=false` and use hosted LiveKit.
 
+### Render web service (API only)
+
+If deploy dies with `Cannot find module '.../backend/dist/main'`, the build
+never wrote `dist/` (or Start used a path that expects a local `.env` file).
+
+In the Render dashboard for the API service:
+
+| Setting | Value |
+|--------|--------|
+| Root Directory | `backend` |
+| Build Command | `npm ci && npm run build` |
+| Start Command | `npx prisma migrate deploy && npm run start:prod` |
+
+`npm run build` runs `prisma generate && nest build`.  
+`start:prod` is `node dist/main` (env vars come from Render — no `.env.production` file).
+
+Also set `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, etc. in Render env.
+Use LiveKit (`VOICE_SELF_HOSTED=false`) on Render; self-hosted mediasoup needs UDP.
+
 ---
 
 ## 6. Database backups

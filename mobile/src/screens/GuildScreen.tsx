@@ -23,6 +23,7 @@ import { InviteQr } from '../ui/InviteQr';
 import { MarqueeText } from '../ui/MarqueeText';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { SoftPressable } from '../ui/SoftPressable';
+import { ButtonLabel } from '../ui/ButtonLabel';
 import { emitToast } from '../ui/toastBus';
 import { confirmAsync } from '../ui/confirmAsync';
 import { ChannelAvatar } from './chat/ChannelAvatar';
@@ -332,10 +333,11 @@ export function GuildScreen({ navigation }: Props) {
                   disabled={leaving}
                   onPress={() => void onLeaveGuild()}
                   pressScale={0.98}
+                  accessibilityLabel="Leave Guild"
                 >
-                  <Text style={[shared.buttonText, { color: '#fff' }]}>
+                  <ButtonLabel icon="logout" color="#fff">
                     {leaving ? 'Leaving…' : 'Leave Guild'}
-                  </Text>
+                  </ButtonLabel>
                 </SoftPressable>
               )}
             </View>
