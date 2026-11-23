@@ -64,6 +64,12 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   rps:pick {roomId, choice}       → RoomView
  *   ludo:roll {roomId}              → RoomView
  *   ludo:move {roomId, tokenIndex}  → RoomView
+ *   boots:set-fleet {roomId, fleet} → RoomView
+ *   boots:place {roomId, start, orientation}
+ *   boots:place-random {roomId}
+ *   boots:clear {roomId}
+ *   boots:ready {roomId}
+ *   boots:fire {roomId, target}     → RoomView
  * Server → client:
  *   room:update {room, event?}   every change in a room you're in
  *   rooms:changed                lobby list for your org changed
@@ -100,8 +106,13 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   afterInit(server: Server) {
     this.games.setListeners(
-      (room, event) => {
+      (room, event, targetUserId) => {
         const payload = { room, event: event ?? null };
+        if (targetUserId) {
+          // Viewer-scoped (Boots): only that player's channel.
+          server.to(this.userChannel(targetUserId)).emit('room:update', payload);
+          return;
+        }
         server.to(this.roomChannel(room.id)).emit('room:update', payload);
         // Also fan out on each player's user channel so a missed Socket.IO
         // room join never leaves someone staring at a stale lobby.
@@ -226,7 +237,8 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   @SubscribeMessage('room:create')
   onCreate(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { game?: GameKind; maxPlayers?: number },
+    @MessageBody()
+    body: { game?: GameKind; maxPlayers?: number; fleet?: number[] },
   ) {
     return this.run(client, async (data) => {
       const game = body?.game;
@@ -236,6 +248,7 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
         { userId: data.userId, name: data.userName, avatarUrl: data.avatarUrl },
         game,
         body?.maxPlayers,
+        body?.fleet,
       );
       await this.rejoinSocketsOf(data.userId, room.id);
       return room;
@@ -525,6 +538,84 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
         this.roomIdOf(body, data),
         data.userId,
         Number(body?.tokenIndex),
+      ),
+    );
+  }
+
+  @SubscribeMessage('boots:set-fleet')
+  onBootsSetFleet(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string; fleet?: number[] },
+  ) {
+    return this.run(client, (data) =>
+      this.games.bootsSetFleet(
+        this.roomIdOf(body, data),
+        data.userId,
+        body?.fleet,
+      ),
+    );
+  }
+
+  @SubscribeMessage('boots:place')
+  onBootsPlace(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    body: {
+      roomId?: string;
+      start?: unknown;
+      orientation?: string;
+    },
+  ) {
+    return this.run(client, (data) =>
+      this.games.bootsPlace(
+        this.roomIdOf(body, data),
+        data.userId,
+        body?.start,
+        body?.orientation,
+      ),
+    );
+  }
+
+  @SubscribeMessage('boots:place-random')
+  onBootsPlaceRandom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.bootsPlaceRandom(this.roomIdOf(body, data), data.userId),
+    );
+  }
+
+  @SubscribeMessage('boots:clear')
+  onBootsClear(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.bootsClear(this.roomIdOf(body, data), data.userId),
+    );
+  }
+
+  @SubscribeMessage('boots:ready')
+  onBootsReady(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.bootsReady(this.roomIdOf(body, data), data.userId),
+    );
+  }
+
+  @SubscribeMessage('boots:fire')
+  onBootsFire(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string; target?: unknown },
+  ) {
+    return this.run(client, (data) =>
+      this.games.bootsFire(
+        this.roomIdOf(body, data),
+        data.userId,
+        body?.target,
       ),
     );
   }

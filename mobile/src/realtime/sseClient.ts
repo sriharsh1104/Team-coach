@@ -8,6 +8,8 @@ export type OrgRealtimeEvent = {
     | 'members.changed'
     /** Your own seat changed — re-read /auth/me and redraw the shell. */
     | 'membership.changed'
+    /** 1-on-1 voice permission flipped — re-read /auth/me for drawer + DM icon. */
+    | 'directVoice.changed'
     | 'heartbeat';
   orgId?: string;
   at: string;

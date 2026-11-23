@@ -4,10 +4,15 @@ import { ChatHubScreen } from '../ChatHubScreen';
 import * as chatApi from '../../../api/chat';
 import * as orgApi from '../../../api/org';
 import * as usersApi from '../../../api/users';
+import * as voiceApi from '../../../api/voice';
 
 jest.mock('../../../api/chat');
 jest.mock('../../../api/org');
 jest.mock('../../../api/users');
+jest.mock('../../../api/voice');
+jest.mock('../../../auth/AuthContext', () => ({
+  useAuth: () => mockAuth,
+}));
 jest.mock('../ChatScreen', () => {
   const React = require('react');
   const { Text } = require('react-native');
@@ -32,9 +37,18 @@ jest.mock('../../../voice/useVoiceOccupancy', () => ({
   }),
 }));
 
+const mockAuth = {
+  user: { id: 'user-1', name: 'Me', canDirectVoice: false } as {
+    id: string;
+    name: string;
+    canDirectVoice: boolean;
+  },
+};
+
 const mockedChatApi = chatApi as jest.Mocked<typeof chatApi>;
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
 const mockedUsersApi = usersApi as jest.Mocked<typeof usersApi>;
+const mockedVoiceApi = voiceApi as jest.Mocked<typeof voiceApi>;
 
 const channelsResponse = {
   channels: [
@@ -78,6 +92,12 @@ let inboxListener: ((channelKey: string | null) => void) | null = null;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockAuth.user = { id: 'user-1', name: 'Me', canDirectVoice: false };
+  mockedVoiceApi.getDirectVoicePeers.mockResolvedValue({
+    enabled: false,
+    needsGuild: false,
+    peers: [],
+  });
   mockedChatApi.getChatChannels.mockResolvedValue(channelsResponse as any);
   mockedChatApi.getChatMedia.mockResolvedValue([]);
   mockedChatApi.getChatLinks.mockResolvedValue([]);
@@ -316,6 +336,54 @@ describe('ChatHubScreen', () => {
 
     expect(screen.getByLabelText('Join team voice')).toBeTruthy();
     expect(screen.getByLabelText('Chat settings')).toBeTruthy();
+  });
+
+  it('puts a 1-on-1 voice button on a DM when both people are granted', async () => {
+    mockAuth.user = { id: 'user-1', name: 'Me', canDirectVoice: true };
+    mockedVoiceApi.getDirectVoicePeers.mockResolvedValue({
+      enabled: true,
+      needsGuild: false,
+      peers: [{ id: 'user-2', name: 'Teammate', avatarUrl: null }],
+    });
+    mockedChatApi.getChatChannels.mockResolvedValue({
+      ...channelsResponse,
+      channels: [
+        ...channelsResponse.channels,
+        {
+          channelKey: 'dm:user-1:user-2',
+          type: 'DM' as const,
+          title: 'Teammate',
+          peerUserId: 'user-2',
+          peerAvatarUrl: null,
+          unreadCount: 0,
+          lastMessageAt: null,
+          lastPreview: null,
+        },
+      ],
+    } as any);
+
+    render(<ChatHubScreen />);
+    await screen.findByText('Teammate');
+    fireEvent.press(screen.getByText('Teammate'));
+    await screen.findByLabelText('Back');
+
+    expect(await screen.findByLabelText('1-on-1 voice call')).toBeTruthy();
+  });
+
+  it('hides the 1-on-1 voice button on a DM when the peer is not granted', async () => {
+    mockAuth.user = { id: 'user-1', name: 'Me', canDirectVoice: true };
+    mockedVoiceApi.getDirectVoicePeers.mockResolvedValue({
+      enabled: true,
+      needsGuild: false,
+      peers: [],
+    });
+
+    render(<ChatHubScreen />);
+    await screen.findByText('Teammate');
+    fireEvent.press(screen.getByText('Teammate'));
+    await screen.findByLabelText('Back');
+
+    expect(screen.queryByLabelText('1-on-1 voice call')).toBeNull();
   });
 
   it('opens the members list when the group chat title is pressed (Media stays a separate button)', async () => {

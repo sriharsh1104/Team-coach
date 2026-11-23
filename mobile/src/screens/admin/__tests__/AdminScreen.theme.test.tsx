@@ -1,6 +1,12 @@
 import React from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { act, render, screen, waitFor } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react-native';
 import { AdminScreen } from '../AdminScreen';
 import * as adminApi from '../../../api/admin';
 import { getThemeColors, THEME_OPTIONS, ThemeId } from '../../../theme';
@@ -46,6 +52,11 @@ const health: adminApi.AdminHealth = {
   services: [],
 };
 
+/** The guild rows this file is about live behind their own tab now. */
+async function openGuildsTab() {
+  await act(async () => fireEvent.press(screen.getByLabelText('Guilds')));
+}
+
 async function renderInTheme(themeId: ThemeId) {
   await SecureStore.setItemAsync(THEME_STORAGE_KEY, themeId);
   render(
@@ -56,6 +67,7 @@ async function renderInTheme(themeId: ThemeId) {
   await act(async () => {
     jest.advanceTimersByTime(400);
   });
+  await openGuildsTab();
   await waitFor(() => expect(screen.getByText('Alpha Squad')).toBeTruthy());
 }
 
@@ -81,6 +93,7 @@ describe('AdminScreen theming', () => {
     jest.clearAllMocks();
     mockedApi.getOverview.mockResolvedValue(overview);
     mockedApi.getHealth.mockResolvedValue(health);
+    mockedApi.listDirectVoiceUsers.mockResolvedValue([]);
     mockedApi.listOrgs.mockResolvedValue({
       total: 1,
       skip: 0,
@@ -123,7 +136,7 @@ describe('AdminScreen theming', () => {
       flatten(screen.getByText(/rhea@example.com/).props.style).color,
     ).toBe(palette.textMuted);
     expect(
-      flatten(screen.getByText('Everything across the platform. Read-only.').props.style)
+      flatten(screen.getByText('Guilds, people and backend health').props.style)
         .color,
     ).toBe(palette.textMuted);
   });

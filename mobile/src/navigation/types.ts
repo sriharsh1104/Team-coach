@@ -31,8 +31,15 @@ export type MainStackParamList = {
   Announcements: undefined;
   /** Platform admin — only reachable when the server says isPlatformAdmin. */
   Admin: undefined;
-  /** 1-on-1 voice — only reachable when the server says canDirectVoice. */
-  DirectVoice: undefined;
+  /** 1-on-1 voice — only reachable when the server says canDirectVoice.
+   * Optional peer jumps straight into a call (e.g. from a DM header). */
+  DirectVoice:
+    | {
+        peerId: string;
+        peerName?: string;
+        peerAvatarUrl?: string | null;
+      }
+    | undefined;
   TwoFactorSetup: undefined;
   MemberProfile: { userId: string; name: string };
   MediaFeed: undefined;
@@ -57,6 +64,6 @@ export type MainStackParamList = {
   PointsTable: undefined;
   SocialHandles: undefined;
   Games: undefined;
-  GameRoom: { roomId: string; game?: 'rps' | 'ludo' };
+  GameRoom: { roomId: string; game?: 'rps' | 'ludo' | 'boots' };
   GoLive: undefined;
 };

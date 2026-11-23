@@ -5,7 +5,7 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import {
   deleteToken,
   getBiometricEnabled,
@@ -294,6 +294,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOrgState(me.org);
     setGuildState(me.guild);
   }, []);
+
+  // Backup for missed SSE: if an admin granted 1-on-1 voice while the app
+  // was backgrounded, the next foreground pass re-reads canDirectVoice so
+  // the Private drawer + DM call icon appear without logout.
+  const signedInUserId = user?.id;
+  useEffect(() => {
+    if (!signedInUserId) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshUser().catch(() => undefined);
+    });
+    return () => sub.remove();
+  }, [signedInUserId, refreshUser]);
 
   const setOrg = useCallback((nextOrg: OrgSummary) => {
     setOrgState(nextOrg);

@@ -7,7 +7,7 @@ import {
   resetDatabase,
   uniqueOrgName,
 } from './utils/test-app';
-import { createOrgAs, signup } from './utils/fixtures';
+import { createOrgAs, joinOrgAs, signup } from './utils/fixtures';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 /**
@@ -344,6 +344,143 @@ describe('Platform admin (e2e)', () => {
         .get('/admin/orgs?take=5000')
         .set('Authorization', `Bearer ${admin.accessToken}`)
         .expect(400);
+    });
+  });
+
+  describe('deleting a guild', () => {
+    async function guildWithMember() {
+      const owner = await signup(server);
+      const org = await createOrgAs(
+        server,
+        owner.accessToken,
+        'COACH',
+        uniqueOrgName(),
+      );
+      const member = await signup(server);
+      await joinOrgAs(server, member.accessToken, org.rosterCode);
+      const admin = await signup(server);
+      await makeAdmin(admin.user.id);
+      return { owner, member, org, admin };
+    }
+
+    it('refuses a non-admin outright', async () => {
+      const { owner, org } = await guildWithMember();
+
+      // Even the guild's own owner cannot reach this route.
+      await request(server)
+        .delete(`/admin/orgs/${org.id}`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ confirmName: org.name })
+        .expect(403);
+      expect(await prisma.org.count()).toBe(1);
+    });
+
+    it('refuses without the exact name — a mis-tap cannot delete a guild', async () => {
+      const { org, admin } = await guildWithMember();
+      const auth = `Bearer ${admin.accessToken}`;
+
+      await request(server)
+        .delete(`/admin/orgs/${org.id}`)
+        .set('Authorization', auth)
+        .send({ confirmName: '' })
+        .expect(400);
+      await request(server)
+        .delete(`/admin/orgs/${org.id}`)
+        .set('Authorization', auth)
+        .send({ confirmName: 'something else' })
+        .expect(400);
+      // Case matters: two guilds differing only in case are different guilds.
+      await request(server)
+        .delete(`/admin/orgs/${org.id}`)
+        .set('Authorization', auth)
+        .send({ confirmName: org.name.toUpperCase() })
+        .expect(400);
+      // And the field itself is required.
+      await request(server)
+        .delete(`/admin/orgs/${org.id}`)
+        .set('Authorization', auth)
+        .send({})
+        .expect(400);
+
+      expect(await prisma.org.count()).toBe(1);
+    });
+
+    it('deletes the guild and everything hanging off it', async () => {
+      const { owner, member, org, admin } = await guildWithMember();
+      await request(server)
+        .post('/announcements')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ title: 'Last post', body: 'Before the end' })
+        .expect(201);
+
+      const res = await request(server)
+        .delete(`/admin/orgs/${org.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ confirmName: org.name })
+        .expect(200);
+      expect(res.body).toMatchObject({ id: org.id, name: org.name });
+      expect(res.body.removed.members).toBe(2);
+
+      expect(await prisma.org.count()).toBe(0);
+      expect(await prisma.membership.count()).toBe(0);
+      expect(await prisma.guildMembership.count()).toBe(0);
+      expect(await prisma.announcement.count()).toBe(0);
+
+      // The people survive — only their seats went.
+      expect(
+        await prisma.user.count({
+          where: { id: { in: [owner.user.id, member.user.id] } },
+        }),
+      ).toBe(2);
+    });
+
+    it('leaves the members with no guild, so the app sends them to join one', async () => {
+      const { owner, member, org, admin } = await guildWithMember();
+      await request(server)
+        .delete(`/admin/orgs/${org.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ confirmName: org.name })
+        .expect(200);
+
+      for (const person of [owner, member]) {
+        const me = await request(server)
+          .get('/auth/me')
+          .set('Authorization', `Bearer ${person.accessToken}`)
+          .expect(200);
+        // Exactly the state a brand-new account is in — which is what puts
+        // the join screen in front of them.
+        expect(me.body.org).toBeNull();
+        expect(me.body.guild).toBeNull();
+      }
+    });
+
+    it('never touches a different guild', async () => {
+      const a = await guildWithMember();
+      const b = await guildWithMember();
+
+      await request(server)
+        .delete(`/admin/orgs/${a.org.id}`)
+        .set('Authorization', `Bearer ${a.admin.accessToken}`)
+        .send({ confirmName: a.org.name })
+        .expect(200);
+
+      expect(await prisma.org.count()).toBe(1);
+      const stillThere = await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${b.member.accessToken}`)
+        .expect(200);
+      expect(stillThere.body.org?.id).toBe(b.org.id);
+    });
+
+    it('404s on a guild that does not exist', async () => {
+      const admin = await signup(server);
+      await makeAdmin(admin.user.id);
+
+      await request(server)
+        .delete('/admin/orgs/does-not-exist')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ confirmName: 'whatever' })
+        .expect(404);
     });
   });
 

@@ -9,16 +9,37 @@ import { ChannelAvatar } from './ChannelAvatar';
 
 type Props = {
   room: VoiceRoomKind;
+  /** Required when `room` is `direct` — the other person in the 1-on-1. */
+  peerId?: string;
   onPress: () => void;
 };
 
+function voiceLabel(
+  room: VoiceRoomKind,
+  count: number,
+): string {
+  if (room === 'direct') {
+    return count > 0
+      ? `1-on-1 voice call, ${count} already in`
+      : '1-on-1 voice call';
+  }
+  if (room === 'guild') {
+    return count > 0
+      ? `Join guild voice, ${count} already in`
+      : 'Join guild voice';
+  }
+  return count > 0
+    ? `Join team voice, ${count} already in`
+    : 'Join team voice';
+}
+
 /**
  * Headset + live occupancy avatars for the chat header (next to the ⋮ menu).
+ * Team/guild rooms and admin-granted 1-on-1 (from a DM) share this control.
  */
-export function VoiceJoinHeaderButton({ room, onPress }: Props) {
+export function VoiceJoinHeaderButton({ room, peerId, onPress }: Props) {
   const { colors } = useTheme();
-  const { occupancy } = useVoiceOccupancy(room);
-  const isGuild = room === 'guild';
+  const { occupancy } = useVoiceOccupancy(room, { peerId });
   const count = occupancy.count;
 
   return (
@@ -55,15 +76,7 @@ export function VoiceJoinHeaderButton({ room, onPress }: Props) {
         onPress={onPress}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel={
-          count > 0
-            ? isGuild
-              ? `Join guild voice, ${count} already in`
-              : `Join team voice, ${count} already in`
-            : isGuild
-              ? 'Join guild voice'
-              : 'Join team voice'
-        }
+        accessibilityLabel={voiceLabel(room, count)}
         pressScale={0.92}
         style={styles.btn}
       >

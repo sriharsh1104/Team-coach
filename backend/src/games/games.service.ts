@@ -10,6 +10,22 @@ import {
   rollDice,
 } from './engines/ludo.engine';
 import {
+  BootsCell,
+  BootsOrientation,
+  BootsPublicState,
+  BootsState,
+  bootsForfeit,
+  bootsPublicState,
+  createBootsState,
+  clearBoots,
+  fire,
+  markReady,
+  normalizeFleet,
+  parseCoord,
+  placeBoot,
+  placeBootsRandom,
+} from './engines/boots.engine';
+import {
   createRpsState,
   isRpsChoice,
   rpsForfeit,
@@ -20,7 +36,7 @@ import {
   RpsState,
 } from './engines/rps.engine';
 
-export type GameKind = 'rps' | 'ludo';
+export type GameKind = 'rps' | 'ludo' | 'boots';
 
 export const GAME_CATALOG: Record<
   GameKind,
@@ -28,6 +44,7 @@ export const GAME_CATALOG: Record<
 > = {
   rps: { title: 'Stone Paper Scissors', minPlayers: 2, maxPlayers: 2 },
   ludo: { title: 'Ludo', minPlayers: 2, maxPlayers: 4 },
+  boots: { title: 'Boots', minPlayers: 2, maxPlayers: 2 },
 };
 
 export interface RoomPlayer {
@@ -51,6 +68,9 @@ interface Room {
   createdAt: number;
   rps: RpsState | null;
   ludo: LudoState | null;
+  boots: BootsState | null;
+  /** Host-chosen boot lengths for Boots (e.g. [5,3,2]). */
+  bootsFleet: number[] | null;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -68,6 +88,10 @@ export interface RoomView {
   createdAt: number;
   rps: RpsPublicState | null;
   ludo: LudoState | null;
+  /** Viewer-scoped — opponent boots stay hidden until sunk. */
+  boots: BootsPublicState | null;
+  /** Lobby preview of the Boots fleet sizes. */
+  bootsFleet: number[] | null;
   /** Server time when the current action auto-resolves (Ludo turn timer). */
   deadline: number | null;
 }
@@ -75,6 +99,8 @@ export interface RoomView {
 export type RoomListener = (
   room: RoomView,
   event?: { type: string; payload?: unknown },
+  /** When set, only this user should receive the update (viewer-scoped Boots). */
+  targetUserId?: string,
 ) => void;
 export type OrgListener = (orgId: string) => void;
 
@@ -135,7 +161,7 @@ export class GamesService {
   roomOf(userId: string): RoomView | null {
     const id = this.userRoom.get(userId);
     const room = id ? this.rooms.get(id) : undefined;
-    return room ? this.view(room) : null;
+    return room ? this.view(room, userId) : null;
   }
 
   createRoom(
@@ -143,6 +169,7 @@ export class GamesService {
     host: Omit<RoomPlayer, 'seat' | 'connected'>,
     game: GameKind,
     maxPlayers?: number,
+    bootsFleet?: number[],
   ): RoomView {
     const spec = GAME_CATALOG[game];
     if (!spec) throw new Error('Unknown game');
@@ -169,6 +196,8 @@ export class GamesService {
       createdAt: Date.now(),
       rps: null,
       ludo: null,
+      boots: null,
+      bootsFleet: game === 'boots' ? normalizeFleet(bootsFleet) : null,
       timer: null,
     };
     this.rooms.set(room.id, room);
@@ -191,7 +220,7 @@ export class GamesService {
       this.clearDisconnectTimer(player.userId);
       this.userRoom.set(player.userId, room.id);
       this.emit(room);
-      return this.view(room);
+      return this.view(room, player.userId);
     }
     if (room.status !== 'lobby') throw new Error('Game already started');
     if (room.players.length >= room.maxPlayers) throw new Error('Room is full');
@@ -204,7 +233,7 @@ export class GamesService {
     this.userRoom.set(player.userId, room.id);
     this.emit(room);
     this.onOrg(orgId);
-    return this.view(room);
+    return this.view(room, player.userId);
   }
 
   leaveRoom(userId: string): void {
@@ -222,7 +251,12 @@ export class GamesService {
     if (room.status === 'playing') {
       if (room.rps) rpsForfeit(room.rps, userId);
       if (room.ludo) ludoRemovePlayer(room.ludo, userId);
-      if (room.rps?.phase === 'done' || room.ludo?.phase === 'done') {
+      if (room.boots) bootsForfeit(room.boots, userId);
+      if (
+        room.rps?.phase === 'done' ||
+        room.ludo?.phase === 'done' ||
+        room.boots?.phase === 'done'
+      ) {
         this.finish(room);
         return;
       }
@@ -285,10 +319,16 @@ export class GamesService {
       room.ludo = createLudoState(ids);
       this.armLudoTimer(room);
     }
+    if (room.game === 'boots') {
+      room.boots = createBootsState(
+        [ids[0], ids[1]],
+        room.bootsFleet ?? undefined,
+      );
+    }
     room.status = 'playing';
     this.emit(room, { type: 'started' });
     this.onOrg(room.orgId);
-    return this.view(room);
+    return this.view(room, userId);
   }
 
   /** Host (or anyone, once finished) resets the room to the lobby for a rematch. */
@@ -301,11 +341,104 @@ export class GamesService {
     this.clearTimer(room);
     room.rps = null;
     room.ludo = null;
+    room.boots = null;
     room.status = 'lobby';
     this.deadlines.delete(room.id);
     this.emit(room, { type: 'rematch' });
     this.onOrg(room.orgId);
     return this.view(room);
+  }
+
+  // ─── Boots ────────────────────────────────────────────────────────────
+
+  /** Host can tweak fleet sizes while still in the lobby. */
+  bootsSetFleet(roomId: string, userId: string, fleet: unknown): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room || room.game !== 'boots') throw new Error('Not a Boots room');
+    if (room.hostId !== userId) throw new Error('Only the host can set the fleet');
+    if (room.status !== 'lobby') throw new Error('Fleet is locked once the game starts');
+    room.bootsFleet = normalizeFleet(fleet);
+    this.emit(room);
+    return this.view(room);
+  }
+
+  bootsPlace(
+    roomId: string,
+    userId: string,
+    start: unknown,
+    orientation: unknown,
+  ): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.boots || room.status !== 'playing')
+      throw new Error('No Boots match in progress');
+    const cell = this.parseBootsCell(start);
+    if (orientation !== 'horizontal' && orientation !== 'vertical') {
+      throw new Error('Orientation must be horizontal or vertical');
+    }
+    placeBoot(room.boots, userId, cell, orientation as BootsOrientation);
+    this.emit(room, { type: 'boots:place' });
+    return this.view(room, userId);
+  }
+
+  bootsPlaceRandom(roomId: string, userId: string): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.boots || room.status !== 'playing')
+      throw new Error('No Boots match in progress');
+    placeBootsRandom(room.boots, userId);
+    this.emit(room, { type: 'boots:place' });
+    return this.view(room, userId);
+  }
+
+  bootsClear(roomId: string, userId: string): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.boots || room.status !== 'playing')
+      throw new Error('No Boots match in progress');
+    clearBoots(room.boots, userId);
+    this.emit(room, { type: 'boots:place' });
+    return this.view(room, userId);
+  }
+
+  bootsReady(roomId: string, userId: string): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.boots || room.status !== 'playing')
+      throw new Error('No Boots match in progress');
+    markReady(room.boots, userId);
+    this.emit(room, {
+      type: room.boots.phase === 'battle' ? 'boots:battle' : 'boots:ready',
+    });
+    return this.view(room, userId);
+  }
+
+  bootsFire(roomId: string, userId: string, target: unknown): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.boots || room.status !== 'playing')
+      throw new Error('No Boots match in progress');
+    const cell = this.parseBootsCell(target);
+    fire(room.boots, userId, cell);
+    this.emit(room, {
+      type: 'boots:shot',
+      payload: room.boots.lastShot,
+    });
+    if (room.boots.phase === 'done') this.finish(room);
+    return this.view(room, userId);
+  }
+
+  private parseBootsCell(raw: unknown): BootsCell {
+    if (raw && typeof raw === 'object') {
+      const o = raw as { col?: unknown; row?: unknown; coord?: unknown };
+      if (typeof o.coord === 'string') {
+        const parsed = parseCoord(o.coord);
+        if (parsed) return parsed;
+      }
+      if (Number.isFinite(o.col) && Number.isFinite(o.row)) {
+        return { col: Number(o.col), row: Number(o.row) };
+      }
+    }
+    if (typeof raw === 'string') {
+      const parsed = parseCoord(raw);
+      if (parsed) return parsed;
+    }
+    throw new Error('Pick a cell like B2');
   }
 
   // ─── RPS ──────────────────────────────────────────────────────────────
@@ -442,11 +575,22 @@ export class GamesService {
   }
 
   private emit(room: Room, event?: { type: string; payload?: unknown }) {
+    // Boots hides unhit enemy cells — each player gets their own RoomView.
+    if (room.boots && room.status === 'playing') {
+      for (const p of room.players) {
+        this.onRoom(this.view(room, p.userId), event, p.userId);
+      }
+      return;
+    }
     this.onRoom(this.view(room), event);
   }
 
-  private view(room: Room): RoomView {
+  private view(room: Room, viewerId?: string): RoomView {
     const spec = GAME_CATALOG[room.game];
+    const viewer =
+      viewerId ??
+      room.players[0]?.userId ??
+      room.hostId;
     return {
       id: room.id,
       orgId: room.orgId,
@@ -462,6 +606,8 @@ export class GamesService {
       ludo: room.ludo
         ? { ...room.ludo, tokens: cloneTokens(room.ludo.tokens) }
         : null,
+      boots: room.boots ? bootsPublicState(room.boots, viewer) : null,
+      bootsFleet: room.bootsFleet ? [...room.bootsFleet] : null,
       deadline:
         room.ludo && room.ludo.phase !== 'done'
           ? (this.deadlines.get(room.id) ?? null)

@@ -226,7 +226,7 @@ export function MembersScreen({ navigation }: Props) {
           // `detail` is null until the first roster fetch lands — without
           // this the screen is simply blank, which reads as "no members".
           !detail ? (
-            <SkeletonList count={8} avatarSize={42} style={{ paddingHorizontal: 24 }} />
+            <SkeletonList count={8} avatarSize={32} />
           ) : listQuery ? (
             <Text style={styles.rosterHint}>No matches.</Text>
           ) : null
@@ -251,9 +251,9 @@ export function MembersScreen({ navigation }: Props) {
           const showRemove =
             canRemove && !item.isOwner && item.userId !== user?.id;
           return (
-            <View style={staticStyles.memberCard}>
+            <View style={staticStyles.memberRow}>
               <SoftPressable
-                style={staticStyles.memberRow}
+                style={staticStyles.memberMain}
                 onPress={() =>
                   navigation.push('MemberProfile', {
                     userId: item.userId,
@@ -265,42 +265,47 @@ export function MembersScreen({ navigation }: Props) {
               >
                 <ChannelAvatar
                   uri={item.avatarUrl}
-                  size={42}
+                  size={32}
                   fallback={(item.name[0] ?? '?').toUpperCase()}
                   previewable={false}
                 />
                 <View style={staticStyles.memberInfo}>
-                  <Text style={styles.memberName}>
+                  <Text style={styles.memberName} numberOfLines={1}>
                     {index + 1}. {item.name}
                     {item.isOwner ? ' (Owner)' : ''}
                   </Text>
                   {inGameRoles ? (
-                    <Text style={styles.memberInGameRoles}>{inGameRoles}</Text>
+                    <Text style={styles.memberInGameRoles} numberOfLines={1}>
+                      {inGameRoles}
+                    </Text>
                   ) : item.role && !(canChangeRoles && !item.isOwner) ? (
-                    <Text style={styles.memberInGameRoles}>
+                    <Text style={styles.memberInGameRoles} numberOfLines={1}>
                       {item.role.charAt(0) + item.role.slice(1).toLowerCase()}
                     </Text>
                   ) : null}
                 </View>
               </SoftPressable>
-              {canChangeRoles && !item.isOwner ? (
-                <RoleSelector
-                  value={item.role}
-                  memberName={item.name}
-                  onChange={(role) => void onChangeRole(item, role)}
-                />
-              ) : null}
-              {showRemove ? (
-                <IconActionButton
-                  icon="person-remove-outline"
-                  label={`Remove ${item.name}`}
-                  tooltip="Remove"
-                  danger
-                  style={staticStyles.removeIcon}
-                  disabled={busyId === item.userId}
-                  onPress={() => void onRemove(item)}
-                />
-              ) : null}
+              <View style={staticStyles.memberActions}>
+                {canChangeRoles && !item.isOwner ? (
+                  <RoleSelector
+                    value={item.role}
+                    memberName={item.name}
+                    onChange={(role) => void onChangeRole(item, role)}
+                  />
+                ) : null}
+                {showRemove ? (
+                  <IconActionButton
+                    icon="person-remove-outline"
+                    label={`Remove ${item.name}`}
+                    tooltip="Remove"
+                    danger
+                    plain
+                    iconSize={18}
+                    disabled={busyId === item.userId}
+                    onPress={() => void onRemove(item)}
+                  />
+                ) : null}
+              </View>
             </View>
           );
         }}
@@ -312,36 +317,38 @@ export function MembersScreen({ navigation }: Props) {
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
   list: { flex: 1, backgroundColor: 'transparent' },
-  listContent: { padding: 24, paddingBottom: 40 },
+  listContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40 },
   inviteCard: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 16,
     backgroundColor: 'rgba(255,255,255,0.045)',
   },
   inviteTextCol: { flex: 1 },
-  memberCard: {
-    marginBottom: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    overflow: 'hidden',
-  },
+  /** One compact line: identity left, role dropdown + remove on the right. */
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 13,
-    paddingHorizontal: 12,
-    gap: 12,
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  memberMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   memberInfo: { flex: 1, minWidth: 0 },
-  removeIcon: {
-    alignSelf: 'flex-start',
-    marginHorizontal: 12,
-    marginBottom: 12,
+  memberActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
   },
 });
 
@@ -382,7 +389,7 @@ function membersStyles(c: ThemeColors) {
     },
     inviteLabel: { color: c.textMuted, fontSize: 12 },
     inviteValue: { color: c.text, fontWeight: '600' as const, marginTop: 2 },
-    memberName: { fontSize: 16, color: c.text, fontWeight: '600' as const },
-    memberInGameRoles: { fontSize: 12, color: c.textMuted, marginTop: 2 },
+    memberName: { fontSize: 14, color: c.text, fontWeight: '600' as const },
+    memberInGameRoles: { fontSize: 11, color: c.textMuted, marginTop: 1 },
   };
 }

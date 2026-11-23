@@ -158,6 +158,20 @@ export function listOrgs(params: { search?: string; skip?: number; take?: number
   return apiClient.get<AdminOrgList>('/admin/orgs', { params }).then((r) => r.data);
 }
 
+/**
+ * Delete a guild and everything in it. `confirmName` must match the guild's
+ * name exactly — the server rejects anything else, so this cannot happen by
+ * clicking the wrong row.
+ */
+export function deleteOrg(id: string, confirmName: string) {
+  return apiClient
+    .delete<{ id: string; name: string; removed: Record<string, number> }>(
+      `/admin/orgs/${id}`,
+      { data: { confirmName } },
+    )
+    .then((r) => r.data);
+}
+
 export function getOrg(id: string) {
   return apiClient.get<AdminOrgDetail>(`/admin/orgs/${id}`).then((r) => r.data);
 }

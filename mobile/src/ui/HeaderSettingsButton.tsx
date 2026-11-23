@@ -160,12 +160,13 @@ export function HeaderSettingsButton() {
 const styles = StyleSheet.create({
   gearBtn: {
     width: 36,
-    height: 36,
+    alignSelf: 'stretch',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingTop: 6,
   },
-  gearIcon: { fontSize: 18 },
+  gearIcon: { fontSize: 20 },
   root: { flex: 1 },
   backdrop: {
     ...StyleSheet.absoluteFillObject,

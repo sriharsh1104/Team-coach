@@ -535,7 +535,7 @@ function MemberRow({
       <View style={staticStyles.rosterMain}>
         <ChannelAvatar
           uri={member.avatarUrl}
-          size={40}
+          size={32}
           fallback={(member.name[0] ?? '?').toUpperCase()}
           previewable={false}
         />
@@ -545,11 +545,11 @@ function MemberRow({
           pressScale={0.99}
           accessibilityRole="button"
         >
-          <Text style={styles.rowName} numberOfLines={2}>
+          <Text style={styles.rowName} numberOfLines={1}>
             {personLabel(member.name, member.inGameName)}
             {member.isOwner ? ' (Owner)' : ''}
           </Text>
-          <Text style={styles.rowMeta} numberOfLines={2}>
+          <Text style={styles.rowMeta} numberOfLines={1}>
             {GUILD_ROLE_LABEL[member.guildRole]}
             {member.onRoster
               ? ` · Roster ${member.rosterRole ? ROSTER_ROLE_LABEL[member.rosterRole] : ''}`
@@ -597,11 +597,11 @@ function RosterRow({
           pressScale={0.99}
           accessibilityRole="button"
         >
-          <Text style={styles.rowName} numberOfLines={2}>
+          <Text style={styles.rowName} numberOfLines={1}>
             {personLabel(member.name, member.inGameName)}
             {member.isOwner ? ' (Owner)' : ''}
           </Text>
-          <Text style={styles.rowMeta}>
+          <Text style={styles.rowMeta} numberOfLines={1}>
             {member.role ? ROSTER_ROLE_LABEL[member.role] : 'Owner'}
           </Text>
         </SoftPressable>
@@ -642,15 +642,12 @@ const staticStyles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.045)',
   },
   inviteTextCol: { flex: 1 },
+  /** Flat list rows — no per-user cards. */
   row: {
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-    gap: 6,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    paddingVertical: 8,
+    gap: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
     maxWidth: '100%',
   },
   rosterMain: {
@@ -661,22 +658,21 @@ const staticStyles = StyleSheet.create({
     maxWidth: '100%',
   },
   rosterTextCol: { flex: 1, minWidth: 0 },
-  iconActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   iconBtn: {
-    // 44pt minimum touch target on phones.
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    minHeight: 36,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    gap: 4,
+    minHeight: 32,
+    paddingHorizontal: 10,
+    borderRadius: 8,
     borderWidth: 1,
   },
   iconBtnDisabled: { opacity: 0.55 },
@@ -717,8 +713,8 @@ function guildStyles(c: ThemeColors) {
     },
     inviteLabel: { color: c.textMuted, fontSize: 12 },
     inviteValue: { color: c.text, fontWeight: '600' as const, marginTop: 2 },
-    rowName: { fontSize: 16, color: c.text, fontWeight: '700' as const },
-    rowMeta: { fontSize: 12, color: c.textMuted },
+    rowName: { fontSize: 14, color: c.text, fontWeight: '600' as const },
+    rowMeta: { fontSize: 11, color: c.textMuted, marginTop: 1 },
     addChip: {
       backgroundColor: c.surface,
       borderColor: c.border,

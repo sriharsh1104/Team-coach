@@ -3,7 +3,7 @@ import { apiBaseUrl } from './client';
 
 // ── Types mirrored from backend/src/games ──────────────────────────────────
 
-export type GameKind = 'rps' | 'ludo';
+export type GameKind = 'rps' | 'ludo' | 'boots';
 
 export const GAME_CATALOG: Array<{
   id: GameKind;
@@ -32,7 +32,48 @@ export const GAME_CATALOG: Array<{
     maxPlayers: 4,
     emoji: '🎲',
   },
+  {
+    id: 'boots',
+    title: 'Boots',
+    tagline: '6×6 fleet hunt — place boots, then fire',
+    players: '2 players',
+    minPlayers: 2,
+    maxPlayers: 2,
+    emoji: '🚢',
+  },
 ];
+
+export const BOOTS_COLS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
+export const BOOTS_ROWS = [1, 2, 3, 4, 5, 6] as const;
+export const BOOTS_DEFAULT_FLEET = [5, 3, 2];
+
+export type BootsOrientation = 'horizontal' | 'vertical';
+export type BootsShotResult = 'miss' | 'hit' | 'sunk';
+export type BootsCell = { col: number; row: number };
+export type BootsBoot = {
+  id: string;
+  length: number;
+  cells: BootsCell[];
+  sunk: boolean;
+};
+
+export type BootsPublicState = {
+  playerIds: [string, string];
+  fleet: number[];
+  phase: 'placing' | 'battle' | 'done';
+  turnId: string | null;
+  lastShot: {
+    by: string;
+    cell: BootsCell;
+    result: BootsShotResult;
+    bootLength?: number;
+  } | null;
+  winnerId: string | null;
+  ready: Record<string, boolean>;
+  own: { boots: BootsBoot[]; shots: Record<string, BootsShotResult> };
+  enemy: { shots: Record<string, BootsShotResult>; sunkBoots: BootsBoot[] };
+  sunkCounts: Record<string, number>;
+};
 
 export type RpsChoice = 'stone' | 'paper' | 'scissors';
 
@@ -93,6 +134,8 @@ export interface RoomView {
   createdAt: number;
   rps: RpsPublicState | null;
   ludo: LudoState | null;
+  boots: BootsPublicState | null;
+  bootsFleet: number[] | null;
   deadline: number | null;
 }
 

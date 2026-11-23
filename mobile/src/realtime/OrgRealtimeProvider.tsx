@@ -32,7 +32,7 @@ export function OrgRealtimeProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, org, guild, refreshOrg } = useAuth();
+  const { user, org, guild, refreshOrg, refreshUser } = useAuth();
   const listeners = useRef(new Set<Listener>());
   const [lastEvent, setLastEvent] = useState<OrgRealtimeEvent | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
@@ -53,6 +53,12 @@ export function OrgRealtimeProvider({
         cacheInvalidate('org:');
         void refreshOrg().catch(() => undefined);
       }
+      if (event.type === 'directVoice.changed') {
+        // Admin flipped canDirectVoice while we were already signed in —
+        // refresh the user object so Private drawer + DM call icon appear
+        // without logout / reinstall.
+        void refreshUser().catch(() => undefined);
+      }
       if (event.type === 'scrims.changed') {
         cacheInvalidate(CacheKeys.scrimsList());
         cacheInvalidate('stats:');
@@ -60,7 +66,7 @@ export function OrgRealtimeProvider({
       setLastEvent(event);
       listeners.current.forEach((fn) => fn(event));
     },
-    [refreshOrg],
+    [refreshOrg, refreshUser],
   );
 
   const subscribe = useCallback((listener: Listener) => {

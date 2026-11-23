@@ -356,3 +356,61 @@ export function useGuildDrawer() {
 
   return { open, sections, openWith, close, setRouteName };
 }
+
+/**
+ * Drawer for a platform admin who has no guild of their own.
+ *
+ * Without this the admin-only stack had no hamburger and no settings gear at
+ * all — no way to change theme, reach Security, or even log out, because
+ * every other route to those lives behind an org or guild the admin does not
+ * have. Deliberately short: this account exists to run the platform, not to
+ * play on it.
+ */
+export function useAdminDrawer() {
+  const { open, navigation, openWith, close, routeName, setRouteName } =
+    useDrawerHeader();
+
+  const sections = useMemo((): SideDrawerSection[] => {
+    if (!navigation) return [];
+    return withActiveDrawerItem(
+      [
+        {
+          key: 'platform',
+          label: 'Platform',
+          items: [
+            {
+              key: 'admin',
+              label: 'Dashboard',
+              icon: 'shield-outline' as const,
+              // Plain navigate, not goToSection: this stack's initial route
+              // is Admin itself — there is no OrgHome/GuildHome under it.
+              onPress: () => navigation.navigate('Admin'),
+            },
+          ],
+        },
+        {
+          key: 'account',
+          label: 'Account',
+          split: true,
+          items: [
+            {
+              key: 'profile',
+              label: 'Profile',
+              icon: 'person-outline' as const,
+              onPress: () => navigation.navigate('Profile'),
+            },
+            {
+              key: 'accountSettings',
+              label: 'Security',
+              icon: 'shield-outline' as const,
+              onPress: () => navigation.navigate('AccountSettings'),
+            },
+          ],
+        },
+      ],
+      drawerItemKeyForRoute(routeName ?? undefined),
+    );
+  }, [navigation, routeName]);
+
+  return { open, sections, openWith, close, setRouteName };
+}

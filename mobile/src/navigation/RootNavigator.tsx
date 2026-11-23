@@ -38,7 +38,7 @@ import { VoiceNotificationBridge } from '../notifications/VoiceNotificationBridg
 import { InviteLinkBridge } from '../invite/InviteLinkBridge';
 import { SideDrawer } from '../ui/SideDrawer';
 import { SectionStackHeader } from '../ui/SectionStackHeader';
-import { useGuildDrawer, useOrgDrawer } from './useAppDrawer';
+import { useAdminDrawer, useGuildDrawer, useOrgDrawer } from './useAppDrawer';
 import {
   AuthStackParamList,
   OrgSetupStackParamList,
@@ -165,6 +165,7 @@ export function RootNavigator() {
   // ever actually used below, depending on phase/org — see useAppDrawer.ts.
   const orgDrawer = useOrgDrawer();
   const guildDrawer = useGuildDrawer();
+  const adminDrawer = useAdminDrawer();
   const phase = computeNavPhase(user, org, guild);
   // Deliberately NOT memoized with useState: RootNavigator itself mounts
   // immediately (while isLoading is still true, before `phase` can possibly
@@ -214,6 +215,7 @@ export function RootNavigator() {
         if (name) {
           orgDrawer.setRouteName(name);
           guildDrawer.setRouteName(name);
+          adminDrawer.setRouteName(name);
         }
         notifyFocusedRouteChanged();
       }}
@@ -224,6 +226,7 @@ export function RootNavigator() {
           null;
         orgDrawer.setRouteName(name);
         guildDrawer.setRouteName(name);
+        adminDrawer.setRouteName(name);
         notifyFocusedRouteChanged();
       }}
     >
@@ -250,38 +253,56 @@ export function RootNavigator() {
         </AuthStack.Navigator>
       ) : user.isPlatformAdmin && !org && !guild ? (
         // Platform admin with no guild of their own: straight to the
-        // dashboard, with the account screens still reachable from it.
-        <MainStack.Navigator screenOptions={mainScreenOptions}>
-          <MainStack.Screen
-            name="Admin"
-            component={AdminScreen}
-            options={() => ({ title: 'Platform Admin' })}
+        // dashboard. It gets the same section chrome as everywhere else —
+        // hamburger on the left, settings gear (Theme / Security / Logout)
+        // on the right — because otherwise this account has no route to any
+        // of those at all: they all live behind an org or guild it lacks.
+        <>
+          <MainStack.Navigator screenOptions={mainScreenOptions}>
+            <MainStack.Screen
+              name="Admin"
+              component={AdminScreen}
+              options={sectionOptions(adminDrawer.openWith, () => ({
+                title: 'Platform Admin',
+              }))}
+            />
+            <MainStack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={sectionOptions(adminDrawer.openWith, () => ({
+                title: 'Profile',
+              }))}
+            />
+            <MainStack.Screen
+              name="AccountSettings"
+              component={AccountSettingsScreen}
+              options={sectionOptions(adminDrawer.openWith, () => ({
+                title: 'Account Settings',
+              }))}
+            />
+            <MainStack.Screen
+              name="TwoFactorSetup"
+              component={TwoFactorSetupScreen}
+              options={detailOptions(() => ({
+                title: 'Two-Factor Authentication',
+              }))}
+            />
+            <MainStack.Screen
+              name="MemberProfile"
+              component={MemberProfileScreen}
+              options={detailOptions(({ route }) => ({
+                title: titleCase(route.params.name),
+              }))}
+            />
+          </MainStack.Navigator>
+          <SideDrawer
+            open={adminDrawer.open}
+            onClose={adminDrawer.close}
+            title="Sacred Esports"
+            subtitle="Platform admin"
+            sections={adminDrawer.sections}
           />
-          <MainStack.Screen
-            name="Profile"
-            component={ProfileScreen}
-            options={detailOptions(() => ({ title: 'Profile' }))}
-          />
-          <MainStack.Screen
-            name="AccountSettings"
-            component={AccountSettingsScreen}
-            options={detailOptions(() => ({ title: 'Account Settings' }))}
-          />
-          <MainStack.Screen
-            name="TwoFactorSetup"
-            component={TwoFactorSetupScreen}
-            options={detailOptions(() => ({
-              title: 'Two-Factor Authentication',
-            }))}
-          />
-          <MainStack.Screen
-            name="MemberProfile"
-            component={MemberProfileScreen}
-            options={detailOptions(({ route }) => ({
-              title: titleCase(route.params.name),
-            }))}
-          />
-        </MainStack.Navigator>
+        </>
       ) : !user.profileComplete ? (
         <ProfileSetupStack.Navigator screenOptions={{ headerShown: false }}>
           <ProfileSetupStack.Screen name="CompleteProfile">

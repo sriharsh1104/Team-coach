@@ -42,6 +42,10 @@ export function drawerItemKeyForRoute(routeName: string | undefined): string | n
       return 'announcements';
     case 'Admin':
       return 'admin';
+    case 'AccountSettings':
+      return 'accountSettings';
+    case 'Admin':
+      return 'admin';
     case 'Chat':
       return 'teamChat';
     default:

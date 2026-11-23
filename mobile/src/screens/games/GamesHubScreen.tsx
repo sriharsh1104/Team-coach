@@ -2,7 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Screen } from '../../brand/Screen';
-import { GAME_CATALOG, GameKind, RoomView } from '../../api/games';
+import {
+  BOOTS_DEFAULT_FLEET,
+  GAME_CATALOG,
+  GameKind,
+  RoomView,
+} from '../../api/games';
 import { useAuth } from '../../auth/AuthContext';
 import { useGamesSocket, tryGames } from '../../games/useGamesSocket';
 import { ThemeColors } from '../../theme';
@@ -26,6 +31,7 @@ export function GamesHubScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [playerPick, setPlayerPick] = useState<GameKind | null>(null);
+  const [fleetPick, setFleetPick] = useState(false);
 
   const refresh = useCallback(async () => {
     const [list, current] = await Promise.all([
@@ -92,12 +98,23 @@ export function GamesHubScreen() {
 
   const create = (game: GameKind) => confirmSwitch(() => void createRoom(game));
 
-  const createRoom = async (game: GameKind, maxPlayers?: number) => {
+  const createRoom = async (
+    game: GameKind,
+    maxPlayers?: number,
+    fleet?: number[],
+  ) => {
     const spec = GAME_CATALOG.find((g) => g.id === game)!;
+    if (game === 'boots' && fleet == null) {
+      setFleetPick(true);
+      return;
+    }
     if (spec.maxPlayers === spec.minPlayers) {
       setBusy(true);
       const room = await tryGames(
-        () => games.createRoom(game, spec.maxPlayers),
+        () =>
+          fleet
+            ? games.createRoom(game, spec.maxPlayers, fleet)
+            : games.createRoom(game, spec.maxPlayers),
         'Could not create room',
       );
       setBusy(false);
@@ -109,10 +126,24 @@ export function GamesHubScreen() {
       return;
     }
     setBusy(true);
-    const room = await tryGames(() => games.createRoom(game, maxPlayers), 'Could not create room');
+    const room = await tryGames(
+      () =>
+        fleet
+          ? games.createRoom(game, maxPlayers, fleet)
+          : games.createRoom(game, maxPlayers),
+      'Could not create room',
+    );
     setBusy(false);
     if (room) openRoom(room);
   };
+
+  const FLEET_PRESETS: { label: string; fleet: number[] }[] = [
+    { label: 'Classic 5 · 3 · 2', fleet: [...BOOTS_DEFAULT_FLEET] },
+    { label: '4 · 3 · 2', fleet: [4, 3, 2] },
+    { label: '4 · 3 · 1', fleet: [4, 3, 1] },
+    { label: '3 · 2 · 1', fleet: [3, 2, 1] },
+    { label: 'Only 4', fleet: [4] },
+  ];
 
   const openRooms = rooms.filter((r) => r.status === 'lobby' && !r.players.some((p) => p.userId === user?.id));
 
@@ -247,13 +278,52 @@ export function GamesHubScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={fleetPick}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFleetPick(false)}
+      >
+        <View style={staticStyles.modalBackdrop}>
+          <View style={[styles.modalCard]}>
+            <Text style={styles.modalTitle}>Boot sizes</Text>
+            <Text style={styles.modalSub}>
+              Each player places these boots (horizontal or vertical). First to
+              sink the whole enemy fleet wins.
+            </Text>
+            {FLEET_PRESETS.map((p) => (
+              <Pressable
+                key={p.label}
+                style={styles.modalBtn}
+                onPress={() => {
+                  setFleetPick(false);
+                  void createRoom('boots', 2, p.fleet);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={p.label}
+              >
+                <Text style={styles.modalBtnText}>{p.label}</Text>
+              </Pressable>
+            ))}
+            <Pressable
+              style={styles.modalCancel}
+              onPress={() => setFleetPick(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
 
 const staticStyles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 32 },
-  cards: { flexDirection: 'row', gap: 12, marginTop: 14 },
+  cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 14 },
   cardEmoji: { fontSize: 34 },
   roomEmoji: { fontSize: 26, marginRight: 12 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e', marginRight: 10 },
@@ -324,6 +394,7 @@ function hubStyles(c: ThemeColors) {
     mineSub: { color: c.textMuted, fontSize: 12, marginTop: 2 },
     card: {
       flex: 1,
+      minWidth: 140,
       padding: 14,
       borderRadius: 16,
       backgroundColor: c.surface,

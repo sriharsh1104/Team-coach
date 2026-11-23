@@ -154,6 +154,30 @@ export function AdminPage() {
     }
   };
 
+  /**
+   * Delete a guild. The typed name is passed straight through to the server,
+   * which checks it again — the field is not a client-side nicety, it is the
+   * thing the API demands.
+   */
+  const deleteGuild = async (id: string, typedName: string) => {
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await adminApi.deleteOrg(id, typedName);
+      setNotice(
+        `Deleted “${res.name}” — ${res.removed.members} member(s) sent back to the join screen.`,
+      );
+      setSelected(null);
+      setSelectedId(null);
+      loadOrgs();
+      void loadOverview();
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ?? 'Could not delete that guild.',
+      );
+    }
+  };
+
   const downServices = health?.services.filter((s) => s.status === 'down') ?? [];
 
   return (
@@ -219,6 +243,7 @@ export function AdminPage() {
             onToggleVoice={(userId, enabled) =>
               void toggleDirectVoice({ userId }, enabled)
             }
+            onDelete={(id, typedName) => void deleteGuild(id, typedName)}
           />
         ) : null}
 
@@ -330,6 +355,7 @@ function GuildsTab({
   onClose,
   voiceBusyId,
   onToggleVoice,
+  onDelete,
 }: {
   list: AdminOrgList | null;
   search: string;
@@ -344,6 +370,7 @@ function GuildsTab({
   onClose: () => void;
   voiceBusyId: string | null;
   onToggleVoice: (userId: string, enabled: boolean) => void;
+  onDelete: (id: string, typedName: string) => void;
 }) {
   const total = list?.total ?? 0;
   const pageEnd = Math.min(skip + PAGE_SIZE, total);
@@ -407,6 +434,7 @@ function GuildsTab({
           onClose={onClose}
           voiceBusyId={voiceBusyId}
           onToggleVoice={onToggleVoice}
+          onDelete={onDelete}
         />
       ) : null}
     </>
@@ -420,6 +448,7 @@ function GuildDetail({
   onClose,
   voiceBusyId,
   onToggleVoice,
+  onDelete,
 }: {
   detail: AdminOrgDetail;
   memberTab: MemberTab;
@@ -427,6 +456,7 @@ function GuildDetail({
   onClose: () => void;
   voiceBusyId: string | null;
   onToggleVoice: (userId: string, enabled: boolean) => void;
+  onDelete: (id: string, typedName: string) => void;
 }) {
   const tabs: { id: MemberTab; label: string; count: number }[] = [
     { id: 'guild', label: 'Guild members', count: detail.guild.length },
@@ -496,7 +526,81 @@ function GuildDetail({
           onToggleVoice={onToggleVoice}
         />
       )}
+
+      <DangerZone detail={detail} onDelete={onDelete} />
     </section>
+  );
+}
+
+/**
+ * Guild deletion. The name has to be typed back rather than a yes/no box,
+ * because this reaches across into an org the admin is not even in and wipes
+ * its chat, media, stats and every membership — and the server demands the
+ * same thing, so the field here is the API's requirement, not decoration.
+ */
+function DangerZone({
+  detail,
+  onDelete,
+}: {
+  detail: AdminOrgDetail;
+  onDelete: (id: string, typedName: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+
+  // Reset whenever a different guild is opened, so a name typed for one
+  // guild can never be left sitting in the box for another.
+  useEffect(() => {
+    setOpen(false);
+    setTyped('');
+  }, [detail.id]);
+
+  if (!open) {
+    return (
+      <div className="admin-danger">
+        <button type="button" className="admin-danger-btn" onClick={() => setOpen(true)}>
+          Delete this guild
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="admin-danger admin-danger-open"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onDelete(detail.id, typed.trim());
+      }}
+    >
+      <p>
+        This deletes <strong>{detail.name}</strong> and every message, media
+        post, stat, scrim and member seat in it. It cannot be undone.{' '}
+        {detail.counts.guildMembers + detail.counts.rosterMembers} member seat
+        (s) will be sent back to the join screen.
+      </p>
+      <label>
+        Type <strong>{detail.name}</strong> to confirm
+        <input
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder={detail.name}
+          aria-label="Type the guild name to confirm deletion"
+        />
+      </label>
+      <div className="admin-danger-actions">
+        <button type="button" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="admin-danger-btn"
+          disabled={typed.trim() !== detail.name}
+        >
+          Delete permanently
+        </button>
+      </div>
+    </form>
   );
 }
 

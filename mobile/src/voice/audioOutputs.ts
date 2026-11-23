@@ -145,7 +145,8 @@ export function audioOutputIcon(id: AudioOutputId | null): AppIconName {
       return 'ear';
     case 'speaker':
     case 'force_speaker':
-      return 'volume-high';
+      // Loudspeaker box — not volume-high (that icon is deafen / hear-others).
+      return 'speaker';
     default:
       return 'ear';
   }

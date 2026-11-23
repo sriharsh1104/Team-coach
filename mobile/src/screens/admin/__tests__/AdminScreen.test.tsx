@@ -105,12 +105,23 @@ async function settle() {
   });
 }
 
+/**
+ * The screen opens on Overview now; guilds live behind their own tab. Every
+ * test that cares about the list has to get there first — which is itself
+ * worth asserting, since the tab is the only route to it.
+ */
+async function openGuildsTab() {
+  await act(async () => fireEvent.press(screen.getByLabelText('Guilds')));
+  await settle();
+}
+
 describe('AdminScreen', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockedApi.getOverview.mockResolvedValue(overview);
     mockedApi.getHealth.mockResolvedValue(health);
+    mockedApi.listDirectVoiceUsers.mockResolvedValue([]);
     mockedApi.listOrgs.mockResolvedValue({
       total: 1,
       skip: 0,
@@ -123,11 +134,21 @@ describe('AdminScreen', () => {
     jest.useRealTimers();
   });
 
-  it('shows platform counts and the org list', async () => {
+  it('opens on the overview counts, not on a wall of everything', async () => {
     renderScreen();
     await settle();
 
-    expect(screen.getByText('Guilds')).toBeTruthy();
+    expect(screen.getByText('Total users')).toBeTruthy();
+    expect(screen.getByText('Online now')).toBeTruthy();
+    // The guild list is a tab away — the whole point of the split.
+    expect(screen.queryByText('Alpha Squad')).toBeNull();
+  });
+
+  it('shows the guild list once that tab is open', async () => {
+    renderScreen();
+    await settle();
+    await openGuildsTab();
+
     expect(screen.getByText('Alpha Squad')).toBeTruthy();
     expect(screen.getByText(/rhea@example.com/)).toBeTruthy();
   });
@@ -149,15 +170,18 @@ describe('AdminScreen', () => {
 
   it('shows placeholders, not an empty state, while the first load is in flight', () => {
     renderScreen();
-    // No settle() — the request has not resolved yet.
-    expect(screen.queryByText('No orgs yet.')).toBeNull();
-    expect(screen.getByTestId('skeleton-list', { includeHiddenElements: true })).toBeTruthy();
+    // No settle() — the request has not resolved yet. The overview tab shows
+    // placeholder dashes in every stat card rather than zeroes, which would
+    // read as "this platform has nobody on it".
+    expect(screen.queryByText('No guilds yet.')).toBeNull();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
   it('offers a retry instead of pulsing forever when the load fails', async () => {
     mockedApi.getOverview.mockRejectedValue(new Error('offline'));
     renderScreen();
     await settle();
+    await openGuildsTab();
 
     const retry = screen.getByLabelText('Try loading again');
     expect(retry).toBeTruthy();
@@ -170,6 +194,7 @@ describe('AdminScreen', () => {
   it('searches with a debounce rather than one request per keystroke', async () => {
     renderScreen();
     await settle();
+    await openGuildsTab();
     mockedApi.listOrgs.mockClear();
 
     const input = screen.getByLabelText('Search guilds');
@@ -188,10 +213,11 @@ describe('AdminScreen', () => {
     mockedApi.listOrgs.mockResolvedValue({ total: 0, skip: 0, take: 25, orgs: [] });
     renderScreen();
     await settle();
+    await openGuildsTab();
     fireEvent.changeText(screen.getByLabelText('Search guilds'), 'zzz');
     await settle();
 
-    expect(screen.getByText('No orgs match that search.')).toBeTruthy();
+    expect(screen.getByText('No guilds match that search.')).toBeTruthy();
   });
 
   it('expands an org to its roster, and collapses again', async () => {
@@ -218,6 +244,7 @@ describe('AdminScreen', () => {
     });
     renderScreen();
     await settle();
+    await openGuildsTab();
 
     const row = screen.getByLabelText('Alpha Squad, 4 roster members');
     await act(async () => fireEvent.press(row));
@@ -235,6 +262,7 @@ describe('AdminScreen', () => {
     });
     renderScreen();
     await settle();
+    await openGuildsTab();
 
     await act(async () =>
       fireEvent.press(screen.getByLabelText('Alpha Squad, 4 roster members')),
@@ -262,8 +290,9 @@ describe('AdminScreen', () => {
     });
     renderScreen();
     await settle();
+    await openGuildsTab();
 
-    const more = screen.getByLabelText('Load more orgs, showing 1 of 30');
+    const more = screen.getByLabelText('Load more guilds, showing 1 of 30');
     mockedApi.listOrgs.mockResolvedValue({
       total: 30,
       skip: 1,
@@ -279,6 +308,7 @@ describe('AdminScreen', () => {
   it('hides the pager once everything is shown', async () => {
     renderScreen();
     await settle();
+    await openGuildsTab();
     expect(screen.queryByText(/Load more/)).toBeNull();
   });
 });

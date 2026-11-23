@@ -15,6 +15,12 @@ export type OrgRealtimeType =
    * concerns is very often not in the org's channel yet.
    */
   | 'membership.changed'
+  /**
+   * 1-on-1 voice permission granted or revoked for this person. Client
+   * re-reads /auth/me so the drawer + DM call icon appear without a
+   * reinstall or logout.
+   */
+  | 'directVoice.changed'
   | 'heartbeat';
 
 export type OrgRealtimeEvent = {

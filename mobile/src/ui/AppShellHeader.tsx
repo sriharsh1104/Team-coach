@@ -38,7 +38,7 @@ export function AppShellHeader({
         {
           backgroundColor: colors.bg,
           borderBottomColor: colors.border,
-          paddingTop: includeSafeArea ? insets.top + 12 : 12,
+          paddingTop: includeSafeArea ? insets.top + 6 : 6,
         },
       ]}
     >
@@ -85,31 +85,35 @@ export function AppShellHeader({
 }
 
 const styles = StyleSheet.create({
+  // Same 12px inset as SectionStackHeader / SectionFlowHeader so hamburger
+  // and the back chevron share one vertical edge. Icons are 44 tall so they
+  // span title → org code; padding under the row stays tight to the border.
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
+    alignItems: 'stretch',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingBottom: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  titleBlock: { flex: 1, minWidth: 0 },
+  titleBlock: { flex: 1, minWidth: 0, paddingBottom: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'baseline', minWidth: 0 },
   title: {
     flexShrink: 1,
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
     textTransform: 'capitalize',
     letterSpacing: -0.2,
   },
-  subtitle: { fontSize: 12, marginTop: 2 },
+  subtitle: { fontSize: 11, marginTop: 1 },
   ping: { fontSize: 12, textTransform: 'none' },
   settingsBtn: {
     width: 36,
-    height: 36,
+    alignSelf: 'stretch',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingTop: 6,
   },
-  settingsIcon: { fontSize: 18 },
+  settingsIcon: { fontSize: 20 },
 });

@@ -1,11 +1,10 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppIcon } from './AppIcon';
 import { HeaderOrgInfo } from './HeaderOrgInfo';
 import { HeaderSettingsButton } from './HeaderSettingsButton';
 import { MenuButton } from './SideDrawer';
-import { SoftPressable } from './SoftPressable';
+import { SectionFlowHeader } from './SectionFlowHeader';
 import { useTheme } from '../theme/ThemeContext';
 
 type Props = {
@@ -15,10 +14,10 @@ type Props = {
 };
 
 /**
- * Consistent section chrome (Media / Stats / Maps / Guild / …):
- *   top row  — hamburger (always left) · title · settings
- *   next row — back chevron only when the stack can pop (same placement as
- *              ChatFlowHeader when a chat is open — never beside the menu)
+ * Consistent section chrome (Media / Stats / Maps / Voice / …), matching
+ * OrgHome + ChatHub:
+ *   top row  — hamburger · org name (+ ping / code) · settings
+ *   next row — back + section title (same flow header as an open chat)
  */
 export function SectionStackHeader({
   navigation,
@@ -35,57 +34,41 @@ export function SectionStackHeader({
         styles.root,
         {
           backgroundColor: colors.bg,
-          borderBottomColor: colors.border,
           paddingTop: insets.top,
         },
       ]}
     >
-      <View style={styles.topRow}>
+      <View style={[styles.topRow, { borderBottomColor: colors.border }]}>
         <MenuButton onPress={() => openWith(navigation)} />
         <View style={styles.titleWrap}>
-          <HeaderOrgInfo sectionTitle={sectionTitle} />
+          <HeaderOrgInfo fallbackTitle={sectionTitle} />
         </View>
         <HeaderSettingsButton />
       </View>
       {canPop ? (
-        <SoftPressable
-          onPress={() => navigation.goBack()}
-          style={styles.backRow}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          hitSlop={10}
-          pressScale={0.92}
-        >
-          <AppIcon name="chevron-back" size={26} color={colors.icon} />
-        </SoftPressable>
+        <SectionFlowHeader
+          title={sectionTitle}
+          onBack={() => navigation.goBack()}
+        />
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
+  root: {},
   topRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: 10,
     paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 8,
-    minHeight: 52,
+    paddingTop: 6,
+    paddingBottom: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   titleWrap: {
     flex: 1,
     minWidth: 0,
-  },
-  backRow: {
-    width: 36,
-    height: 36,
-    marginLeft: 12,
-    marginBottom: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingBottom: 2,
   },
 });

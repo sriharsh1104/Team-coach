@@ -38,11 +38,11 @@ function ensureFetched() {
 }
 
 /**
- * Two-line native-header title for section screens: the section name on
- * top, the org identity (name · code · member count) underneath — so the
- * block from the Home header follows the user everywhere.
+ * Home-matching shell title: org (or guild) name + live ping on top, org
+ * code · member count underneath. Section name lives on the ChatFlowHeader
+ * row below (back + title), not here.
  */
-export function HeaderOrgInfo({ sectionTitle }: { sectionTitle: string }) {
+export function HeaderOrgInfo({ fallbackTitle }: { fallbackTitle?: string }) {
   const { org, guild } = useAuth();
   const { colors } = useTheme();
   const [info, setInfo] = useState<OrgHeaderInfo | null>(cached);
@@ -61,14 +61,17 @@ export function HeaderOrgInfo({ sectionTitle }: { sectionTitle: string }) {
     emitToast('Org code copied');
   };
 
-  const identity = org?.name ?? guild?.name;
+  const identity = org?.name ?? guild?.name ?? fallbackTitle ?? '';
 
   return (
     <View style={styles.block}>
-      <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-        {sectionTitle}
-      </Text>
-      {identity ? (
+      <View style={styles.titleRow}>
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+          {identity}
+        </Text>
+        {identity ? <PingLabel style={styles.ping} /> : null}
+      </View>
+      {org && info ? (
         <SoftPressable
           onPress={copyCode}
           accessibilityRole="button"
@@ -77,26 +80,22 @@ export function HeaderOrgInfo({ sectionTitle }: { sectionTitle: string }) {
           pressScale={0.97}
         >
           <Text numberOfLines={1} style={styles.subtitleRow}>
-            <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-              {identity}
+            <Text style={[styles.code, { color: colors.link }]}>
+              Org Code: {info.orgCode}
             </Text>
-            <PingLabel />
-            {org && info ? (
-              <>
-                <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-                  {' · '}
-                </Text>
-                <Text style={[styles.code, { color: colors.link }]}>
-                  {info.orgCode}
-                </Text>
-                <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-                  {' · '}
-                  {info.memberCount} Member(s)
-                </Text>
-              </>
-            ) : null}
+            <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+              {' · '}
+              {info.memberCount} Member(s)
+            </Text>
           </Text>
         </SoftPressable>
+      ) : guild?.name ? (
+        <Text
+          style={[styles.subtitle, { color: colors.textMuted }]}
+          numberOfLines={1}
+        >
+          Guild
+        </Text>
       ) : null}
     </View>
   );
@@ -104,12 +103,19 @@ export function HeaderOrgInfo({ sectionTitle }: { sectionTitle: string }) {
 
 const styles = StyleSheet.create({
   block: { minWidth: 0, flexShrink: 1 },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    minWidth: 0,
+  },
   title: {
+    flexShrink: 1,
     fontSize: 17,
     fontWeight: '700',
     textTransform: 'capitalize',
     letterSpacing: -0.2,
   },
+  ping: { fontSize: 12, textTransform: 'none' },
   subtitleRow: { marginTop: 1 },
   subtitle: { fontSize: 11 },
   code: { fontSize: 11, fontWeight: '700' },

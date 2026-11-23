@@ -41,6 +41,7 @@ import { emitToast } from '../../ui/toastBus';
 import { ChannelAvatar } from '../chat/ChannelAvatar';
 import { AudioOutputPicker } from './AudioOutputPicker';
 import { MusicSharePicker } from './MusicSharePicker';
+import { VoiceMoreSheet } from './VoiceMoreSheet';
 import { VoicePingSheet } from './VoicePingSheet';
 import { useSharedStyles } from '../shared';
 import { ThemeColors } from '../../theme';
@@ -507,15 +508,11 @@ function VoicePresetPicker({ inChannel }: { inChannel: boolean }) {
 
 function VoiceChannelBody({
   voice,
-  channelName,
-  channelLabel = 'VOICE CHANNEL',
   rooms,
   selectedRoom,
   onSelectRoom,
 }: {
   voice: VoiceChannelController;
-  channelName: string;
-  channelLabel?: string;
   rooms?: VoiceRoom[];
   selectedRoom: VoiceRoom | null;
   onSelectRoom: (room: VoiceRoom) => void;
@@ -535,6 +532,7 @@ function VoiceChannelBody({
   // making them watch the status text.
   const [pingOpen, setPingOpen] = useState(false);
   const [musicPickerOpen, setMusicPickerOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   // Pinging only makes sense for the team room — guild voice is org-wide, so
   // this would be a megaphone rather than a nudge to the people you want in.
   const canPing = inChannel && roomKind === 'team';
@@ -644,9 +642,9 @@ function VoiceChannelBody({
           </View>
         )}
 
-        <View style={styles.channelCard}>
-          <Text style={styles.channelLabel}>{channelLabel}</Text>
-          <Text style={styles.channelName}>{channelName}</Text>
+        {/* Status only — title lives in the nav header (Team Voice / Guild Voice),
+            so we don't repeat it here. No card chrome around the count. */}
+        <View style={styles.channelStatus}>
           <Text style={styles.channelMeta}>
             {voice.status === 'connecting'
               ? 'Connecting…'
@@ -897,7 +895,8 @@ function VoiceChannelBody({
               )}
             />
 
-            {/* Bottom bar: [Hand] [Mic] [Screen] [Music] [Audio] [Deafen] [Leave] */}
+            {/* Bottom bar: [Hand] [Mic] [Audio] [Deafen] [Announce?] [⋮] [Leave]
+                Screen + music share live under ⋮ so speaker vs deafen stay obvious. */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -949,44 +948,6 @@ function VoiceChannelBody({
                 )}
               </View>
 
-              {/* Screen share — others in this voice call can watch */}
-              <Pressable
-                style={[
-                  styles.iconBtn,
-                  voice.isScreenSharing ? styles.iconBtnActive : themed.iconBtnDefault,
-                ]}
-                onPress={voice.toggleScreenShare}
-                accessibilityLabel={
-                  voice.isScreenSharing ? 'Stop screen share' : 'Share screen'
-                }
-              >
-                <AppIcon name="phone-portrait-outline" size={22} color="#fff" />
-              </Pressable>
-
-              {/* Share music — peer-to-peer; not stored on our servers */}
-              <Pressable
-                style={[
-                  styles.iconBtn,
-                  voice.musicShare ? styles.iconBtnActive : themed.iconBtnDefault,
-                ]}
-                onPress={() => {
-                  if (voice.musicShare?.isLocal) {
-                    voice.stopMusicShare();
-                    return;
-                  }
-                  if (voice.musicShare) {
-                    emitToast('Someone is already sharing music');
-                    return;
-                  }
-                  setMusicPickerOpen(true);
-                }}
-                accessibilityLabel={
-                  voice.musicShare?.isLocal ? 'Stop music share' : 'Share music'
-                }
-              >
-                <AppIcon name="musical-notes" size={22} color="#fff" />
-              </Pressable>
-
               {/* Announcement — mute everyone, owner stays open (guild owner only) */}
               {canAnnounce ? (
                 <Pressable
@@ -1009,26 +970,45 @@ function VoiceChannelBody({
                 </Pressable>
               ) : null}
 
-              {/* Audio output: speaker / phone / headphones / bluetooth */}
+              {/* Audio output: speakerphone / phone / headphones / bluetooth
+                  (speaker box icon — not the same as deafen’s volume cone) */}
               <AudioOutputPicker
                 enabled={inChannel}
                 style={StyleSheet.flatten([styles.iconBtn, themed.iconBtnDefault])}
               />
 
-              {/* Deafen */}
+              {/* Deafen — silence everyone else’s voice for you only */}
               <Pressable
                 style={[
                   styles.iconBtn,
                   voice.isDeafened ? styles.iconBtnDanger : themed.iconBtnDefault,
                 ]}
                 onPress={voice.toggleDeafen}
-                accessibilityLabel={voice.isDeafened ? 'Undeafen' : 'Deafen'}
+                accessibilityLabel={
+                  voice.isDeafened
+                    ? 'Hear others again'
+                    : 'Silence others — mute their audio for you'
+                }
               >
                 <AppIcon
                   name={voice.isDeafened ? 'volume-mute' : 'volume-high'}
                   size={22}
                   color="#fff"
                 />
+              </Pressable>
+
+              {/* ⋮ — screen share + music share */}
+              <Pressable
+                style={[
+                  styles.iconBtn,
+                  voice.isScreenSharing || voice.musicShare?.isLocal
+                    ? styles.iconBtnActive
+                    : themed.iconBtnDefault,
+                ]}
+                onPress={() => setMoreOpen(true)}
+                accessibilityLabel="Call options"
+              >
+                <AppIcon name="ellipsis-vertical" size={22} color="#fff" />
               </Pressable>
 
               {/* Disconnect */}
@@ -1040,6 +1020,26 @@ function VoiceChannelBody({
                 <AppIcon name="phone-down" size={22} color="#fff" />
               </Pressable>
             </ScrollView>
+
+            <VoiceMoreSheet
+              visible={moreOpen}
+              onClose={() => setMoreOpen(false)}
+              isScreenSharing={voice.isScreenSharing}
+              musicShareLocal={!!voice.musicShare?.isLocal}
+              musicShareBusy={!!voice.musicShare && !voice.musicShare.isLocal}
+              onToggleScreenShare={voice.toggleScreenShare}
+              onMusicPress={() => {
+                if (voice.musicShare?.isLocal) {
+                  voice.stopMusicShare();
+                  return;
+                }
+                if (voice.musicShare) {
+                  emitToast('Someone is already sharing music');
+                  return;
+                }
+                setMusicPickerOpen(true);
+              }}
+            />
 
             <MusicSharePicker
               visible={musicPickerOpen}
@@ -1083,13 +1083,6 @@ function HostedVoiceChannel({
 
   const effectiveUrl = selectedRoom ? selectedRoom.url : config.url;
   const effectiveToken = selectedRoom ? selectedRoom.token : config.token;
-  const channelName = selectedRoom
-    ? selectedRoom.name
-    : room === 'direct'
-      ? (peer?.name ?? 'Direct Voice')
-      : room === 'guild'
-        ? 'Guild Voice'
-        : 'Team Voice';
   const canModerate = config.canModerate;
   const max = config.max;
 
@@ -1210,14 +1203,6 @@ function HostedVoiceChannel({
   return (
     <VoiceChannelBody
       voice={controller}
-      channelName={channelName}
-      channelLabel={
-        room === 'guild'
-          ? 'GUILD VOICE'
-          : room === 'direct'
-            ? '1-ON-1 VOICE'
-            : 'VOICE CHANNEL'
-      }
       rooms={hasMultipleRooms ? config.rooms : undefined}
       selectedRoom={selectedRoom}
       onSelectRoom={handleSelectRoom}
@@ -1293,8 +1278,6 @@ function SelfHostedVoiceChannel({
   return (
     <VoiceChannelBody
       voice={controller}
-      channelName={room === 'guild' ? 'Guild Voice' : 'Team Voice'}
-      channelLabel={room === 'guild' ? 'GUILD VOICE' : 'VOICE CHANNEL'}
       rooms={undefined}
       selectedRoom={null}
       onSelectRoom={() => {}}
@@ -1540,27 +1523,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  channelCard: {
-    margin: 16,
-    padding: 20,
-    borderRadius: 12,
-    backgroundColor: '#1e1f22',
+  channelStatus: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
   },
-  channelLabel: {
-    color: '#949ba4',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    marginBottom: 4,
-  },
-  channelName: { color: '#f2f3f5', fontSize: 20, fontWeight: '700' },
-  channelMeta: { color: '#b5bac1', marginTop: 6, marginBottom: 16 },
+  channelMeta: { color: '#b5bac1', fontSize: 14, marginBottom: 12 },
   joinButton: {
     backgroundColor: '#23a559',
     borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 12,
   },
   connectingBlock: { alignItems: 'center', paddingVertical: 8 },
   errorText: { color: '#f23f43', marginBottom: 12 },

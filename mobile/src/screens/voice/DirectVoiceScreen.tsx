@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import * as voiceApi from '../../api/voice';
 import type { DirectVoicePeer } from '../../api/voice';
 import { apiErrorMessage } from '../../api/apiErrorMessage';
@@ -18,6 +18,7 @@ import { SoftPressable } from '../../ui/SoftPressable';
 import { SkeletonList } from '../../ui/Skeleton';
 import { haptic } from '../../ui/haptics';
 import { useTheme } from '../../theme/ThemeContext';
+import type { MainStackParamList } from '../../navigation/types';
 import { useSharedStyles } from '../shared';
 import { ChannelAvatar } from '../chat/ChannelAvatar';
 import { VoiceScreenRoot } from './VoiceChannelScreen';
@@ -30,17 +31,33 @@ import { VoiceScreenRoot } from './VoiceChannelScreen';
  * ever contains other holders from this person's own guild. Someone without
  * the permission never reaches this screen (the drawer entry is hidden) and
  * would get an empty list even if they did.
+ *
+ * Optional route params `{ peerId, peerName, peerAvatarUrl }` jump straight
+ * into a call — used from the DM chat header headset.
  */
 export function DirectVoiceScreen() {
   const shared = useSharedStyles();
   const { colors } = useTheme();
   const { user } = useAuth();
+  const route = useRoute<RouteProp<MainStackParamList, 'DirectVoice'>>();
+  const routePeerId = route.params?.peerId;
+  const routePeerName = route.params?.peerName;
+  const routePeerAvatar = route.params?.peerAvatarUrl;
+
   const [peers, setPeers] = useState<DirectVoicePeer[] | null>(null);
   const [enabled, setEnabled] = useState<boolean>(!!user?.canDirectVoice);
   /** Granted, but in no guild yet — a different empty state from "nobody else". */
   const [needsGuild, setNeedsGuild] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [active, setActive] = useState<DirectVoicePeer | null>(null);
+  const [active, setActive] = useState<DirectVoicePeer | null>(() =>
+    routePeerId
+      ? {
+          id: routePeerId,
+          name: routePeerName?.trim() || 'Call',
+          avatarUrl: routePeerAvatar ?? null,
+        }
+      : null,
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -58,6 +75,16 @@ export function DirectVoiceScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Keep the in-call peer in sync if navigation passes a new person.
+  useEffect(() => {
+    if (!routePeerId) return;
+    setActive({
+      id: routePeerId,
+      name: routePeerName?.trim() || 'Call',
+      avatarUrl: routePeerAvatar ?? null,
+    });
+  }, [routePeerId, routePeerName, routePeerAvatar]);
 
   // In a call: hand the whole screen to the shared voice UI, keyed by peer so
   // switching person tears the old session down instead of reusing it.

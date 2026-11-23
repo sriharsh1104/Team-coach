@@ -1,8 +1,14 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatPresenceTracker } from '../chat/chat-presence.tracker';
 import { PrismaService } from '../prisma/prisma.service';
-import { SetDirectVoiceDto } from './dto';
+import { RealtimeService } from '../realtime/realtime.service';
+import { DeleteOrgDto, SetDirectVoiceDto } from './dto';
 
 /** Page size cap so one call can never pull the whole table. */
 const MAX_PAGE_SIZE = 100;
@@ -36,6 +42,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly presence: ChatPresenceTracker,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /**
@@ -315,6 +322,99 @@ export class AdminService {
     };
   }
 
+  /**
+   * Delete one guild, and everything inside it.
+   *
+   * Every related table cascades from Org (chat, media, stats, scrims, maps,
+   * announcements, both membership tables), so this is not recoverable from
+   * the app — only from a database backup. Three things guard it:
+   *
+   *  1. platform admin only, checked against the database by the guard,
+   *  2. the exact guild name has to be typed back, so a mis-tap on a row in
+   *     a list cannot do it, and
+   *  3. every member is told on their own realtime channel before the row
+   *     goes, so their app moves them to the join screen instead of sitting
+   *     on a guild that no longer exists.
+   */
+  async deleteOrg(adminUserId: string, orgId: string, dto: DeleteOrgDto) {
+    const org = await this.prisma.org.findUnique({
+      where: { id: orgId },
+      select: {
+        id: true,
+        name: true,
+        _count: {
+          select: {
+            memberships: true,
+            guildMemberships: true,
+            chatMessages: true,
+            mediaPosts: true,
+            scrimEvents: true,
+          },
+        },
+      },
+    });
+    if (!org) throw new NotFoundException('Guild not found');
+
+    // Compared after trimming but case-sensitively: two guilds differing only
+    // in case are different guilds, and this is the one place that must not
+    // be forgiving about which one you meant.
+    if (dto.confirmName.trim() !== org.name) {
+      throw new BadRequestException(
+        'Type the guild name exactly as shown to confirm deletion',
+      );
+    }
+
+    // Collected BEFORE the delete — once the rows are gone there is no way
+    // left to find out who used to be in it.
+    const members = await this.recipientIdsForOrg(orgId);
+
+    await this.prisma.org.delete({ where: { id: orgId } });
+
+    this.logger.warn(
+      `Guild "${org.name}" (${orgId}) deleted by admin ${adminUserId} — ` +
+        `${members.length} member(s), ${org._count.chatMessages} message(s)`,
+    );
+
+    // After the delete, so a client that reacts instantly re-reads /auth/me
+    // and finds the guild genuinely gone rather than racing the deletion.
+    for (const userId of members) {
+      this.realtime.publishToUser(userId, 'membership.changed');
+    }
+
+    return {
+      id: org.id,
+      name: org.name,
+      removed: {
+        members: members.length,
+        rosterSeats: org._count.memberships,
+        guildSeats: org._count.guildMemberships,
+        messages: org._count.chatMessages,
+        mediaPosts: org._count.mediaPosts,
+        scrims: org._count.scrimEvents,
+      },
+    };
+  }
+
+  /** Everyone holding either seat in this org, de-duplicated. */
+  private async recipientIdsForOrg(orgId: string): Promise<string[]> {
+    const [roster, guild] = await Promise.all([
+      this.prisma.membership.findMany({
+        where: { orgId },
+        select: { userId: true },
+      }),
+      this.prisma.guildMembership.findMany({
+        where: { orgId },
+        select: { userId: true },
+      }),
+    ]);
+    return [
+      ...new Set([
+        ...roster.map((m) => m.userId),
+        ...guild.map((m) => m.userId),
+      ]),
+    ];
+  }
+
   /** Who currently holds platform admin — so a grant is never invisible. */
   async listAdmins() {
     return this.prisma.user.findMany({
@@ -390,6 +490,9 @@ export class AdminService {
     this.logger.log(
       `direct voice ${dto.enabled ? 'granted to' : 'revoked from'} ${updated.email}`,
     );
+    // Personal channel — they may already have the app open with a stale
+    // canDirectVoice flag; this is what flips the drawer + DM call icon live.
+    this.realtime.publishToUser(updated.id, 'directVoice.changed');
     return {
       userId: updated.id,
       name: updated.name,

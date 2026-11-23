@@ -125,5 +125,8 @@ describe('audio output routing', () => {
     expect(audioOutputLabel('force_speaker')).toBe('Speaker');
     expect(audioOutputLabel('earpiece')).toBe('Phone');
     expect(audioOutputIcon(null)).toBe('ear');
+    // Loudspeaker box — must stay distinct from volume-high (deafen).
+    expect(audioOutputIcon('speaker')).toBe('speaker');
+    expect(audioOutputIcon('force_speaker')).toBe('speaker');
   });
 });

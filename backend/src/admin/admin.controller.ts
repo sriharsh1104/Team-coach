@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -8,12 +9,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PlatformAdminGuard } from '../auth/guards/platform-admin.guard';
 import { AdminService } from './admin.service';
-import { ListOrgsQueryDto, SetDirectVoiceDto } from './dto';
+import { DeleteOrgDto, ListOrgsQueryDto, SetDirectVoiceDto } from './dto';
 
 /**
- * Platform admin. Read-only apart from the 1-on-1 voice permission below.
+ * Platform admin. Read-only apart from the 1-on-1 voice permission and the
+ * guild deletion below.
  *
  * Both guards are applied at the controller level so a route added later
  * cannot be published unguarded by forgetting a decorator. PlatformAdminGuard
@@ -49,6 +52,20 @@ export class AdminController {
   @Get('orgs/:id')
   orgDetail(@Param('id') id: string) {
     return this.adminService.orgDetail(id);
+  }
+
+  /**
+   * Delete a guild and everything in it. The only destructive route here —
+   * the body must carry the guild's exact name, so this cannot happen by
+   * mis-tapping a row.
+   */
+  @Delete('orgs/:id')
+  deleteOrg(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: DeleteOrgDto,
+  ) {
+    return this.adminService.deleteOrg(user.userId, id, dto);
   }
 
   @Get('admins')

@@ -48,6 +48,12 @@ function api(overrides: Partial<ReturnType<typeof useGamesSocket>> = {}) {
     rpsPick: jest.fn(),
     ludoRoll: jest.fn(),
     ludoMove: jest.fn(),
+    bootsSetFleet: jest.fn(),
+    bootsPlace: jest.fn(),
+    bootsPlaceRandom: jest.fn(),
+    bootsClear: jest.fn(),
+    bootsReady: jest.fn(),
+    bootsFire: jest.fn(),
     ...overrides,
   };
 }
@@ -66,6 +72,8 @@ function lobbyRoom(overrides: Partial<RoomView> = {}): RoomView {
     createdAt: Date.now(),
     rps: null,
     ludo: null,
+    boots: null,
+    bootsFleet: null,
     deadline: null,
     ...overrides,
   };

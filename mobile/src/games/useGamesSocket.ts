@@ -4,6 +4,8 @@ import { getToken } from '../storage/tokenStorage';
 import {
   connectGamesSocket,
   gamesEmit,
+  BootsCell,
+  BootsOrientation,
   GameKind,
   RoomEvent,
   RoomView,
@@ -125,8 +127,12 @@ export function useGamesSocket(listener: Listener) {
     latestRoom: () => latestRoom,
     listRooms: () => call<RoomView[]>('room:list'),
     currentRoom: () => call<RoomView | null>('room:current'),
-    createRoom: (game: GameKind, maxPlayers?: number) =>
-      call<RoomView>('room:create', { game, maxPlayers }),
+    createRoom: (game: GameKind, maxPlayers?: number, fleet?: number[]) =>
+      call<RoomView>('room:create', {
+        game,
+        maxPlayers,
+        ...(fleet ? { fleet } : {}),
+      }),
     joinRoom: (roomId: string) => call<RoomView>('room:join', { roomId }),
     leaveRoom: () => call<null>('room:leave'),
     startGame: (roomId: string) => call<RoomView>('room:start', { roomId }),
@@ -141,6 +147,19 @@ export function useGamesSocket(listener: Listener) {
     ludoRoll: (roomId: string) => call<RoomView>('ludo:roll', { roomId }),
     ludoMove: (roomId: string, tokenIndex: number) =>
       call<RoomView>('ludo:move', { roomId, tokenIndex }),
+    bootsSetFleet: (roomId: string, fleet: number[]) =>
+      call<RoomView>('boots:set-fleet', { roomId, fleet }),
+    bootsPlace: (
+      roomId: string,
+      start: BootsCell | string,
+      orientation: BootsOrientation,
+    ) => call<RoomView>('boots:place', { roomId, start, orientation }),
+    bootsPlaceRandom: (roomId: string) =>
+      call<RoomView>('boots:place-random', { roomId }),
+    bootsClear: (roomId: string) => call<RoomView>('boots:clear', { roomId }),
+    bootsReady: (roomId: string) => call<RoomView>('boots:ready', { roomId }),
+    bootsFire: (roomId: string, target: BootsCell | string) =>
+      call<RoomView>('boots:fire', { roomId, target }),
   };
 }
 

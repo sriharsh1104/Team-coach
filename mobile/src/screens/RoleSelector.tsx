@@ -200,30 +200,29 @@ const staticStyles = StyleSheet.create({
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function roleSelectorStyles(c: ThemeColors) {
   return {
+    // Inline on the roster row (right side) — no outer margins that stack height.
     trigger: {
-      alignSelf: 'flex-start' as const,
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
-      gap: 6,
+      gap: 4,
       borderWidth: 1,
       borderColor: c.border,
-      borderRadius: 10,
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      marginHorizontal: 12,
-      marginBottom: 10,
+      borderRadius: 8,
+      paddingVertical: 4,
+      paddingHorizontal: 8,
       backgroundColor: c.surface,
+      maxWidth: 110,
     },
     triggerText: {
       color: c.text,
       fontWeight: '700' as const,
-      fontSize: 13,
+      fontSize: 12,
+      flexShrink: 1,
     },
     chevron: {
       color: c.textMuted,
-      fontSize: 11,
+      fontSize: 10,
       fontWeight: '700' as const,
-      marginTop: 1,
     },
     option: {
       borderWidth: 1,

@@ -457,17 +457,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248,113,113,0.12)',
     borderColor: 'rgba(248,113,113,0.2)',
   },
+  // Width 36 lines up with the back chevron. Height comes from the row
+  // (alignItems: 'stretch') so the bars sit beside title → org code with
+  // no extra dead space under the subtitle.
   menuBtn: {
-    width: 40,
-    height: 40,
+    width: 36,
+    alignSelf: 'stretch',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 4.5,
+    // Nudge bars slightly down so they sit nearer the org-code line.
+    paddingTop: 6,
   },
   menuBar: {
-    width: 18,
-    height: 2,
+    width: 20,
+    height: 2.5,
     borderRadius: 1,
   },
 });

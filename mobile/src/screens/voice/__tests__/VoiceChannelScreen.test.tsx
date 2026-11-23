@@ -101,7 +101,8 @@ describe('VoiceChannelScreen', () => {
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
     renderWithVoice(<VoiceChannelScreen />);
 
-    await screen.findByText('Team Voice');
+    // Title lives in the nav header — body only shows join/status copy.
+    await screen.findByText('Empty — join to talk with your team');
     expect(mockedUseSelfHosted).toHaveBeenCalledWith('token-abc', 'team');
     expect(mockedUseHosted).not.toHaveBeenCalled();
   });
@@ -115,7 +116,7 @@ describe('VoiceChannelScreen', () => {
     });
     renderWithVoice(<VoiceChannelScreen />);
 
-    await screen.findByText('Team Voice');
+    await screen.findByText('Empty — join to talk with your team');
     expect(mockedUseHosted).toHaveBeenCalledWith('wss://livekit.example.com', 'lk-token', {
       room: 'team',
       canModerate: undefined,
@@ -208,6 +209,45 @@ describe('VoiceChannelScreen', () => {
     expect(leaveSpy).toHaveBeenCalled();
   });
 
+  it('keeps screen + music share under the call options ⋮ menu', async () => {
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
+    mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
+    const toggleScreenShare = jest.fn();
+    mockedUseSelfHosted.mockReturnValue(
+      controller({
+        status: 'connected',
+        toggleScreenShare,
+      }),
+    );
+    renderWithVoice(<VoiceChannelScreen />);
+
+    await screen.findByLabelText('Call options');
+    expect(screen.queryByLabelText('Share screen')).toBeNull();
+    expect(screen.queryByLabelText('Share music')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Call options'));
+    expect(await screen.findByLabelText('Share Screen')).toBeTruthy();
+    expect(screen.getByLabelText('Share Music')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Share Screen'));
+    expect(toggleScreenShare).toHaveBeenCalled();
+  });
+
+  it('offers silence-others (deafen) as a separate control from speaker', async () => {
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
+    mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
+    const toggleDeafen = jest.fn();
+    mockedUseSelfHosted.mockReturnValue(
+      controller({ status: 'connected', toggleDeafen }),
+    );
+    renderWithVoice(<VoiceChannelScreen />);
+
+    fireEvent.press(
+      await screen.findByLabelText('Silence others — mute their audio for you'),
+    );
+    expect(toggleDeafen).toHaveBeenCalled();
+  });
+
   it('shows Unmute mic label when already self-muted', async () => {
     await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, 'token-abc');
     mockedVoiceApi.getVoiceConfig.mockResolvedValue({ mode: 'self' });
@@ -263,9 +303,8 @@ describe('GuildVoiceScreen', () => {
     mockedUseSelfHosted.mockReturnValue(guildController());
     renderWithVoice(<GuildVoiceScreen />);
 
-    await screen.findByText('Guild Voice');
-    expect(mockedUseSelfHosted).toHaveBeenCalledWith('token-abc', 'guild');
     await screen.findByText('3 / 50 in voice');
+    expect(mockedUseSelfHosted).toHaveBeenCalledWith('token-abc', 'guild');
   });
 
   it('joins the hosted (LiveKit) guild room with the server-provided host flag and cap', async () => {
@@ -292,7 +331,7 @@ describe('GuildVoiceScreen', () => {
     );
     renderWithVoice(<GuildVoiceScreen />);
 
-    await screen.findByText('Guild Voice');
+    await screen.findByText('4 / 50 in voice');
     // Second arg is the 1-on-1 peer id — undefined for a guild room.
     expect(mockedVoiceApi.getVoiceConfig).toHaveBeenCalledWith(
       'guild',
@@ -304,7 +343,6 @@ describe('GuildVoiceScreen', () => {
       max: 50,
     });
     expect(mockedUseSelfHosted).not.toHaveBeenCalled();
-    await screen.findByText('4 / 50 in voice');
     expect(screen.queryByText(/needs the self-hosted voice server/)).toBeNull();
   });
 

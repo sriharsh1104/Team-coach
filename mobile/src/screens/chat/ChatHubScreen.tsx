@@ -10,8 +10,10 @@ import { NavigationContext } from '@react-navigation/native';
 import { registerBackInterceptor } from '../../navigation/backInterceptors';
 import { AppIcon } from '../../ui/AppIcon';
 import * as chatApi from '../../api/chat';
+import * as voiceApi from '../../api/voice';
 import { CacheKeys, hasFreshEnough, revalidate } from '../../api/queryCache';
 import { ChatChannel, ChatTeammate, UserPresence } from '../../api/types';
+import { useAuth } from '../../auth/AuthContext';
 import { getToken } from '../../storage/tokenStorage';
 import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
@@ -72,6 +74,8 @@ type ChatOverlay =
 export function ChatHubScreen({ onLoadError }: Props) {
   // Optional (no throw outside a navigator) — used for the voice shortcut.
   const navigation = useContext(NavigationContext);
+  const { user } = useAuth();
+  const canDirectVoice = !!user?.canDirectVoice;
   const { colors: theme } = useTheme();
   const [channels, setChannels] = useState<ChatChannel[]>([]);
   const [teammates, setTeammates] = useState<ChatTeammate[]>([]);
@@ -87,6 +91,10 @@ export function ChatHubScreen({ onLoadError }: Props) {
   /** Live green-dot map for DM / teammate rows in the inbox. */
   const [onlineByUserId, setOnlineByUserId] = useState<Record<string, boolean>>(
     {},
+  );
+  /** Peer ids this user can 1-on-1 call (same guild + both granted). */
+  const [directVoicePeerIds, setDirectVoicePeerIds] = useState<Set<string>>(
+    () => new Set(),
   );
 
   const load = useCallback(async (opts?: { force?: boolean }) => {
@@ -126,6 +134,30 @@ export function ChatHubScreen({ onLoadError }: Props) {
       if (timer) clearTimeout(timer);
     };
   }, [load]);
+
+  // Who we can place a 1-on-1 call to — drives the DM header headset.
+  // Re-runs when canDirectVoice flips live (SSE / foreground refresh).
+  useEffect(() => {
+    if (!canDirectVoice) {
+      setDirectVoicePeerIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    void voiceApi
+      .getDirectVoicePeers()
+      .then((res) => {
+        if (cancelled) return;
+        setDirectVoicePeerIds(
+          new Set(res.enabled ? res.peers.map((p) => p.id) : []),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setDirectVoicePeerIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canDirectVoice]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);
@@ -551,6 +583,21 @@ export function ChatHubScreen({ onLoadError }: Props) {
                     (navigation as any)?.navigate(
                       active.channelKey === 'guild' ? 'GuildVoice' : 'Voice',
                     )
+                  }
+                />
+              ) : null}
+              {active.type === 'DM' &&
+              active.peerUserId &&
+              directVoicePeerIds.has(active.peerUserId) ? (
+                <VoiceJoinHeaderButton
+                  room="direct"
+                  peerId={active.peerUserId}
+                  onPress={() =>
+                    (navigation as any)?.navigate('DirectVoice', {
+                      peerId: active.peerUserId,
+                      peerName: active.title,
+                      peerAvatarUrl: active.avatarUrl,
+                    })
                   }
                 />
               ) : null}

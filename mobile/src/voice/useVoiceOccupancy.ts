@@ -16,26 +16,35 @@ const EMPTY: VoiceOccupancy = {
 /**
  * Polls who is already in a voice room without joining.
  * Used by the voice lobby and the chat headset indicator.
+ * `peerId` is required for `room: 'direct'` (same pair the call token uses).
  */
 export function useVoiceOccupancy(
   room: VoiceRoomKind | null,
-  opts: { enabled?: boolean } = {},
+  opts: { enabled?: boolean; peerId?: string } = {},
 ) {
-  const enabled = opts.enabled !== false && room != null;
+  const peerId = opts.peerId;
+  const enabled =
+    opts.enabled !== false &&
+    room != null &&
+    (room !== 'direct' || !!peerId);
   const [occupancy, setOccupancy] = useState<VoiceOccupancy>(EMPTY);
   const roomRef = useRef(room);
   roomRef.current = room;
+  const peerRef = useRef(peerId);
+  peerRef.current = peerId;
 
   const refresh = useCallback(async () => {
     const kind = roomRef.current;
     if (!kind) return;
     try {
-      const next = await voiceApi.getVoiceOccupancy(kind);
-      if (roomRef.current === kind) setOccupancy(next);
+      const next = await voiceApi.getVoiceOccupancy(kind, peerRef.current);
+      if (roomRef.current === kind && peerRef.current === peerId) {
+        setOccupancy(next);
+      }
     } catch {
       // Keep last known occupancy on transient failures.
     }
-  }, []);
+  }, [peerId]);
 
   useEffect(() => {
     if (!enabled) {
@@ -57,7 +66,7 @@ export function useVoiceOccupancy(
       clearInterval(id);
       sub.remove();
     };
-  }, [enabled, room, refresh]);
+  }, [enabled, room, peerId, refresh]);
 
   return { occupancy, refresh };
 }

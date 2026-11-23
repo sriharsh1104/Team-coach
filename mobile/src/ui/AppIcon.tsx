@@ -30,6 +30,8 @@ export type AppIconName =
   | 'notifications'
   | 'volume-high'
   | 'volume-mute'
+  /** Loudspeaker / speakerphone route — distinct from volume (deafen) icons. */
+  | 'speaker'
   | 'notifications-off'
   | 'person-add'
   | 'person-outline'
@@ -417,18 +419,26 @@ const ICONS: Record<AppIconName, Renderer> = {
       <Path d="M16 17l5-5-5-5M21 12H9" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   ),
+  // Deafen / "hear others" — cone + waves. Not the same as audio-route `speaker`.
   'volume-high': (c, s) => (
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Path d="M11 5L6 9H2v6h4l5 4V5z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13" stroke={c} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   ),
-  // Deafen control — kept distinct from the audio-route headset icon.
   'volume-mute': (c, s) => (
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Path d="M11 5L6 9H2v6h4l5 4V5z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Line x1="23" y1="9" x2="17" y2="15" stroke={c} strokeWidth={2} strokeLinecap="round" />
       <Line x1="17" y1="9" x2="23" y2="15" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  // Phone loudspeaker box — audio output route when on speakerphone.
+  'speaker': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Rect x="5" y="2" width="14" height="20" rx="2.5" stroke={c} strokeWidth={2} />
+      <Circle cx="12" cy="14" r="3.5" stroke={c} strokeWidth={2} />
+      <Circle cx="12" cy="6.5" r="1.25" fill={c} />
     </Svg>
   ),
   'bluetooth': (c, s) => (

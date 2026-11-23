@@ -17,6 +17,7 @@ import { ChannelAvatar } from '../chat/ChannelAvatar';
 import { resolveMediaUrl } from '../../api/client';
 import { confirmAsync } from '../../ui/confirmAsync';
 import { FadeIn } from '../../ui/FadeIn';
+import { BootsBoard } from './BootsBoard';
 import { LudoBoard, ludoColorHex } from './LudoBoard';
 import { prefer3DByDefault, supports3D } from '../../games/three/GameCanvas';
 import { RpsBoard } from './RpsBoard';
@@ -166,7 +167,11 @@ export function GameRoomScreen() {
   const spec = GAME_CATALOG.find((g) => g.id === room.game);
   const isHost = room.hostId === meId;
   const canStart = isHost && room.players.length >= room.minPlayers;
-  const winner = room.players.find((p) => p.userId === (room.rps?.winnerId ?? room.ludo?.winnerId));
+  const winner = room.players.find(
+    (p) =>
+      p.userId ===
+      (room.rps?.winnerId ?? room.ludo?.winnerId ?? room.boots?.winnerId),
+  );
 
   const header = (
     <View style={styles.header}>
@@ -183,7 +188,7 @@ export function GameRoomScreen() {
           {!games.connected ? ' · reconnecting…' : ''}
         </Text>
       </View>
-      {room.status === 'playing' && supports3D() ? (
+      {room.status === 'playing' && room.game !== 'boots' && supports3D() ? (
         <Pressable
           onPress={() => setMode((m) => (m === '3d' ? '2d' : '3d'))}
           style={styles.modeBtn}
@@ -227,6 +232,29 @@ export function GameRoomScreen() {
             onFallback={() => setMode('2d')}
             onRoll={() => void act(() => games.ludoRoll(room.id))}
             onMove={(i) => void act(() => games.ludoMove(room.id, i))}
+          />
+        </ScrollView>
+      </Screen>
+    );
+  }
+  if (room.status === 'playing' && room.boots) {
+    return (
+      <Screen>
+        {header}
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+          <BootsBoard
+            room={room}
+            meId={meId}
+            busy={busy}
+            onPlace={(col, row, orientation) =>
+              void act(() => games.bootsPlace(room.id, { col, row }, orientation))
+            }
+            onPlaceRandom={() => void act(() => games.bootsPlaceRandom(room.id))}
+            onClear={() => void act(() => games.bootsClear(room.id))}
+            onReady={() => void act(() => games.bootsReady(room.id))}
+            onFire={(col, row) =>
+              void act(() => games.bootsFire(room.id, { col, row }))
+            }
           />
         </ScrollView>
       </Screen>
@@ -313,6 +341,11 @@ export function GameRoomScreen() {
 
         {room.status === 'lobby' ? (
           <>
+            {room.game === 'boots' && room.bootsFleet ? (
+              <Text style={styles.subSection}>
+                Fleet sizes: {room.bootsFleet.join(' · ')}
+              </Text>
+            ) : null}
             {isHost ? (
               <Pressable
                 style={[styles.primaryBtn, !canStart && staticStyles.dim]}

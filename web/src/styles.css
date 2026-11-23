@@ -4883,3 +4883,55 @@ button.invite-qr-open:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Guild deletion. Visually fenced off and collapsed by default — it is the
+   one control here that reaches into another org and cannot be undone. */
+.admin-danger {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(248, 113, 113, 0.25);
+}
+
+.admin-danger-open {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-danger p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.admin-danger label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.admin-danger input {
+  width: 100%;
+}
+
+.admin-danger-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-danger-btn {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.admin-danger-btn:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.16);
+}
+
+.admin-danger-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
