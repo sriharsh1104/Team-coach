@@ -32,6 +32,8 @@ export type SideDrawerItem = {
   active?: boolean;
   /** Optional icon name from AppIcon to show before the label. */
   icon?: import('./AppIcon').AppIconName;
+  /** Unread count shown as a pill at the end of the row. 0/undefined hides it. */
+  badge?: number;
 };
 
 /**
@@ -206,6 +208,13 @@ export function SideDrawer({
       >
         {item.label}
       </Text>
+      {item.badge ? (
+        <View style={[styles.itemBadge, { backgroundColor: theme.chrome }]}>
+          <Text style={[styles.itemBadgeText, { color: theme.chromeInk }]}>
+            {item.badge > 99 ? '99+' : item.badge}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 
@@ -426,6 +435,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
     zIndex: 1,
+  },
+  itemBadge: {
+    marginLeft: 'auto',
+    minWidth: 22,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  itemBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
   itemTextActive: {
     fontWeight: '800',

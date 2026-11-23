@@ -98,7 +98,7 @@ describe('MembersScreen', () => {
     } as any);
     render(<MembersScreen navigation={navigation} route={{} as any} />);
 
-    await screen.findByText(/Only the owner or a coach can share roster invites/);
+    await screen.findByText(/Only the owner can share roster invites/);
     expect(screen.queryByText('Esports Roster Invite')).toBeNull();
   });
 

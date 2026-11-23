@@ -381,8 +381,9 @@ export class OrgService {
       throw new NotFoundException('You are not part of an org yet');
     }
 
-    const canInviteRoster =
-      membership.isOwner || membership.role === MembershipRole.COACH;
+    // Roster invites / codes are owner-only. Coaches manage day-to-day play;
+    // joining still works via the code or invite link the owner shared.
+    const canInviteRoster = membership.isOwner;
 
     return {
       id: membership.org.id,
@@ -1155,8 +1156,8 @@ export class OrgService {
     ]);
 
     const rosterByUser = new Map(rosterMembers.map((m) => [m.userId, m]));
-    const canManage =
-      !!roster && (roster.isOwner || roster.role === MembershipRole.COACH);
+    // Add/remove roster seats from Guild is owner-only (same as roster invites).
+    const canManage = !!roster && roster.isOwner;
     const leadership =
       guild.role === GuildRole.LEADER ||
       guild.role === GuildRole.ELDER ||
@@ -1311,9 +1312,9 @@ export class OrgService {
     const roster = await this.prisma.membership.findFirst({
       where: { userId },
     });
-    if (!roster || (!roster.isOwner && roster.role !== MembershipRole.COACH)) {
+    if (!roster?.isOwner) {
       throw new ForbiddenException(
-        'Only the roster owner or a coach can change the roster',
+        'Only the org owner can change the roster',
       );
     }
     return roster;

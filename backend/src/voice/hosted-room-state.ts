@@ -26,6 +26,9 @@ export const DIRECT_VOICE_MAX_PARTICIPANTS = 2;
 /** Participant attribute set only by our token endpoint (clients cannot write it). */
 export const MOD_ATTRIBUTE = 'mod';
 
+/** Org owner — stays unmuted during announcement (listen-only) mode. */
+export const OWNER_ATTRIBUTE = 'own';
+
 export const EMPTY_ROOM_STATE: HostedRoomState = {
   listenOnly: false,
   muted: [],
@@ -52,15 +55,23 @@ export function parseRoomState(
   }
 }
 
-/** Whether this (non-host) user must be silenced under the given state. */
+/**
+ * Whether this user must be silenced under the given state.
+ * Announcement (listenOnly): only the org owner + explicit speakers may talk.
+ * Otherwise: hosts stay open; everyone else follows the muted list.
+ */
 export function isUserHostMuted(
   state: HostedRoomState,
   userId: string,
   isHost: boolean,
+  isOwner = false,
 ): boolean {
+  if (state.listenOnly) {
+    if (isOwner) return false;
+    return !state.speakers.includes(userId);
+  }
   if (isHost) return false;
-  if (state.muted.includes(userId)) return true;
-  return state.listenOnly && !state.speakers.includes(userId);
+  return state.muted.includes(userId);
 }
 
 export type ModerationAction = 'muteAll' | 'unmuteAll' | 'mute' | 'unmute';

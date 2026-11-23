@@ -30,6 +30,7 @@ import {
   HostedRoomState,
   isUserHostMuted,
   MOD_ATTRIBUTE,
+  OWNER_ATTRIBUTE,
   ModerationAction,
   parseRoomState,
 } from './hosted-room-state';
@@ -153,6 +154,7 @@ export class VoiceService {
       orgId: null,
       roomName: VoiceService.directRoomName(userId, peerId),
       canModerate: false,
+      isOwner: false,
     };
   }
 
@@ -165,7 +167,7 @@ export class VoiceService {
       return this.resolveDirectRoom(userId, peerId);
     }
     if (room === 'guild') {
-      let access: { orgId: string; canModerate: boolean };
+      let access: { orgId: string; canModerate: boolean; isOwner: boolean };
       try {
         access = await resolveGuildAccess(this.prisma, userId);
       } catch (err) {
@@ -176,14 +178,21 @@ export class VoiceService {
         orgId: access.orgId,
         roomName: `guild:${access.orgId}`,
         canModerate: access.canModerate,
+        isOwner: access.isOwner,
       };
     }
     const orgId = await this.chatService.getOrgIdForUser(userId);
+    const membership = await this.prisma.membership.findFirst({
+      where: { userId, orgId },
+      select: { isOwner: true },
+    });
     return {
       kind: 'team' as const,
       orgId,
       roomName: orgId,
+      // Individual host tools (if any) still use edit access; kick is owner-only.
       canModerate: await this.membershipService.hasEditAccess(userId, orgId),
+      isOwner: !!membership?.isOwner,
     };
   }
 
@@ -326,14 +335,22 @@ export class VoiceService {
     });
     if (ctx.kind === 'guild') {
       state = parseRoomState(lkRoom.metadata);
-      // Rejoining must not be a way around a host mute.
-      canPublish = !isUserHostMuted(state, userId, ctx.canModerate);
+      // Rejoining must not be a way around a host mute / announcement.
+      canPublish = !isUserHostMuted(
+        state,
+        userId,
+        ctx.canModerate,
+        ctx.isOwner,
+      );
     }
 
     const token = new AccessToken(creds.apiKey, creds.apiSecret, {
       identity: user.id,
       name: user.name,
-      attributes: { [MOD_ATTRIBUTE]: ctx.canModerate ? '1' : '0' },
+      attributes: {
+        [MOD_ATTRIBUTE]: ctx.canModerate ? '1' : '0',
+        [OWNER_ATTRIBUTE]: ctx.isOwner ? '1' : '0',
+      },
       // Carried to every other participant via Participant.metadata — lets
       // the voice screen show a real avatar instead of just initials.
       metadata: JSON.stringify({ avatarUrl: user.avatarUrl }),
@@ -470,12 +487,8 @@ export class VoiceService {
     const client = this.roomClient(creds);
 
     if (dto.action === 'kick') {
-      if (!ctx.canModerate) {
-        throw new ForbiddenException(
-          ctx.kind === 'guild'
-            ? 'Only the owner or guild leaders can remove people'
-            : 'Only the org owner or a coach can kick',
-        );
+      if (!ctx.isOwner) {
+        throw new ForbiddenException('Only the org owner can kick');
       }
       if (!dto.userId || dto.userId === userId) {
         throw new BadRequestException('Invalid kick target');
@@ -488,12 +501,22 @@ export class VoiceService {
       }
     }
 
-    if (ctx.kind !== 'guild' || !ctx.canModerate) {
+    if (ctx.kind !== 'guild') {
+      throw new ForbiddenException('Mute controls are only for guild voice');
+    }
+    const action = dto.action as ModerationAction;
+    // Announcement (mute everyone / restore): owner only.
+    if (action === 'muteAll' || action === 'unmuteAll') {
+      if (!ctx.isOwner) {
+        throw new ForbiddenException(
+          'Only the org owner can mute everyone for an announcement',
+        );
+      }
+    } else if (!ctx.canModerate) {
       throw new ForbiddenException(
         'Only the owner or guild leaders can do that',
       );
     }
-    const action = dto.action as ModerationAction;
     if ((action === 'mute' || action === 'unmute') && !dto.userId) {
       throw new BadRequestException('Missing user');
     }
@@ -530,7 +553,13 @@ export class VoiceService {
     await Promise.all(
       participants.map(async (p) => {
         const isHost = p.attributes?.[MOD_ATTRIBUTE] === '1';
-        const canPublish = !isUserHostMuted(state, p.identity, isHost);
+        const isOwner = p.attributes?.[OWNER_ATTRIBUTE] === '1';
+        const canPublish = !isUserHostMuted(
+          state,
+          p.identity,
+          isHost,
+          isOwner,
+        );
         if ((p.permission?.canPublish ?? true) === canPublish) return;
         try {
           await client.updateParticipant(roomName, p.identity, undefined, {

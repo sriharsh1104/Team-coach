@@ -21,16 +21,16 @@ enum GuildRole {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String? // null for accounts created via Google only
-  googleId     String?  @unique
-  name         String
-  avatarUrl    String?
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String? // null for accounts created via Google only
+  googleId      String?  @unique
+  name          String
+  avatarUrl     String?
   // Storage key for uploaded avatars — used to delete the previous file on replace.
   avatarFileKey String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Exactly one in-game role tag at a time, by design (see UpdateProfileDto
   // and the mobile/web profile screens, which all clamp to one). String[]
@@ -39,9 +39,9 @@ model User {
 
   // Unique when set — incomplete profiles may leave these null (Postgres
   // allows multiple NULLs under a UNIQUE constraint).
-  inGameName String? @unique
-  inGameUid  String? @unique
-  phone      String? @unique
+  inGameName      String?   @unique
+  inGameUid       String?   @unique
+  phone           String?   @unique
   // Set only by Telegram verification (POST /users/me/phone/telegram → bot
   // contact share). Null = the number was never proven to belong to this user.
   phoneVerifiedAt DateTime?
@@ -105,9 +105,9 @@ model User {
 
   memberships        Membership[]
   guildMemberships   GuildMembership[]
-  guildInvites       GuildMembership[] @relation("GuildInvites")
-  guildJoinRequests  GuildJoinRequest[] @relation("GuildJoinRequests")
-  guildJoinDecisions GuildJoinRequest[] @relation("GuildJoinDecisions")
+  guildInvites       GuildMembership[]   @relation("GuildInvites")
+  guildJoinRequests  GuildJoinRequest[]  @relation("GuildJoinRequests")
+  guildJoinDecisions GuildJoinRequest[]  @relation("GuildJoinDecisions")
   devices            Device[]
   mediaPosts         MediaPost[]
   chatMessages       ChatMessage[]
@@ -120,8 +120,10 @@ model User {
   chatPins           ChatPin[]
   chatReminders      ChatReminder[]
   scrimEvents        ScrimEvent[]
-  statExtractions  StatExtraction[]
-  playerStats     PlayerStat[]
+  statExtractions    StatExtraction[]
+  playerStats        PlayerStat[]
+  announcements      Announcement[]
+  announcementReads  AnnouncementRead[]
 }
 
 // One outstanding signup-verification code per user — a resend overwrites
@@ -204,17 +206,17 @@ model Device {
 }
 
 model Org {
-  id            String   @id @default(cuid())
+  id                  String   @id @default(cuid())
   // Display name — also enforced case-insensitively in OrgService.createOrg.
-  name          String   @unique
+  name                String   @unique
   // Guild community join (not the esports roster).
-  orgCode       String   @unique
-  referralToken String   @unique
+  orgCode             String   @unique
+  referralToken       String   @unique
   // Esports roster join — separate from guild code/token so invites never collide.
-  rosterCode          String @unique
-  rosterReferralToken String @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  rosterCode          String   @unique
+  rosterReferralToken String   @unique
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   // Owner-controlled: whether a member can see Team Chat messages from
   // before they joined. Chat history itself is always kept in full either
@@ -236,12 +238,13 @@ model Org {
   chatClears         ChatClear[]
   chatReminders      ChatReminder[]
   scrimEvents        ScrimEvent[]
-  statExtractions StatExtraction[]
-  playerStats     PlayerStat[]
+  statExtractions    StatExtraction[]
+  playerStats        PlayerStat[]
   mapImages          OrgMapImage[]
   customMaps         OrgCustomMap[]
   mapDropPoints      OrgMapDropPoint[]
   guildJoinRequests  GuildJoinRequest[]
+  announcements      Announcement[]
 }
 
 // Org overrides for shared catalog images (Cloudinary / local fileKey).
@@ -273,7 +276,7 @@ model OrgCustomMap {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  org   Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org   Org               @relation(fields: [orgId], references: [id], onDelete: Cascade)
   drops OrgMapDropPoint[]
 
   @@index([orgId])
@@ -353,27 +356,27 @@ model ScrimRound {
 
 // channelKey: "org" for team group chat, or "dm:{sortedUserIdA}:{sortedUserIdB}" for 1:1.
 model ChatMessage {
-  id        String     @id @default(cuid())
-  orgId     String
-  channelKey String    @default("org")
-  senderId  String
-  text      String?
-  mediaUrl  String?
-  mediaType MediaType?
-  createdAt DateTime   @default(now())
-  editedAt  DateTime?
+  id         String        @id @default(cuid())
+  orgId      String
+  channelKey String        @default("org")
+  senderId   String
+  text       String?
+  mediaUrl   String?
+  mediaType  MediaType?
+  createdAt  DateTime      @default(now())
+  editedAt   DateTime?
   // WhatsApp-style reply — null for top-level messages.
-  replyToId String?
-  replyTo   ChatMessage?  @relation("ChatReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies   ChatMessage[] @relation("ChatReplies")
+  replyToId  String?
+  replyTo    ChatMessage?  @relation("ChatReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies    ChatMessage[] @relation("ChatReplies")
   // True when this message was created via POST /chat/forward — client
   // renders a "Forwarded" label. We deliberately don't track which message
   // it came from (WhatsApp doesn't show that either, and it would leak
   // whether the forwarder has access to the source channel).
-  forwarded Boolean @default(false)
+  forwarded  Boolean       @default(false)
 
-  org       Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  sender    User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  org       Org            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sender    User           @relation(fields: [senderId], references: [id], onDelete: Cascade)
   pins      ChatPin[]
   stars     ChatStar[]
   reactions ChatReaction[]
@@ -406,9 +409,9 @@ model ChatPin {
   pinnedById String
   pinnedAt   DateTime @default(now())
 
-  org     Org         @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  pinnedBy User       @relation(fields: [pinnedById], references: [id], onDelete: Cascade)
+  org      Org         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  message  ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pinnedBy User        @relation(fields: [pinnedById], references: [id], onDelete: Cascade)
 
   @@unique([orgId, channelKey, messageId])
   @@index([orgId, channelKey])
@@ -660,17 +663,17 @@ enum GuildJoinRequestStatus {
 // accept. Joining with the org code or a personal invite link stays direct —
 // having the code is itself the owner's permission.
 model GuildJoinRequest {
-  id        String                 @id @default(cuid())
-  userId    String
-  orgId     String
-  status    GuildJoinRequestStatus @default(PENDING)
-  createdAt DateTime               @default(now())
-  updatedAt DateTime               @updatedAt
-  decidedAt DateTime?
+  id          String                 @id @default(cuid())
+  userId      String
+  orgId       String
+  status      GuildJoinRequestStatus @default(PENDING)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  decidedAt   DateTime?
   decidedById String?
 
-  user      User @relation("GuildJoinRequests", fields: [userId], references: [id], onDelete: Cascade)
-  org       Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user      User  @relation("GuildJoinRequests", fields: [userId], references: [id], onDelete: Cascade)
+  org       Org   @relation(fields: [orgId], references: [id], onDelete: Cascade)
   decidedBy User? @relation("GuildJoinDecisions", fields: [decidedById], references: [id], onDelete: SetNull)
 
   // Asking the same guild again reuses the row rather than stacking rows in
@@ -681,14 +684,14 @@ model GuildJoinRequest {
 }
 
 model GuildMembership {
-  id        String    @id @default(cuid())
-  role      GuildRole @default(MEMBER)
-  userId    String
-  orgId     String
+  id              String    @id @default(cuid())
+  role            GuildRole @default(MEMBER)
+  userId          String
+  orgId           String
   // Who shared the invite/code that brought this member in (null = unknown /
   // legacy / org-owner bootstrap). Used for per-user referral totals.
   invitedByUserId String?
-  createdAt DateTime  @default(now())
+  createdAt       DateTime  @default(now())
 
   user      User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   org       Org   @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -714,4 +717,43 @@ model WebsiteTournamentRecord {
   updatedAt     DateTime @updatedAt
 
   @@index([sortOrder])
+}
+
+// Owner-to-everyone broadcast inside one org: it pushes to every member's
+// phone AND is kept here, so somebody whose phone was off (or who installed
+// the app later) still finds it in the Announcements section. A push alone
+// would be write-only — delivered or lost, with nothing to come back to.
+model Announcement {
+  id        String   @id @default(cuid())
+  orgId     String
+  // Null once the author's account is gone — the announcement itself is
+  // org history and outlives whoever happened to post it.
+  authorId  String?
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org    Org                @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  author User?              @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  reads  AnnouncementRead[]
+
+  // The only query this table serves: one org's announcements, newest first.
+  @@index([orgId, createdAt])
+}
+
+// Who has seen which announcement. A row exists only once someone has read
+// it, so "unread" is the absence of a row — no backfill needed when a new
+// member joins, and no row to write for people who never open the section.
+model AnnouncementRead {
+  id             String   @id @default(cuid())
+  announcementId String
+  userId         String
+  readAt         DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([userId])
 }

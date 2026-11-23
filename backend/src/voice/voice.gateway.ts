@@ -45,8 +45,10 @@ interface VoiceSocketData {
   /** Key used for the SFU router + socket.io room (orgId for team, `guild:${orgId}`). */
   roomKey: string;
   kind: VoiceRoomKind;
-  /** Guild only: owner / coach / guild leader — may mute, unmute and kick. */
+  /** Guild only: owner / coach / guild leader — may mute individuals. */
   canModerate: boolean;
+  /** Org owner — kick + announcement (mute-all). */
+  isOwner: boolean;
   transports: Map<string, WebRtcTransport>;
   producers: Map<string, Producer>;
   consumers: Map<string, Consumer>;
@@ -122,12 +124,19 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
 
         let orgId: string;
         let canModerate = false;
+        let isOwner = false;
         if (kind === 'guild') {
           const access = await resolveGuildAccess(this.prisma, user.id);
           orgId = access.orgId;
           canModerate = access.canModerate;
+          isOwner = access.isOwner;
         } else {
           orgId = await this.chatService.getOrgIdForUser(payload.sub);
+          const membership = await this.prisma.membership.findFirst({
+            where: { userId: payload.sub, orgId },
+            select: { isOwner: true },
+          });
+          isOwner = !!membership?.isOwner;
         }
         const roomKey = kind === 'guild' ? `guild:${orgId}` : orgId;
 
@@ -143,6 +152,7 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
           roomKey,
           kind,
           canModerate,
+          isOwner,
           transports: new Map(),
           producers: new Map(),
           consumers: new Map(),
@@ -406,10 +416,10 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     };
   }
 
-  /** Moderator: everyone but moderators goes listen-only. */
+  /** Owner: announcement — everyone but the owner goes listen-only. */
   @SubscribeMessage('muteAll')
   async onMuteAll(@ConnectedSocket() client: Socket) {
-    const data = this.assertModerator(client);
+    const data = this.assertOwner(client);
     const state = this.guildState(data.roomKey);
     state.listenOnly = true;
     state.hostMuted.clear();
@@ -418,10 +428,10 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     return { ok: true };
   }
 
-  /** Moderator: lifts listen-only and every individual mute. */
+  /** Owner: lifts announcement listen-only and every individual mute. */
   @SubscribeMessage('unmuteAll')
   async onUnmuteAll(@ConnectedSocket() client: Socket) {
-    const data = this.assertModerator(client);
+    const data = this.assertOwner(client);
     const state = this.guildState(data.roomKey);
     state.listenOnly = false;
     state.hostMuted.clear();
@@ -465,9 +475,9 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   /**
-   * Org owner / coach only. Enforced here, not just hidden in the UI: the
-   * target's media is closed and its socket dropped, so a modified client
-   * can neither kick others nor ignore being kicked.
+   * Org owner only. Enforced here, not just hidden in the UI: the target's
+   * media is closed and its socket dropped, so a modified client can neither
+   * kick others nor ignore being kicked.
    */
   @SubscribeMessage('kick')
   async onKick(
@@ -480,16 +490,8 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (!targetId || targetId === data.userId) {
       throw new Error('Invalid kick target');
     }
-    const allowed =
-      data.kind === 'guild'
-        ? data.canModerate
-        : await this.membershipService.hasEditAccess(data.userId, data.orgId);
-    if (!allowed) {
-      throw new Error(
-        data.kind === 'guild'
-          ? 'Only the owner or guild leaders can remove people'
-          : 'Only the org owner or a coach can kick',
-      );
+    if (!data.isOwner) {
+      throw new Error('Only the org owner can kick');
     }
 
     const sockets = await this.server
@@ -510,6 +512,15 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
     const data = client.data as VoiceSocketData;
     if (data.kind !== 'guild' || !data.canModerate) {
       throw new Error('Only the owner or guild leaders can do that');
+    }
+    return data;
+  }
+
+  private assertOwner(client: Socket): VoiceSocketData {
+    this.assertNotRateLimited(client);
+    const data = client.data as VoiceSocketData;
+    if (data.kind !== 'guild' || !data.isOwner) {
+      throw new Error('Only the org owner can do that');
     }
     return data;
   }
@@ -553,11 +564,15 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayDisconnect {
   }
 
   private isHostMuted(roomKey: string, data: VoiceSocketData): boolean {
-    if (data.kind !== 'guild' || data.canModerate) return false;
+    if (data.kind !== 'guild') return false;
     const state = this.guildRooms.get(roomKey);
     if (!state) return false;
-    if (state.hostMuted.has(data.userId)) return true;
-    return state.listenOnly && !state.speakers.has(data.userId);
+    if (state.listenOnly) {
+      if (data.isOwner) return false;
+      return !state.speakers.has(data.userId);
+    }
+    if (data.canModerate) return false;
+    return state.hostMuted.has(data.userId);
   }
 
   private buildVoiceState(roomKey: string, sockets: Array<{ data: unknown }>) {

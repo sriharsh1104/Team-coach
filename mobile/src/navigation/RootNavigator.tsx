@@ -18,6 +18,7 @@ import { CreateOrgScreen } from '../screens/CreateOrgScreen';
 import { JoinOrgScreen } from '../screens/JoinOrgScreen';
 import { OrgHomeScreen } from '../screens/OrgHomeScreen';
 import { AdminScreen } from '../screens/admin/AdminScreen';
+import { AnnouncementsScreen } from '../screens/announcements/AnnouncementsScreen';
 import { MembersScreen } from '../screens/MembersScreen';
 import { GuildHomeScreen } from '../screens/GuildHomeScreen';
 import { GuildScreen } from '../screens/GuildScreen';
@@ -31,6 +32,7 @@ import { SocialHandlesScreen } from '../screens/SocialHandlesScreen';
 // Heavy / rarely-opened screens (GL games, stats OCR, maps, media, voice)
 // load on first navigate so cold start stays light on mid-range Android.
 import { GameInviteBridge } from '../games/GameInviteBridge';
+import { AnnouncementNotificationBridge } from '../notifications/AnnouncementNotificationBridge';
 import { ChatNotificationBridge } from '../notifications/ChatNotificationBridge';
 import { VoiceNotificationBridge } from '../notifications/VoiceNotificationBridge';
 import { InviteLinkBridge } from '../invite/InviteLinkBridge';
@@ -379,6 +381,13 @@ export function RootNavigator() {
               }))}
             />
             <MainStack.Screen
+              name="Announcements"
+              component={AnnouncementsScreen}
+              options={sectionOptions(guildDrawer.openWith, () => ({
+                title: 'Announcements',
+              }))}
+            />
+            <MainStack.Screen
               name="Admin"
               component={AdminScreen}
               options={detailOptions(() => ({ title: 'Admin' }))}
@@ -400,6 +409,7 @@ export function RootNavigator() {
           />
           <GameInviteBridge />
           <ChatNotificationBridge />
+          <AnnouncementNotificationBridge />
           <VoiceNotificationBridge />
           <InviteLinkBridge />
         </>
@@ -591,6 +601,13 @@ export function RootNavigator() {
               options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Go Live' }))}
             />
             <MainStack.Screen
+              name="Announcements"
+              component={AnnouncementsScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Announcements',
+              }))}
+            />
+            <MainStack.Screen
               name="Admin"
               component={AdminScreen}
               options={detailOptions(() => ({ title: 'Admin' }))}
@@ -612,6 +629,7 @@ export function RootNavigator() {
           />
           <GameInviteBridge />
           <ChatNotificationBridge />
+          <AnnouncementNotificationBridge />
           <VoiceNotificationBridge />
           <InviteLinkBridge />
         </>

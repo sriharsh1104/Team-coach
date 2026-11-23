@@ -27,6 +27,8 @@ export type MainStackParamList = {
   Guild: undefined;
   OrgSettings: undefined;
   AccountSettings: undefined;
+  /** Guild announcements — read by everyone, posted by the owner. */
+  Announcements: undefined;
   /** Platform admin — only reachable when the server says isPlatformAdmin. */
   Admin: undefined;
   /** 1-on-1 voice — only reachable when the server says canDirectVoice. */

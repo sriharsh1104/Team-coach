@@ -16,17 +16,18 @@ describe('hosted room state', () => {
     });
   });
 
-  it('mute all silences everyone except hosts', () => {
+  it('mute all silences everyone except the owner', () => {
     const s = applyModeration(empty, 'muteAll');
-    expect(isUserHostMuted(s, 'u1', false)).toBe(true);
-    expect(isUserHostMuted(s, 'host', true)).toBe(false);
+    expect(isUserHostMuted(s, 'u1', false, false)).toBe(true);
+    expect(isUserHostMuted(s, 'coach', true, false)).toBe(true);
+    expect(isUserHostMuted(s, 'owner', true, true)).toBe(false);
   });
 
   it('unmuting one person during listen-only lets only them speak', () => {
     let s = applyModeration(empty, 'muteAll');
     s = applyModeration(s, 'unmute', 'u1');
-    expect(isUserHostMuted(s, 'u1', false)).toBe(false);
-    expect(isUserHostMuted(s, 'u2', false)).toBe(true);
+    expect(isUserHostMuted(s, 'u1', false, false)).toBe(false);
+    expect(isUserHostMuted(s, 'u2', false, false)).toBe(true);
   });
 
   it('muting one person outside listen-only only affects them, and survives a rejoin check', () => {

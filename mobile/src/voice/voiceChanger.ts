@@ -8,7 +8,7 @@ export const VOICE_PRESETS: Array<{ id: VoicePreset; label: string }> = [
   { id: 'man', label: 'Man' },
   { id: 'woman', label: 'Woman' },
   { id: 'girl', label: 'Girl' },
-  { id: 'child', label: 'Child' },
+  { id: 'child', label: 'Kid' },
   { id: 'robot', label: 'Robot' },
 ];
 

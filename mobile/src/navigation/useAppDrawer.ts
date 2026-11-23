@@ -4,16 +4,14 @@ import { useAuth } from '../auth/AuthContext';
 import { SideDrawerSection } from '../ui/SideDrawer';
 import { MainStackParamList } from './types';
 import { goToSection } from './goToSection';
+import {
+  announcementsItem,
+  useUnreadAnnouncements,
+} from './announcementsDrawerItem';
 import { drawerItemKeyForRoute, withActiveDrawerItem } from './drawerActive';
 
 type MainNav = NativeStackNavigationProp<MainStackParamList, keyof MainStackParamList>;
 
-// Screens pushed directly off OrgHome/GuildHome (Members, Stats, Media, …)
-// render a hamburger button that opens this same drawer, so any of them can
-// jump straight to another section — see useDrawerHeader below. The
-// `navigation` passed in is whichever screen's own nav prop opened the
-// drawer; goToSection navigates on that shared MainStack (push/pop) so
-// Android back reverses the same path from anywhere.
 function useDrawerHeader() {
   const [open, setOpen] = useState(false);
   const [navigation, setNavigation] = useState<MainNav | null>(null);
@@ -50,6 +48,7 @@ export function useOrgDrawer() {
   const canDirectVoice = !!user?.canDirectVoice;
   const { open, navigation, openWith, close, routeName, setRouteName } =
     useDrawerHeader();
+  const unreadAnnouncements = useUnreadAnnouncements(open, routeName);
 
   const sections = useMemo((): SideDrawerSection[] => {
     if (!navigation) return [];
@@ -136,6 +135,7 @@ export function useOrgDrawer() {
       label: 'Guild',
       split: true,
       items: [
+        announcementsItem(navigation, 'OrgHome', unreadAnnouncements),
         ...(isOwner
           ? [
               {
@@ -227,7 +227,14 @@ export function useOrgDrawer() {
       sections,
       drawerItemKeyForRoute(routeName ?? undefined),
     );
-  }, [navigation, isOwner, isAdmin, canDirectVoice, routeName]);
+  }, [
+    navigation,
+    isOwner,
+    isAdmin,
+    canDirectVoice,
+    routeName,
+    unreadAnnouncements,
+  ]);
 
   return { open, sections, openWith, close, setRouteName };
 }
@@ -239,6 +246,7 @@ export function useGuildDrawer() {
   const canDirectVoice = !!user?.canDirectVoice;
   const { open, navigation, openWith, close, routeName, setRouteName } =
     useDrawerHeader();
+  const unreadAnnouncements = useUnreadAnnouncements(open, routeName);
 
   const sections = useMemo((): SideDrawerSection[] => {
     if (!navigation) return [];
@@ -260,6 +268,7 @@ export function useGuildDrawer() {
         label: 'Guild',
         split: true,
         items: [
+          announcementsItem(navigation, 'GuildHome', unreadAnnouncements),
           {
             key: 'guildHome',
             label: 'Guild Roster',
@@ -343,7 +352,7 @@ export function useGuildDrawer() {
       base,
       drawerItemKeyForRoute(routeName ?? undefined),
     );
-  }, [navigation, isAdmin, canDirectVoice, routeName]);
+  }, [navigation, isAdmin, canDirectVoice, routeName, unreadAnnouncements]);
 
   return { open, sections, openWith, close, setRouteName };
 }

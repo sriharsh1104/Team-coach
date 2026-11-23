@@ -52,6 +52,7 @@ export type AppIconName =
   | 'headset'
   | 'headset-off'
   | 'musical-notes'
+  | 'megaphone'
   | 'zap'
   | 'refresh'
   | 'people-outline'
@@ -453,6 +454,19 @@ const ICONS: Record<AppIconName, Renderer> = {
       <Path d="M9 18V5l12-2v13" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Circle cx="6" cy="18" r="3" stroke={c} strokeWidth={2} />
       <Circle cx="18" cy="16" r="3" stroke={c} strokeWidth={2} />
+    </Svg>
+  ),
+  'megaphone': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1z"
+        stroke={c}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path d="M16 8.5a5 5 0 010 7" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M18.5 6a8 8 0 010 12" stroke={c} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   ),
   'zap': (c, s) => (

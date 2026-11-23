@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AdminModule } from './admin/admin.module';
+import { AnnouncementsModule } from './announcements/announcements.module';
 import { AuthModule } from './auth/auth.module';
 import { OrgModule } from './org/org.module';
 import { UsersModule } from './users/users.module';
@@ -38,6 +39,7 @@ import { PhoneVerifyModule } from './phone-verify/phone-verify.module';
     ]),
     PrismaModule,
     AdminModule,
+    AnnouncementsModule,
     AuthModule,
     OrgModule,
     UsersModule,

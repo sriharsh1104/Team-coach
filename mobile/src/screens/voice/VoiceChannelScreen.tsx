@@ -464,7 +464,7 @@ function VoicePresetPicker({ inChannel }: { inChannel: boolean }) {
 
   return (
     <View style={styles.presetBlock}>
-      <Text style={themed.sectionTitle}>Voice</Text>
+      <Text style={themed.sectionTitle}>Voice Morph</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -489,11 +489,16 @@ function VoicePresetPicker({ inChannel }: { inChannel: boolean }) {
         })}
       </ScrollView>
       {preset !== 'off' && !inChannel && (
-        <Text style={themed.mutedHint}>Applies when you join voice.</Text>
+        <Text style={themed.mutedHint}>
+          Morph applies when you join. Others hear it — your own ear may still sound normal.
+        </Text>
+      )}
+      {preset !== 'off' && inChannel && live === true && (
+        <Text style={themed.mutedHint}>Morph live — teammates hear the changed voice.</Text>
       )}
       {preset !== 'off' && inChannel && live === false && (
         <Text style={themed.mutedHint}>
-          Effect is not reaching the mic — leave and rejoin voice.
+          Morph not reaching the mic — leave and rejoin voice (needs Android app build, not Expo Go).
         </Text>
       )}
     </View>
@@ -550,9 +555,9 @@ function VoiceChannelBody({
   }, [voice.status, refreshOccupancy]);
 
   const isGuild = voice.room === 'guild';
-  // Guild voice: the server decides who is a host (owner / coach / guild
-  // leader) and enforces it; this flag only drives what the UI shows.
-  const isAdmin = isGuild ? !!voice.canModerate : !!(org?.isOwner || org?.role === 'COACH');
+  // Kick + announcement: owner only. Individual host-mute: owner / coach / guild leaders.
+  const canKick = !!org?.isOwner;
+  const canAnnounce = isGuild && !!org?.isOwner;
   const canHostMute = isGuild && !!voice.canModerate;
 
   const selfId = user?.id;
@@ -720,11 +725,11 @@ function VoiceChannelBody({
           <>
             {isGuild && voice.isListenOnly && (
               <View style={themed.banner}>
-                <AppIcon name="mic-off" size={16} color={colors.chrome} />
+                <AppIcon name="megaphone" size={16} color={colors.chrome} />
                 <Text style={themed.bannerText}>
-                  {voice.canModerate
-                    ? 'Everyone is muted. Only hosts can speak.'
-                    : 'Listen-only mode — only hosts can speak right now.'}
+                  {org?.isOwner
+                    ? 'Announcement mode — everyone else is muted.'
+                    : 'Announcement — only the owner can speak right now.'}
                 </Text>
               </View>
             )}
@@ -732,29 +737,6 @@ function VoiceChannelBody({
               <View style={themed.banner}>
                 <AppIcon name="mic-off" size={16} color={colors.danger} />
                 <Text style={themed.bannerText}>A host muted you.</Text>
-              </View>
-            )}
-            {canHostMute && (
-              <View style={styles.hostPanel}>
-                <Pressable
-                  style={[styles.hostBtn, voice.isListenOnly ? styles.hostBtnOff : styles.hostBtnDanger]}
-                  onPress={voice.isListenOnly ? undefined : voice.muteAll}
-                  disabled={voice.isListenOnly}
-                  accessibilityLabel="Mute everyone except hosts"
-                >
-                  <ButtonLabel icon="mic-off" color="#fff">
-                    Mute all
-                  </ButtonLabel>
-                </Pressable>
-                <Pressable
-                  style={[styles.hostBtn, styles.hostBtnGreen]}
-                  onPress={voice.unmuteAll}
-                  accessibilityLabel="Let everyone talk again"
-                >
-                  <ButtonLabel icon="mic" color="#fff">
-                    Unmute all
-                  </ButtonLabel>
-                </Pressable>
               </View>
             )}
 
@@ -900,8 +882,8 @@ function VoiceChannelBody({
                     </Pressable>
                   )}
 
-                  {/* Kick button (admin only, remote only) */}
-                  {!item.isSelf && isAdmin && !(isGuild && item.isModerator) && (
+                  {/* Kick — org owner only */}
+                  {!item.isSelf && canKick && (
                     <Pressable
                       hitSlop={8}
                       style={styles.kickBtn}
@@ -1004,6 +986,28 @@ function VoiceChannelBody({
               >
                 <AppIcon name="musical-notes" size={22} color="#fff" />
               </Pressable>
+
+              {/* Announcement — mute everyone, owner stays open (guild owner only) */}
+              {canAnnounce ? (
+                <Pressable
+                  style={[
+                    styles.iconBtn,
+                    voice.isListenOnly ? styles.iconBtnActive : themed.iconBtnDefault,
+                  ]}
+                  onPress={() => {
+                    haptic('medium');
+                    if (voice.isListenOnly) voice.unmuteAll?.();
+                    else voice.muteAll?.();
+                  }}
+                  accessibilityLabel={
+                    voice.isListenOnly
+                      ? 'End announcement — let everyone talk'
+                      : 'Announce — mute everyone else'
+                  }
+                >
+                  <AppIcon name="megaphone" size={22} color="#fff" />
+                </Pressable>
+              ) : null}
 
               {/* Audio output: speaker / phone / headphones / bluetooth */}
               <AudioOutputPicker

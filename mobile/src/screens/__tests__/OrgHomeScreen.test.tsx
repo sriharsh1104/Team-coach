@@ -144,7 +144,7 @@ describe('OrgHomeScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('Members', undefined);
   });
 
-  it('shows Guild to coaches who can invite roster even when not owner', async () => {
+  it('hides Guild Roster from coaches — roster add/remove is owner-only', async () => {
     mockedUseAuth.mockReturnValue({
       logout,
       refreshOrg,
@@ -154,7 +154,7 @@ describe('OrgHomeScreen', () => {
     mockedOrgApi.getMyOrg.mockResolvedValue({
       ...detail,
       isOwner: false,
-      canInviteRoster: true,
+      canInviteRoster: false,
       myRole: 'COACH',
     } as any);
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
@@ -162,7 +162,7 @@ describe('OrgHomeScreen', () => {
 
     fireEvent.press(screen.getByLabelText('Open Menu'));
     expect(screen.getByText('Guild')).toBeTruthy();
-    expect(screen.getByText('Guild Roster')).toBeTruthy();
+    expect(screen.queryByText('Guild Roster')).toBeNull();
     expect(screen.queryByText('Org Settings')).toBeNull();
   });
 

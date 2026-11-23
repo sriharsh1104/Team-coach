@@ -313,27 +313,43 @@ describe('GuildVoiceScreen', () => {
     renderWithVoice(<GuildVoiceScreen />);
 
     await screen.findByText('Teammate');
-    expect(screen.queryByText('Mute all')).toBeNull();
+    expect(screen.queryByLabelText('Announce — mute everyone else')).toBeNull();
     expect(screen.queryByLabelText('Mute Teammate for everyone')).toBeNull();
     expect(screen.queryByLabelText('Kick Teammate')).toBeNull();
   });
 
-  it('lets a host mute all, unmute all and mute one person', async () => {
+  it('lets the owner announce and a host mute one person', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'me', name: 'Owner' },
+      org: { id: 'o1', name: 'Org', isOwner: true, role: 'COACH' },
+    });
     const muteAll = jest.fn();
-    const unmuteAll = jest.fn();
     const setParticipantHostMuted = jest.fn();
     mockedUseSelfHosted.mockReturnValue(
-      guildController({ canModerate: true, muteAll, unmuteAll, setParticipantHostMuted }),
+      guildController({ canModerate: true, muteAll, setParticipantHostMuted }),
     );
     renderWithVoice(<GuildVoiceScreen />);
 
-    fireEvent.press(await screen.findByText('Mute all'));
+    fireEvent.press(await screen.findByLabelText('Announce — mute everyone else'));
     expect(muteAll).toHaveBeenCalled();
-    fireEvent.press(screen.getByText('Unmute all'));
-    expect(unmuteAll).toHaveBeenCalled();
 
     fireEvent.press(screen.getByLabelText('Mute Teammate for everyone'));
     expect(setParticipantHostMuted).toHaveBeenCalledWith('p1', true);
+  });
+
+  it('lets the owner end announcement mode', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'me', name: 'Owner' },
+      org: { id: 'o1', name: 'Org', isOwner: true, role: 'COACH' },
+    });
+    const unmuteAll = jest.fn();
+    mockedUseSelfHosted.mockReturnValue(
+      guildController({ canModerate: true, isListenOnly: true, unmuteAll }),
+    );
+    renderWithVoice(<GuildVoiceScreen />);
+
+    fireEvent.press(await screen.findByLabelText('End announcement — let everyone talk'));
+    expect(unmuteAll).toHaveBeenCalled();
   });
 
   it('offers unmute for a person a host muted, and never offers mute on another host', async () => {
@@ -354,6 +370,7 @@ describe('GuildVoiceScreen', () => {
     fireEvent.press(screen.getByLabelText('Unmute Teammate for everyone'));
     expect(setParticipantHostMuted).toHaveBeenCalledWith('p1', false);
     expect(screen.queryByLabelText('Mute Leader for everyone')).toBeNull();
+    // Kick is owner-only — canModerate without isOwner still cannot kick.
     expect(screen.queryByLabelText('Kick Leader')).toBeNull();
   });
 
@@ -365,11 +382,11 @@ describe('GuildVoiceScreen', () => {
     expect(screen.getByLabelText('Muted by host')).toBeTruthy();
   });
 
-  it('shows the listen-only banner to everyone', async () => {
+  it('shows the announcement banner to everyone', async () => {
     mockedUseSelfHosted.mockReturnValue(guildController({ isListenOnly: true, isHostMuted: true }));
     renderWithVoice(<GuildVoiceScreen />);
 
-    await screen.findByText('Listen-only mode — only hosts can speak right now.');
+    await screen.findByText('Announcement — only the owner can speak right now.');
   });
 });
 

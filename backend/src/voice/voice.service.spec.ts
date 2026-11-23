@@ -56,6 +56,12 @@ describe('VoiceService (unit)', () => {
           .fn()
           .mockResolvedValue({ id: 'user-123', name: 'Alice' }),
       },
+      membership: {
+        findFirst: jest.fn().mockResolvedValue({ isOwner: false }),
+      },
+      guildMembership: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     } as unknown as PrismaService;
     const sfu = {
       isSelfHosted: () => selfHosted,
@@ -287,12 +293,12 @@ describe('VoiceService hosted guild voice (unit)', () => {
       listParticipants: jest.fn().mockResolvedValue([
         {
           identity: 'host',
-          attributes: { mod: '1' },
+          attributes: { mod: '1', own: '1' },
           permission: { canPublish: true },
         },
         {
           identity: 'p2',
-          attributes: { mod: '0' },
+          attributes: { mod: '0', own: '0' },
           permission: { canPublish: true },
         },
       ]),
@@ -300,7 +306,10 @@ describe('VoiceService hosted guild voice (unit)', () => {
         .fn()
         .mockImplementation(async (_r: string, id: string) => ({
           identity: id,
-          attributes: { mod: id === 'host' ? '1' : '0' },
+          attributes: {
+            mod: id === 'host' ? '1' : '0',
+            own: id === 'host' ? '1' : '0',
+          },
         })),
       updateParticipant: jest.fn().mockResolvedValue({}),
       removeParticipant: jest.fn().mockResolvedValue(undefined),
@@ -367,7 +376,7 @@ describe('VoiceService hosted guild voice (unit)', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('mute all writes state and revokes publish only for non-hosts', async () => {
+  it('mute all writes state and revokes publish for everyone but the owner', async () => {
     const { service, lk } = build({ canModerate: true });
     await service.moderate('u1', { room: 'guild', action: 'muteAll' });
     expect(lk.updateRoomMetadata).toHaveBeenCalledWith(
@@ -431,6 +440,7 @@ describe('VoiceService "ping to join" (unit)', () => {
         ),
       },
       membership: {
+        findFirst: jest.fn().mockResolvedValue({ isOwner: false }),
         findMany: jest.fn(
           ({ where }: { where: { userId: { in: string[] } } }) =>
             Promise.resolve(

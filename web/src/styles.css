@@ -4791,3 +4791,95 @@ button.invite-qr-open:hover {
 .admin-voice-group-head .muted {
   font-size: 12px;
 }
+
+/* ---- Guild announcements ---- */
+
+.nav-badge {
+  margin-left: auto;
+}
+
+.announce-composer {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.announce-composer textarea {
+  resize: vertical;
+  min-height: 90px;
+  font: inherit;
+}
+
+.announce-composer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.announce-composer-foot .muted {
+  font-size: 12px;
+}
+
+.announce-list {
+  display: grid;
+  gap: 10px;
+}
+
+.announce-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Unread gets a left edge rather than a different background — it still has
+   to be readable once the page marks everything read a moment later. */
+.announce-card.unread {
+  border-left: 3px solid var(--chrome);
+}
+
+.announce-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.announce-card-head strong {
+  display: block;
+  font-size: 15px;
+}
+
+.announce-card-head .muted {
+  font-size: 12px;
+}
+
+.announce-new {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--chrome);
+  color: var(--chrome-ink);
+}
+
+.announce-delete {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.announce-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

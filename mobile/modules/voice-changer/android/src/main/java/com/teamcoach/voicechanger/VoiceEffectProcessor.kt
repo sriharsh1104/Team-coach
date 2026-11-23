@@ -5,93 +5,53 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.hypot
+import kotlin.math.ln
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 import livekit.org.webrtc.ExternalAudioProcessingFactory
 
 /**
- * Real-time voice effect on WebRTC's capture path (after echo cancellation /
- * noise suppression, before the Opus encoder), so whatever leaves the phone —
- * mediasoup or LiveKit — is already the changed voice.
+ * Real-time voice **morph** on WebRTC's capture path (after AEC/NS, before Opus).
  *
- * WebRTC hands us the APM's split-band view of the mic signal: `numBands`
- * sub-bands of `numFrames` floats each (band-major, native byte order,
- * channel 0 only), on the **int16 scale** (±32767), not ±1.0. Band 0 is
- * 0–8 kHz at a 16 kHz rate, which carries every part of speech that matters,
- * so the effect runs there and the higher bands are muted while a preset is
- * active — they would otherwise carry un-shifted highs that sound like a
- * second person talking underneath.
+ * Old path was a delay-line pitch shifter + one-pole shelf. That only made the
+ * tape play faster/slower (chipmunk / monster) — formants rode the pitch, so
+ * "Woman" never sounded like a different person. This version uses an STFT
+ * phase-vocoder that shifts **pitch** and **formants** independently, which is
+ * what actual voice morph / gender morph needs.
  *
- * ---- What used to break ----
- * Three faults stacked up and turned every preset into crackling mush, which
- * is why "Woman" sounded like neither a woman nor the original voice:
- *
- *  1. CLIPPING. The two crossfaded taps are the same signal at two delays, so
- *     they are highly correlated and their sin/cos gains sum to as much as
- *     √2 ≈ 1.41 at the seam. With the old 0.95 output gain that is 1.34x the
- *     input, and WebRTC's capture AGC already leaves speech peaks near full
- *     scale — so every loud syllable hit the hard clamp at ±32767. Hard
- *     clipping is exactly the "fat jata" crackle. The gains are now
- *     normalised so the pair can never sum above unity, and the final clamp
- *     is a soft knee rather than a brick wall.
- *
- *  2. ALIASING. Band 0 is sampled at 16 kHz, so its Nyquist is 8 kHz.
- *     Shifting up by `r` folds everything above 8000/r back into the band as
- *     inharmonic noise. At the old +8 semitones that was everything above
- *     5 kHz; at +16 it was everything above 3.2 kHz — i.e. most consonant
- *     energy became garbage. There is now an anti-alias lowpass ahead of the
- *     shifter, tuned to whatever the current ratio can carry.
- *
- *  3. TOO MUCH SHIFT. A delay-line shifter moves the formants with the
- *     pitch, so past about +8 semitones it stops sounding like a person at
- *     all. The old ±8 / +12 / +16 were chasing audibility that the aliasing
- *     and clipping were destroying anyway. With a clean signal, half that is
- *     plainly audible — and a gentle spectral tilt opposing the shift pulls
- *     the timbre back toward a human voice instead of a cartoon.
- *
- * ---- Choosing the pitch ----
- * Typical speaking fundamental (F0):
- *   adult man     85–155 Hz  (avg ~120)
- *   adult woman  165–255 Hz  (avg ~210)
- *   child        250–400 Hz  (avg ~300)
- * An octave is 12 semitones (ratio 2.0). We cannot know who is talking, so
- * every preset is a *relative* move big enough to clear the ~3-4 semitone
- * "this is obviously processed" threshold from either starting voice:
- *   MAN    -6  : woman 210 → 149 Hz (male range), man 120 → 85 Hz (deep)
- *   WOMAN  +6  : man   120 → 170 Hz (female range), woman 210 → 297 Hz
- *   GIRL   +9  : man   120 → 202 Hz, woman 210 → 353 Hz
- *   CHILD  +12 : an octave — man 120 → 240 Hz, woman 210 → 420 Hz
+ * WebRTC hands us split-band floats on the **int16 scale** (±32767) most of the
+ * time; some builds use ±1.0. We auto-detect per frame so neither layout turns
+ * the effect into silence.
  */
 class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
 
   /**
-   * @param semitones  pitch move, + is up
-   * @param ringModHz  ring-modulator carrier (0 = off)
-   * @param ringMix    how much of the ring-modulated signal to blend in
-   * @param formantTilt  dB of shelf opposing the shift, applied above 1.6 kHz.
-   *   A pure pitch shift drags the formants along with the pitch; pulling the
-   *   upper band back down (up-shift) or lifting it (down-shift) is a cheap
-   *   stand-in for real formant correction and is most of what makes the
-   *   result read as a different *person* rather than a tape played at the
-   *   wrong speed.
+   * @param pitchSt     F0 move in semitones (+ = higher)
+   * @param formantSt   vocal-tract (timbre) move in semitones — same direction
+   *                    as pitch for gender morph; 0 keeps your throat shape
+   * @param ringModHz   robot carrier (0 = off)
+   * @param ringMix     robot wet mix
    */
   enum class Preset(
-    val semitones: Double,
+    val pitchSt: Double,
+    val formantSt: Double,
     val ringModHz: Double,
     val ringMix: Double,
-    val formantTilt: Double,
   ) {
     OFF(0.0, 0.0, 0.0, 0.0),
-    MAN(-6.0, 0.0, 0.0, 2.5),
-    WOMAN(6.0, 0.0, 0.0, -3.0),
-    GIRL(9.0, 0.0, 0.0, -4.0),
-    CHILD(12.0, 0.0, 0.0, -5.0),
-    // A robot is the ring modulator's doing, not the pitch shifter's — a big
-    // shift on top only muddied it.
-    ROBOT(-2.0, 50.0, 0.7, 0.0);
+    // Pitch + formants move together → reads as a different person, not a chipmunk.
+    MAN(-5.0, -4.0, 0.0, 0.0),
+    WOMAN(6.0, 5.0, 0.0, 0.0),
+    GIRL(9.0, 7.0, 0.0, 0.0),
+    CHILD(11.0, 9.0, 0.0, 0.0),
+    ROBOT(-1.0, 0.0, 55.0, 0.75);
 
     companion object {
       fun fromName(name: String): Preset? =
@@ -101,50 +61,32 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
 
   private companion object {
     const val TAG = "VoiceChanger"
-
-    /** WebRTC float audio is on the int16 scale. */
-    const val FULL_SCALE = 32767f
-
-    /**
-     * Where the soft limiter starts bending (-2.5 dBFS). Below this the
-     * signal is untouched; above it the knee compresses towards full scale
-     * instead of slicing the top off the waveform.
-     */
-    const val LIMIT_KNEE = 0.75f * FULL_SCALE
+    const val INT16_FULL = 32767f
   }
 
   @Volatile var preset: Preset = Preset.OFF
-
-  /**
-   * Soft-gates low-level background noise. Off by default — the gate was
-   * pumping mid-sentence (open/close flutter) and came through as a "ghrr
-   * ghrr" rumble on calls. WebRTC noiseSuppression already covers fans/AC.
-   */
   @Volatile var noiseGateEnabled: Boolean = false
 
-  /** Last layout WebRTC actually handed us — surfaced to JS for diagnosis. */
   @Volatile var lastBandRate: Int = 0
     private set
   @Volatile var lastBands: Int = 0
     private set
   @Volatile var lastFrames: Int = 0
     private set
-  /** True when the buffer layout was not one we can work with. */
   @Volatile var layoutUnsupported: Boolean = false
     private set
-  /** Frames processed with a preset on — proves the effect is really running. */
   @Volatile var processedFrames: Long = 0L
     private set
 
   private var bandRate = 16000
-  private val shifter = PitchShifter()
+  private val morph = StftMorphEngine()
   private val gate = NoiseGate()
-  private val antiAlias = Biquad()
-  private val tilt = Shelf()
   private var ringPhase = 0.0
   private var scratch = FloatArray(0)
   private var zeros = FloatArray(0)
   private var loggedKey = 0L
+  /** Running peak used to decide int16 vs ±1 float scale. */
+  private var peakAbs = 1f
 
   override fun initialize(sampleRateHz: Int, numChannels: Int) {
     bandRate = sampleRateHz
@@ -159,11 +101,10 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
   }
 
   private fun resetChain() {
-    shifter.reset()
+    morph.reset()
     gate.reset()
-    antiAlias.reset()
-    tilt.reset()
     ringPhase = 0.0
+    peakAbs = 1f
   }
 
   override fun process(numBands: Int, numFrames: Int, buffer: ByteBuffer) {
@@ -171,10 +112,6 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
     val gateOn = noiseGateEnabled
     if ((!gateOn && p == Preset.OFF) || numBands <= 0 || numFrames <= 0) return
 
-    // How many samples one band holds. WebRTC's wrapper reports `numFrames`
-    // per band; fall back to "whole buffer / bands" when the buffer is
-    // smaller, so a layout mismatch cannot make the effect silently do
-    // nothing (which just reads as "the voice changer is broken").
     val capacityFloats = buffer.capacity() / 4
     val perBand: Int = when {
       numBands * numFrames <= capacityFloats -> numFrames
@@ -196,36 +133,39 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
     fb.position(0)
     fb.get(x, 0, perBand)
 
-    // Sample rate of one band (16 kHz for the 16/32/48 kHz capture rates).
+    // Track peak so we know whether this build uses int16-scale or ±1.0 floats.
+    var framePeak = 0f
+    for (i in 0 until perBand) {
+      val a = abs(x[i])
+      if (a > framePeak) framePeak = a
+    }
+    peakAbs = peakAbs * 0.98f + framePeak * 0.02f
+    val unitScale = peakAbs < 2.5f // ±1.0 float path
+    val fullScale = if (unitScale) 1f else INT16_FULL
+
     val rate = if (numBands > 1) (bandRate / numBands).coerceAtLeast(8000) else bandRate
     lastBandRate = rate
     lastBands = numBands
     lastFrames = perBand
 
     if (gateOn) {
-      gate.setRate(rate)
+      gate.setRate(rate, fullScale)
       gate.process(x, perBand)
     }
 
     if (p != Preset.OFF) {
-      val ratio = 2.0.pow(p.semitones / 12.0)
-
-      // Anti-alias BEFORE shifting up: content above nyquist/ratio would fold
-      // back into the band as inharmonic noise once it is moved up.
-      if (ratio > 1.0) {
-        val nyquist = rate / 2.0
-        antiAlias.setLowpass(rate, (nyquist / ratio).coerceIn(2000.0, nyquist * 0.95))
-        antiAlias.process(x, perBand)
+      // Normalize to ±1 for the morph engine, then scale back.
+      if (!unitScale) {
+        val inv = 1f / INT16_FULL
+        for (i in 0 until perBand) x[i] *= inv
       }
 
-      shifter.setRate(rate)
-      shifter.ratio = ratio
-      shifter.process(x, perBand)
-
-      if (p.formantTilt != 0.0) {
-        tilt.set(rate, 1600.0, p.formantTilt)
-        tilt.process(x, perBand)
-      }
+      morph.setRate(rate)
+      morph.setRatios(
+        pitchRatio = 2.0.pow(p.pitchSt / 12.0),
+        formantRatio = 2.0.pow(p.formantSt / 12.0),
+      )
+      morph.process(x, perBand)
 
       if (p.ringMix > 0.0 && p.ringModHz > 0.0) {
         val inc = 2.0 * PI * p.ringModHz / rate
@@ -236,15 +176,18 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
           if (ringPhase > 2.0 * PI) ringPhase -= 2.0 * PI
         }
       }
+
+      if (!unitScale) {
+        for (i in 0 until perBand) x[i] *= INT16_FULL
+      }
+      softLimit(x, perBand, fullScale)
       processedFrames += perBand.toLong()
     }
-
-    softLimit(x, perBand)
 
     fb.position(0)
     fb.put(x, 0, perBand)
 
-    // Mute the upper bands (8 kHz+) while shifting — see the class doc.
+    // Mute upper bands while morphing so un-shifted highs don't leak through.
     if (p != Preset.OFF && numBands > 1) {
       if (zeros.size < perBand) zeros = FloatArray(perBand)
       for (band in 1 until numBands) {
@@ -254,28 +197,19 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
     }
   }
 
-  /**
-   * Soft knee instead of the old hard clamp. Slicing the top off a waveform
-   * generates broadband harmonics — the crackle people heard as the voice
-   * "breaking up". Bending the last few dB instead keeps peaks inside full
-   * scale without that.
-   */
-  private fun softLimit(x: FloatArray, n: Int) {
-    val knee = LIMIT_KNEE
-    val range = FULL_SCALE - knee
+  private fun softLimit(x: FloatArray, n: Int, fullScale: Float) {
+    val knee = 0.78f * fullScale
+    val range = fullScale - knee
     for (i in 0 until n) {
       val v = x[i]
       val mag = abs(v)
       if (mag <= knee) continue
       val over = (mag - knee) / range
-      // over/(1+over) saturates towards 1, so magnitude tends to FULL_SCALE
-      // and never passes it.
       val shaped = knee + range * (over / (1f + over))
       x[i] = if (v < 0) -shaped else shaped
     }
   }
 
-  /** Logs the buffer layout once per change, so logcat shows what WebRTC gives us. */
   private fun logLayout(numBands: Int, numFrames: Int, capacity: Int, perBand: Int, p: Preset) {
     val key = (numBands.toLong() shl 48) xor (numFrames.toLong() shl 32) xor
       (capacity.toLong() shl 16) xor perBand.toLong() xor (p.ordinal.toLong() shl 56)
@@ -284,39 +218,30 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
     Log.i(
       TAG,
       "process: bands=$numBands frames=$numFrames capacity=$capacity perBand=$perBand " +
-        "rate=$bandRate preset=${p.name}" +
-        if (perBand < 0) " (UNSUPPORTED LAYOUT, audio untouched)" else "",
+        "rate=$bandRate preset=${p.name} peak~$peakAbs" +
+        if (perBand < 0) " (UNSUPPORTED LAYOUT)" else "",
     )
   }
 
-  /**
-   * Soft noise gate for gaming rooms: hush fans / AC / keyboard when you are
-   * not speaking. WebRTC float samples sit on the int16 scale (±32767).
-   * Open/close hysteresis + fast attack / slower release avoid choppy words.
-   */
   private class NoiseGate {
-    private companion object {
-      const val OPEN_RMS = 900f
-      const val CLOSE_RMS = 450f
-      const val CLOSED_GAIN = 0.05f
-      const val ATTACK_MS = 8.0
-      const val RELEASE_MS = 120.0
-    }
-
     private var open = false
-    private var gain = CLOSED_GAIN
+    private var gain = 0.05f
     private var attackCoef = 0.5f
     private var releaseCoef = 0.02f
+    private var openRms = 900f
+    private var closeRms = 450f
 
-    fun setRate(rate: Int) {
+    fun setRate(rate: Int, fullScale: Float) {
       val r = rate.coerceAtLeast(8000).toDouble()
-      attackCoef = (1.0 - exp(-1.0 / (r * ATTACK_MS / 1000.0))).toFloat()
-      releaseCoef = (1.0 - exp(-1.0 / (r * RELEASE_MS / 1000.0))).toFloat()
+      attackCoef = (1.0 - exp(-1.0 / (r * 8.0 / 1000.0))).toFloat()
+      releaseCoef = (1.0 - exp(-1.0 / (r * 120.0 / 1000.0))).toFloat()
+      openRms = 0.03f * fullScale
+      closeRms = 0.015f * fullScale
     }
 
     fun reset() {
       open = false
-      gain = CLOSED_GAIN
+      gain = 0.05f
     }
 
     fun process(x: FloatArray, n: Int) {
@@ -328,11 +253,11 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
       }
       val rms = sqrt(sumSq / n).toFloat()
       if (open) {
-        if (rms < CLOSE_RMS) open = false
-      } else if (rms >= OPEN_RMS) {
+        if (rms < closeRms) open = false
+      } else if (rms >= openRms) {
         open = true
       }
-      val target = if (open) 1f else CLOSED_GAIN
+      val target = if (open) 1f else 0.05f
       val coef = if (target > gain) attackCoef else releaseCoef
       gain += (target - gain) * coef
       if (gain < 0.999f) {
@@ -341,163 +266,242 @@ class VoiceEffectProcessor : ExternalAudioProcessingFactory.AudioProcessing {
     }
   }
 
-  /** Second-order lowpass (RBJ cookbook), used as the anti-alias filter. */
-  private class Biquad {
-    private var b0 = 1.0
-    private var b1 = 0.0
-    private var b2 = 0.0
-    private var a1 = 0.0
-    private var a2 = 0.0
-    private var x1 = 0.0
-    private var x2 = 0.0
-    private var y1 = 0.0
-    private var y2 = 0.0
-    private var cachedRate = 0
-    private var cachedCutoff = 0.0
-
-    fun reset() {
-      x1 = 0.0; x2 = 0.0; y1 = 0.0; y2 = 0.0
-    }
-
-    fun setLowpass(rate: Int, cutoffHz: Double) {
-      // Recomputing coefficients every 10 ms frame would be wasted work and
-      // would also zipper the filter; only redo it when something moved.
-      if (rate == cachedRate && abs(cutoffHz - cachedCutoff) < 1.0) return
-      cachedRate = rate
-      cachedCutoff = cutoffHz
-
-      val w0 = 2.0 * PI * cutoffHz / rate
-      val cosW = cos(w0)
-      val sinW = sin(w0)
-      // Butterworth Q — flat passband, no resonant peak to add its own colour.
-      val alpha = sinW / (2.0 * 0.7071)
-      val a0 = 1.0 + alpha
-      b0 = ((1.0 - cosW) / 2.0) / a0
-      b1 = (1.0 - cosW) / a0
-      b2 = b0
-      a1 = (-2.0 * cosW) / a0
-      a2 = (1.0 - alpha) / a0
-    }
-
-    fun process(x: FloatArray, n: Int) {
-      for (i in 0 until n) {
-        val input = x[i].toDouble()
-        val out = b0 * input + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
-        x2 = x1; x1 = input
-        y2 = y1; y1 = out
-        x[i] = out.toFloat()
-      }
-    }
-  }
-
   /**
-   * One-pole high shelf — the cheap stand-in for formant correction. A pitch
-   * shift drags the formants with it, so pushing the upper band the other way
-   * puts the timbre back in human territory.
-   */
-  private class Shelf {
-    private var alpha = 0.0
-    private var gain = 1.0
-    private var lp = 0.0
-    private var cachedRate = 0
-    private var cachedDb = 0.0
-
-    fun reset() {
-      lp = 0.0
-    }
-
-    fun set(rate: Int, cornerHz: Double, db: Double) {
-      if (rate == cachedRate && abs(db - cachedDb) < 0.01) return
-      cachedRate = rate
-      cachedDb = db
-      alpha = 1.0 - exp(-2.0 * PI * cornerHz / rate)
-      gain = 10.0.pow(db / 20.0)
-    }
-
-    fun process(x: FloatArray, n: Int) {
-      for (i in 0 until n) {
-        val v = x[i].toDouble()
-        lp += alpha * (v - lp)
-        // Low part untouched, high part scaled — a shelf, not a filter sweep.
-        x[i] = (lp + (v - lp) * gain).toFloat()
-      }
-    }
-  }
-
-  /**
-   * Classic delay-line pitch shifter: two read taps sweep a ring buffer at
-   * (1 - ratio) samples per sample, half a window apart, crossfaded through
-   * the seam.
+   * Overlap-add STFT morph: independent pitch + formant ratios.
    *
-   * The window is ~40 ms: long enough to span several pitch periods of a deep
-   * voice (90 Hz repeats every 11 ms), short enough that the sweep doesn't
-   * sound like an echo.
+   * Pipeline per hop:
+   *  1. Windowed FFT
+   *  2. Split magnitude into smooth spectral envelope + residual flat spectrum
+   *  3. Resample residual bins by pitchRatio (moves F0 / harmonics)
+   *  4. Resample envelope bins by formantRatio (moves vocal-tract resonances)
+   *  5. Recombine, phase-vocoder advance, IFFT, overlap-add
+   *
+   * Latency ≈ fftSize at the band rate (~32 ms at 16 kHz / 512).
    */
-  private class PitchShifter {
+  private class StftMorphEngine {
     private companion object {
-      const val WINDOW_SECONDS = 0.04
+      const val FFT = 512
+      const val HOP = 128
+      const val BINS = FFT / 2 + 1
     }
-    private val size = 8192 // power of two, > window at every supported rate
-    private val mask = size - 1
-    private val buf = FloatArray(size)
-    private var writePos = 0
-    private var window = 640
-    private var phase = 0.0 // delay of tap A, in [0, window)
-    @Volatile var ratio = 1.0
 
-    fun setRate(rate: Int) {
-      val w = (rate * WINDOW_SECONDS).toInt().coerceIn(256, size / 2)
-      if (w != window) {
-        window = w
+    private val hann = FloatArray(FFT) { i ->
+      (0.5 - 0.5 * cos(2.0 * PI * i / FFT)).toFloat()
+    }
+    private val inRing = FloatArray(FFT * 4)
+    private val outRing = FloatArray(FFT * 4)
+    private val frame = FloatArray(FFT)
+    private val re = FloatArray(FFT)
+    private val im = FloatArray(FFT)
+    private val mag = FloatArray(BINS)
+    private val env = FloatArray(BINS)
+    private val res = FloatArray(BINS)
+    private val magOut = FloatArray(BINS)
+    private val prevPhase = FloatArray(BINS)
+    private val synthPhase = FloatArray(BINS)
+    private var inPos = 0
+    private var inFill = 0
+    private var outRead = 0
+    private var outWrite = 0
+    private var outCount = 0
+    private var rate = 16000
+    private var pitchRatio = 1.0
+    private var formantRatio = 1.0
+    private var primed = false
+
+    fun setRate(sampleRate: Int) {
+      if (sampleRate != rate) {
+        rate = sampleRate
         reset()
       }
     }
 
+    fun setRatios(pitchRatio: Double, formantRatio: Double) {
+      this.pitchRatio = pitchRatio.coerceIn(0.5, 2.2)
+      this.formantRatio = formantRatio.coerceIn(0.5, 2.2)
+    }
+
     fun reset() {
-      buf.fill(0f)
-      writePos = 0
-      phase = 0.0
+      inRing.fill(0f)
+      outRing.fill(0f)
+      prevPhase.fill(0f)
+      synthPhase.fill(0f)
+      inPos = 0
+      inFill = 0
+      outRead = 0
+      outWrite = 0
+      outCount = 0
+      primed = false
     }
 
     fun process(x: FloatArray, n: Int) {
-      val r = ratio
-      if (r == 1.0) return
-      val step = 1.0 - r
-      val half = window / 2.0
-      val piOverWindow = PI / window
+      if (abs(pitchRatio - 1.0) < 0.001 && abs(formantRatio - 1.0) < 0.001) return
+
       for (i in 0 until n) {
-        buf[writePos] = x[i]
-        val dA = phase
-        var dB = phase + half
-        if (dB >= window) dB -= window
-        val a = readAt(writePos - dA)
-        val b = readAt(writePos - dB)
+        inRing[(inPos + inFill) % inRing.size] = x[i]
+        inFill++
+        while (inFill >= HOP) {
+          // Copy last FFT samples ending at current write head.
+          val end = (inPos + HOP) % inRing.size
+          var idx = (end - FFT + inRing.size) % inRing.size
+          for (k in 0 until FFT) {
+            frame[k] = inRing[idx] * hann[k]
+            idx = (idx + 1) % inRing.size
+          }
+          inPos = (inPos + HOP) % inRing.size
+          inFill -= HOP
+          analyzeModifySynthesize()
+          primed = true
+        }
+      }
 
-        // The two taps are the SAME signal at two delays, so they are highly
-        // correlated: raw sin/cos gains sum to up to √2 and the result
-        // clipped on every loud syllable. Normalising by the gain sum caps
-        // the pair at unity — a correlated seam now passes through at the
-        // input's own level instead of 3 dB hot.
-        val gA = sin(piOverWindow * dA)
-        val gB = sin(piOverWindow * dB)
-        val norm = gA + gB
-        x[i] = if (norm > 1e-6) (((a * gA + b * gB) / norm)).toFloat() else 0f
-
-        phase += step
-        if (phase >= window) phase -= window
-        if (phase < 0) phase += window
-        writePos = (writePos + 1) and mask
+      // Until OLA has backlog, leave dry samples in place (no mute gap on engage).
+      if (!primed) return
+      for (i in 0 until n) {
+        if (outCount <= 0) break
+        x[i] = outRing[outRead]
+        outRing[outRead] = 0f
+        outRead = (outRead + 1) % outRing.size
+        outCount--
       }
     }
 
-    private fun readAt(pos: Double): Double {
-      var p = pos
-      while (p < 0) p += size
-      while (p >= size) p -= size
-      val i0 = p.toInt()
-      val frac = p - i0
-      val i1 = (i0 + 1) and mask
-      return buf[i0] * (1.0 - frac) + buf[i1] * frac
+    private fun analyzeModifySynthesize() {
+      // Real FFT via packed DFT (in-place on re/im).
+      for (i in 0 until FFT) {
+        re[i] = frame[i]
+        im[i] = 0f
+      }
+      fft(re, im, inverse = false)
+
+      for (k in 0 until BINS) {
+        val mr = re[k]
+        val mi = im[k]
+        mag[k] = hypot(mr.toDouble(), mi.toDouble()).toFloat()
+        val ph = atan2(mi.toDouble(), mr.toDouble()).toFloat()
+        // Phase vocoder advance for pitched residual.
+        val omega = (2.0 * PI * k * HOP / FFT).toFloat()
+        var delta = ph - prevPhase[k] - omega
+        // Wrap to [-pi, pi]
+        delta -= (2.0 * PI * kotlin.math.floor((delta / (2.0 * PI) + 0.5))).toFloat()
+        prevPhase[k] = ph
+        synthPhase[k] += omega * pitchRatio.toFloat() + delta * pitchRatio.toFloat()
+      }
+
+      // Spectral envelope via cepstral liftering (low quefrency = envelope).
+      estimateEnvelope(mag, env)
+      for (k in 0 until BINS) {
+        res[k] = mag[k] / max(env[k], 1e-6f)
+      }
+
+      magOut.fill(0f)
+      // Resample residual by pitch, envelope by formant, recombine.
+      for (k in 0 until BINS) {
+        val srcRes = k / pitchRatio
+        val srcEnv = k / formantRatio
+        val r = sampleBin(res, srcRes)
+        val e = sampleBin(env, srcEnv)
+        magOut[k] = (r * e).toFloat()
+      }
+
+      // Rebuild Hermitian spectrum with new mag + accumulated phase.
+      re.fill(0f)
+      im.fill(0f)
+      for (k in 0 until BINS) {
+        val m = magOut[k]
+        re[k] = (m * cos(synthPhase[k].toDouble())).toFloat()
+        im[k] = (m * sin(synthPhase[k].toDouble())).toFloat()
+      }
+      for (k in 1 until FFT / 2) {
+        re[FFT - k] = re[k]
+        im[FFT - k] = -im[k]
+      }
+      fft(re, im, inverse = true)
+
+      val norm = 1f / FFT
+      // Hann + hop FFT/4 ≈ 1.5 COLA sum; a bit of makeup so the morph is obvious.
+      val olaGain = 1.65f
+      for (i in 0 until FFT) {
+        val sample = re[i] * norm * hann[i] * olaGain
+        val idx = (outWrite + i) % outRing.size
+        outRing[idx] += sample
+      }
+      outWrite = (outWrite + HOP) % outRing.size
+      outCount += HOP
+      // Cap backlog so a stall cannot grow forever.
+      if (outCount > outRing.size - FFT) {
+        val drop = outCount - (outRing.size - FFT)
+        outRead = (outRead + drop) % outRing.size
+        outCount -= drop
+      }
+    }
+
+    private fun sampleBin(arr: FloatArray, pos: Double): Double {
+      if (pos <= 0.0) return arr[0].toDouble()
+      if (pos >= arr.size - 1) return arr[arr.size - 1].toDouble()
+      val i0 = pos.toInt()
+      val frac = pos - i0
+      return arr[i0] * (1.0 - frac) + arr[i0 + 1] * frac
+    }
+
+    /** Log-magnitude moving average ≈ spectral envelope. */
+    private fun estimateEnvelope(magnitude: FloatArray, out: FloatArray) {
+      val radius = 6
+      for (k in magnitude.indices) {
+        var sum = 0.0
+        var count = 0
+        val lo = max(0, k - radius)
+        val hi = min(magnitude.size - 1, k + radius)
+        for (j in lo..hi) {
+          sum += ln(max(magnitude[j], 1e-8f).toDouble())
+          count++
+        }
+        out[k] = exp(sum / count).toFloat()
+      }
+    }
+
+    /** In-place Cooley–Tukey radix-2 FFT on re/im (length must be FFT). */
+    private fun fft(reArr: FloatArray, imArr: FloatArray, inverse: Boolean) {
+      val n = reArr.size
+      var j = 0
+      for (i in 1 until n) {
+        var bit = n shr 1
+        while (j and bit != 0) {
+          j = j xor bit
+          bit = bit shr 1
+        }
+        j = j xor bit
+        if (i < j) {
+          val tr = reArr[i]; reArr[i] = reArr[j]; reArr[j] = tr
+          val ti = imArr[i]; imArr[i] = imArr[j]; imArr[j] = ti
+        }
+      }
+      var len = 2
+      while (len <= n) {
+        val ang = (if (inverse) 2.0 else -2.0) * PI / len
+        val wlenRe = cos(ang)
+        val wlenIm = sin(ang)
+        var i0 = 0
+        while (i0 < n) {
+          var wr = 1.0
+          var wi = 0.0
+          for (k in 0 until len / 2) {
+            val uRe = reArr[i0 + k].toDouble()
+            val uIm = imArr[i0 + k].toDouble()
+            val vRe = wr * reArr[i0 + k + len / 2] - wi * imArr[i0 + k + len / 2]
+            val vIm = wr * imArr[i0 + k + len / 2] + wi * reArr[i0 + k + len / 2]
+            reArr[i0 + k] = (uRe + vRe).toFloat()
+            imArr[i0 + k] = (uIm + vIm).toFloat()
+            reArr[i0 + k + len / 2] = (uRe - vRe).toFloat()
+            imArr[i0 + k + len / 2] = (uIm - vIm).toFloat()
+            val nwr = wr * wlenRe - wi * wlenIm
+            wi = wr * wlenIm + wi * wlenRe
+            wr = nwr
+          }
+          i0 += len
+        }
+        len = len shl 1
+      }
     }
   }
 }

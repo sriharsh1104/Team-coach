@@ -201,9 +201,9 @@ export function MembersScreen({ navigation }: Props) {
               ) : (
                 <Text style={styles.rosterHint}>
                   {detail.members.length} roster member
-                  {detail.members.length === 1 ? '' : 's'}. Only the owner or a
-                  coach can share roster invites. Only the owner can remove
-                  members.
+                  {detail.members.length === 1 ? '' : 's'}. Only the owner can
+                  share roster invites or remove members. Anyone with a code or
+                  invite link can still join.
                 </Text>
               )}
               <ListSearchField

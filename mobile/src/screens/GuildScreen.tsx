@@ -340,7 +340,7 @@ export function GuildScreen({ navigation }: Props) {
             ) : null}
             {detail && !canManage && guildTab !== 'requests' ? (
               <Text style={styles.manageHint}>
-                Only the org owner or a coach can add or remove roster seats.
+                Only the org owner can add or remove roster seats.
               </Text>
             ) : null}
           </View>

@@ -3,6 +3,7 @@ import { useAuth } from './auth/AuthContext';
 import { postAuthPath } from './auth/postAuthPath';
 import { AppShell } from './layout/AppShell';
 import { AdminPage } from './pages/admin/AdminPage';
+import { AnnouncementsPage } from './pages/AnnouncementsPage';
 import { ChatPage } from './pages/ChatPage';
 import { GuildSpacePage } from './pages/guild/GuildSpacePage';
 import { HomePage } from './pages/HomePage';
@@ -169,6 +170,14 @@ export default function App() {
         >
           <Route path="/guild/chat" element={<ChatPage variant="guild" />} />
         </Route>
+        <Route
+          path="/announcements"
+          element={
+            <RequireProfileComplete>
+              <AnnouncementsPage />
+            </RequireProfileComplete>
+          }
+        />
         <Route path="/profile" element={<ProfilePage />} />
         <Route
           path="/admin"

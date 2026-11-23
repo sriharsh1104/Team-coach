@@ -13,6 +13,10 @@ import { SoftPressable } from '../ui/SoftPressable';
 import { AppShellHeader } from '../ui/AppShellHeader';
 import { Toast, useToast } from '../ui/Toast';
 import { goToSection } from '../navigation/goToSection';
+import {
+  announcementsItem,
+  useUnreadAnnouncements,
+} from '../navigation/announcementsDrawerItem';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ExitConfirmModal } from '../ui/ExitConfirmModal';
@@ -61,6 +65,8 @@ export function GuildHomeScreen({ navigation }: Props) {
     showToast('Guild code copied');
   };
 
+  const unreadAnnouncements = useUnreadAnnouncements(menuOpen, 'GuildHome');
+
   const drawerSections = useMemo((): SideDrawerSection[] => {
     return withActiveDrawerItem(
       [
@@ -83,6 +89,7 @@ export function GuildHomeScreen({ navigation }: Props) {
           label: 'Guild',
           split: true,
           items: [
+            announcementsItem(navigation, 'GuildHome', unreadAnnouncements),
             {
               key: 'guildHome',
               label: 'Guild Roster',
@@ -150,7 +157,7 @@ export function GuildHomeScreen({ navigation }: Props) {
       ],
       'guildChat',
     );
-  }, [navigation, startRecording]);
+  }, [navigation, startRecording, unreadAnnouncements]);
 
   return (
     <Screen padBottom={false}>

@@ -75,6 +75,14 @@ async function doRegister() {
         name: 'Voice channel',
         ...channel,
       });
+      // Guild announcements from the owner. Its own channel so people can
+      // mute chat and still hear "scrim in 10 minutes" — the whole point of
+      // an announcement is that it is the one thing you do not want muted
+      // along with everything else.
+      await Notifications.setNotificationChannelAsync('announcements', {
+        name: 'Guild announcements',
+        ...channel,
+      });
     }
 
     // Inline Reply on the notification shade (DM pushes set categoryId).

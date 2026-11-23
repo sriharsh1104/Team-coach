@@ -15,6 +15,10 @@ import { AppShellHeader } from '../ui/AppShellHeader';
 import { updateOrgHeaderCache } from '../ui/HeaderOrgInfo';
 import { emitToast } from '../ui/toastBus';
 import { goToSection } from '../navigation/goToSection';
+import {
+  announcementsItem,
+  useUnreadAnnouncements,
+} from '../navigation/announcementsDrawerItem';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ExitConfirmModal } from '../ui/ExitConfirmModal';
@@ -37,9 +41,8 @@ export function OrgHomeScreen({ navigation }: Props) {
   const isOwner = !!org?.isOwner;
   const { exitModalVisible, confirmExit, cancelExit } = useBlockExitOnRoot(navigation);
   const { startRecording } = useRecording();
-  // Owner or coach can manage guild ↔ roster; Guild drawer used to be
-  // owner-only so coaches never saw Add/Remove even though the API allows it.
-  const canManageGuild = isOwner || !!detail?.canInviteRoster;
+  // Roster add/remove from Guild is owner-only (join via code/invite still works).
+  const canManageGuild = isOwner;
 
   const copyOrgCode = async () => {
     if (!detail?.orgCode) return;
@@ -73,6 +76,8 @@ export function OrgHomeScreen({ navigation }: Props) {
 
   // Mirrors web AppShell: Esports Arena for roster, Guild for owners/coaches,
   // Account for everyone. Plain players do not see Guild.
+  const unreadAnnouncements = useUnreadAnnouncements(menuOpen, 'OrgHome');
+
   const drawerSections = useMemo((): SideDrawerSection[] => {
     const arenaItems = [
       {
@@ -159,6 +164,7 @@ export function OrgHomeScreen({ navigation }: Props) {
       label: 'Guild',
       split: true,
       items: [
+        announcementsItem(navigation, 'OrgHome', unreadAnnouncements),
         ...(canManageGuild
           ? [
               {
@@ -228,7 +234,13 @@ export function OrgHomeScreen({ navigation }: Props) {
     });
 
     return withActiveDrawerItem(sections, 'teamChat');
-  }, [navigation, isOwner, canManageGuild, startRecording]);
+  }, [
+    navigation,
+    isOwner,
+    canManageGuild,
+    startRecording,
+    unreadAnnouncements,
+  ]);
 
   return (
     <Screen padBottom={false}>

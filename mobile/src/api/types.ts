@@ -238,9 +238,9 @@ export interface OrgDetail {
   name: string;
   orgCode: string;
   referralLink: string;
-  /** Owner/coach only — distinct from guild orgCode. */
+  /** Owner only — distinct from guild orgCode. */
   rosterCode: string | null;
-  /** Owner/coach only — `/join/<rosterToken>?seat=roster`. */
+  /** Owner only — `/join/<rosterToken>?seat=roster`. */
   rosterReferralLink: string | null;
   canInviteRoster: boolean;
   myRole: MembershipRole | null;

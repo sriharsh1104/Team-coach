@@ -1,9 +1,12 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
+import * as announcementsApi from '../api/announcements';
+import { ANNOUNCEMENTS_READ_EVENT } from '../pages/AnnouncementsPage';
 import { useAuth } from '../auth/AuthContext';
 import { AccountMenu } from './AccountMenu';
 import { RouteTransition } from '../ui/RouteTransition';
 
-type NavItem = { to: string; label: string; end?: boolean };
+type NavItem = { to: string; label: string; end?: boolean; badge?: number };
 
 const ROSTER_NAV: NavItem[] = [
   { to: '/app', label: 'Chats', end: true },
@@ -27,6 +30,11 @@ export function AppShell() {
   const showRoster = !!org;
   const showGuild = !!guild && (!org || org.isOwner);
   const isAdmin = !!user?.isPlatformAdmin;
+  const inAGuild = !!org || !!guild;
+  const unreadAnnouncements = useUnreadAnnouncements(
+    inAGuild,
+    location.pathname,
+  );
   // Platform admins are exempt from the player onboarding gate: an admin
   // account has no in-game name or guild, and the profile fields it would
   // demand are not used by anything on /admin.
@@ -56,6 +64,24 @@ export function AppShell() {
         { to: '/guild/chat', label: 'Guild Chat' },
         { to: '/guild', label: 'Guild Roster', end: true },
       ];
+
+  // Announcements belong to the guild section, but unlike the links above
+  // they are for EVERYONE in the org — including a roster member who is not
+  // the owner and therefore never sees the rest of that section. So the
+  // section is built as one list rather than rendered as a second block,
+  // which would print a duplicate "Guild" heading.
+  const guildSection: NavItem[] = [
+    ...(showGuild ? guildNav : []),
+    ...(inAGuild
+      ? [
+          {
+            to: '/announcements',
+            label: 'Announcements',
+            badge: unreadAnnouncements,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div className="shell">
@@ -87,10 +113,10 @@ export function AppShell() {
               </NavLink>
             ))
           : null}
-        {showGuild ? (
+        {guildSection.length > 0 ? (
           <>
             {showRoster ? <div className="sidebar-split">Guild</div> : null}
-            {guildNav.map((item) => (
+            {guildSection.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -101,6 +127,9 @@ export function AppShell() {
                 }
               >
                 {item.label}
+                {item.badge ? (
+                  <span className="badge nav-badge">{item.badge}</span>
+                ) : null}
               </NavLink>
             ))}
           </>
@@ -146,4 +175,45 @@ export function AppShell() {
       </div>
     </div>
   );
+}
+
+/**
+ * Unread announcement count for the sidebar badge.
+ *
+ * Re-read on every navigation rather than polled on a timer: the only thing
+ * that clears it is opening the section, which is itself a navigation, so a
+ * timer would just be requests nobody is waiting on.
+ */
+function useUnreadAnnouncements(enabled: boolean, pathname: string) {
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) {
+      setUnread(0);
+      return;
+    }
+    let cancelled = false;
+    announcementsApi
+      .getUnreadCount()
+      .then((count) => {
+        if (!cancelled) setUnread(count);
+      })
+      // A member with no guild yet 404s here; the badge simply stays off.
+      .catch(() => {
+        if (!cancelled) setUnread(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, pathname]);
+
+  // The announcements page clears the count server-side as soon as it opens;
+  // this is how the badge hears about it without waiting for a navigation.
+  useEffect(() => {
+    const clear = () => setUnread(0);
+    window.addEventListener(ANNOUNCEMENTS_READ_EVENT, clear);
+    return () => window.removeEventListener(ANNOUNCEMENTS_READ_EVENT, clear);
+  }, []);
+
+  return unread;
 }
