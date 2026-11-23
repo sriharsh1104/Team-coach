@@ -25,6 +25,7 @@ const detail = {
   myRole: 'COACH',
   isOwner: true,
   historyVisibleToNewMembers: true,
+  freeFireGuildId: null,
   members: [
     { userId: 'user-1', name: 'Owner Coach', avatarUrl: null, role: 'COACH', isOwner: true },
     { userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'PLAYER', isOwner: false },
@@ -46,10 +47,24 @@ describe('OrgSettingsScreen', () => {
 
     await screen.findByText('Chat History For New Members');
     expect(screen.getByLabelText('Transfer ownership')).toBeTruthy();
+    expect(screen.getByLabelText('Free Fire guild ID')).toBeTruthy();
     expect(screen.queryByText('Members')).toBeNull();
     expect(screen.queryByText('Teammate')).toBeNull();
     expect(screen.queryByLabelText('Remove Teammate from roster')).toBeNull();
     expect(screen.queryByLabelText('Change role, currently Player')).toBeNull();
+  });
+
+  it('saves the Free Fire guild ID from Org Settings', async () => {
+    mockedOrgApi.setFreeFireGuildId.mockResolvedValue({
+      freeFireGuildId: '3015174327',
+    });
+    render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
+    const input = await screen.findByLabelText('Free Fire guild ID');
+    fireEvent.changeText(input, '3015174327');
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Save Free Fire guild ID'));
+    });
+    expect(mockedOrgApi.setFreeFireGuildId).toHaveBeenCalledWith('3015174327');
   });
 
   it('shows the chat-history switch reflecting the current setting, and flips it on toggle', async () => {

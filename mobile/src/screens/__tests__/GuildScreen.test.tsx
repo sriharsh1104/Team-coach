@@ -159,32 +159,6 @@ describe('GuildScreen', () => {
     expect(screen.queryByLabelText('Add Waiting Member to roster')).toBeNull();
   });
 
-  it('shows Achievements tab with grand-final list and owner add form', async () => {
-    mockedOrgApi.getMyGuild.mockResolvedValue({
-      ...detail,
-      achievements: [
-        {
-          id: 'ach-1',
-          name: 'FFWS India',
-          date: '2025-11-01',
-          grandFinalLink: 'https://example.com/gf',
-          standing: '1st',
-          points: 120,
-        },
-      ],
-    } as any);
-    render(<GuildScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Alpha Squad');
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('Achievements'));
-    });
-
-    expect(await screen.findByText('FFWS India')).toBeTruthy();
-    expect(screen.getByText(/1st · 120 pts/)).toBeTruthy();
-    expect(screen.getByLabelText('Add achievement')).toBeTruthy();
-  });
-
   it('switches to the Roster tab and removes a non-owner after confirming', async () => {
     mockedOrgApi.removeFromGuildRoster.mockResolvedValue(undefined);
     mockedOrgApi.getMyGuild

@@ -78,16 +78,19 @@ export function createGuildAchievement(input: {
   name: string;
   date: string;
   standing: string;
-  points?: number;
   grandFinalLink?: string;
+  pointsTable?: File;
 }) {
+  const form = new FormData();
+  form.append('name', input.name);
+  form.append('date', input.date);
+  form.append('standing', input.standing);
+  if (input.grandFinalLink) form.append('grandFinalLink', input.grandFinalLink);
+  if (input.pointsTable) form.append('pointsTable', input.pointsTable);
   return apiClient
-    .post<GuildAchievement>('/orgs/guild/achievements', {
-      name: input.name,
-      date: input.date,
-      standing: input.standing,
-      ...(input.points != null ? { points: input.points } : {}),
-      ...(input.grandFinalLink ? { grandFinalLink: input.grandFinalLink } : {}),
+    .post<GuildAchievement>('/orgs/guild/achievements', form, {
+      timeout: 120_000,
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
     .then((res) => res.data);
 }

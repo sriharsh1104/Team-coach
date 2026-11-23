@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { customAlphabet } from 'nanoid';
 import {
   GuildJoinRequestStatus,
@@ -149,6 +150,7 @@ export class OrgService {
     private readonly realtime: RealtimeService,
     private readonly pushNotifications: PushNotificationService,
     private readonly storage: MediaStorageService,
+    private readonly jwtService: JwtService,
   ) {}
 
   private notifyMembersChanged(orgId: string) {
@@ -406,6 +408,7 @@ export class OrgService {
       myRole: membership.role,
       isOwner: membership.isOwner,
       historyVisibleToNewMembers: membership.org.historyVisibleToNewMembers,
+      freeFireGuildId: membership.org.freeFireGuildId ?? null,
       members: membership.org.memberships.map((m) => ({
         userId: m.user.id,
         name: m.user.name,
@@ -469,7 +472,11 @@ export class OrgService {
     return { freeFireGuildId: next };
   }
 
-  async createAchievement(currentUserId: string, dto: CreateAchievementDto) {
+  async createAchievement(
+    currentUserId: string,
+    dto: CreateAchievementDto,
+    pointsTable?: Express.Multer.File,
+  ) {
     const current = await this.prisma.membership.findFirst({
       where: { userId: currentUserId },
     });
@@ -481,18 +488,35 @@ export class OrgService {
         'Only the org owner can add guild achievements',
       );
     }
+    let pointsTableFileKey: string | null = null;
+    if (pointsTable) {
+      if (!pointsTable.mimetype.startsWith('image/')) {
+        throw new BadRequestException(
+          'Points table must be an image (screenshot)',
+        );
+      }
+      const stored = await this.storage.storeUploadedFile(pointsTable);
+      pointsTableFileKey = stored.fileKey;
+    }
     const playedAt = parseAchievementDate(dto.date);
-    const row = await this.prisma.orgAchievement.create({
-      data: {
-        orgId: current.orgId,
-        name: dto.name.trim(),
-        playedAt,
-        grandFinalLink: normalizeOptionalUrl(dto.grandFinalLink),
-        standing: dto.standing.trim(),
-        points: dto.points ?? null,
-      },
-    });
-    return serializeAchievement(row);
+    try {
+      const row = await this.prisma.orgAchievement.create({
+        data: {
+          orgId: current.orgId,
+          name: dto.name.trim(),
+          playedAt,
+          grandFinalLink: normalizeOptionalUrl(dto.grandFinalLink),
+          standing: dto.standing.trim(),
+          pointsTableFileKey,
+        },
+      });
+      return this.serializeAchievement(row, currentUserId);
+    } catch (err) {
+      if (pointsTableFileKey) {
+        await this.storage.deleteFile(pointsTableFileKey);
+      }
+      throw err;
+    }
   }
 
   async deleteAchievement(currentUserId: string, achievementId: string) {
@@ -514,7 +538,48 @@ export class OrgService {
       throw new NotFoundException('Achievement not found');
     }
     await this.prisma.orgAchievement.delete({ where: { id: row.id } });
+    if (row.pointsTableFileKey) {
+      await this.storage.deleteFile(row.pointsTableFileKey);
+    }
     return { deleted: true };
+  }
+
+  private async serializeAchievement(
+    row: {
+      id: string;
+      name: string;
+      playedAt: Date;
+      grandFinalLink: string | null;
+      standing: string;
+      pointsTableFileKey: string | null;
+    },
+    viewerId: string,
+  ) {
+    return {
+      id: row.id,
+      name: row.name,
+      date: row.playedAt.toISOString().slice(0, 10),
+      grandFinalLink: row.grandFinalLink,
+      standing: row.standing,
+      pointsTableUrl: await this.resolveAchievementImageUrl(
+        row.pointsTableFileKey,
+        viewerId,
+      ),
+    };
+  }
+
+  private async resolveAchievementImageUrl(
+    fileKey: string | null | undefined,
+    viewerId: string,
+  ): Promise<string | null> {
+    if (!fileKey) return null;
+    const cloud = this.storage.buildDeliveryUrl(fileKey);
+    if (cloud) return cloud;
+    const token = await this.jwtService.signAsync(
+      { sub: viewerId, fileKey, purpose: 'media-file' },
+      { expiresIn: '7d' },
+    );
+    return `/media/files/${encodeURIComponent(fileKey)}?token=${token}`;
   }
 
   async changeMemberRole(currentUserId: string, dto: UpdateMemberRoleDto) {
@@ -1262,7 +1327,9 @@ export class OrgService {
       myGuildRole: guild.role,
       onRoster: !!roster,
       canManageRoster: canManage,
-      achievements: achievements.map(serializeAchievement),
+      achievements: await Promise.all(
+        achievements.map((a) => this.serializeAchievement(a, userId)),
+      ),
       roster: rosterMembers.map((m) => ({
         userId: m.user.id,
         name: m.user.name,
@@ -1493,20 +1560,3 @@ function parseAchievementDate(isoDate: string): Date {
   return dt;
 }
 
-function serializeAchievement(row: {
-  id: string;
-  name: string;
-  playedAt: Date;
-  grandFinalLink: string | null;
-  standing: string;
-  points: number | null;
-}) {
-  return {
-    id: row.id,
-    name: row.name,
-    date: row.playedAt.toISOString().slice(0, 10),
-    grandFinalLink: row.grandFinalLink,
-    standing: row.standing,
-    points: row.points,
-  };
-}

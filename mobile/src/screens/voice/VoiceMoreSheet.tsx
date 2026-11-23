@@ -87,6 +87,10 @@ export function VoiceMoreSheet({
     },
   );
 
+  // Keep the menu clear of the bottom mic/speaker/leave bar — sit it in the
+  // upper half so those controls stay visible and tappable underneath.
+  const topPad = Math.max(insets.top, 12) + 56;
+
   return (
     <Modal
       visible={visible}
@@ -96,13 +100,9 @@ export function VoiceMoreSheet({
     >
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable
-          style={[
-            styles.sheet,
-            { paddingBottom: Math.max(insets.bottom, 16) + 8 },
-          ]}
+          style={[styles.sheet, { marginTop: topPad }]}
           onPress={() => undefined}
         >
-          <View style={styles.grabber} />
           <Text style={styles.title}>Call Options</Text>
           {rows.map((row) => (
             <Pressable
@@ -135,23 +135,21 @@ export function VoiceMoreSheet({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
   sheet: {
+    width: '100%',
+    maxWidth: 360,
     backgroundColor: '#16171b',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-  },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    marginBottom: 12,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingTop: 14,
+    paddingBottom: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   title: {
     color: 'rgba(255,255,255,0.55)',

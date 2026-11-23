@@ -74,6 +74,7 @@ describe('OrgService leave + browse guilds', () => {
       {
         buildDeliveryUrl: jest.fn().mockReturnValue(null),
       } as unknown as MediaStorageService,
+      { signAsync: jest.fn().mockResolvedValue('tok') } as any,
     );
     return { service, prisma };
   }

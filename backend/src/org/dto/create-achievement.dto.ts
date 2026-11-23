@@ -1,15 +1,12 @@
 import {
-  IsInt,
   IsOptional,
   IsString,
   IsUrl,
   Matches,
   MaxLength,
-  Min,
   MinLength,
   ValidateIf,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
 export class CreateAchievementDto {
   @IsString()
@@ -36,10 +33,4 @@ export class CreateAchievementDto {
   @MinLength(1)
   @MaxLength(40)
   standing: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  points?: number;
 }

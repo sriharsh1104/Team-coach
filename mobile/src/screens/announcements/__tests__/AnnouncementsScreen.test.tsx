@@ -179,6 +179,30 @@ describe('AnnouncementsScreen', () => {
     expect(mockedApi.createAnnouncement).not.toHaveBeenCalled();
   });
 
+  it('loads a past post into the composer when the owner taps it', async () => {
+    mockedApi.listAnnouncements.mockResolvedValue(
+      listPayload({
+        canPost: true,
+        unread: 0,
+        announcements: [
+          announcement({
+            title: 'Scrim at 9',
+            body: 'Be in voice by 8:45.',
+            read: true,
+          }),
+        ],
+      }),
+    );
+    renderScreen();
+
+    const reuse = await screen.findByLabelText('Reuse announcement Scrim at 9');
+    fireEvent.press(reuse);
+
+    expect(screen.getByDisplayValue('Scrim at 9')).toBeTruthy();
+    expect(screen.getByDisplayValue('Be in voice by 8:45.')).toBeTruthy();
+    expect(mockedApi.createAnnouncement).not.toHaveBeenCalled();
+  });
+
   it('offers a retry instead of an empty list when loading fails', async () => {
     mockedApi.listAnnouncements.mockRejectedValue(new Error('offline'));
     renderScreen();

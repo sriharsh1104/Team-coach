@@ -191,6 +191,12 @@ export class MediaService {
     });
     if (channelMeta) return viewerOrgIds.has(channelMeta.orgId);
 
+    const achievement = await this.prisma.orgAchievement.findFirst({
+      where: { pointsTableFileKey: fileKey },
+      select: { orgId: true },
+    });
+    if (achievement) return viewerOrgIds.has(achievement.orgId);
+
     const avatarOwner = await this.prisma.user.findFirst({
       where: { avatarFileKey: fileKey },
       select: { id: true },

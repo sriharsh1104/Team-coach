@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Text,
-  TextInput,
   View,
   FlatList,
   RefreshControl,
@@ -37,7 +36,6 @@ import {
   usePagedSearch,
 } from '../ui/usePagedSearch';
 import { GuildJoinRequestsPanel } from './GuildJoinRequestsPanel';
-import { GuildAchievementsPanel } from './GuildAchievementsPanel';
 import { emitToast } from '../ui/toastBus';
 import { confirmAsync } from '../ui/confirmAsync';
 import { ChannelAvatar } from './chat/ChannelAvatar';
@@ -67,11 +65,10 @@ function errorMessage(err: unknown, fallback: string) {
   return Array.isArray(msg) ? msg.join(', ') : msg?.toString() || fallback;
 }
 
-type GuildTab = 'members' | 'roster' | 'achievements' | 'requests';
+type GuildTab = 'members' | 'roster' | 'requests';
 const BASE_GUILD_TABS = [
   { value: 'members' as const, label: 'Members' },
   { value: 'roster' as const, label: 'Roster' },
-  { value: 'achievements' as const, label: 'Achievements' },
 ];
 
 /**
@@ -88,15 +85,12 @@ export function GuildScreen({ navigation }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [ffDraft, setFfDraft] = useState('');
-  const [ffSaving, setFfSaving] = useState(false);
   const realtime = useOrgRealtimeOptional();
   const isOrgOwner = !!org?.isOwner;
 
   const load = useCallback(async () => {
     const data = await orgApi.getMyGuild();
     setDetail(data);
-    setFfDraft(data.freeFireGuildId ?? '');
   }, []);
 
   useEffect(() => {
@@ -206,8 +200,7 @@ export function GuildScreen({ navigation }: Props) {
         { value: 'requests' as const, label: 'Requests' },
       ]
     : BASE_GUILD_TABS;
-  const showPeopleList =
-    guildTab === 'members' || guildTab === 'roster';
+  const showPeopleList = guildTab === 'members' || guildTab === 'roster';
   // Waiting guild members first so Add-to-roster is obvious for owners/coaches.
   const sortedMembers = canManage
     ? [...members].sort((a, b) => Number(a.onRoster) - Number(b.onRoster))
@@ -299,98 +292,17 @@ export function GuildScreen({ navigation }: Props) {
                     <CopyButton value={detail.orgCode} />
                   </View>
                 ) : null}
-                {detail.freeFireGuildId || canManage ? (
+                {detail.freeFireGuildId ? (
                   <View style={styles.inviteRow}>
                     <View style={staticStyles.inviteTextCol}>
                       <Text style={styles.inviteLabel}>
                         Free Fire Guild ID
                       </Text>
-                      {canManage ? (
-                        <View style={staticStyles.ffEditRow}>
-                          <TextInput
-                            style={[
-                              styles.ffInput,
-                              {
-                                color: colors.text,
-                                borderColor: colors.border,
-                                backgroundColor: colors.surface,
-                              },
-                            ]}
-                            value={ffDraft}
-                            onChangeText={(t) =>
-                              setFfDraft(t.replace(/\D/g, ''))
-                            }
-                            placeholder="e.g. 3015174327"
-                            placeholderTextColor={colors.textDim}
-                            keyboardType="number-pad"
-                            accessibilityLabel="Free Fire guild ID"
-                          />
-                          <SoftPressable
-                            style={[
-                              styles.ffSave,
-                              { backgroundColor: colors.chrome },
-                              ffSaving && { opacity: 0.6 },
-                            ]}
-                            disabled={
-                              ffSaving ||
-                              ffDraft === (detail.freeFireGuildId ?? '')
-                            }
-                            onPress={() => {
-                              void (async () => {
-                                setFfSaving(true);
-                                try {
-                                  const res = await orgApi.setFreeFireGuildId(
-                                    ffDraft.trim() || null,
-                                  );
-                                  setDetail((prev) =>
-                                    prev
-                                      ? {
-                                          ...prev,
-                                          freeFireGuildId: res.freeFireGuildId,
-                                        }
-                                      : prev,
-                                  );
-                                  setFfDraft(res.freeFireGuildId ?? '');
-                                  emitToast(
-                                    res.freeFireGuildId
-                                      ? 'Free Fire guild ID saved'
-                                      : 'Free Fire guild ID cleared',
-                                  );
-                                } catch (err) {
-                                  emitToast(
-                                    errorMessage(
-                                      err,
-                                      'Could not save Free Fire guild ID',
-                                    ),
-                                  );
-                                } finally {
-                                  setFfSaving(false);
-                                }
-                              })();
-                            }}
-                            pressScale={0.96}
-                            accessibilityRole="button"
-                            accessibilityLabel="Save Free Fire guild ID"
-                          >
-                            <Text
-                              style={[
-                                styles.ffSaveText,
-                                { color: colors.chromeInk },
-                              ]}
-                            >
-                              {ffSaving ? '…' : 'Save'}
-                            </Text>
-                          </SoftPressable>
-                        </View>
-                      ) : (
-                        <Text style={styles.inviteValue}>
-                          {detail.freeFireGuildId}
-                        </Text>
-                      )}
+                      <Text style={styles.inviteValue}>
+                        {detail.freeFireGuildId}
+                      </Text>
                     </View>
-                    {detail.freeFireGuildId ? (
-                      <CopyButton value={detail.freeFireGuildId} />
-                    ) : null}
+                    <CopyButton value={detail.freeFireGuildId} />
                   </View>
                 ) : null}
                 <View style={styles.inviteRow}>
@@ -430,13 +342,6 @@ export function GuildScreen({ navigation }: Props) {
               >
                 <GuildJoinRequestsPanel onAccepted={() => void load()} />
               </View>
-            ) : null}
-            {guildTab === 'achievements' ? (
-              <GuildAchievementsPanel
-                achievements={detail?.achievements ?? []}
-                canManage={canManage}
-                onChanged={() => void load()}
-              />
             ) : null}
             {showPeopleList ? (
               <ListSearchField
@@ -757,12 +662,6 @@ const staticStyles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.045)',
   },
   inviteTextCol: { flex: 1 },
-  ffEditRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
   /** Flat list rows — no per-user cards. */
   row: {
     paddingVertical: 8,
@@ -834,23 +733,6 @@ function guildStyles(c: ThemeColors) {
     },
     inviteLabel: { color: c.textMuted, fontSize: 12 },
     inviteValue: { color: c.text, fontWeight: '600' as const, marginTop: 2 },
-    ffInput: {
-      flex: 1,
-      minWidth: 0,
-      borderWidth: 1,
-      borderRadius: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      fontSize: 15,
-      fontWeight: '700' as const,
-      letterSpacing: 0.5,
-    },
-    ffSave: {
-      borderRadius: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-    },
-    ffSaveText: { fontWeight: '800' as const, fontSize: 13 },
     rowName: { fontSize: 14, color: c.text, fontWeight: '600' as const },
     rowMeta: { fontSize: 11, color: c.textMuted, marginTop: 1 },
     addChip: {

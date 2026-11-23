@@ -65,6 +65,44 @@ describe('GamesService — several rooms at once', () => {
     );
   });
 
+  it('Chess seats exactly two, White first, and rejects an illegal move', () => {
+    const room = games.createRoom('org', p('a'), 'chess');
+    expect(room.maxPlayers).toBe(2);
+    expect(room.minPlayers).toBe(2);
+    games.joinRoom(room.id, 'org', p('b'));
+    games.startGame(room.id, 'a');
+
+    // The host takes White, so it is their move and only theirs.
+    const forA = games.roomOf('a');
+    const forB = games.roomOf('b');
+    expect(forA?.chess?.yourColor).toBe('w');
+    expect(forB?.chess?.yourColor).toBe('b');
+    expect(forA?.chess?.legalMoves).toHaveLength(20);
+    expect(forB?.chess?.legalMoves).toHaveLength(0);
+
+    expect(() => games.chessMove(room.id, 'b', 'e7', 'e5')).toThrow(
+      /Not your turn/,
+    );
+    // A knight cannot reach e5 from g1 — the engine is the only judge.
+    expect(() => games.chessMove(room.id, 'a', 'g1', 'e5')).toThrow(
+      /Illegal move/,
+    );
+
+    games.chessMove(room.id, 'a', 'e2', 'e4');
+    expect(games.roomOf('b')?.chess?.turn).toBe('b');
+    expect(games.roomOf('b')?.chess?.lastMove?.san).toBe('e4');
+  });
+
+  it('Chess hands the win to whoever is left when the other player leaves', () => {
+    const room = games.createRoom('org', p('a'), 'chess');
+    games.joinRoom(room.id, 'org', p('b'));
+    games.startGame(room.id, 'a');
+
+    games.leaveRoom('a');
+    expect(games.roomOf('b')?.chess?.winnerId).toBe('b');
+    expect(games.roomOf('b')?.chess?.endReason).toBe('forfeit');
+  });
+
   it('Uno rooms accept 2–6 seats and hide opponent hands per viewer', () => {
     const room = games.createRoom('org', p('a'), 'uno', 4);
     expect(room.maxPlayers).toBe(4);

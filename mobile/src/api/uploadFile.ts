@@ -13,13 +13,14 @@ import { Platform } from 'react-native';
 export async function appendFileToFormData(
   form: FormData,
   file: { uri: string; name: string; type: string },
+  fieldName = 'file',
 ): Promise<void> {
   if (Platform.OS === 'web') {
     const blob = await fetch(file.uri).then((res) => res.blob());
-    form.append('file', blob, file.name);
+    form.append(fieldName, blob, file.name);
     return;
   }
-  form.append('file', {
+  form.append(fieldName, {
     uri: file.uri,
     name: file.name,
     type: file.type,

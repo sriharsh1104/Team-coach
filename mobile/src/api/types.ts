@@ -246,6 +246,8 @@ export interface OrgDetail {
   myRole: MembershipRole | null;
   isOwner: boolean;
   historyVisibleToNewMembers: boolean;
+  /** Free Fire in-game guild ID — editable in Org Settings. */
+  freeFireGuildId: string | null;
   members: OrgMember[];
 }
 
@@ -270,7 +272,7 @@ export interface GuildMemberRow {
   isOwner: boolean;
 }
 
-/** Tournament grand-final finish shown on the Guild Achievements tab. */
+/** Tournament grand-final finish shown on the Guild Achievements screen. */
 export interface GuildAchievement {
   id: string;
   name: string;
@@ -278,7 +280,8 @@ export interface GuildAchievement {
   date: string;
   grandFinalLink: string | null;
   standing: string;
-  points: number | null;
+  /** Points-table screenshot URL, if the owner attached one. */
+  pointsTableUrl: string | null;
 }
 
 export interface GuildDetail {

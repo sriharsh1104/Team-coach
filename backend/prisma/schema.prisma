@@ -265,8 +265,8 @@ model OrgAchievement {
   grandFinalLink String?
   // Placement text — "1st", "2nd", "Champion", etc.
   standing       String
-  // Optional points earned in that event.
-  points         Int?
+  // Optional points-table screenshot (Cloudinary / local fileKey).
+  pointsTableFileKey String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

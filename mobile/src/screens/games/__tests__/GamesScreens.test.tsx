@@ -80,6 +80,7 @@ function lobbyRoom(overrides: Partial<RoomView> = {}): RoomView {
     ludo: null,
     boots: null,
     uno: null,
+    chess: null,
     bootsFleet: null,
     deadline: null,
     ...overrides,

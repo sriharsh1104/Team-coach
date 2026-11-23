@@ -93,6 +93,7 @@ describe('OrgService guild join requests', () => {
         send,
       } as unknown as PushNotificationService,
       { buildDeliveryUrl: jest.fn().mockReturnValue(null) } as any,
+      { signAsync: jest.fn().mockResolvedValue('tok') } as any,
     );
     return { service, prisma, upsert, update, updateMany, create, send };
   }

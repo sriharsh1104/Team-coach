@@ -7,11 +7,15 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { mediaFileInterceptorOptions } from '../media/multer-options';
 import { OrgService } from './org.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { CreateAchievementDto } from './dto/create-achievement.dto';
@@ -198,11 +202,15 @@ export class OrgController {
   }
 
   @Post('guild/achievements')
+  @UseInterceptors(
+    FileInterceptor('pointsTable', mediaFileInterceptorOptions(8 * 1024 * 1024)),
+  )
   createAchievement(
     @CurrentUser() user: { userId: string },
     @Body() dto: CreateAchievementDto,
+    @UploadedFile() pointsTable?: Express.Multer.File,
   ) {
-    return this.orgService.createAchievement(user.userId, dto);
+    return this.orgService.createAchievement(user.userId, dto, pointsTable);
   }
 
   @Delete('guild/achievements/:id')

@@ -49,8 +49,17 @@ import {
   unoPlay,
   unoPublicState,
 } from './engines/uno.engine';
+import {
+  ChessMove,
+  ChessState,
+  ChessPublicState,
+  chessForfeit,
+  chessMove,
+  chessPublicState,
+  createChessState,
+} from './engines/chess.engine';
 
-export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno';
+export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno' | 'chess';
 
 export const GAME_CATALOG: Record<
   GameKind,
@@ -60,6 +69,7 @@ export const GAME_CATALOG: Record<
   ludo: { title: 'Ludo', minPlayers: 2, maxPlayers: 4 },
   boots: { title: 'Boots', minPlayers: 2, maxPlayers: 2 },
   uno: { title: 'Uno', minPlayers: 2, maxPlayers: 6 },
+  chess: { title: 'Chess', minPlayers: 2, maxPlayers: 2 },
 };
 
 const UNO_COLORS: UnoColor[] = ['red', 'yellow', 'green', 'blue'];
@@ -87,6 +97,7 @@ interface Room {
   ludo: LudoState | null;
   boots: BootsState | null;
   uno: UnoState | null;
+  chess: ChessState | null;
   /** Host-chosen boot lengths for Boots (e.g. [5,3,2]). */
   bootsFleet: number[] | null;
   timer: ReturnType<typeof setTimeout> | null;
@@ -110,6 +121,8 @@ export interface RoomView {
   boots: BootsPublicState | null;
   /** Viewer-scoped — only your hand is full; others are counts. */
   uno: UnoPublicState | null;
+  /** Viewer-scoped only for whose turn it is; the board itself is public. */
+  chess: ChessPublicState | null;
   /** Lobby preview of the Boots fleet sizes. */
   bootsFleet: number[] | null;
   /** Server time when the current action auto-resolves (Ludo turn timer). */
@@ -218,6 +231,7 @@ export class GamesService {
       ludo: null,
       boots: null,
       uno: null,
+      chess: null,
       bootsFleet: game === 'boots' ? normalizeFleet(bootsFleet) : null,
       timer: null,
     };
@@ -274,11 +288,13 @@ export class GamesService {
       if (room.ludo) ludoRemovePlayer(room.ludo, userId);
       if (room.boots) bootsForfeit(room.boots, userId);
       if (room.uno) unoForfeit(room.uno, userId);
+      if (room.chess) chessForfeit(room.chess, userId);
       if (
         room.rps?.phase === 'done' ||
         room.ludo?.phase === 'done' ||
         room.boots?.phase === 'done' ||
-        room.uno?.phase === 'done'
+        room.uno?.phase === 'done' ||
+        room.chess?.phase === 'done'
       ) {
         this.finish(room);
         return;
@@ -349,6 +365,10 @@ export class GamesService {
       );
     }
     if (room.game === 'uno') room.uno = createUnoState(ids);
+    if (room.game === 'chess') {
+      // Seat order decides colour: whoever created the room plays White.
+      room.chess = createChessState([ids[0], ids[1]]);
+    }
     room.status = 'playing';
     this.emit(room, { type: 'started' });
     this.onOrg(room.orgId);
@@ -367,6 +387,7 @@ export class GamesService {
     room.ludo = null;
     room.boots = null;
     room.uno = null;
+    room.chess = null;
     room.status = 'lobby';
     this.deadlines.delete(room.id);
     this.emit(room, { type: 'rematch' });
@@ -464,6 +485,46 @@ export class GamesService {
       if (parsed) return parsed;
     }
     throw new Error('Pick a cell like B2');
+  }
+
+  // ─── Chess ────────────────────────────────────────────────────────────
+
+  /**
+   * Play one move. Every rule lives in the engine — this only checks that the
+   * request is shaped like a move before handing it over, so an illegal move
+   * is rejected by the same code that generated the legal list the client was
+   * shown.
+   */
+  chessMove(
+    roomId: string,
+    userId: string,
+    from: unknown,
+    to: unknown,
+    promotion?: unknown,
+  ): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.chess || room.status !== 'playing')
+      throw new Error('No chess match in progress');
+    if (typeof from !== 'string' || typeof to !== 'string')
+      throw new Error('Pick a square to move from and to');
+
+    const promo =
+      typeof promotion === 'string' &&
+      ['q', 'r', 'b', 'n'].includes(promotion)
+        ? (promotion as ChessMove['promotion'])
+        : undefined;
+
+    const record = chessMove(room.chess, userId, {
+      from: from.trim(),
+      to: to.trim(),
+      ...(promo ? { promotion: promo } : {}),
+    });
+    this.emit(room, {
+      type: 'chess:move',
+      payload: { userId, san: record.san, from: record.from, to: record.to },
+    });
+    if (room.chess.phase === 'done') this.finish(room);
+    return this.view(room, userId);
   }
 
   // ─── Uno ──────────────────────────────────────────────────────────────
@@ -713,6 +774,7 @@ export class GamesService {
         : null,
       boots: room.boots ? bootsPublicState(room.boots, viewer) : null,
       uno: room.uno ? unoPublicState(room.uno, viewer) : null,
+      chess: room.chess ? chessPublicState(room.chess, viewer) : null,
       bootsFleet: room.bootsFleet ? [...room.bootsFleet] : null,
       deadline:
         room.ludo && room.ludo.phase !== 'done'

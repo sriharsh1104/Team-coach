@@ -79,6 +79,10 @@ export function AppShell() {
             label: 'Announcements',
             badge: unreadAnnouncements,
           },
+          {
+            to: '/achievements',
+            label: 'Achievements',
+          },
         ]
       : []),
   ];
@@ -147,6 +151,15 @@ export function AppShell() {
           </>
         ) : null}
         <div className="sidebar-split">Account</div>
+        {org?.isOwner ? (
+          <NavLink
+            to="/org-settings"
+            viewTransition
+            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+          >
+            Org Settings
+          </NavLink>
+        ) : null}
         {COMMON_NAV.map((item) => (
           <NavLink
             key={item.to}

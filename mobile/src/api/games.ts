@@ -3,7 +3,7 @@ import { apiBaseUrl } from './client';
 
 // ── Types mirrored from backend/src/games ──────────────────────────────────
 
-export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno';
+export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno' | 'chess';
 
 export const GAME_CATALOG: Array<{
   id: GameKind;
@@ -42,6 +42,15 @@ export const GAME_CATALOG: Array<{
     emoji: '🃏',
   },
   {
+    id: 'chess',
+    title: 'Chess',
+    tagline: 'Full rules — castling, en passant, promotion',
+    players: '2 players',
+    minPlayers: 2,
+    maxPlayers: 2,
+    emoji: '♞',
+  },
+  {
     id: 'boots',
     title: 'Boots',
     tagline: '6×6 fleet hunt — place boots, then fire',
@@ -51,6 +60,67 @@ export const GAME_CATALOG: Array<{
     emoji: '🚢',
   },
 ];
+
+/* ---------------- Chess ---------------- */
+
+export type ChessColor = 'w' | 'b';
+export type ChessPieceType = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
+export type ChessPromotion = 'q' | 'r' | 'b' | 'n';
+export type ChessPiece = { type: ChessPieceType; color: ChessColor };
+
+export type ChessMove = {
+  from: string;
+  to: string;
+  promotion?: ChessPromotion;
+};
+
+export type ChessMoveRecord = ChessMove & {
+  piece: ChessPieceType;
+  color: ChessColor;
+  captured?: ChessPieceType;
+  castle?: 'king' | 'queen';
+  enPassant?: boolean;
+  check?: boolean;
+  checkmate?: boolean;
+  san: string;
+};
+
+export type ChessEndReason =
+  | 'checkmate'
+  | 'stalemate'
+  | 'fifty-move'
+  | 'threefold'
+  | 'insufficient-material'
+  | 'forfeit';
+
+export type ChessPublicState = {
+  playerIds: [string, string];
+  /** 64 squares, index 0 = a8 through index 63 = h1. */
+  board: (ChessPiece | null)[];
+  turn: ChessColor;
+  yourColor: ChessColor | null;
+  /** Server-generated; the board never has to work out legality itself. */
+  legalMoves: ChessMove[];
+  inCheck: boolean;
+  phase: 'play' | 'done';
+  winnerId: string | null;
+  endReason: ChessEndReason | null;
+  lastMove: ChessMoveRecord | null;
+  history: ChessMoveRecord[];
+  halfmoveClock: number;
+  fullmove: number;
+  captured: { w: ChessPieceType[]; b: ChessPieceType[] };
+};
+
+export const CHESS_FILES = 'abcdefgh';
+
+export function chessIndexToSquare(index: number): string {
+  return `${CHESS_FILES[index % 8]}${8 - Math.floor(index / 8)}`;
+}
+
+export function chessSquareToIndex(square: string): number {
+  return (8 - Number(square[1])) * 8 + CHESS_FILES.indexOf(square[0]);
+}
 
 export const BOOTS_COLS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
 export const BOOTS_ROWS = [1, 2, 3, 4, 5, 6] as const;
@@ -191,6 +261,7 @@ export interface RoomView {
   ludo: LudoState | null;
   boots: BootsPublicState | null;
   uno: UnoPublicState | null;
+  chess: ChessPublicState | null;
   bootsFleet: number[] | null;
   deadline: number | null;
 }

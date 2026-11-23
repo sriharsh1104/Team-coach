@@ -19,6 +19,7 @@ import { JoinOrgScreen } from '../screens/JoinOrgScreen';
 import { OrgHomeScreen } from '../screens/OrgHomeScreen';
 import { AdminScreen } from '../screens/admin/AdminScreen';
 import { AnnouncementsScreen } from '../screens/announcements/AnnouncementsScreen';
+import { AchievementsScreen } from '../screens/AchievementsScreen';
 import { MembersScreen } from '../screens/MembersScreen';
 import { GuildHomeScreen } from '../screens/GuildHomeScreen';
 import { GuildScreen } from '../screens/GuildScreen';
@@ -418,6 +419,13 @@ export function RootNavigator() {
               }))}
             />
             <MainStack.Screen
+              name="Achievements"
+              component={AchievementsScreen}
+              options={sectionOptions(guildDrawer.openWith, () => ({
+                title: 'Achievements',
+              }))}
+            />
+            <MainStack.Screen
               name="Admin"
               component={AdminScreen}
               options={detailOptions(() => ({ title: 'Admin' }))}
@@ -644,6 +652,13 @@ export function RootNavigator() {
               component={AnnouncementsScreen}
               options={sectionOptions(orgDrawer.openWith, () => ({
                 title: 'Announcements',
+              }))}
+            />
+            <MainStack.Screen
+              name="Achievements"
+              component={AchievementsScreen}
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Achievements',
               }))}
             />
             <MainStack.Screen

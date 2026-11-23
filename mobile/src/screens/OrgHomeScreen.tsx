@@ -19,6 +19,7 @@ import {
   announcementsItem,
   useUnreadAnnouncements,
 } from '../navigation/announcementsDrawerItem';
+import { achievementsItem } from '../navigation/achievementsDrawerItem';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ExitConfirmModal } from '../ui/ExitConfirmModal';
@@ -165,6 +166,7 @@ export function OrgHomeScreen({ navigation }: Props) {
       split: true,
       items: [
         announcementsItem(navigation, 'OrgHome', unreadAnnouncements),
+        achievementsItem(navigation, 'OrgHome'),
         ...(canManageGuild
           ? [
               {

@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Text,
   TextInput,
   TextStyle,
@@ -38,11 +40,16 @@ const BODY_MAX = 4000;
  * Guild announcements. Everyone in the org reads; only the owner sees the
  * composer — and the server enforces that independently, so hiding the form
  * is presentation, not security.
+ *
+ * Composer draft + saved-templates live on this screen (not inside a FlatList
+ * header child) so a list refresh / keyboard resize cannot remount the form
+ * and wipe what you typed — or drop a "load into inputs" tap.
  */
 export function AnnouncementsScreen() {
   const shared = useSharedStyles();
   const { colors } = useTheme();
   const styles = useThemedStyles(announcementStyles);
+  const listRef = useRef<FlatList<Announcement>>(null);
 
   const [list, setList] = useState<api.AnnouncementList | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +60,17 @@ export function AnnouncementsScreen() {
    * make the markers vanish while the person is still looking at them.
    */
   const newIds = useRef<Set<string>>(new Set());
+
+  // Owner composer — owned here so FlatList header remounts keep the draft.
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<SavedAnnouncementTemplate[]>([]);
+
+  useEffect(() => {
+    void loadSavedAnnouncementTemplates().then(setSaved);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -84,60 +102,164 @@ export function AnnouncementsScreen() {
 
   const refreshControl = usePullToRefresh(load);
 
+  const fillComposer = useCallback((nextTitle: string, nextBody: string) => {
+    setTitle(nextTitle);
+    setBody(nextBody);
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    emitToast(`Loaded “${nextTitle}” — tap Send when ready`);
+  }, []);
+
+  const onSaveTemplate = useCallback(async () => {
+    if (!title.trim() || !body.trim() || saving || sending) return;
+    setSaving(true);
+    try {
+      const next = await saveAnnouncementTemplate({ title, body });
+      setSaved(next);
+      emitToast('Saved for reuse — tap its title to load');
+    } catch {
+      emitToast('Could not save that');
+    } finally {
+      setSaving(false);
+    }
+  }, [title, body, saving, sending]);
+
+  const onSend = useCallback(async () => {
+    if (!title.trim() || !body.trim() || sending) return;
+    setSending(true);
+    try {
+      await api.createAnnouncement({
+        title: title.trim(),
+        body: body.trim(),
+      });
+      setTitle('');
+      setBody('');
+      emitToast('Sent to everyone in your guild');
+      await load();
+    } catch (err) {
+      emitToast(apiErrorMessage(err, 'Could not send that announcement'));
+    } finally {
+      setSending(false);
+    }
+  }, [title, body, sending, load]);
+
+  const canPost = !!list?.canPost;
+  const canSend =
+    title.trim().length > 0 && body.trim().length > 0 && !sending;
+  const canSave =
+    title.trim().length > 0 && body.trim().length > 0 && !saving && !sending;
+
+  const listHeader = useMemo(
+    () => (
+      <View>
+        <Text style={shared.title}>Announcements</Text>
+        <Text style={styles.hint}>
+          Posts from your guild owner. Everyone in the guild gets a
+          notification.
+        </Text>
+        {error ? <Text style={shared.error}>{error}</Text> : null}
+        {canPost ? (
+          <Composer
+            styles={styles}
+            colors={colors}
+            title={title}
+            body={body}
+            sending={sending}
+            saving={saving}
+            saved={saved}
+            canSend={canSend}
+            canSave={canSave}
+            onChangeTitle={setTitle}
+            onChangeBody={setBody}
+            onSave={() => void onSaveTemplate()}
+            onSend={() => void onSend()}
+            onUseSaved={(item) => fillComposer(item.title, item.body)}
+            onRemoveSaved={async (id) => {
+              const next = await removeSavedAnnouncementTemplate(id);
+              setSaved(next);
+            }}
+          />
+        ) : null}
+        {!list && !failed ? <SkeletonList count={3} avatar={false} /> : null}
+      </View>
+    ),
+    [
+      shared.title,
+      shared.error,
+      styles,
+      colors,
+      error,
+      canPost,
+      title,
+      body,
+      sending,
+      saving,
+      saved,
+      canSend,
+      canSave,
+      list,
+      failed,
+      onSaveTemplate,
+      onSend,
+      fillComposer,
+    ],
+  );
+
   return (
     <Screen>
-      <FlatList
-        style={styles.list}
-        contentContainerStyle={styles.content}
-        data={list?.announcements ?? []}
-        keyExtractor={(item) => item.id}
-        refreshControl={refreshControl}
-        keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <View>
-            <Text style={shared.title}>Announcements</Text>
-            <Text style={styles.hint}>
-              Posts from your guild owner. Everyone in the guild gets a
-              notification.
-            </Text>
-            {error ? <Text style={shared.error}>{error}</Text> : null}
-            {list?.canPost ? (
-              <Composer styles={styles} colors={colors} onPosted={load} />
-            ) : null}
-            {!list && !failed ? <SkeletonList count={3} avatar={false} /> : null}
-          </View>
-        }
-        ListEmptyComponent={
-          // `failed` first: a failed load also clears `list`, so checking
-          // that first would swallow the retry and leave only an error line
-          // with nothing to tap.
-          failed ? (
-            <SoftPressable
-              style={styles.retry}
-              onPress={() => void load()}
-              accessibilityRole="button"
-              accessibilityLabel="Try loading again"
-            >
-              <Text style={styles.retryText}>Could not load. Tap to retry.</Text>
-            </SoftPressable>
-          ) : !list ? null : (
-            <Text style={styles.empty}>
-              {list.canPost
-                ? 'Nothing posted yet. Your first announcement will reach every member.'
-                : 'Your guild owner has not posted anything yet.'}
-            </Text>
-          )
-        }
-        renderItem={({ item }) => (
-          <AnnouncementCard
-            announcement={item}
-            isNew={newIds.current.has(item.id)}
-            canDelete={!!list?.canPost}
-            styles={styles}
-            onDeleted={load}
-          />
-        )}
-      />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      >
+        <FlatList
+          ref={listRef}
+          style={styles.list}
+          contentContainerStyle={styles.content}
+          data={list?.announcements ?? []}
+          keyExtractor={(item) => item.id}
+          refreshControl={refreshControl}
+          // Always: a tap on Saved / a past post must fill the composer even
+          // while the keyboard is open — "handled" still ate those taps when
+          // the keyboard dismissed first.
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="on-drag"
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={
+            // `failed` first: a failed load also clears `list`, so checking
+            // that first would swallow the retry and leave only an error line
+            // with nothing to tap.
+            failed ? (
+              <SoftPressable
+                style={styles.retry}
+                onPress={() => void load()}
+                accessibilityRole="button"
+                accessibilityLabel="Try loading again"
+              >
+                <Text style={styles.retryText}>
+                  Could not load. Tap to retry.
+                </Text>
+              </SoftPressable>
+            ) : !list ? null : (
+              <Text style={styles.empty}>
+                {list.canPost
+                  ? 'Nothing posted yet. Your first announcement will reach every member.'
+                  : 'Your guild owner has not posted anything yet.'}
+              </Text>
+            )
+          }
+          renderItem={({ item }) => (
+            <AnnouncementCard
+              announcement={item}
+              isNew={newIds.current.has(item.id)}
+              canDelete={canPost}
+              canReuse={canPost}
+              styles={styles}
+              onReuse={() => fillComposer(item.title, item.body)}
+              onDeleted={load}
+            />
+          )}
+        />
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -145,26 +267,37 @@ export function AnnouncementsScreen() {
 function Composer({
   styles,
   colors,
-  onPosted,
+  title,
+  body,
+  sending,
+  saving,
+  saved,
+  canSend,
+  canSave,
+  onChangeTitle,
+  onChangeBody,
+  onSave,
+  onSend,
+  onUseSaved,
+  onRemoveSaved,
 }: {
   styles: ReturnType<typeof announcementStyles>;
   colors: ThemeColors;
-  onPosted: () => Promise<void> | void;
+  title: string;
+  body: string;
+  sending: boolean;
+  saving: boolean;
+  saved: SavedAnnouncementTemplate[];
+  canSend: boolean;
+  canSave: boolean;
+  onChangeTitle: (t: string) => void;
+  onChangeBody: (t: string) => void;
+  onSave: () => void;
+  onSend: () => void;
+  onUseSaved: (item: SavedAnnouncementTemplate) => void;
+  onRemoveSaved: (id: string) => Promise<void>;
 }) {
   const shared = useSharedStyles();
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [sending, setSending] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState<SavedAnnouncementTemplate[]>([]);
-
-  useEffect(() => {
-    void loadSavedAnnouncementTemplates().then(setSaved);
-  }, []);
-
-  const canSend = title.trim().length > 0 && body.trim().length > 0 && !sending;
-  const canSave =
-    title.trim().length > 0 && body.trim().length > 0 && !saving && !sending;
 
   return (
     <View style={styles.composer}>
@@ -174,7 +307,8 @@ function Composer({
         placeholderTextColor={colors.textDim}
         value={title}
         maxLength={TITLE_MAX}
-        onChangeText={setTitle}
+        onChangeText={onChangeTitle}
+        blurOnSubmit={false}
         accessibilityLabel="Announcement title"
       />
       <TextInput
@@ -183,82 +317,55 @@ function Composer({
         placeholderTextColor={colors.textDim}
         value={body}
         maxLength={BODY_MAX}
-        onChangeText={setBody}
+        onChangeText={onChangeBody}
         multiline
         textAlignVertical="top"
+        blurOnSubmit={false}
         accessibilityLabel="Announcement message"
       />
       {/* Said plainly before the tap, not after — this pushes to every
           member's phone and cannot be unsent. */}
       <Text style={styles.composerNote}>
-        Sends a notification to every member of your guild. Save only what you
-        reuse — tap a saved title below to fill the fields.
+        Send notifies every guild member. Save only stores a local draft for
+        reuse — nothing is posted until you tap Send. Tap a saved title (or a
+        past post) to fill the fields again.
       </Text>
-      <View style={styles.composerActions}>
-        <SoftPressable
-          style={[styles.saveBtn, !canSave && styles.buttonDisabled]}
-          disabled={!canSave}
-          onPress={async () => {
-            setSaving(true);
-            try {
-              const next = await saveAnnouncementTemplate({ title, body });
-              setSaved(next);
-              emitToast('Saved — tap its title next time to reuse');
-            } catch {
-              emitToast('Could not save that');
-            } finally {
-              setSaving(false);
-            }
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Save announcement for reuse"
-          pressScale={0.95}
-        >
-          <AppIcon
-            name={saving ? 'star' : 'star-outline'}
-            size={20}
-            color={colors.chrome}
-          />
-          <Text style={[styles.saveBtnText, { color: colors.chrome }]}>
-            {saving ? 'Saving…' : 'Save'}
-          </Text>
-        </SoftPressable>
-        <SoftPressable
-          style={[
-            shared.button,
-            styles.sendBtn,
-            !canSend && styles.buttonDisabled,
-          ]}
-          disabled={!canSend}
-          onPress={async () => {
-            setSending(true);
-            try {
-              await api.createAnnouncement({
-                title: title.trim(),
-                body: body.trim(),
-              });
-              setTitle('');
-              setBody('');
-              emitToast('Sent to everyone in your guild');
-              await onPosted();
-            } catch (err) {
-              emitToast(
-                apiErrorMessage(err, 'Could not send that announcement'),
-              );
-            } finally {
-              setSending(false);
-            }
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Send announcement to everyone"
-        >
-          {sending ? (
-            <ActivityIndicator color={colors.chromeInk} size="small" />
-          ) : (
-            <ButtonLabel icon="send">Send to everyone</ButtonLabel>
-          )}
-        </SoftPressable>
-      </View>
+      {/* Send alone in the primary row so a keyboard resize cannot land a
+          stray thumb on Save. Save sits as a quieter control underneath. */}
+      <SoftPressable
+        style={[
+          shared.button,
+          styles.sendBtn,
+          !canSend && styles.buttonDisabled,
+        ]}
+        disabled={!canSend}
+        onPress={onSend}
+        accessibilityRole="button"
+        accessibilityLabel="Send announcement to everyone"
+      >
+        {sending ? (
+          <ActivityIndicator color={colors.chromeInk} size="small" />
+        ) : (
+          <ButtonLabel icon="send">Send to everyone</ButtonLabel>
+        )}
+      </SoftPressable>
+      <SoftPressable
+        style={[styles.saveBtn, !canSave && styles.buttonDisabled]}
+        disabled={!canSave}
+        onPress={onSave}
+        accessibilityRole="button"
+        accessibilityLabel="Save announcement for reuse"
+        pressScale={0.95}
+      >
+        <AppIcon
+          name={saving ? 'star' : 'star-outline'}
+          size={18}
+          color={colors.chrome}
+        />
+        <Text style={[styles.saveBtnText, { color: colors.chrome }]}>
+          {saving ? 'Saving…' : 'Save for reuse (does not send)'}
+        </Text>
+      </SoftPressable>
 
       {saved.length > 0 ? (
         <View style={styles.savedList}>
@@ -267,11 +374,7 @@ function Composer({
             <View key={item.id} style={styles.savedRow}>
               <SoftPressable
                 style={styles.savedTitleHit}
-                onPress={() => {
-                  setTitle(item.title);
-                  setBody(item.body);
-                  emitToast(`Loaded “${item.title}”`);
-                }}
+                onPress={() => onUseSaved(item)}
                 accessibilityRole="button"
                 accessibilityLabel={`Use saved announcement ${item.title}`}
                 pressScale={0.98}
@@ -282,10 +385,7 @@ function Composer({
                 </Text>
               </SoftPressable>
               <SoftPressable
-                onPress={async () => {
-                  const next = await removeSavedAnnouncementTemplate(item.id);
-                  setSaved(next);
-                }}
+                onPress={() => void onRemoveSaved(item.id)}
                 hitSlop={10}
                 accessibilityRole="button"
                 accessibilityLabel={`Remove saved ${item.title}`}
@@ -305,25 +405,30 @@ function AnnouncementCard({
   announcement,
   isNew,
   canDelete,
+  canReuse,
   styles,
+  onReuse,
   onDeleted,
 }: {
   announcement: Announcement;
   isNew: boolean;
   canDelete: boolean;
+  canReuse: boolean;
   styles: ReturnType<typeof announcementStyles>;
+  onReuse: () => void;
   onDeleted: () => Promise<void> | void;
 }) {
   const [busy, setBusy] = useState(false);
 
-  return (
-    <View style={[styles.card, isNew && styles.cardUnread]}>
+  const body = (
+    <>
       <View style={styles.cardHead}>
         <View style={styles.cardHeadMain}>
           <Text style={styles.cardTitle}>{announcement.title}</Text>
           <Text style={styles.cardMeta}>
             {announcement.author?.name ?? 'Former owner'} ·{' '}
             {formatWhen(announcement.createdAt)}
+            {canReuse ? ' · Tap to reuse' : ''}
           </Text>
         </View>
         {isNew ? (
@@ -333,6 +438,24 @@ function AnnouncementCard({
         ) : null}
       </View>
       <Text style={styles.cardBody}>{announcement.body}</Text>
+    </>
+  );
+
+  return (
+    <View style={[styles.card, isNew && styles.cardUnread]}>
+      {canReuse ? (
+        <SoftPressable
+          onPress={onReuse}
+          pressScale={0.99}
+          haptic={false}
+          accessibilityRole="button"
+          accessibilityLabel={`Reuse announcement ${announcement.title}`}
+        >
+          {body}
+        </SoftPressable>
+      ) : (
+        body
+      )}
       {canDelete ? (
         <SoftPressable
           style={styles.remove}
@@ -382,6 +505,7 @@ function formatWhen(iso: string): string {
 
 function announcementStyles(c: ThemeColors) {
   return {
+    flex: { flex: 1 },
     list: { flex: 1, backgroundColor: 'transparent' },
     content: { padding: 24, paddingBottom: 40 },
     hint: {
@@ -397,23 +521,19 @@ function announcementStyles(c: ThemeColors) {
     composer: { gap: 10, marginBottom: 22 },
     composerBody: { minHeight: 96, paddingTop: 12 },
     composerNote: { color: c.textMuted, fontSize: 12 },
-    composerActions: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 10,
-    },
     saveBtn: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
+      justifyContent: 'center' as const,
       gap: 6,
       paddingHorizontal: 12,
-      paddingVertical: 12,
+      paddingVertical: 10,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: c.border,
     },
-    saveBtnText: { fontSize: 14, fontWeight: '700' as const },
-    sendBtn: { flex: 1, marginBottom: 0 },
+    saveBtnText: { fontSize: 13, fontWeight: '600' as const },
+    sendBtn: { marginBottom: 0 },
     buttonDisabled: { opacity: 0.5 },
 
     savedList: { marginTop: 4, gap: 0 },

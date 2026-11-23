@@ -4,6 +4,8 @@ import { postAuthPath } from './auth/postAuthPath';
 import { AppShell } from './layout/AppShell';
 import { AdminPage } from './pages/admin/AdminPage';
 import { AnnouncementsPage } from './pages/AnnouncementsPage';
+import { AchievementsPage } from './pages/AchievementsPage';
+import { OrgSettingsPage } from './pages/OrgSettingsPage';
 import { ChatPage } from './pages/ChatPage';
 import { GuildSpacePage } from './pages/guild/GuildSpacePage';
 import { HomePage } from './pages/HomePage';
@@ -175,6 +177,22 @@ export default function App() {
           element={
             <RequireProfileComplete>
               <AnnouncementsPage />
+            </RequireProfileComplete>
+          }
+        />
+        <Route
+          path="/achievements"
+          element={
+            <RequireProfileComplete>
+              <AchievementsPage />
+            </RequireProfileComplete>
+          }
+        />
+        <Route
+          path="/org-settings"
+          element={
+            <RequireProfileComplete>
+              <OrgSettingsPage />
             </RequireProfileComplete>
           }
         />

@@ -8,6 +8,7 @@ import {
   announcementsItem,
   useUnreadAnnouncements,
 } from './announcementsDrawerItem';
+import { achievementsItem } from './achievementsDrawerItem';
 import { drawerItemKeyForRoute, withActiveDrawerItem } from './drawerActive';
 
 type MainNav = NativeStackNavigationProp<MainStackParamList, keyof MainStackParamList>;
@@ -133,6 +134,7 @@ export function useOrgDrawer() {
       split: true,
       items: [
         announcementsItem(navigation, 'OrgHome', unreadAnnouncements),
+        achievementsItem(navigation, 'OrgHome'),
         ...(isOwner
           ? [
               {
@@ -247,6 +249,7 @@ export function useGuildDrawer() {
         split: true,
         items: [
           announcementsItem(navigation, 'GuildHome', unreadAnnouncements),
+          achievementsItem(navigation, 'GuildHome'),
           {
             key: 'guildHome',
             label: 'Guild Roster',

@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -26,6 +27,7 @@ import { SkeletonList } from '../ui/Skeleton';
 import { ListSearchField } from '../ui/ListSearchField';
 import { useDebouncedValue } from '../ui/useDebouncedValue';
 import { matchesPersonQuery } from '../ui/usePagedSearch';
+import { useSharedStyles } from './shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgSettings'>;
 
@@ -34,8 +36,11 @@ type Props = NativeStackScreenProps<MainStackParamList, 'OrgSettings'>;
 export function OrgSettingsScreen({ navigation }: Props) {
   const { refreshOrg } = useAuth();
   const { colors } = useTheme();
+  const shared = useSharedStyles();
   const styles = useThemedStyles(orgSettingsStyles);
   const [detail, setDetail] = useState<OrgDetail | null>(null);
+  const [ffDraft, setFfDraft] = useState('');
+  const [ffSaving, setFfSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [ownerSearch, setOwnerSearch] = useState('');
   const ownerQuery = useDebouncedValue(ownerSearch.trim().toLowerCase(), 300);
@@ -44,6 +49,7 @@ export function OrgSettingsScreen({ navigation }: Props) {
   const load = useCallback(async () => {
     const data = await orgApi.getMyOrg();
     setDetail(data);
+    setFfDraft(data.freeFireGuildId ?? '');
   }, []);
 
   useEffect(() => {
@@ -142,6 +148,70 @@ export function OrgSettingsScreen({ navigation }: Props) {
             value={detail.historyVisibleToNewMembers}
             onValueChange={(v) => void onToggleHistory(v)}
           />
+        </View>
+
+        <View style={staticStyles.card}>
+          <Text style={styles.settingLabel}>Free Fire Guild ID</Text>
+          <Text style={styles.settingHint}>
+            In-game guild number teammates can search in Free Fire. Shown with
+            a copy button on the Guild screen.
+          </Text>
+          <TextInput
+            style={[
+              shared.input,
+              {
+                color: colors.text,
+                borderColor: colors.border,
+                backgroundColor: colors.surface,
+              },
+            ]}
+            value={ffDraft}
+            onChangeText={(t) => setFfDraft(t.replace(/\D/g, ''))}
+            placeholder="e.g. 3015174327"
+            placeholderTextColor={colors.textDim}
+            keyboardType="number-pad"
+            accessibilityLabel="Free Fire guild ID"
+          />
+          <SoftPressable
+            style={[
+              styles.transferBtn,
+              (ffSaving || ffDraft === (detail.freeFireGuildId ?? '')) &&
+                styles.transferBtnDisabled,
+            ]}
+            disabled={ffSaving || ffDraft === (detail.freeFireGuildId ?? '')}
+            onPress={() => {
+              void (async () => {
+                setFfSaving(true);
+                try {
+                  const res = await orgApi.setFreeFireGuildId(
+                    ffDraft.trim() || null,
+                  );
+                  setDetail((prev) =>
+                    prev
+                      ? { ...prev, freeFireGuildId: res.freeFireGuildId }
+                      : prev,
+                  );
+                  setFfDraft(res.freeFireGuildId ?? '');
+                  showToast(
+                    res.freeFireGuildId
+                      ? 'Free Fire guild ID saved'
+                      : 'Free Fire guild ID cleared',
+                  );
+                } catch {
+                  /* API error toasted by axios interceptor */
+                } finally {
+                  setFfSaving(false);
+                }
+              })();
+            }}
+            pressScale={0.97}
+            accessibilityRole="button"
+            accessibilityLabel="Save Free Fire guild ID"
+          >
+            <Text style={styles.transferBtnText}>
+              {ffSaving ? 'Saving…' : 'Save Guild ID'}
+            </Text>
+          </SoftPressable>
         </View>
 
         <View style={staticStyles.card}>

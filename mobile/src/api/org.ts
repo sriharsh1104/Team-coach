@@ -1,4 +1,6 @@
 import { apiClient } from './client';
+import { appendFileToFormData } from './uploadFile';
+import { compressForUpload } from '../media/compressForUpload';
 import {
   GuildAchievement,
   GuildDetail,
@@ -203,20 +205,40 @@ export function removeFromGuildRoster(targetUserId: string) {
     .then(() => undefined);
 }
 
-export function createGuildAchievement(input: {
+export async function createGuildAchievement(input: {
   name: string;
   date: string;
   standing: string;
-  points?: number;
   grandFinalLink?: string;
+  pointsTable?: { uri: string; fileName: string; mimeType: string };
 }) {
+  const form = new FormData();
+  form.append('name', input.name);
+  form.append('date', input.date);
+  form.append('standing', input.standing);
+  if (input.grandFinalLink) form.append('grandFinalLink', input.grandFinalLink);
+  if (input.pointsTable) {
+    const prepared = await compressForUpload(input.pointsTable);
+    await appendFileToFormData(
+      form,
+      {
+        uri: prepared.uri,
+        name: prepared.fileName,
+        type: prepared.mimeType,
+      },
+      'pointsTable',
+    );
+  }
   return apiClient
-    .post<GuildAchievement>('/orgs/guild/achievements', {
-      name: input.name,
-      date: input.date,
-      standing: input.standing,
-      ...(input.points != null ? { points: input.points } : {}),
-      ...(input.grandFinalLink ? { grandFinalLink: input.grandFinalLink } : {}),
+    .post<GuildAchievement>('/orgs/guild/achievements', form, {
+      timeout: 120_000,
+      transformRequest: (data, headers) => {
+        if (headers && typeof headers === 'object') {
+          delete (headers as Record<string, unknown>)['Content-Type'];
+          delete (headers as Record<string, unknown>)['content-type'];
+        }
+        return data;
+      },
     })
     .then((res) => res.data);
 }

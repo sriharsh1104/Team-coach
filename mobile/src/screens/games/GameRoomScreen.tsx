@@ -18,6 +18,7 @@ import { resolveMediaUrl } from '../../api/client';
 import { confirmAsync } from '../../ui/confirmAsync';
 import { FadeIn } from '../../ui/FadeIn';
 import { BootsBoard } from './BootsBoard';
+import { ChessBoard } from './ChessBoard';
 import { LudoBoard, ludoColorHex } from './LudoBoard';
 import { prefer3DByDefault, supports3D } from '../../games/three/GameCanvas';
 import { RpsBoard } from './RpsBoard';
@@ -264,6 +265,25 @@ export function GameRoomScreen() {
             onReady={() => void act(() => games.bootsReady(room.id))}
             onFire={(col, row) =>
               void act(() => games.bootsFire(room.id, { col, row }))
+            }
+          />
+        </ScrollView>
+      </Screen>
+    );
+  }
+  if (room.status === 'playing' && room.chess) {
+    return (
+      <Screen>
+        {header}
+        <ScrollView contentContainerStyle={staticStyles.lobby}>
+          <ChessBoard
+            room={room}
+            meId={meId}
+            busy={busy}
+            mode={mode}
+            onFallback={() => setMode('2d')}
+            onMove={(from, to, promotion) =>
+              void act(() => games.chessMove(room.id, from, to, promotion))
             }
           />
         </ScrollView>

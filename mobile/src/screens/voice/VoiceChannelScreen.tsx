@@ -501,10 +501,20 @@ function VoicePresetPicker({ inChannel }: { inChannel: boolean }) {
   // and hearing no change used to be indistinguishable from the effect never
   // having attached — now the picker says which it is.
   const [live, setLive] = useState<boolean | null>(null);
+  /**
+   * Why it is not working, when it is not.
+   *
+   * The native side already distinguishes four quite different failures, but
+   * this picker used to collapse all of them into one boolean and print the
+   * same "leave and rejoin" line for every one — advice that only helps for
+   * exactly one of them. Each now says what actually happened.
+   */
+  const [reason, setReason] = useState<string | null>(null);
 
   useEffect(() => {
     if (!available || preset === 'off' || !inChannel) {
       setLive(null);
+      setReason(null);
       return;
     }
     // Poll briefly after a change: frames have to actually arrive before we
@@ -516,10 +526,28 @@ function VoicePresetPicker({ inChannel }: { inChannel: boolean }) {
       if (cancelled || !status) return;
       if (status.layoutUnsupported) {
         setLive(false);
+        setReason(
+          `Mic audio arrived in a layout the effect cannot read (${status.bands} bands · ${status.frames} frames · ${status.bandRate} Hz). Send this line — it is a build/device mismatch, not a setting.`,
+        );
         return;
       }
-      if (status.processedFrames > seen) setLive(true);
-      else if (status.attached) setLive(false);
+      if (status.processedFrames > seen) {
+        setLive(true);
+        setReason(null);
+        return;
+      }
+      if (!status.attached) {
+        // The controller only exists once WebRTC has built its audio pipeline.
+        setLive(false);
+        setReason(
+          'Effect is not attached to the mic pipeline yet. Leave voice and rejoin — it attaches when the call starts.',
+        );
+        return;
+      }
+      setLive(false);
+      setReason(
+        'Attached, but no mic audio is reaching the effect. Check that the mic is not muted and that microphone permission is granted.',
+      );
     }, 700);
     return () => {
       cancelled = true;
@@ -527,7 +555,20 @@ function VoicePresetPicker({ inChannel }: { inChannel: boolean }) {
     };
   }, [available, preset, inChannel]);
 
-  if (!available) return null;
+  // Silently rendering nothing was its own support ticket: "where did the
+  // voice changer go?". It is Android-only and needs a real build, so say so.
+  if (!available) {
+    return (
+      <View style={styles.presetBlock}>
+        <Text style={themed.sectionTitle}>Voice Morph</Text>
+        <Text style={themed.mutedHint}>
+          {Platform.OS === 'android'
+            ? 'Not in this build — install the APK built with the voice module (Expo Go cannot load it).'
+            : 'Android only for now.'}
+        </Text>
+      </View>
+    );
+  }
 
   const choose = (id: VoicePreset) => {
     if (id === preset) return;
@@ -570,9 +611,7 @@ function VoicePresetPicker({ inChannel }: { inChannel: boolean }) {
         <Text style={themed.mutedHint}>Morph live — teammates hear the changed voice.</Text>
       )}
       {preset !== 'off' && inChannel && live === false && (
-        <Text style={themed.mutedHint}>
-          Morph not reaching the mic — leave and rejoin voice (needs Android app build, not Expo Go).
-        </Text>
+        <Text style={themed.mutedHint}>{reason ?? 'Morph not reaching the mic.'}</Text>
       )}
     </View>
   );
