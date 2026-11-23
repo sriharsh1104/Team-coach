@@ -21,7 +21,12 @@ describe('useVoiceOccupancy', () => {
   it('loads occupancy for the requested room', async () => {
     const { result } = renderHook(() => useVoiceOccupancy('team'));
     await waitFor(() => expect(result.current.occupancy.count).toBe(1));
-    expect(mockedVoiceApi.getVoiceOccupancy).toHaveBeenCalledWith('team');
+    // peerId is passed through for every room kind — undefined for the
+    // shared rooms, the other person's id for a 1-on-1.
+    expect(mockedVoiceApi.getVoiceOccupancy).toHaveBeenCalledWith(
+      'team',
+      undefined,
+    );
     expect(result.current.occupancy.participants[0].name).toBe('Bob');
   });
 

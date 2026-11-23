@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -47,13 +47,40 @@ export function MusicSharePicker({ visible, onClose, onPick }: Props) {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
 
+  // onClose comes in as an inline arrow from the voice screen, so its identity
+  // changes on every one of that screen's (very frequent, mid-call) renders.
+  // Holding it in a ref keeps `load` stable — depending on the prop directly
+  // re-ran this whole effect on every parent render, which re-read the entire
+  // music library each time and made the sheet flicker.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  /** Guards against a second load starting while one is still running. */
+  const loadingRef = useRef(false);
+
   const load = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     try {
-      const perm = await MediaLibrary.requestPermissionsAsync();
-      if (!perm.granted) {
+      // Ask only when we do not already hold it. requestPermissionsAsync can
+      // put the app through a background/foreground cycle, and every such
+      // cycle makes the app re-read /auth/me and re-register the push token —
+      // enough of them in a row and the API rate limit starts answering 429,
+      // which surfaced as "throttled" and then "you are signed out".
+      // Android 13+ needs the audio bucket named explicitly (READ_MEDIA_AUDIO);
+      // asking without it comes back denied no matter what the user taps.
+      const audioOnly = { granularPermissions: ['audio' as const] };
+      let granted = (
+        await MediaLibrary.getPermissionsAsync(false, audioOnly as never)
+      ).granted;
+      if (!granted) {
+        granted = (
+          await MediaLibrary.requestPermissionsAsync(false, audioOnly as never)
+        ).granted;
+      }
+      if (!granted) {
         emitToast('Allow media access to share music');
-        onClose();
+        onCloseRef.current();
         return;
       }
       const page = await MediaLibrary.getAssetsAsync({
@@ -61,28 +88,28 @@ export function MusicSharePicker({ visible, onClose, onPick }: Props) {
         first: 80,
         sortBy: [[MediaLibrary.SortBy.creationTime, false]],
       });
-      const mapped: Row[] = [];
-      for (const asset of page.assets) {
-        const info = await MediaLibrary.getAssetInfoAsync(asset);
-        const uri = info.localUri ?? info.uri;
-        if (!uri) continue;
-        mapped.push({
+      // No getAssetInfoAsync per row: that was 80 serial native round-trips
+      // just to draw a list. getAssetsAsync already returns a playable uri,
+      // and pick() resolves the real localUri for the one track chosen.
+      const mapped: Row[] = page.assets
+        .filter((asset) => !!asset.uri)
+        .map((asset) => ({
           id: asset.id,
           title: asset.filename?.replace(/\.[^.]+$/, '') || 'Track',
-          durationMs: asset.duration * 1000,
-          uri,
+          durationMs: (asset.duration ?? 0) * 1000,
+          uri: asset.uri,
           mime: guessMime(asset.filename),
-        });
-      }
+        }));
       setRows(mapped);
     } catch (err) {
       console.warn('music library load failed:', err);
       emitToast('Could not open your music library');
-      onClose();
+      onCloseRef.current();
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     if (visible) void load();
@@ -93,7 +120,8 @@ export function MusicSharePicker({ visible, onClose, onPick }: Props) {
     try {
       const info = await MediaLibrary.getAssetInfoAsync(row.id);
       const uri = info.localUri ?? info.uri ?? row.uri;
-      // Soft size check via duration heuristic is unreliable; engine enforces 2MB.
+      // No size check here — a duration heuristic is unreliable, and the
+      // engine enforces the real MUSIC_MAX_BYTES limit on the actual file.
       onPick({ title: row.title, mime: row.mime, uri });
       onClose();
     } catch {

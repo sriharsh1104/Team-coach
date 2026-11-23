@@ -1,4 +1,8 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  AxiosError,
+  AxiosRequestConfig,
+  InternalAxiosRequestConfig,
+} from 'axios';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { OFFLINE_ERROR_CODE, isOnline } from '../net/networkStatus';
@@ -7,6 +11,18 @@ import { beginLoader, endLoader } from '../ui/loaderBus';
 import { emitToast } from '../ui/toastBus';
 import { getToken, TOKEN_STORAGE_KEY } from '../storage/tokenStorage';
 import { apiErrorMessage } from './apiErrorMessage';
+
+/**
+ * Per-request options callers may pass, including this file's own interceptor
+ * flags. Exported because `AxiosRequestConfig` alone rejects the flags, so a
+ * caller that wants to silence a toast could not type its own call.
+ */
+export type ApiRequestConfig = AxiosRequestConfig & {
+  /** Skip the global API-error toaster for this one request. */
+  skipErrorToast?: boolean;
+  /** Skip the global SES loader overlay for this one request. */
+  skipLoader?: boolean;
+};
 
 type RequestConfigWithFlags = InternalAxiosRequestConfig & {
   /** Set true to skip the global API-error toaster (e.g. silent /auth/me). */

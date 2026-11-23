@@ -87,7 +87,8 @@ export function UnoBoard({
   room,
   meId,
   busy,
-  mode = '3d',
+  // 2D unless the room explicitly asks for 3D — the room decides per platform.
+  mode = '2d',
   onFallback,
   onPlay,
   onChooseColor,

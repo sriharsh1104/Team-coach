@@ -144,6 +144,7 @@ jest.mock('expo-av', () => {
       IOSOutputFormat: { MPEG4AAC: 'aac ' },
       IOSAudioQuality: { MEDIUM: 0x20 },
       requestPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
+      getPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
       setAudioModeAsync: jest.fn().mockResolvedValue(undefined),
       Recording: {
         createAsync: jest.fn().mockResolvedValue({

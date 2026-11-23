@@ -17,6 +17,7 @@ import {
 import { isBiometricAvailable, promptBiometricAuth } from '../auth/biometrics';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
+import { PermissionsSection } from './PermissionsSection';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
 import { BookStage, useBookTabs } from '../ui/BookTabs';
@@ -328,6 +329,8 @@ export function AccountSettingsScreen({ navigation }: Props) {
             )
           }
         </BookStage>
+
+        <PermissionsSection />
       </ScrollView>
     </Screen>
   );

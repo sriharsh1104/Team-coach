@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { ApiRequestConfig, apiClient } from './client';
 
 export interface Announcement {
   id: string;
@@ -34,7 +34,7 @@ export function getUnreadCount() {
       // Platform admins (and anyone else with no guild) 404 here by design —
       // callers treat that as unread=0. Don't toast that expected miss.
       skipErrorToast: true,
-    })
+    } as ApiRequestConfig)
     .then((r) => r.data.unread);
 }
 

@@ -37,6 +37,18 @@ const expoConfig: ExpoConfig = {
     infoPlist: {
       NSMicrophoneUsageDescription:
         'Sacred Team Coach needs microphone access for team voice channels.',
+      // iOS CRASHES on the spot (and App Review rejects the build) if one of
+      // these is missing when the matching API is first called. The app does
+      // use all three: camera in voice video, the photo library for avatars /
+      // media posts / map screenshots, and the media library for Share Music.
+      NSCameraUsageDescription:
+        'Sacred Team Coach needs camera access so you can turn on video in voice channels.',
+      NSPhotoLibraryUsageDescription:
+        'Sacred Team Coach needs photo access so you can set an avatar and post screenshots to your team.',
+      NSPhotoLibraryAddUsageDescription:
+        'Sacred Team Coach saves screenshots and clips you capture back to your photo library.',
+      NSAppleMusicUsageDescription:
+        'Sacred Team Coach reads songs on this device so you can share one with your team in voice.',
       // Keep voice alive when the app is backgrounded (gaming sessions).
       UIBackgroundModes: ['audio', 'voip'],
       // Needed so Linking can prefer Instagram / Discord / YouTube / etc. apps
@@ -82,6 +94,10 @@ const expoConfig: ExpoConfig = {
       'CAMERA',
       'READ_MEDIA_IMAGES',
       'READ_MEDIA_VIDEO',
+      // Android 13 split storage into per-type permissions. Share Music lists
+      // audio files, so without this the music picker's permission request
+      // can never be granted on Android 13+ — it just comes back denied.
+      'READ_MEDIA_AUDIO',
     ],
     // Lets the OS shrink the window when the keyboard opens (this is
     // actually Expo's own default when unset — set explicitly so it's not

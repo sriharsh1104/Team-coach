@@ -977,11 +977,21 @@ export function useHostedVoiceChannel(
         err && typeof err === 'object' && 'message' in err
           ? String((err as { message?: unknown }).message ?? '')
           : '';
-      const denied = /NotAllowed|PermissionDenied|permission/i.test(message);
+      // Narrow on purpose. The old test was /NotAllowed|PermissionDenied|
+      // permission/i, and the bare word "permission" appears in plenty of
+      // unrelated WebRTC errors — so a camera that failed for some other
+      // reason told the user to "allow camera access in settings", which they
+      // had already done. On Android we have just confirmed the grant above,
+      // so a denial here can only mean the OS revoked it mid-call.
+      const denied = /NotAllowedError|PermissionDenied|NotReadableError/i.test(
+        message,
+      );
       emitToast(
         denied
           ? 'Camera blocked — allow camera access in settings'
-          : message || 'Could not start video',
+          : message
+            ? `Could not start video: ${message}`
+            : 'Could not start video',
       );
     });
   }, [status, isDirect, refreshCameras]);

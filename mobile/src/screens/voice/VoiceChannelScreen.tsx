@@ -583,11 +583,14 @@ function VoiceChannelBody({
   rooms,
   selectedRoom,
   onSelectRoom,
+  peer,
 }: {
   voice: VoiceChannelController;
   rooms?: VoiceRoom[];
   selectedRoom: VoiceRoom | null;
   onSelectRoom: (room: VoiceRoom) => void;
+  /** 1-on-1 only: the occupancy lookup is per-pair, so it needs the peer. */
+  peer?: { id: string; name: string };
 }) {
   const { user, org } = useAuth();
   const { colors } = useTheme();
@@ -595,8 +598,13 @@ function VoiceChannelBody({
   const inChannel = voice.status === 'connected';
   const roomKind = (voice.room ?? 'team') as VoiceRoomKind;
   // Peek at who is already inside before we join (Discord-style lobby).
+  // peerId matters for `direct`: a 1-on-1 room is identified by the pair, so
+  // without it the hook disables itself and the lobby shows an empty call —
+  // and on builds before that guard existed the request went out peer-less
+  // and came back "Pick who you want to call".
   const { occupancy, refresh: refreshOccupancy } = useVoiceOccupancy(roomKind, {
     enabled: !inChannel,
+    peerId: peer?.id,
   });
 
   // Joining is asynchronous and the mic can take a second to come up — a
@@ -1303,6 +1311,7 @@ function HostedVoiceChannel({
       rooms={hasMultipleRooms ? config.rooms : undefined}
       selectedRoom={selectedRoom}
       onSelectRoom={handleSelectRoom}
+      peer={peer}
     />
   );
 }
@@ -1378,6 +1387,8 @@ function SelfHostedVoiceChannel({
       rooms={undefined}
       selectedRoom={null}
       onSelectRoom={() => {}}
+      // No peer: this is the self-hosted (mediasoup) path, which rejects
+      // `direct` rooms outright — 1-on-1 only runs on hosted/LiveKit.
     />
   );
 }

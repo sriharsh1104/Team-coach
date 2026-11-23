@@ -44,11 +44,14 @@ export function GameRoomScreen() {
   // userId -> when I last notified them (server enforces 1 per 5 min per pair).
   const [notifiedAt, setNotifiedAt] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
-  // Android mid-range defaults to 2D (smoother); iOS / Uno prefer 3D when GL works.
-  const [mode, setMode] = useState<'2d' | '3d'>(() => {
-    if (route.params?.game === 'uno' && supports3D()) return '3d';
-    return prefer3DByDefault() ? '3d' : '2d';
-  });
+  // 2D is the default everywhere GL is expensive — Android mid-range included.
+  // Uno used to force 3D here regardless of platform, which contradicted
+  // prefer3DByDefault()'s whole reason for existing and left the Uno board
+  // blank or stuttering on exactly the phones that policy protects. The
+  // in-room 2D/3D toggle is still there for anyone who wants it.
+  const [mode, setMode] = useState<'2d' | '3d'>(() =>
+    prefer3DByDefault() ? '3d' : '2d',
+  );
   const meId = user?.id ?? '';
 
   const games = useGamesSocket({
