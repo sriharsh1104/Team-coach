@@ -1,69 +1,53 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
   Text,
   View,
-  FlatList,
-  RefreshControl,
-  Switch,
-  StyleSheet,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { useAuth } from '../auth/AuthContext';
-import { GuildMemberRow, MembershipRole, OrgDetail, OrgMember } from '../api/types';
+import { OrgDetail, OrgMember } from '../api/types';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { ThemeColors } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
-import { RoleSelector } from './RoleSelector';
+import { SoftPressable } from '../ui/SoftPressable';
+import { AppIcon } from '../ui/AppIcon';
 import { Toast, useToast } from '../ui/Toast';
 import { confirmAsync } from '../ui/confirmAsync';
-import { IconActionButton } from '../ui/IconActionButton';
+import { usePullToRefresh } from '../ui/usePullToRefresh';
+import { SkeletonList } from '../ui/Skeleton';
+import { ListSearchField } from '../ui/ListSearchField';
+import { useDebouncedValue } from '../ui/useDebouncedValue';
+import { matchesPersonQuery } from '../ui/usePagedSearch';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgSettings'>;
 
-function toOrgMember(member: GuildMemberRow): OrgMember {
-  return {
-    userId: member.userId,
-    name: member.name,
-    avatarUrl: null,
-    role: member.rosterRole,
-    isOwner: member.isOwner,
-    inGameName: member.inGameName,
-    inGameRoles: [],
-  };
-}
-
-// Owner-only screen — guild members listed with a serial number, one roster
-// role, and add / remove-from-roster. MembersScreen stays the roster viewer.
+/** Owner-only org settings. Roster seats stay on Members / Guild — this screen
+ * only holds org-wide toggles and ownership transfer. */
 export function OrgSettingsScreen({ navigation }: Props) {
-  const { refreshOrg, user } = useAuth();
+  const { refreshOrg } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(orgSettingsStyles);
   const [detail, setDetail] = useState<OrgDetail | null>(null);
-  const [guildMembers, setGuildMembers] = useState<GuildMemberRow[] | null>(null);
-  const [draftRole, setDraftRole] = useState<Record<string, MembershipRole>>({});
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [ownerSearch, setOwnerSearch] = useState('');
+  const ownerQuery = useDebouncedValue(ownerSearch.trim().toLowerCase(), 300);
   const { message: toastMessage, showToast } = useToast();
 
   const load = useCallback(async () => {
-    const [data, guild] = await Promise.all([
-      orgApi.getMyOrg(),
-      (async () => {
-        try {
-          return await orgApi.getMyGuild();
-        } catch {
-          return null;
-        }
-      })(),
-    ]);
+    const data = await orgApi.getMyOrg();
     setDetail(data);
-    setGuildMembers(guild?.members ?? null);
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   useEffect(() => {
@@ -73,27 +57,47 @@ export function OrgSettingsScreen({ navigation }: Props) {
     }
   }, [detail, navigation]);
 
-  const onRefresh = async () => {
-    setIsRefreshing(true);
-    await load();
-    setIsRefreshing(false);
-  };
+  const refreshControl = usePullToRefresh(load);
 
-  const onChangeRole = async (member: OrgMember, role: MembershipRole) => {
-    if (role === member.role) return;
+  // OrgDetail members are always on the roster; filter non-owners only.
+  const transferCandidates: OrgMember[] = useMemo(
+    () => (detail?.members ?? []).filter((m) => !m.isOwner),
+    [detail?.members],
+  );
+  const filteredCandidates = useMemo(
+    () =>
+      transferCandidates.filter((m) =>
+        matchesPersonQuery(ownerQuery, {
+          name: m.name,
+          email: m.email,
+          inGameName: m.inGameName,
+        }),
+      ),
+    [transferCandidates, ownerQuery],
+  );
+
+  const onToggleHistory = async (value: boolean) => {
+    setDetail((prev) => (prev ? { ...prev, historyVisibleToNewMembers: value } : prev));
     try {
-      await orgApi.changeMemberRole(member.userId, role);
-      showToast(`${member.name} is now ${role.charAt(0)}${role.slice(1).toLowerCase()}`);
-      await refreshOrg();
-      await load();
-    } catch (err: any) {
+      await orgApi.updateOrgSettings(value);
+      showToast(
+        value
+          ? 'New members can now see full chat history'
+          : 'New members only see chat from when they join',
+      );
+    } catch {
+      setDetail((prev) =>
+        prev ? { ...prev, historyVisibleToNewMembers: !value } : prev,
+      );
       /* API error toasted by axios interceptor */
     }
   };
 
-  const onMakeOwner = async (member: OrgMember) => {
+  const onPickOwner = async (member: OrgMember) => {
+    setPickerOpen(false);
+    setOwnerSearch('');
     const confirmed = await confirmAsync(
-      'Transfer ownership?',
+      'Transfer Ownership?',
       `Do you want to transfer ownership to ${member.name}? You will no longer be the owner.`,
       'Yes',
       'No',
@@ -101,179 +105,181 @@ export function OrgSettingsScreen({ navigation }: Props) {
     if (!confirmed) return;
     try {
       await orgApi.transferOwnership(member.userId);
+      showToast(`${member.name} is now the owner`);
       await refreshOrg();
       await load();
-    } catch (err: any) {
+    } catch {
       /* API error toasted by axios interceptor */
     }
   };
 
-  const onToggleHistory = async (value: boolean) => {
-    setDetail((prev) => (prev ? { ...prev, historyVisibleToNewMembers: value } : prev));
-    try {
-      await orgApi.updateOrgSettings(value);
-      showToast(
-        value ? 'New members can now see full chat history' : 'New members only see chat from when they join',
-      );
-    } catch (err: any) {
-      setDetail((prev) => (prev ? { ...prev, historyVisibleToNewMembers: !value } : prev));
-      /* API error toasted by axios interceptor */
-    }
-  };
-
-  const onAddToRoster = async (member: GuildMemberRow) => {
-    const role = draftRole[member.userId] ?? 'PLAYER';
-    const confirmed = await confirmAsync(
-      'Add to Roster',
-      `Add ${member.name} to the roster as ${role.toLowerCase()}?`,
-      'Yes',
-      'No',
-      false,
+  if (!detail) {
+    return (
+      <Screen>
+        <View style={staticStyles.loading}>
+          <SkeletonList count={3} avatar={false} />
+        </View>
+      </Screen>
     );
-    if (!confirmed) return;
-    try {
-      await orgApi.addGuildMemberToRoster(member.userId, role);
-      showToast(`${member.name} added to roster`);
-      await refreshOrg();
-      await load();
-    } catch (err: any) {
-      /* API error toasted by axios interceptor */
-    }
-  };
-
-  const onRemoveFromRoster = async (member: GuildMemberRow) => {
-    const confirmed = await confirmAsync(
-      'Remove from Roster',
-      `Remove ${member.name} from the roster? They stay in the guild and can be added again.`,
-      'Yes',
-      'No',
-    );
-    if (!confirmed) return;
-    try {
-      await orgApi.removeFromGuildRoster(member.userId);
-      showToast(`${member.name} removed from roster`);
-      await refreshOrg();
-      await load();
-    } catch (err: any) {
-      /* API error toasted by axios interceptor */
-    }
-  };
-
-  const rows: GuildMemberRow[] =
-    guildMembers ??
-    (detail?.members ?? []).map((member) => ({
-      userId: member.userId,
-      name: member.name,
-      inGameName: member.inGameName ?? null,
-      guildRole: 'MEMBER' as const,
-      onRoster: true,
-      rosterRole: member.role,
-      isOwner: member.isOwner,
-    }));
-
-  const orgById = new Map((detail?.members ?? []).map((member) => [member.userId, member]));
+  }
 
   return (
     <Screen>
-      <FlatList
-        style={staticStyles.list}
-        data={rows}
-        keyExtractor={(item) => item.userId}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.chrome}
+      <ScrollView
+        style={staticStyles.scroll}
+        contentContainerStyle={staticStyles.content}
+        refreshControl={refreshControl}
+      >
+        <View style={staticStyles.settingRow}>
+          <View style={staticStyles.settingTextCol}>
+            <Text style={styles.settingLabel}>Chat History For New Members</Text>
+            <Text style={styles.settingHint}>
+              Let a new member see Team Chat messages from before they joined.
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Chat history for new members"
+            value={detail.historyVisibleToNewMembers}
+            onValueChange={(v) => void onToggleHistory(v)}
           />
-        }
-        ListHeaderComponent={
-          <>
-            {detail && (
-              <View style={staticStyles.settingRow}>
-                <View style={staticStyles.settingTextCol}>
-                  <Text style={styles.settingLabel}>Chat history for new members</Text>
-                  <Text style={styles.settingHint}>
-                    Let a new member see Team Chat messages from before they joined.
-                  </Text>
-                </View>
-                <Switch
-                  accessibilityLabel="Chat history for new members"
-                  value={detail.historyVisibleToNewMembers}
-                  onValueChange={onToggleHistory}
-                />
-              </View>
-            )}
-            <Text style={styles.sectionHeader}>Members</Text>
-          </>
-        }
-        contentContainerStyle={staticStyles.listContent}
-        renderItem={({ item, index }) => {
-          const orgMember = orgById.get(item.userId);
-          const seatRole = orgMember?.role ?? item.rosterRole;
-          const selectedRole = item.onRoster
-            ? seatRole
-            : (draftRole[item.userId] ?? 'PLAYER');
-          const canRemove =
-            item.onRoster && !item.isOwner && item.userId !== user?.id;
-          return (
-            <View style={staticStyles.memberCard}>
-              <View style={staticStyles.nameRow}>
-                <Text style={styles.serial}>{index + 1}</Text>
-                <Text style={styles.memberName}>
-                  {item.name}
-                  {item.isOwner ? ' (Owner)' : ''}
-                </Text>
-              </View>
-              <RoleSelector
-                value={selectedRole}
-                onChange={(role) => {
-                  if (item.onRoster && orgMember) {
-                    void onChangeRole(orgMember, role);
-                    return;
-                  }
-                  setDraftRole((prev) => ({ ...prev, [item.userId]: role }));
-                }}
-              />
-              <View style={staticStyles.actionsRow}>
-                {!item.onRoster ? (
-                  <IconActionButton
-                    icon="person-add"
-                    label={`Add ${item.name} to roster`}
-                    tooltip="Add to Roster"
-                    color={colors.link}
-                    onPress={() => void onAddToRoster(item)}
-                    style={{
-                      width: undefined,
-                      minWidth: 44,
-                      paddingHorizontal: 12,
-                      backgroundColor: colors.surface,
-                      borderColor: colors.border,
-                    }}
-                  />
-                ) : null}
-                {canRemove ? (
-                  <IconActionButton
-                    icon="person-remove"
-                    label={`Remove ${item.name} from roster`}
-                    tooltip="Remove from Roster"
-                    danger
-                    onPress={() => void onRemoveFromRoster(item)}
-                  />
-                ) : null}
-                {item.onRoster && !item.isOwner ? (
-                  <IconActionButton
-                    icon="crown-outline"
-                    label={`Make ${item.name} owner`}
-                    tooltip="Make Owner"
-                    color={colors.link}
-                    onPress={() => onMakeOwner(orgMember ?? toOrgMember(item))}
-                  />
-                ) : null}
-              </View>
+        </View>
+
+        <View style={staticStyles.card}>
+          <Text style={styles.settingLabel}>Transfer Ownership</Text>
+          <Text style={styles.settingHint}>
+            Pass ownership to another roster member. You will lose owner
+            controls.
+          </Text>
+          <SoftPressable
+            style={[
+              styles.transferBtn,
+              transferCandidates.length === 0 && styles.transferBtnDisabled,
+            ]}
+            disabled={transferCandidates.length === 0}
+            onPress={() => {
+              setOwnerSearch('');
+              setPickerOpen(true);
+            }}
+            pressScale={0.97}
+            accessibilityRole="button"
+            accessibilityLabel="Transfer ownership"
+          >
+            <View style={staticStyles.transferBtnInner}>
+              <AppIcon name="crown-outline" size={18} color={colors.chromeInk} />
+              <Text style={styles.transferBtnText}>Choose New Owner</Text>
             </View>
-          );
+          </SoftPressable>
+          {transferCandidates.length === 0 ? (
+            <Text style={styles.emptyHint}>
+              No other roster members yet — add someone before transferring.
+            </Text>
+          ) : null}
+        </View>
+      </ScrollView>
+
+      <Modal
+        visible={pickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setPickerOpen(false);
+          setOwnerSearch('');
         }}
-      />
+        statusBarTranslucent
+      >
+        <View style={staticStyles.backdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              setPickerOpen(false);
+              setOwnerSearch('');
+            }}
+            accessibilityLabel="Dismiss"
+          />
+          <View
+            style={[
+              staticStyles.modalCard,
+              { backgroundColor: colors.bg, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[staticStyles.modalTitle, { color: colors.text }]}>
+              Choose New Owner
+            </Text>
+            <Text style={[staticStyles.modalMessage, { color: colors.textMuted }]}>
+              Select a roster member, then confirm the transfer.
+            </Text>
+            <ListSearchField
+              value={ownerSearch}
+              onChangeText={setOwnerSearch}
+              placeholder="Search by name or email"
+              accessibilityLabel="Search owner candidates"
+            />
+            <ScrollView
+              style={staticStyles.candidateList}
+              contentContainerStyle={staticStyles.candidateListContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              {filteredCandidates.length === 0 ? (
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    textAlign: 'center',
+                    paddingVertical: 12,
+                  }}
+                >
+                  {ownerQuery ? 'No matches.' : 'No candidates.'}
+                </Text>
+              ) : (
+                filteredCandidates.map((member) => (
+                  <SoftPressable
+                    key={member.userId}
+                    style={styles.candidate}
+                    onPress={() => void onPickOwner(member)}
+                    pressScale={0.97}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${member.name}`}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.candidateName}>{member.name}</Text>
+                      {member.email ? (
+                        <Text style={styles.candidateRole} numberOfLines={1}>
+                          {member.email}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {member.role ? (
+                      <Text style={styles.candidateRole}>
+                        {member.role.charAt(0) +
+                          member.role.slice(1).toLowerCase()}
+                      </Text>
+                    ) : null}
+                  </SoftPressable>
+                ))
+              )}
+            </ScrollView>
+            <Pressable
+              onPress={() => {
+                setPickerOpen(false);
+                setOwnerSearch('');
+              }}
+              style={({ pressed }) => [
+                staticStyles.cancelBtn,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                },
+                pressed && staticStyles.btnPressed,
+              ]}
+              accessibilityLabel="Cancel"
+            >
+              <Text style={[staticStyles.cancelLabel, { color: colors.text }]}>
+                Cancel
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       <Toast message={toastMessage} />
     </Screen>
   );
@@ -281,53 +287,127 @@ export function OrgSettingsScreen({ navigation }: Props) {
 
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: 'transparent' },
-  listContent: { padding: 24 },
+  scroll: { flex: 1, backgroundColor: 'transparent' },
+  content: { padding: 24, gap: 16, paddingBottom: 40 },
+  loading: { padding: 24 },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 14,
     paddingHorizontal: 14,
-    marginBottom: 8,
     borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.045)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
   settingTextCol: { flex: 1 },
-  memberCard: {
+  transferBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  card: {
     paddingVertical: 14,
     paddingHorizontal: 14,
-    marginBottom: 8,
-    gap: 8,
+    gap: 10,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.035)',
+    backgroundColor: 'rgba(255,255,255,0.045)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 340,
+    maxHeight: '70%',
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 24,
+    gap: 12,
+    zIndex: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  candidateList: { maxHeight: 280 },
+  candidateListContent: { gap: 8, paddingVertical: 4 },
+  cancelBtn: {
+    marginTop: 4,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  cancelLabel: { fontSize: 15, fontWeight: '700' },
+  btnPressed: { opacity: 0.72 },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function orgSettingsStyles(c: ThemeColors) {
   return {
     settingLabel: { fontSize: 15, fontWeight: '600' as const, color: c.text },
-    settingHint: { fontSize: 12, color: c.textMuted, marginTop: 2 },
-    sectionHeader: {
-      marginTop: 16,
-      marginBottom: 8,
+    settingHint: { fontSize: 12, color: c.textMuted, marginTop: 2, lineHeight: 16 },
+    emptyHint: { fontSize: 12, color: c.textMuted, lineHeight: 16 },
+    transferBtn: {
+      marginTop: 4,
+      backgroundColor: c.chrome,
+      borderRadius: 12,
+      paddingVertical: 13,
+      paddingHorizontal: 16,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    transferBtnDisabled: { opacity: 0.45 },
+    transferBtnText: {
+      color: c.chromeInk,
       fontWeight: '700' as const,
-      fontSize: 16,
-      color: c.text,
-    },
-    serial: {
-      width: 28,
       fontSize: 15,
-      fontWeight: '800' as const,
-      color: c.textMuted,
     },
-    memberName: { flex: 1, fontSize: 16, fontWeight: '700' as const, color: c.text },
+    candidate: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      backgroundColor: c.surface,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      gap: 8,
+    },
+    candidateName: {
+      flex: 1,
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 15,
+    },
+    candidateRole: {
+      color: c.textMuted,
+      fontWeight: '600' as const,
+      fontSize: 12,
+    },
   };
 }

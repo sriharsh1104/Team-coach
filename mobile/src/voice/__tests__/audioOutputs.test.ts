@@ -3,6 +3,8 @@ import {
   audioOutputLabel,
   isAudioOutputId,
   keepManualSelection,
+  nextToggleOutput,
+  preferredCallDefault,
   resolveActiveOutput,
   sortAudioOutputs,
   type AudioOutputId,
@@ -16,11 +18,13 @@ describe('audio output routing', () => {
   });
 
   describe('resolveActiveOutput', () => {
-    it('matches the order the OS routes on its own (bluetooth over speaker)', () => {
+    it('prefers bluetooth / headset, then earpiece over speaker', () => {
       expect(
         resolveActiveOutput(['speaker', 'earpiece', 'bluetooth'], null),
       ).toBe('bluetooth');
-      expect(resolveActiveOutput(['speaker', 'earpiece'], null)).toBe('speaker');
+      expect(resolveActiveOutput(['speaker', 'earpiece'], null)).toBe(
+        'earpiece',
+      );
       expect(resolveActiveOutput(['earpiece'], null)).toBe('earpiece');
     });
 
@@ -31,14 +35,46 @@ describe('audio output routing', () => {
     });
 
     it('falls back to automatic when the picked device is gone', () => {
-      // Bluetooth earpiece walked out of range mid-call.
+      // Bluetooth earpiece walked out of range mid-call → earpiece default.
       expect(
         resolveActiveOutput(['speaker', 'earpiece'], 'bluetooth'),
-      ).toBe('speaker');
+      ).toBe('earpiece');
     });
 
     it('has nothing to report before the audio session starts', () => {
       expect(resolveActiveOutput([], null)).toBeNull();
+    });
+  });
+
+  describe('preferredCallDefault', () => {
+    it('defaults to the phone earpiece when nothing is plugged in', () => {
+      expect(preferredCallDefault(['speaker', 'earpiece'])).toBe('earpiece');
+    });
+
+    it('keeps an external device when one is connected', () => {
+      expect(
+        preferredCallDefault(['speaker', 'earpiece', 'bluetooth']),
+      ).toBe('bluetooth');
+    });
+  });
+
+  describe('nextToggleOutput', () => {
+    it('flips earpiece ↔ speaker when those are the only options', () => {
+      expect(nextToggleOutput(['speaker', 'earpiece'], 'earpiece')).toBe(
+        'speaker',
+      );
+      expect(nextToggleOutput(['speaker', 'earpiece'], 'speaker')).toBe(
+        'earpiece',
+      );
+    });
+
+    it('returns null when an external device needs a menu', () => {
+      expect(
+        nextToggleOutput(['speaker', 'earpiece', 'bluetooth'], 'earpiece'),
+      ).toBeNull();
+      expect(
+        nextToggleOutput(['speaker', 'earpiece', 'headset'], 'speaker'),
+      ).toBeNull();
     });
   });
 
@@ -58,13 +94,18 @@ describe('audio output routing', () => {
     });
   });
 
-  it('orders the picker so the common routes sit on top', () => {
-    const outputs: AudioOutputId[] = ['earpiece', 'speaker', 'bluetooth', 'headset'];
-    expect(sortAudioOutputs(outputs)).toEqual([
+  it('orders the picker with phone / speaker first, then externals', () => {
+    const outputs: AudioOutputId[] = [
+      'earpiece',
+      'speaker',
       'bluetooth',
       'headset',
-      'speaker',
+    ];
+    expect(sortAudioOutputs(outputs)).toEqual([
       'earpiece',
+      'speaker',
+      'headset',
+      'bluetooth',
     ]);
   });
 
@@ -81,9 +122,8 @@ describe('audio output routing', () => {
       expect(audioOutputLabel(id)).toBeTruthy();
       expect(audioOutputIcon(id)).toBeTruthy();
     }
-    // iOS's two routes must not read as jargon in the UI.
     expect(audioOutputLabel('force_speaker')).toBe('Speaker');
     expect(audioOutputLabel('earpiece')).toBe('Phone');
-    expect(audioOutputIcon(null)).toBe('volume-high');
+    expect(audioOutputIcon(null)).toBe('ear');
   });
 });

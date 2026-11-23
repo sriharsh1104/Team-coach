@@ -92,6 +92,7 @@ describe('OrgService guild join requests', () => {
         tokensFor: (raw: string | null) => (raw ? [`expo:${raw}`] : []),
         send,
       } as unknown as PushNotificationService,
+      { buildDeliveryUrl: jest.fn().mockReturnValue(null) } as any,
     );
     return { service, prisma, upsert, update, updateMany, create, send };
   }

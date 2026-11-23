@@ -501,4 +501,96 @@ describe('Phase 1G — Voice (self-hosted signaling) (e2e)', () => {
       expect(await reset).toMatchObject({ listenOnly: false, mutedIds: [] });
     });
   });
+
+  /**
+   * The guild rule for 1-on-1 voice, against a real database — the unit tests
+   * in voice.service.spec.ts stub Prisma, so this is what actually proves the
+   * `guildMemberships` query does what it claims.
+   */
+  describe('1-on-1 voice is scoped to one guild', () => {
+    async function grantDirectVoice(userId: string) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { canDirectVoice: true },
+      });
+    }
+
+    function peers(token: string) {
+      return request(server)
+        .get('/voice/direct/peers')
+        .set('Authorization', `Bearer ${token}`);
+    }
+
+    /**
+     * Occupancy, not /voice/config, on purpose: this test env runs the
+     * self-hosted mediasoup path, where getConfig rejects `direct` outright
+     * (1-on-1 needs LiveKit) *before* authorising anything. getOccupancy
+     * resolves the room first, so it is the one route that exercises the real
+     * permission + guild check against a real database here. The hosted
+     * token path itself is covered in voice.service.spec.ts.
+     */
+    function openDirectRoom(token: string, peerId: string) {
+      return request(server)
+        .get(`/voice/occupancy?room=direct&peer=${peerId}`)
+        .set('Authorization', `Bearer ${token}`);
+    }
+
+    it('lists a fellow guild member and lets the call through', async () => {
+      const owner = await signup(server);
+      const org = await createOrgAs(server, owner.accessToken);
+      const mate = await signup(server);
+      await joinOrgAs(server, mate.accessToken, org.rosterCode);
+      await grantDirectVoice(owner.user.id);
+      await grantDirectVoice(mate.user.id);
+
+      const listed = await peers(owner.accessToken).expect(200);
+      expect(listed.body).toMatchObject({ enabled: true, needsGuild: false });
+      expect(listed.body.peers.map((p: { id: string }) => p.id)).toEqual([
+        mate.user.id,
+      ]);
+
+      await openDirectRoom(owner.accessToken, mate.user.id).expect(200);
+    });
+
+    it('hides — and refuses — a holder in a different guild', async () => {
+      const a = await signup(server);
+      await createOrgAs(server, a.accessToken);
+      const b = await signup(server);
+      await createOrgAs(server, b.accessToken);
+      await grantDirectVoice(a.user.id);
+      await grantDirectVoice(b.user.id);
+
+      const listed = await peers(a.accessToken).expect(200);
+      expect(listed.body.peers).toEqual([]);
+
+      // Not merely hidden in the list — the call itself is refused, so
+      // guessing the id gets you nowhere.
+      await openDirectRoom(a.accessToken, b.user.id).expect(403);
+    });
+
+    it('tells a holder with no guild to join one, rather than showing an empty list', async () => {
+      const loner = await signup(server);
+      await grantDirectVoice(loner.user.id);
+
+      const listed = await peers(loner.accessToken).expect(200);
+      expect(listed.body).toMatchObject({
+        enabled: true,
+        needsGuild: true,
+        peers: [],
+      });
+    });
+
+    it('still refuses a guild mate who was never granted the permission', async () => {
+      const owner = await signup(server);
+      const org = await createOrgAs(server, owner.accessToken);
+      const mate = await signup(server);
+      await joinOrgAs(server, mate.accessToken, org.rosterCode);
+      await grantDirectVoice(owner.user.id);
+
+      expect((await peers(owner.accessToken).expect(200)).body.peers).toEqual(
+        [],
+      );
+      await openDirectRoom(owner.accessToken, mate.user.id).expect(403);
+    });
+  });
 });

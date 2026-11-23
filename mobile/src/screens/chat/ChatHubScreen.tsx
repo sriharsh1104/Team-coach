@@ -17,6 +17,11 @@ import { useTheme } from '../../theme/ThemeContext';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { SkeletonList } from '../../ui/Skeleton';
 import { FadeIn } from '../../ui/FadeIn';
+import { ListSearchField } from '../../ui/ListSearchField';
+import {
+  matchesPersonQuery,
+  usePagedSearch,
+} from '../../ui/usePagedSearch';
 import { ChatScreen } from './ChatScreen';
 import { ChatMediaModal } from './ChatMediaModal';
 import { ChatMembersPanel } from './ChatMembersPanel';
@@ -43,13 +48,17 @@ type ActiveChat = {
   avatarUrl: string | null;
 };
 
+type PersonRow =
+  | { key: string; kind: 'dm'; channel: ChatChannel }
+  | { key: string; kind: 'start'; mate: ChatTeammate };
+
 type InboxRow =
   | { key: string; kind: 'section'; label: string; soft?: boolean }
   | { key: string; kind: 'group'; channel: ChatChannel }
-  | { key: string; kind: 'dm'; channel: ChatChannel }
-  | { key: string; kind: 'start'; mate: ChatTeammate }
+  | PersonRow
   | { key: string; kind: 'skeleton' }
-  | { key: string; kind: 'empty' };
+  | { key: string; kind: 'empty' }
+  | { key: string; kind: 'loadMore' };
 
 /** Local steps on top of an open chat — back pops in reverse order. */
 type ChatOverlay =
@@ -140,6 +149,54 @@ export function ChatHubScreen({ onLoadError }: Props) {
     const openKeys = new Set(dmChannels.map((d) => d.channelKey));
     return teammates.filter((t) => !openKeys.has(t.channelKey));
   }, [teammates, dmChannels]);
+
+  const teammateById = useMemo(() => {
+    const map = new Map<string, ChatTeammate>();
+    for (const t of teammates) map.set(t.userId, t);
+    return map;
+  }, [teammates]);
+
+  const peopleRows = useMemo((): PersonRow[] => {
+    const rows: PersonRow[] = [];
+    for (const ch of dmChannels) {
+      rows.push({ key: `d:${ch.channelKey}`, kind: 'dm', channel: ch });
+    }
+    for (const mate of startDmTeammates) {
+      rows.push({ key: `s:${mate.userId}`, kind: 'start', mate });
+    }
+    return rows;
+  }, [dmChannels, startDmTeammates]);
+
+  const matchPerson = useCallback(
+    (row: PersonRow, q: string) => {
+      if (row.kind === 'start') {
+        return matchesPersonQuery(q, {
+          name: row.mate.name,
+          email: row.mate.email,
+          inGameName: row.mate.inGameName,
+        });
+      }
+      const mate = row.channel.peerUserId
+        ? teammateById.get(row.channel.peerUserId)
+        : undefined;
+      return matchesPersonQuery(q, {
+        name: row.channel.title,
+        email: mate?.email,
+        inGameName: mate?.inGameName,
+      });
+    },
+    [teammateById],
+  );
+
+  const {
+    draft: peopleDraft,
+    setDraft: setPeopleDraft,
+    query: peopleQuery,
+    visible: visiblePeople,
+    hasMore: peopleHasMore,
+    loadMore: loadMorePeople,
+    total: peopleTotal,
+  } = usePagedSearch({ items: peopleRows, match: matchPerson });
 
   // Batch-fetch online status for everyone visible in the inbox, and keep
   // the green dots live via presence:update.
@@ -369,20 +426,30 @@ export function ChatHubScreen({ onLoadError }: Props) {
 
   const inboxRows = useMemo((): InboxRow[] => {
     const rows: InboxRow[] = [];
-    if (groupChannels.length > 0) {
+    const showGroups =
+      !peopleQuery ||
+      groupChannels.some((c) => c.title.toLowerCase().includes(peopleQuery));
+    if (showGroups && groupChannels.length > 0) {
       rows.push({ key: 'sec-group', kind: 'section', label: 'Group Chats' });
       for (const ch of groupChannels) {
+        if (
+          peopleQuery &&
+          !ch.title.toLowerCase().includes(peopleQuery)
+        ) {
+          continue;
+        }
         rows.push({ key: `g:${ch.channelKey}`, kind: 'group', channel: ch });
       }
     }
-    if (dmChannels.length > 0 || startDmTeammates.length > 0) {
+
+    const visibleDms = visiblePeople.filter((r) => r.kind === 'dm');
+    const visibleStarts = visiblePeople.filter((r) => r.kind === 'start');
+    if (visibleDms.length > 0 || visibleStarts.length > 0 || peopleQuery) {
       rows.push({ key: 'sec-dm', kind: 'section', label: 'Direct Messages' });
     }
-    for (const ch of dmChannels) {
-      rows.push({ key: `d:${ch.channelKey}`, kind: 'dm', channel: ch });
-    }
-    if (startDmTeammates.length > 0) {
-      if (dmChannels.length > 0) {
+    for (const row of visibleDms) rows.push(row);
+    if (visibleStarts.length > 0) {
+      if (visibleDms.length > 0 || !peopleQuery) {
         rows.push({
           key: 'sec-start',
           kind: 'section',
@@ -390,20 +457,25 @@ export function ChatHubScreen({ onLoadError }: Props) {
           soft: true,
         });
       }
-      for (const mate of startDmTeammates) {
-        rows.push({ key: `s:${mate.userId}`, kind: 'start', mate });
-      }
+      for (const row of visibleStarts) rows.push(row);
+    }
+    if (peopleHasMore) {
+      rows.push({ key: 'loadMore', kind: 'loadMore' });
     }
     if (isLoadingInbox) {
       rows.push({ key: 'skeleton', kind: 'skeleton' });
     } else if (teammates.length === 0) {
       rows.push({ key: 'empty', kind: 'empty' });
+    } else if (peopleQuery && peopleTotal === 0 && !showGroups) {
+      rows.push({ key: 'empty', kind: 'empty' });
     }
     return rows;
   }, [
     groupChannels,
-    dmChannels,
-    startDmTeammates,
+    visiblePeople,
+    peopleHasMore,
+    peopleQuery,
+    peopleTotal,
     isLoadingInbox,
     teammates.length,
   ]);
@@ -575,6 +647,14 @@ export function ChatHubScreen({ onLoadError }: Props) {
   return (
     <View style={[styles.flex, { backgroundColor: theme.bg }]}>
       <Text style={[styles.inboxTitle, { color: theme.text }]}>Chats</Text>
+      <View style={{ paddingHorizontal: 16 }}>
+        <ListSearchField
+          value={peopleDraft}
+          onChangeText={setPeopleDraft}
+          placeholder="Search by name or email"
+          accessibilityLabel="Search chats"
+        />
+      </View>
       <FlatList
         data={inboxRows}
         keyExtractor={(item) => item.key}
@@ -582,6 +662,10 @@ export function ChatHubScreen({ onLoadError }: Props) {
         maxToRenderPerBatch={8}
         windowSize={7}
         removeClippedSubviews
+        onEndReached={() => {
+          if (peopleHasMore) loadMorePeople();
+        }}
+        onEndReachedThreshold={0.4}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -602,6 +686,21 @@ export function ChatHubScreen({ onLoadError }: Props) {
               </Text>
             );
           }
+          if (item.kind === 'loadMore') {
+            return (
+              <SoftPressable
+                style={{ paddingVertical: 14, alignItems: 'center' }}
+                onPress={loadMorePeople}
+                pressScale={0.98}
+                accessibilityRole="button"
+                accessibilityLabel="Load more"
+              >
+                <Text style={{ color: theme.link, fontWeight: '700' }}>
+                  Load more
+                </Text>
+              </SoftPressable>
+            );
+          }
           if (item.kind === 'skeleton') {
             return (
               <SkeletonList
@@ -614,7 +713,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
           if (item.kind === 'empty') {
             return (
               <Text style={[styles.empty, { color: theme.textMuted }]}>
-                No teammates yet.
+                {peopleQuery ? 'No matches.' : 'No teammates yet.'}
               </Text>
             );
           }

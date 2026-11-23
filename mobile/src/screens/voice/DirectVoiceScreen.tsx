@@ -23,12 +23,13 @@ import { ChannelAvatar } from '../chat/ChannelAvatar';
 import { VoiceScreenRoot } from './VoiceChannelScreen';
 
 /**
- * 1-on-1 voice, outside any org or guild.
+ * Private 1-on-1 voice between two people in the same guild.
  *
  * The permission is granted per person by a platform admin, and a call needs
- * it on BOTH sides — so this list only ever contains other people who also
- * have it. Someone without the permission never reaches this screen (the
- * drawer entry is hidden) and would get an empty list even if they did.
+ * it on BOTH sides AND both of them in the same guild — so this list only
+ * ever contains other holders from this person's own guild. Someone without
+ * the permission never reaches this screen (the drawer entry is hidden) and
+ * would get an empty list even if they did.
  */
 export function DirectVoiceScreen() {
   const shared = useSharedStyles();
@@ -36,6 +37,8 @@ export function DirectVoiceScreen() {
   const { user } = useAuth();
   const [peers, setPeers] = useState<DirectVoicePeer[] | null>(null);
   const [enabled, setEnabled] = useState<boolean>(!!user?.canDirectVoice);
+  /** Granted, but in no guild yet — a different empty state from "nobody else". */
+  const [needsGuild, setNeedsGuild] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<DirectVoicePeer | null>(null);
 
@@ -44,6 +47,7 @@ export function DirectVoiceScreen() {
     try {
       const res = await voiceApi.getDirectVoicePeers();
       setEnabled(res.enabled);
+      setNeedsGuild(res.needsGuild);
       setPeers(res.peers);
     } catch (err) {
       setPeers([]);
@@ -119,8 +123,8 @@ export function DirectVoiceScreen() {
         ListHeaderComponent={
           <View style={styles.header}>
             <Text style={[styles.lead, { color: colors.textMuted }]}>
-              Private voice between you and one other person. Only people an
-              admin has enabled appear here.
+              Private voice between you and one other person in your guild.
+              Only people an admin has enabled appear here.
             </Text>
             {error ? <Text style={shared.error}>{error}</Text> : null}
           </View>
@@ -129,8 +133,9 @@ export function DirectVoiceScreen() {
           error ? null : (
             <View style={styles.empty}>
               <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                Nobody else has 1-on-1 voice yet. It takes two — ask an admin
-                to enable it for the person you want to call.
+                {needsGuild
+                  ? 'Join a guild first — 1-on-1 voice only connects two people who are in the same guild.'
+                  : 'Nobody else in your guild has 1-on-1 voice yet. It takes two — ask an admin to enable it for the person you want to call.'}
               </Text>
               <SoftPressable
                 style={[shared.button, { marginTop: 16 }]}

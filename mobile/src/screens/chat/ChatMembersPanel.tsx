@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -11,15 +11,22 @@ import { roleLabel } from '../../api/roles';
 import { UserPresence } from '../../api/types';
 import { getToken } from '../../storage/tokenStorage';
 import { ThemeColors } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { SkeletonList } from '../../ui/Skeleton';
+import { ListSearchField } from '../../ui/ListSearchField';
+import {
+  matchesPersonQuery,
+  usePagedSearch,
+} from '../../ui/usePagedSearch';
 import { ChatFlowHeader } from './ChatFlowHeader';
 import { ChannelAvatar } from './ChannelAvatar';
 
 type MemberRow = {
   userId: string;
   name: string;
+  email?: string | null;
   avatarUrl?: string | null;
   roleLabel: string;
   meta: string | null;
@@ -43,6 +50,7 @@ export function ChatMembersPanel({
   onBack: () => void;
   onSelectMember: (member: { userId: string; name: string }) => void;
 }) {
+  const { colors } = useTheme();
   const styles = useThemedStyles(membersPanelStyles);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,6 +58,25 @@ export function ChatMembersPanel({
   const [onlineByUserId, setOnlineByUserId] = useState<Record<string, boolean>>(
     {},
   );
+
+  const matchMember = useCallback(
+    (item: MemberRow, q: string) =>
+      matchesPersonQuery(q, {
+        name: item.name,
+        email: item.email,
+        inGameName: item.meta,
+      }),
+    [],
+  );
+  const {
+    draft,
+    setDraft,
+    query,
+    visible,
+    hasMore,
+    loadMore,
+    total,
+  } = usePagedSearch({ items: members, match: matchMember });
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +89,7 @@ export function ChatMembersPanel({
             guild.members.map((m) => ({
               userId: m.userId,
               name: m.name,
+              email: m.email,
               avatarUrl: m.avatarUrl,
               roleLabel: m.onRoster
                 ? String(m.rosterRole ?? 'Roster')
@@ -77,6 +105,7 @@ export function ChatMembersPanel({
             org.members.map((m) => ({
               userId: m.userId,
               name: m.name,
+              email: m.email,
               avatarUrl: m.avatarUrl,
               roleLabel: String(m.role),
               meta: formatInGameRoles(m.inGameRoles),
@@ -176,9 +205,41 @@ export function ChatMembersPanel({
         </View>
       ) : (
         <FlatList
-          data={members}
+          data={visible}
           keyExtractor={(item) => item.userId}
           contentContainerStyle={staticStyles.list}
+          onEndReached={() => {
+            if (hasMore) loadMore();
+          }}
+          onEndReachedThreshold={0.4}
+          ListHeaderComponent={
+            <ListSearchField
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Search by name or email"
+              accessibilityLabel="Search members"
+            />
+          }
+          ListEmptyComponent={
+            <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 12 }}>
+              {query ? 'No matches.' : 'No members.'}
+            </Text>
+          }
+          ListFooterComponent={
+            hasMore ? (
+              <SoftPressable
+                style={{ paddingVertical: 14, alignItems: 'center' }}
+                onPress={loadMore}
+                pressScale={0.98}
+                accessibilityRole="button"
+                accessibilityLabel="Load more"
+              >
+                <Text style={{ color: colors.link, fontWeight: '700' }}>
+                  Load more · {visible.length} of {total}
+                </Text>
+              </SoftPressable>
+            ) : null
+          }
           renderItem={({ item, index }) => (
             <SoftPressable
               style={staticStyles.row}
@@ -202,6 +263,11 @@ export function ChatMembersPanel({
                   {index + 1}. {item.name}
                 </Text>
                 {item.meta ? <Text style={styles.meta}>{item.meta}</Text> : null}
+                {query && item.email ? (
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {item.email}
+                  </Text>
+                ) : null}
               </View>
               <Text style={styles.role}>{item.roleLabel}</Text>
             </SoftPressable>

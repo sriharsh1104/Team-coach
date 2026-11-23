@@ -24,6 +24,11 @@ import { MarqueeText } from '../ui/MarqueeText';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import { SoftPressable } from '../ui/SoftPressable';
 import { IconActionButton } from '../ui/IconActionButton';
+import { ListSearchField } from '../ui/ListSearchField';
+import {
+  matchesPersonQuery,
+  usePagedSearch,
+} from '../ui/usePagedSearch';
 import { GuildJoinRequestsPanel } from './GuildJoinRequestsPanel';
 import { emitToast } from '../ui/toastBus';
 import { confirmAsync } from '../ui/confirmAsync';
@@ -193,12 +198,31 @@ export function GuildScreen({ navigation }: Props) {
   const sortedMembers = canManage
     ? [...members].sort((a, b) => Number(a.onRoster) - Number(b.onRoster))
     : members;
-  const listData =
+  const listSource: Array<GuildMemberRow | GuildRosterMember> =
     guildTab === 'members'
       ? sortedMembers
       : guildTab === 'roster'
         ? roster
         : [];
+  const matchGuildPerson = useCallback(
+    (item: GuildMemberRow | GuildRosterMember, q: string) =>
+      matchesPersonQuery(q, {
+        name: item.name,
+        email: item.email,
+        inGameName: item.inGameName,
+      }),
+    [],
+  );
+  const {
+    draft: listDraft,
+    setDraft: setListDraft,
+    query: listQuery,
+    visible: listData,
+    hasMore: listHasMore,
+    loadMore: loadMoreList,
+    total: listTotal,
+    clear: clearListSearch,
+  } = usePagedSearch({ items: listSource, match: matchGuildPerson });
   const waitingCount = members.filter((m) => !m.onRoster).length;
 
   // If leadership access goes away, leave the Requests tab.
@@ -208,12 +232,20 @@ export function GuildScreen({ navigation }: Props) {
     }
   }, [canReviewRequests, guildTab]);
 
+  useEffect(() => {
+    clearListSearch();
+  }, [guildTab, clearListSearch]);
+
   return (
     <Screen>
       <FlatList<GuildMemberRow | GuildRosterMember>
         style={staticStyles.list}
-        data={listData}
+        data={guildTab === 'requests' ? [] : listData}
         keyExtractor={(item) => item.userId}
+        onEndReached={() => {
+          if (listHasMore) loadMoreList();
+        }}
+        onEndReachedThreshold={0.4}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -291,6 +323,14 @@ export function GuildScreen({ navigation }: Props) {
                 <GuildJoinRequestsPanel onAccepted={() => void load()} />
               </View>
             ) : null}
+            {guildTab !== 'requests' ? (
+              <ListSearchField
+                value={listDraft}
+                onChangeText={setListDraft}
+                placeholder="Search by name or email"
+                accessibilityLabel="Search guild members"
+              />
+            ) : null}
             {canManage && guildTab === 'members' ? (
               <Text style={styles.manageHint}>
                 {waitingCount > 0
@@ -354,15 +394,30 @@ export function GuildScreen({ navigation }: Props) {
         ListEmptyComponent={
           detail && guildTab !== 'requests' ? (
             <Text style={styles.empty}>
-              {guildTab === 'members'
-                ? 'No guild members yet.'
-                : 'No one is on the roster yet.'}
+              {listQuery
+                ? 'No matches.'
+                : guildTab === 'members'
+                  ? 'No guild members yet.'
+                  : 'No one is on the roster yet.'}
             </Text>
           ) : null
         }
         ListFooterComponent={
           detail ? (
             <View style={staticStyles.leaveBlock}>
+              {listHasMore && guildTab !== 'requests' ? (
+                <SoftPressable
+                  style={{ paddingVertical: 10, alignItems: 'center' }}
+                  onPress={loadMoreList}
+                  pressScale={0.98}
+                  accessibilityRole="button"
+                  accessibilityLabel="Load more"
+                >
+                  <Text style={{ color: colors.link, fontWeight: '700' }}>
+                    Load more · {listData.length} of {listTotal}
+                  </Text>
+                </SoftPressable>
+              ) : null}
               {isOrgOwner ? (
                 <Text style={styles.manageHint}>
                   You own this org’s roster — transfer ownership in Roster /

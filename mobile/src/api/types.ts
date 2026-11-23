@@ -65,6 +65,8 @@ export type SignupResult = AuthResponse | EmailVerificationChallengeResponse;
 export interface OrgMember {
   userId: string;
   name: string;
+  /** Present for in-org search (name + email). */
+  email?: string | null;
   avatarUrl: string | null;
   role: MembershipRole | null;
   isOwner: boolean;
@@ -149,6 +151,8 @@ export interface ChatChannel {
 export interface ChatTeammate {
   userId: string;
   name: string;
+  /** Present for hub search (name + email). */
+  email?: string | null;
   avatarUrl: string | null;
   /** Free Fire IGN — used for @mentions in chat. */
   inGameName: string | null;
@@ -248,6 +252,7 @@ export interface OrgDetail {
 export interface GuildRosterMember {
   userId: string;
   name: string;
+  email?: string | null;
   inGameName: string | null;
   role: MembershipRole | null;
   isOwner: boolean;
@@ -256,6 +261,7 @@ export interface GuildRosterMember {
 export interface GuildMemberRow {
   userId: string;
   name: string;
+  email?: string | null;
   avatarUrl?: string | null;
   inGameName: string | null;
   guildRole: GuildRole;

@@ -29,6 +29,7 @@ export type AppIconName =
   | 'mic-off'
   | 'notifications'
   | 'volume-high'
+  | 'volume-mute'
   | 'notifications-off'
   | 'person-add'
   | 'person-outline'
@@ -50,6 +51,7 @@ export type AppIconName =
   | 'hand-raised'
   | 'headset'
   | 'headset-off'
+  | 'musical-notes'
   | 'zap'
   | 'refresh'
   | 'people-outline'
@@ -420,6 +422,14 @@ const ICONS: Record<AppIconName, Renderer> = {
       <Path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13" stroke={c} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   ),
+  // Deafen control — kept distinct from the audio-route headset icon.
+  'volume-mute': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M11 5L6 9H2v6h4l5 4V5z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Line x1="23" y1="9" x2="17" y2="15" stroke={c} strokeWidth={2} strokeLinecap="round" />
+      <Line x1="17" y1="9" x2="23" y2="15" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
   'bluetooth': (c, s) => (
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Path d="M6.5 7.5L17 16.5 12 21V3l5 4.5L6.5 16.5" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
@@ -436,6 +446,13 @@ const ICONS: Record<AppIconName, Renderer> = {
       <Path d="M3 18v-6a9 9 0 0118 0v6" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Line x1="1" y1="1" x2="23" y2="23" stroke={c} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  ),
+  'musical-notes': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path d="M9 18V5l12-2v13" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Circle cx="6" cy="18" r="3" stroke={c} strokeWidth={2} />
+      <Circle cx="18" cy="16" r="3" stroke={c} strokeWidth={2} />
     </Svg>
   ),
   'zap': (c, s) => (

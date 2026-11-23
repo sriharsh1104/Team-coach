@@ -18,6 +18,7 @@ import {
   PushNotificationService,
 } from '../common/push-notification.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { MediaStorageService } from '../media/media-storage.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { JoinOrgDto } from './dto/join-org.dto';
 import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
@@ -146,6 +147,7 @@ export class OrgService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly pushNotifications: PushNotificationService,
+    private readonly storage: MediaStorageService,
   ) {}
 
   private notifyMembersChanged(orgId: string) {
@@ -402,6 +404,7 @@ export class OrgService {
       members: membership.org.memberships.map((m) => ({
         userId: m.user.id,
         name: m.user.name,
+        email: m.user.email,
         avatarUrl: m.user.avatarUrl,
         role: m.role,
         isOwner: m.isOwner,
@@ -592,12 +595,11 @@ export class OrgService {
         _count: {
           select: { guildMemberships: true, memberships: true },
         },
-        // The guild chat's group photo doubles as the org's logo — it is the
-        // only picture an owner can already set, and the list looked bare
-        // without it.
+        // The guild chat's group photo doubles as the org's logo — set at
+        // create time (or later from Guild Chat settings).
         chatChannelMetas: {
           where: { channelKey: GUILD_CHANNEL_KEY },
-          select: { avatarUrl: true },
+          select: { avatarUrl: true, avatarFileKey: true },
           take: 1,
         },
       },
@@ -614,15 +616,23 @@ export class OrgService {
     const statusByOrg = new Map(requests.map((r) => [r.orgId, r.status]));
 
     return {
-      guilds: orgs.map((o) => ({
-        id: o.id,
-        name: o.name,
-        logoUrl: o.chatChannelMetas[0]?.avatarUrl ?? null,
-        memberCount: o._count.guildMemberships,
-        rosterCount: o._count.memberships,
-        createdAt: o.createdAt.toISOString(),
-        requestStatus: statusByOrg.get(o.id) ?? null,
-      })),
+      guilds: orgs.map((o) => {
+        const meta = o.chatChannelMetas[0];
+        // Prefer a fresh Cloudinary delivery URL so browse (no membership)
+        // still loads the logo. Fall back to the stored avatarUrl.
+        const fromKey = meta?.avatarFileKey
+          ? this.storage.buildDeliveryUrl(meta.avatarFileKey)
+          : null;
+        return {
+          id: o.id,
+          name: o.name,
+          logoUrl: fromKey ?? meta?.avatarUrl ?? null,
+          memberCount: o._count.guildMemberships,
+          rosterCount: o._count.memberships,
+          createdAt: o.createdAt.toISOString(),
+          requestStatus: statusByOrg.get(o.id) ?? null,
+        };
+      }),
     };
   }
 
@@ -1121,7 +1131,9 @@ export class OrgService {
       this.prisma.membership.findMany({
         where: { orgId },
         include: {
-          user: { select: { id: true, name: true, inGameName: true } },
+          user: {
+            select: { id: true, name: true, email: true, inGameName: true },
+          },
         },
         orderBy: { createdAt: 'asc' },
       }),
@@ -1129,7 +1141,13 @@ export class OrgService {
         where: { orgId },
         include: {
           user: {
-            select: { id: true, name: true, avatarUrl: true, inGameName: true },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+              inGameName: true,
+            },
           },
         },
         orderBy: { createdAt: 'asc' },
@@ -1165,6 +1183,7 @@ export class OrgService {
       roster: rosterMembers.map((m) => ({
         userId: m.user.id,
         name: m.user.name,
+        email: m.user.email,
         inGameName: m.user.inGameName,
         role: m.role,
         isOwner: m.isOwner,
@@ -1174,6 +1193,7 @@ export class OrgService {
         return {
           userId: m.user.id,
           name: m.user.name,
+          email: m.user.email,
           avatarUrl: m.user.avatarUrl,
           inGameName: m.user.inGameName,
           guildRole: m.role,

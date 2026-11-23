@@ -8,9 +8,9 @@ import {
 } from 'react-native';
 import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
+import { roleLabel } from '../../api/roles';
 import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
-import { RoleChips } from '../profile/RoleChips';
 import { CopyableField } from '../profile/CopyableField';
 import { CopyButton } from '../profile/CopyButton';
 import { SkeletonList } from '../../ui/Skeleton';
@@ -20,6 +20,7 @@ import {
   SocialOpenPlatform,
 } from '../../lib/openSocialUrl';
 import { ChatFlowHeader } from './ChatFlowHeader';
+import { ChannelAvatar } from './ChannelAvatar';
 
 const SOCIAL_LINKS: Array<{
   key: keyof Profile;
@@ -60,13 +61,21 @@ export function ChatMemberProfilePanel({
       .finally(() => setIsLoading(false));
   }, [userId]);
 
+  const displayName = profile?.name?.trim() || name;
   const roleBadge = profile
     ? formatRoleBadge(profile.role, profile.isOwner)
     : null;
+  const inGameRole =
+    profile && profile.roles.length > 0
+      ? profile.roles.map((r) => roleLabel(r)).join(', ')
+      : null;
+  const socials = profile
+    ? SOCIAL_LINKS.filter(({ key }) => !!(profile[key] as string | null))
+    : [];
 
   return (
     <View style={styles.root}>
-      <ChatFlowHeader title={name} onBack={onBack} />
+      <ChatFlowHeader title={displayName} onBack={onBack} />
 
       {isLoading ? (
         <SkeletonList
@@ -83,14 +92,25 @@ export function ChatMemberProfilePanel({
           style={staticStyles.scroll}
           contentContainerStyle={staticStyles.scrollContent}
         >
-          <Text style={styles.name}>{name}</Text>
-          {roleBadge ? <Text style={styles.badge}>{roleBadge}</Text> : null}
-
-          {profile.roles.length > 0 ? (
-            <RoleChips selected={profile.roles} editable={false} />
-          ) : (
-            <Text style={styles.muted}>No role set yet</Text>
-          )}
+          <View style={staticStyles.headerRow}>
+            <ChannelAvatar
+              uri={profile.avatarUrl}
+              size={72}
+              fallback={(displayName[0] ?? '?').toUpperCase()}
+              previewable={!!profile.avatarUrl}
+            />
+            <View style={staticStyles.headerText}>
+              <Text style={styles.name} numberOfLines={2}>
+                {displayName}
+              </Text>
+              {roleBadge ? <Text style={styles.badge}>{roleBadge}</Text> : null}
+              {inGameRole ? (
+                <Text style={styles.inGameRole}>{inGameRole}</Text>
+              ) : (
+                <Text style={styles.muted}>No in-game role set yet</Text>
+              )}
+            </View>
+          </View>
 
           {profile.inGameName ? (
             <CopyableField label="In-Game Name (IGN)" value={profile.inGameName} />
@@ -100,23 +120,26 @@ export function ChatMemberProfilePanel({
           ) : null}
 
           <Text style={styles.section}>Social Links</Text>
-          {SOCIAL_LINKS.map(({ key, label, platform }) => {
-            const url = profile[key] as string | null;
-            if (!url) return null;
-            return (
-              <View key={key} style={staticStyles.linkRow}>
-                <Pressable
-                  style={{ flex: 1 }}
-                  onPress={() => openSocialUrl(url, platform)}
-                >
-                  <Text style={styles.link}>
-                    {label}: {url}
-                  </Text>
-                </Pressable>
-                <CopyButton value={url} />
-              </View>
-            );
-          })}
+          {socials.length === 0 ? (
+            <Text style={styles.muted}>No social links provided</Text>
+          ) : (
+            socials.map(({ key, label, platform }) => {
+              const url = profile[key] as string;
+              return (
+                <View key={key} style={staticStyles.linkRow}>
+                  <Pressable
+                    style={{ flex: 1 }}
+                    onPress={() => openSocialUrl(url, platform)}
+                  >
+                    <Text style={styles.link}>
+                      {label}: {url}
+                    </Text>
+                  </Pressable>
+                  <CopyButton value={url} />
+                </View>
+              );
+            })
+          )}
 
           {profile.devices.length > 0 ? (
             <>
@@ -142,6 +165,18 @@ const staticStyles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   scroll: { flex: 1 },
   scrollContent: { padding: 24, paddingBottom: 40 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 20,
+  },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    gap: 4,
+  },
   linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -159,16 +194,19 @@ function memberProfileStyles(c: ThemeColors) {
       color: c.text,
       fontSize: 22,
       fontWeight: '700' as const,
-      textAlign: 'center' as const,
-      marginBottom: 6,
+      letterSpacing: -0.3,
     },
     badge: {
       color: c.link,
       fontWeight: '600' as const,
-      textAlign: 'center' as const,
-      marginBottom: 16,
+      fontSize: 14,
     },
-    muted: { color: c.textMuted, marginBottom: 12 },
+    inGameRole: {
+      color: c.textMuted,
+      fontWeight: '600' as const,
+      fontSize: 13,
+    },
+    muted: { color: c.textMuted, marginBottom: 4 },
     section: {
       marginTop: 20,
       marginBottom: 8,

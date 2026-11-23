@@ -68,4 +68,22 @@ export class ChatPresenceTracker {
   onlineUserIds(ids: string[]): string[] {
     return ids.filter((id) => this.isOnline(id));
   }
+
+  /**
+   * How many distinct users have the app connected right now, platform-wide.
+   * In-memory like the rest of this tracker, so it reads 0 straight after a
+   * restart and refills as clients reconnect — fine for the admin dashboard,
+   * which pairs it with a `lastSeenAt`-based "active" count that does
+   * survive a restart.
+   */
+  onlineCount(): number {
+    return this.online.size;
+  }
+
+  /** Total live sockets — higher than onlineCount when people use two devices. */
+  socketCount(): number {
+    let total = 0;
+    for (const sockets of this.online.values()) total += sockets.size;
+    return total;
+  }
 }

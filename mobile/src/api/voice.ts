@@ -28,12 +28,20 @@ export type DirectVoicePeer = {
 };
 
 /**
- * Who the signed-in user can place a 1-on-1 call to. `enabled: false` means
- * they do not hold the permission — hide the section entirely.
+ * Who the signed-in user can place a 1-on-1 call to — other holders of the
+ * permission inside their own guild.
+ *
+ * `enabled: false` means they do not hold the permission (hide the section).
+ * `needsGuild: true` means they hold it but are in no guild yet, so there is
+ * nobody they could call until they join one.
  */
 export function getDirectVoicePeers() {
   return apiClient
-    .get<{ enabled: boolean; peers: DirectVoicePeer[] }>('/voice/direct/peers')
+    .get<{
+      enabled: boolean;
+      needsGuild: boolean;
+      peers: DirectVoicePeer[];
+    }>('/voice/direct/peers')
     .then((res) => res.data);
 }
 

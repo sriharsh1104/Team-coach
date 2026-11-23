@@ -4550,3 +4550,244 @@ button.invite-qr-open:hover {
   margin: 0 0 12px;
   font-size: 18px;
 }
+
+.admin-stat-accent {
+  background: rgba(120, 220, 170, 0.1);
+  border-color: rgba(120, 220, 170, 0.22);
+}
+
+.admin-section {
+  margin-bottom: 26px;
+}
+
+.admin-section > h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.admin-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Status dot — one shape for services and for member presence, so "green
+   means reachable" reads the same everywhere on this screen. */
+.admin-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+  background: var(--text-dim);
+}
+
+.admin-dot-up {
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.14);
+}
+
+.admin-dot-down {
+  background: #f87171;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.16);
+}
+
+.admin-dot-idle {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.pill-switch-btn .admin-dot {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.admin-health-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-health-summary:hover {
+  background: var(--surface-strong);
+}
+
+.admin-health-summary strong,
+.admin-health-summary .muted {
+  display: block;
+  font-size: 13px;
+}
+
+.admin-health-summary .muted {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.admin-row-meta {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.admin-guild-list .list-row.active {
+  background: var(--surface-strong);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.admin-ign {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.admin-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.admin-detail-head h2 {
+  margin: 0 0 4px;
+}
+
+.admin-detail-head p {
+  margin: 0;
+  font-size: 12px;
+}
+
+@media (max-width: 700px) {
+  .admin-row-meta {
+    text-align: left;
+  }
+
+  .admin-member.list-row,
+  .admin-guild-list .list-row {
+    flex-wrap: wrap;
+  }
+
+  /* Without a wide flex-basis the name/email column shrinks to a sliver —
+     min-width:0 lets it collapse rather than push the row to wrap. Claiming
+     most of the first line instead sends the meta and the permission toggle
+     to a second line, which is what there is room for on a phone. */
+  .admin-member .admin-cell,
+  .admin-guild-list .admin-cell {
+    flex-basis: 70%;
+  }
+}
+
+/* The tab pills above are inline-flex, so the search field needs to claim
+   its own line rather than trailing off their right edge. */
+.admin-search {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+/* Some stat tiles hold text, not a number ("development", "v22.0.0") — let
+   it wrap inside the tile instead of pushing the grid wider. */
+.admin-stat-value {
+  overflow-wrap: anywhere;
+}
+
+/* The flexible middle column of an admin row. min-width:0 lets it shrink
+   below its content, and the wrap rule stops a long email — one unbreakable
+   token — from spilling out of the shrunk box over the meta column beside it. */
+.admin-cell {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-notice {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.22);
+}
+
+/* Permission toggle on a member row. "off" is deliberately quiet and "on"
+   deliberately loud — at a glance the admin should be able to see who holds
+   the permission without reading every row. */
+.admin-voice-btn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.admin-voice-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-voice-btn.on {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.admin-voice-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.admin-grant-form {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.admin-grant-form .admin-search {
+  margin-bottom: 0;
+}
+
+@media (max-width: 700px) {
+  .admin-grant-form {
+    flex-direction: column;
+  }
+
+  .admin-grant-form button {
+    width: 100%;
+  }
+}
+
+.admin-voice-group {
+  margin-bottom: 18px;
+}
+
+.admin-voice-group-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.admin-voice-group-head strong {
+  font-size: 14px;
+}
+
+.admin-voice-group-head .muted {
+  font-size: 12px;
+}

@@ -17,8 +17,14 @@ import { SoftPressable } from '../ui/SoftPressable';
 import { SkeletonList } from '../ui/Skeleton';
 import { IconActionButton } from '../ui/IconActionButton';
 import { InviteQr } from '../ui/InviteQr';
+import { ListSearchField } from '../ui/ListSearchField';
+import {
+  matchesPersonQuery,
+  usePagedSearch,
+} from '../ui/usePagedSearch';
 import { CopyButton } from './profile/CopyButton';
 import { RoleSelector } from './RoleSelector';
+import { ChannelAvatar } from './chat/ChannelAvatar';
 import { emitToast } from '../ui/toastBus';
 import { confirmAsync } from '../ui/confirmAsync';
 import { apiErrorMessage } from '../api/apiErrorMessage';
@@ -124,12 +130,38 @@ export function MembersScreen({ navigation }: Props) {
     !!detail.rosterReferralLink &&
     !!detail.rosterCode;
 
+  const matchMember = useCallback(
+    (item: OrgMember, q: string) =>
+      matchesPersonQuery(q, {
+        name: item.name,
+        email: item.email,
+        inGameName: item.inGameName,
+      }),
+    [],
+  );
+  const {
+    draft: listDraft,
+    setDraft: setListDraft,
+    query: listQuery,
+    visible: visibleMembers,
+    hasMore: listHasMore,
+    loadMore: loadMoreList,
+    total: listTotal,
+  } = usePagedSearch({
+    items: detail?.members ?? [],
+    match: matchMember,
+  });
+
   return (
     <Screen>
       <FlatList
         style={staticStyles.list}
-        data={detail?.members ?? []}
+        data={visibleMembers}
         keyExtractor={(item) => item.userId}
+        onEndReached={() => {
+          if (listHasMore) loadMoreList();
+        }}
+        onEndReachedThreshold={0.4}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -174,6 +206,12 @@ export function MembersScreen({ navigation }: Props) {
                   members.
                 </Text>
               )}
+              <ListSearchField
+                value={listDraft}
+                onChangeText={setListDraft}
+                placeholder="Search by name or email"
+                accessibilityLabel="Search roster"
+              />
               {canRemove ? (
                 <Text style={styles.manageHint}>
                   Tap − to remove someone
@@ -189,6 +227,23 @@ export function MembersScreen({ navigation }: Props) {
           // this the screen is simply blank, which reads as "no members".
           !detail ? (
             <SkeletonList count={8} avatarSize={42} style={{ paddingHorizontal: 24 }} />
+          ) : listQuery ? (
+            <Text style={styles.rosterHint}>No matches.</Text>
+          ) : null
+        }
+        ListFooterComponent={
+          listHasMore ? (
+            <SoftPressable
+              style={{ paddingVertical: 14, alignItems: 'center' }}
+              onPress={loadMoreList}
+              pressScale={0.98}
+              accessibilityRole="button"
+              accessibilityLabel="Load more"
+            >
+              <Text style={{ color: colors.link, fontWeight: '700' }}>
+                Load more · {visibleMembers.length} of {listTotal}
+              </Text>
+            </SoftPressable>
           ) : null
         }
         renderItem={({ item, index }) => {
@@ -208,20 +263,30 @@ export function MembersScreen({ navigation }: Props) {
                 pressScale={0.985}
                 haptic={false}
               >
+                <ChannelAvatar
+                  uri={item.avatarUrl}
+                  size={42}
+                  fallback={(item.name[0] ?? '?').toUpperCase()}
+                  previewable={false}
+                />
                 <View style={staticStyles.memberInfo}>
                   <Text style={styles.memberName}>
                     {index + 1}. {item.name}
                     {item.isOwner ? ' (Owner)' : ''}
                   </Text>
-                  {inGameRoles && (
+                  {inGameRoles ? (
                     <Text style={styles.memberInGameRoles}>{inGameRoles}</Text>
-                  )}
+                  ) : item.role && !(canChangeRoles && !item.isOwner) ? (
+                    <Text style={styles.memberInGameRoles}>
+                      {item.role.charAt(0) + item.role.slice(1).toLowerCase()}
+                    </Text>
+                  ) : null}
                 </View>
-                <Text style={styles.memberRole}>{item.role}</Text>
               </SoftPressable>
               {canChangeRoles && !item.isOwner ? (
                 <RoleSelector
                   value={item.role}
+                  memberName={item.name}
                   onChange={(role) => void onChangeRole(item, role)}
                 />
               ) : null}
@@ -267,13 +332,12 @@ const staticStyles = StyleSheet.create({
   },
   memberRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 13,
     paddingHorizontal: 12,
-    gap: 8,
+    gap: 12,
   },
-  memberInfo: { flex: 1 },
+  memberInfo: { flex: 1, minWidth: 0 },
   removeIcon: {
     alignSelf: 'flex-start',
     marginHorizontal: 12,
@@ -320,6 +384,5 @@ function membersStyles(c: ThemeColors) {
     inviteValue: { color: c.text, fontWeight: '600' as const, marginTop: 2 },
     memberName: { fontSize: 16, color: c.text, fontWeight: '600' as const },
     memberInGameRoles: { fontSize: 12, color: c.textMuted, marginTop: 2 },
-    memberRole: { color: c.textMuted, fontWeight: '600' as const, fontSize: 12 },
   };
 }

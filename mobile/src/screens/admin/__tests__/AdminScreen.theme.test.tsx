@@ -13,7 +13,7 @@ const mockedApi = adminApi as jest.Mocked<typeof adminApi>;
 /** Same key ThemeContext persists the user's choice under. */
 const THEME_STORAGE_KEY = 'team-coach.themeId';
 
-const overview = {
+const overview: adminApi.AdminOverview = {
   orgs: 1,
   users: 2,
   verifiedUsers: 2,
@@ -21,6 +21,29 @@ const overview = {
   messages: 3,
   scrims: 0,
   newUsersLast7Days: 1,
+  newUsersLast24Hours: 0,
+  guildMembers: 2,
+  rosterMembers: 2,
+  activeUsers24h: 1,
+  activeUsers7d: 2,
+  activeUsers30d: 2,
+  onlineNow: 0,
+  pendingJoinRequests: 0,
+};
+
+const health: adminApi.AdminHealth = {
+  checkedAt: '2026-01-01T00:00:00.000Z',
+  status: 'ok',
+  needsAttention: 0,
+  process: {
+    env: 'test',
+    nodeVersion: 'v22.0.0',
+    uptimeSeconds: 60,
+    startedAt: '2026-01-01T00:00:00.000Z',
+    memoryMb: 90,
+    heapUsedMb: 30,
+  },
+  services: [],
 };
 
 async function renderInTheme(themeId: ThemeId) {
@@ -57,6 +80,7 @@ describe('AdminScreen theming', () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockedApi.getOverview.mockResolvedValue(overview);
+    mockedApi.getHealth.mockResolvedValue(health);
     mockedApi.listOrgs.mockResolvedValue({
       total: 1,
       skip: 0,
@@ -65,6 +89,7 @@ describe('AdminScreen theming', () => {
         {
           id: 'org-1',
           name: 'Alpha Squad',
+          orgCode: 'CODE123',
           createdAt: '2026-01-01T00:00:00.000Z',
           rosterCount: 4,
           guildCount: 9,

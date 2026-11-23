@@ -26,13 +26,19 @@ export function AppShell() {
   const location = useLocation();
   const showRoster = !!org;
   const showGuild = !!guild && (!org || org.isOwner);
-  const needsProfile = !!user && !user.profileComplete;
+  const isAdmin = !!user?.isPlatformAdmin;
+  // Platform admins are exempt from the player onboarding gate: an admin
+  // account has no in-game name or guild, and the profile fields it would
+  // demand are not used by anything on /admin.
+  const needsProfile = !!user && !user.profileComplete && !isAdmin;
 
   if (needsProfile && location.pathname !== '/profile') {
     return <Navigate to="/profile" replace />;
   }
 
-  if (!showRoster && !showGuild) {
+  // An admin with no guild of their own still gets the shell — otherwise
+  // /admin renders bare, with no way back to anything.
+  if (!showRoster && !showGuild && !isAdmin) {
     return (
       <RouteTransition className="auth-route-fade">
         <Outlet />
@@ -59,7 +65,9 @@ export function AppShell() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           Sacred Esports
-          <small>{org?.name ?? guild?.name ?? 'Team Coach'}</small>
+          <small>
+            {org?.name ?? guild?.name ?? (isAdmin ? 'Platform admin' : 'Team Coach')}
+          </small>
         </div>
         {showRoster ? (
           <div className="sidebar-label">Esports Arena</div>
@@ -97,6 +105,18 @@ export function AppShell() {
             ))}
           </>
         ) : null}
+        {isAdmin ? (
+          <>
+            <div className="sidebar-split">Platform</div>
+            <NavLink
+              to="/admin"
+              viewTransition
+              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+            >
+              Dashboard
+            </NavLink>
+          </>
+        ) : null}
         <div className="sidebar-split">Account</div>
         {COMMON_NAV.map((item) => (
           <NavLink
@@ -108,18 +128,6 @@ export function AppShell() {
             {item.label}
           </NavLink>
         ))}
-        {user?.isPlatformAdmin ? (
-          <>
-            <div className="sidebar-split">Platform</div>
-            <NavLink
-              to="/admin"
-              viewTransition
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            >
-              Admin
-            </NavLink>
-          </>
-        ) : null}
         <div className="sidebar-foot">
           <div className="muted" style={{ padding: '0 10px 10px' }}>
             {user?.name}

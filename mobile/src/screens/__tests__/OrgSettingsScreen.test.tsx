@@ -1,5 +1,4 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { OrgSettingsScreen } from '../OrgSettingsScreen';
 import * as orgApi from '../../api/org';
@@ -7,9 +6,15 @@ import { useAuth } from '../../auth/AuthContext';
 
 jest.mock('../../api/org');
 jest.mock('../../auth/AuthContext');
+jest.mock('../../ui/confirmAsync', () => ({
+  confirmAsync: jest.fn(async () => true),
+}));
+
+import { confirmAsync } from '../../ui/confirmAsync';
 
 const mockedOrgApi = orgApi as jest.Mocked<typeof orgApi>;
 const mockedUseAuth = useAuth as jest.Mock;
+const mockedConfirm = confirmAsync as jest.MockedFunction<typeof confirmAsync>;
 const navigation = { navigate: jest.fn(), goBack: jest.fn() } as any;
 
 const detail = {
@@ -30,32 +35,27 @@ const refreshOrg = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  mockedConfirm.mockResolvedValue(true);
   mockedOrgApi.getMyOrg.mockResolvedValue(detail as any);
   mockedUseAuth.mockReturnValue({ refreshOrg });
 });
 
 describe('OrgSettingsScreen', () => {
-  it('shows every member with an owner badge, role pills, and Make Owner / Remove for non-owner rows', async () => {
+  it('shows settings only — no always-visible member list', async () => {
     render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
 
-    await screen.findByText('Owner Coach (Owner)');
-    expect(screen.getByText('Teammate')).toBeTruthy();
-    expect(screen.getByText('1')).toBeTruthy();
-    expect(screen.getByText('2')).toBeTruthy();
-    // RoleSelector pills render for every row. One role is active at a time.
-    expect(screen.getAllByText('Player')).toHaveLength(2);
-    expect(screen.getAllByText('Coach')).toHaveLength(2);
-    expect(screen.getAllByText('Analyst')).toHaveLength(2);
-    // Only the non-owner row gets the Make Owner / Remove from Roster icon buttons.
-    expect(screen.getAllByLabelText('Make Teammate owner')).toHaveLength(1);
-    expect(screen.getAllByLabelText('Remove Teammate from roster')).toHaveLength(1);
+    await screen.findByText('Chat History For New Members');
+    expect(screen.getByLabelText('Transfer ownership')).toBeTruthy();
+    expect(screen.queryByText('Members')).toBeNull();
+    expect(screen.queryByText('Teammate')).toBeNull();
+    expect(screen.queryByLabelText('Remove Teammate from roster')).toBeNull();
+    expect(screen.queryByLabelText('Change role, currently Player')).toBeNull();
   });
 
   it('shows the chat-history switch reflecting the current setting, and flips it on toggle', async () => {
     mockedOrgApi.updateOrgSettings.mockResolvedValue({ historyVisibleToNewMembers: false });
     render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
+    await screen.findByLabelText('Transfer ownership');
 
     const toggle = screen.getByLabelText('Chat history for new members');
     expect(toggle.props.value).toBe(true);
@@ -69,12 +69,12 @@ describe('OrgSettingsScreen', () => {
     expect(screen.getByLabelText('Chat history for new members').props.value).toBe(false);
   });
 
-  it('reverts the chat-history switch and shows an alert if saving the setting fails', async () => {
+  it('reverts the chat-history switch if saving the setting fails', async () => {
     mockedOrgApi.updateOrgSettings.mockRejectedValue({
       response: { data: { message: 'Please try again.' } },
     });
     render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
+    await screen.findByLabelText('Transfer ownership');
 
     await act(async () => {
       fireEvent(screen.getByLabelText('Chat history for new members'), 'valueChange', false);
@@ -90,161 +90,53 @@ describe('OrgSettingsScreen', () => {
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
   });
 
-  it('changes a member role when a different pill is pressed, then shows a toast and refreshes', async () => {
-    mockedOrgApi.changeMemberRole.mockResolvedValue({ userId: 'user-2', role: 'COACH' });
-    mockedOrgApi.getMyOrg
-      .mockResolvedValueOnce(detail as any)
-      .mockResolvedValueOnce({
-        ...detail,
-        members: [
-          detail.members[0],
-          { userId: 'user-2', name: 'Teammate', avatarUrl: null, role: 'COACH', isOwner: false },
-        ],
-      } as any);
-    render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    // Teammate's row is the 2nd member card; its "Coach" pill is the 2nd "Coach" text.
-    await act(async () => {
-      fireEvent.press(screen.getAllByText('Coach')[1]);
-    });
-
-    expect(mockedOrgApi.changeMemberRole).toHaveBeenCalledWith('user-2', 'COACH');
-    expect(refreshOrg).toHaveBeenCalled();
-    await screen.findByText('Teammate is now Coach');
-  });
-
-  it('does not call the API when the already-active role pill is pressed', async () => {
-    render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    // Teammate is already PLAYER — its "Player" pill is the 2nd one.
-    await act(async () => {
-      fireEvent.press(screen.getAllByText('Player')[1]);
-    });
-
-    expect(mockedOrgApi.changeMemberRole).not.toHaveBeenCalled();
-  });
-
-  it('shows an error alert when changing role fails', async () => {
-    mockedOrgApi.changeMemberRole.mockRejectedValue({
-      response: { data: { message: 'This org already has the maximum of 2 coach(s)' } },
-    });
-    render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    await act(async () => {
-      fireEvent.press(screen.getAllByText('Coach')[1]);
-    });
-
-    expect(mockedOrgApi.changeMemberRole).toHaveBeenCalledWith('user-2', 'COACH');
-  });
-
-  it('transfers ownership after confirming Yes', async () => {
-    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const confirm = buttons?.find((b) => b.text === 'Yes');
-      confirm?.onPress?.(undefined as any);
-    });
+  it('opens a picker, then confirms before transferring ownership', async () => {
     mockedOrgApi.transferOwnership.mockResolvedValue(undefined);
     render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
+    await screen.findByLabelText('Transfer ownership');
+
+    fireEvent.press(screen.getByLabelText('Transfer ownership'));
+    expect(screen.getByLabelText('Select Teammate')).toBeTruthy();
+    expect(
+      screen.getByText('Select a roster member, then confirm the transfer.'),
+    ).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(screen.getByLabelText('Make Teammate owner'));
+      fireEvent.press(screen.getByLabelText('Select Teammate'));
     });
 
-    expect(Alert.alert).toHaveBeenCalledWith(
-      'Transfer ownership?',
+    expect(mockedConfirm).toHaveBeenCalledWith(
+      'Transfer Ownership?',
       expect.stringContaining('Do you want to transfer ownership'),
-      expect.any(Array),
+      'Yes',
+      'No',
     );
     expect(mockedOrgApi.transferOwnership).toHaveBeenCalledWith('user-2');
     expect(refreshOrg).toHaveBeenCalled();
+    await screen.findByText('Teammate is now the owner');
   });
 
-  it('removes a member after confirming, then shows a toast and reloads', async () => {
-    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const confirm = buttons?.find((b) => b.text === 'Yes');
-      confirm?.onPress?.(undefined as any);
-    });
-    mockedOrgApi.removeFromGuildRoster.mockResolvedValue(undefined);
-    mockedOrgApi.getMyOrg
-      .mockResolvedValueOnce(detail as any)
-      .mockResolvedValueOnce({ ...detail, members: [detail.members[0]] } as any);
+  it('does not transfer when confirm is cancelled', async () => {
+    mockedConfirm.mockResolvedValue(false);
     render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
+    await screen.findByLabelText('Transfer ownership');
 
+    fireEvent.press(screen.getByLabelText('Transfer ownership'));
     await act(async () => {
-      fireEvent.press(screen.getByLabelText('Remove Teammate from roster'));
+      fireEvent.press(screen.getByLabelText('Select Teammate'));
     });
 
-    expect(mockedOrgApi.removeFromGuildRoster).toHaveBeenCalledWith('user-2');
-    await screen.findByText('Teammate removed from roster');
-    await waitFor(() => expect(screen.queryByText('Teammate')).toBeNull());
+    expect(mockedOrgApi.transferOwnership).not.toHaveBeenCalled();
   });
 
-  it('shows an error alert when removal fails', async () => {
-    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      const confirm = buttons?.find((b) => b.text === 'Yes');
-      confirm?.onPress?.(undefined as any);
-    });
-    mockedOrgApi.removeFromGuildRoster.mockRejectedValue({
-      response: { data: { message: 'Please try again.' } },
-    });
-    render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Teammate');
-
-    await act(async () => {
-      fireEvent.press(screen.getByLabelText('Remove Teammate from roster'));
-    });
-
-    expect(mockedOrgApi.removeFromGuildRoster).toHaveBeenCalledWith('user-2');
-  });
-
-  it('adds a guild member who is not on the roster, using the one selected role', async () => {
-    mockedOrgApi.getMyGuild.mockResolvedValue({
-      members: [
-        {
-          userId: 'user-1',
-          name: 'Owner Coach',
-          inGameName: null,
-          guildRole: 'LEADER',
-          onRoster: true,
-          rosterRole: 'COACH',
-          isOwner: true,
-        },
-        {
-          userId: 'user-3',
-          name: 'Waiting Member',
-          inGameName: null,
-          guildRole: 'MEMBER',
-          onRoster: false,
-          rosterRole: null,
-          isOwner: false,
-        },
-      ],
+  it('disables transfer when there is nobody else on the roster', async () => {
+    mockedOrgApi.getMyOrg.mockResolvedValue({
+      ...detail,
+      members: [detail.members[0]],
     } as any);
-    mockedOrgApi.addGuildMemberToRoster.mockResolvedValue({
-      userId: 'user-3',
-      role: 'ANALYST',
-    });
-    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      buttons?.find((b) => b.text === 'Yes')?.onPress?.(undefined as any);
-    });
     render(<OrgSettingsScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Waiting Member');
 
-    await act(async () => {
-      fireEvent.press(screen.getAllByText('Analyst').at(-1)!);
-    });
-    await act(async () => {
-      fireEvent.press(screen.getByLabelText('Add Waiting Member to roster'));
-    });
-
-    expect(mockedOrgApi.addGuildMemberToRoster).toHaveBeenCalledWith(
-      'user-3',
-      'ANALYST',
-    );
-    await screen.findByText('Waiting Member added to roster');
+    await screen.findByText(/No other roster members yet/);
+    expect(screen.getByLabelText('Transfer ownership')).toBeDisabled();
   });
 });

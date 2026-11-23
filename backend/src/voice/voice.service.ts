@@ -103,10 +103,16 @@ export class VoiceService {
   }
 
   /**
-   * Both people must hold `canDirectVoice`. The permission is only ever set
-   * by a platform admin, and it is re-read here on every token mint — so a
-   * revoke takes effect on the next join, and a grant to one person alone
-   * opens nothing.
+   * Three things must hold, all re-read here on every token mint so a change
+   * takes effect on the next join rather than when some token expires:
+   *
+   *  1. both people hold `canDirectVoice` (only a platform admin sets it),
+   *  2. both are in a guild at all, and
+   *  3. it is the SAME guild.
+   *
+   * So a grant to one person alone opens nothing, and a grant to two people
+   * in different guilds opens nothing either — the admin is enabling a pair
+   * inside one guild, not a line across the platform.
    */
   private async resolveDirectRoom(userId: string, peerId: string | undefined) {
     if (!peerId) {
@@ -115,27 +121,35 @@ export class VoiceService {
     if (peerId === userId) {
       throw new BadRequestException('You cannot call yourself');
     }
+    const select = {
+      canDirectVoice: true,
+      // At most one row — GuildMembership is unique per user.
+      guildMemberships: { select: { orgId: true }, take: 1 },
+    };
     const [me, peer] = await Promise.all([
-      this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { canDirectVoice: true },
-      }),
-      this.prisma.user.findUnique({
-        where: { id: peerId },
-        select: { canDirectVoice: true, name: true },
-      }),
+      this.prisma.user.findUnique({ where: { id: userId }, select }),
+      this.prisma.user.findUnique({ where: { id: peerId }, select }),
     ]);
     if (!me?.canDirectVoice) {
       throw new ForbiddenException('Direct voice is not enabled for you');
     }
-    // Deliberately the same message either way: whether a particular account
-    // exists, and whether it holds this permission, is not something a caller
-    // gets to probe by trying ids.
-    if (!peer?.canDirectVoice) {
+    const myGuildId = me.guildMemberships[0]?.orgId ?? null;
+    if (!myGuildId) {
+      // About the caller's own account, so it can say what is actually wrong.
+      throw new ForbiddenException('Join a guild to use 1-on-1 voice');
+    }
+    // Deliberately the same message for all three peer-side failures — does
+    // the account exist, does it hold the permission, is it in my guild.
+    // Any of them answered separately would let a caller probe ids and map
+    // out who is in which guild.
+    const peerGuildId = peer?.guildMemberships[0]?.orgId ?? null;
+    if (!peer?.canDirectVoice || peerGuildId !== myGuildId) {
       throw new ForbiddenException('Direct voice is not available with them');
     }
     return {
       kind: 'direct' as const,
+      // The room is scoped to the guild the pair share, but it is still a
+      // private 2-seat room — not the guild's own voice channel.
       orgId: null,
       roomName: VoiceService.directRoomName(userId, peerId),
       canModerate: false,
@@ -174,24 +188,44 @@ export class VoiceService {
   }
 
   /**
-   * Who this person can place a 1-on-1 call to: everyone else holding the
-   * same admin-granted permission. Returns an empty list (not an error) for
-   * people without it, so the client can simply hide the section.
+   * Who this person can place a 1-on-1 call to: other holders of the same
+   * admin-granted permission **in their own guild**. Mirrors exactly what
+   * resolveDirectRoom will allow, so nobody is ever shown a contact the call
+   * would then refuse.
+   *
+   * Returns an empty list rather than an error in every failure case, so the
+   * client can just render the state:
+   *   enabled false              → no permission, hide the section
+   *   enabled true, needsGuild   → granted, but they are in no guild yet
+   *   enabled true, empty peers  → nobody else in their guild has it
    */
   async listDirectVoicePeers(userId: string) {
     const me = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { canDirectVoice: true },
+      select: {
+        canDirectVoice: true,
+        guildMemberships: { select: { orgId: true }, take: 1 },
+      },
     });
-    if (!me?.canDirectVoice) return { enabled: false, peers: [] };
+    if (!me?.canDirectVoice) {
+      return { enabled: false, needsGuild: false, peers: [] };
+    }
+
+    const guildId = me.guildMemberships[0]?.orgId ?? null;
+    if (!guildId) return { enabled: true, needsGuild: true, peers: [] };
 
     const peers = await this.prisma.user.findMany({
-      where: { canDirectVoice: true, id: { not: userId } },
+      where: {
+        canDirectVoice: true,
+        id: { not: userId },
+        guildMemberships: { some: { orgId: guildId } },
+      },
       orderBy: { name: 'asc' },
       select: { id: true, name: true, inGameName: true, avatarUrl: true },
     });
     return {
       enabled: true,
+      needsGuild: false,
       peers: peers.map((p) => ({
         id: p.id,
         name: p.inGameName?.trim() || p.name,

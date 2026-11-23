@@ -29,19 +29,29 @@ export function isAudioOutputId(value: unknown): value is AudioOutputId {
   return typeof value === 'string' && (KNOWN as string[]).includes(value);
 }
 
+export function isExternalOutput(id: AudioOutputId): boolean {
+  return id === 'bluetooth' || id === 'headset';
+}
+
+export function isSpeakerOutput(id: AudioOutputId): boolean {
+  return id === 'speaker' || id === 'force_speaker';
+}
+
+export function isEarpieceOutput(id: AudioOutputId): boolean {
+  return id === 'earpiece' || id === 'default';
+}
+
 /**
- * Same order LiveKit uses when it picks a route on its own, so "Auto" in the
- * UI and the OS agree on what is currently playing. A wired headset or
- * bluetooth earpiece outranks the loudspeaker; the phone's own earpiece is
- * the last resort.
+ * Call-style preference: plugged-in headset / bluetooth first, then the
+ * phone earpiece (default for a voice call), loudspeaker last.
  */
 const PREFERENCE: AudioOutputId[] = [
   'bluetooth',
   'headset',
-  'speaker',
   'earpiece',
-  'force_speaker',
   'default',
+  'speaker',
+  'force_speaker',
 ];
 
 /** Which route is actually playing, given what the OS offers. */
@@ -70,6 +80,44 @@ export function keepManualSelection(
   return outputs.includes(manual) ? manual : null;
 }
 
+/**
+ * When only phone earpiece + speaker are available, tapping the single
+ * control flips between them. Returns null when a menu is needed instead
+ * (bluetooth / wired headset present, or only one route).
+ */
+export function nextToggleOutput(
+  outputs: AudioOutputId[],
+  active: AudioOutputId | null,
+): AudioOutputId | null {
+  if (outputs.some(isExternalOutput)) return null;
+  const speaker = outputs.find(isSpeakerOutput) ?? null;
+  const ear = outputs.find(isEarpieceOutput) ?? null;
+  if (speaker && ear) {
+    if (active && isSpeakerOutput(active)) return ear;
+    return speaker;
+  }
+  // Fallback: flip to the other available route if there are exactly two.
+  if (outputs.length === 2 && active) {
+    return outputs.find((id) => id !== active) ?? null;
+  }
+  return null;
+}
+
+/** Preferred call default when no external device is connected. */
+export function preferredCallDefault(
+  outputs: AudioOutputId[],
+): AudioOutputId | null {
+  if (outputs.some(isExternalOutput)) {
+    return resolveActiveOutput(outputs, null);
+  }
+  return (
+    outputs.find(isEarpieceOutput) ??
+    outputs.find(isSpeakerOutput) ??
+    outputs[0] ??
+    null
+  );
+}
+
 export function audioOutputLabel(id: AudioOutputId): string {
   switch (id) {
     case 'speaker':
@@ -82,7 +130,7 @@ export function audioOutputLabel(id: AudioOutputId): string {
     case 'bluetooth':
       return 'Bluetooth';
     case 'default':
-      return 'Automatic';
+      return 'Phone';
   }
 }
 
@@ -93,18 +141,33 @@ export function audioOutputIcon(id: AudioOutputId | null): AppIconName {
     case 'headset':
       return 'headset';
     case 'earpiece':
+    case 'default':
       return 'ear';
-    default:
+    case 'speaker':
+    case 'force_speaker':
       return 'volume-high';
+    default:
+      return 'ear';
   }
 }
 
 /**
- * Sort for the picker sheet: the routes people reach for most sit at the top
- * and the list does not re-order itself as devices come and go.
+ * Sort for the picker sheet: earpiece / speaker first (the everyday
+ * toggle), then external devices.
  */
 export function sortAudioOutputs(outputs: AudioOutputId[]): AudioOutputId[] {
-  const order = new Map(PREFERENCE.map((id, i) => [id, i]));
+  const order = new Map(
+    (
+      [
+        'earpiece',
+        'default',
+        'speaker',
+        'force_speaker',
+        'headset',
+        'bluetooth',
+      ] as AudioOutputId[]
+    ).map((id, i) => [id, i]),
+  );
   return [...outputs].sort(
     (a, b) => (order.get(a) ?? 99) - (order.get(b) ?? 99),
   );

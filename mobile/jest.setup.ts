@@ -143,24 +143,47 @@ jest.mock('expo-av', () => {
           },
         }),
       },
-      Sound: {
-        createAsync: jest.fn().mockResolvedValue({
-          sound: {
-            setOnPlaybackStatusUpdate: jest.fn(),
-            playAsync: jest.fn().mockResolvedValue(undefined),
-            // Join/leave cues restart from zero rather than resume.
-            replayAsync: jest.fn().mockResolvedValue(undefined),
-            setVolumeAsync: jest.fn().mockResolvedValue(undefined),
-            pauseAsync: jest.fn().mockResolvedValue(undefined),
-            setPositionAsync: jest.fn().mockResolvedValue(undefined),
-            getStatusAsync: jest.fn().mockResolvedValue({ isLoaded: true, isPlaying: false }),
-            unloadAsync: jest.fn().mockResolvedValue(undefined),
-          },
-        }),
-      },
+      Sound: Object.assign(
+        jest.fn().mockImplementation(() => ({
+          loadAsync: jest.fn().mockResolvedValue(undefined),
+          playAsync: jest.fn().mockResolvedValue(undefined),
+          stopAsync: jest.fn().mockResolvedValue(undefined),
+          pauseAsync: jest.fn().mockResolvedValue(undefined),
+          setVolumeAsync: jest.fn().mockResolvedValue(undefined),
+          unloadAsync: jest.fn().mockResolvedValue(undefined),
+          setOnPlaybackStatusUpdate: jest.fn(),
+          replayAsync: jest.fn().mockResolvedValue(undefined),
+          setPositionAsync: jest.fn().mockResolvedValue(undefined),
+          getStatusAsync: jest.fn().mockResolvedValue({ isLoaded: true, isPlaying: false }),
+        })),
+        {
+          createAsync: jest.fn().mockResolvedValue({
+            sound: {
+              setOnPlaybackStatusUpdate: jest.fn(),
+              playAsync: jest.fn().mockResolvedValue(undefined),
+              // Join/leave cues restart from zero rather than resume.
+              replayAsync: jest.fn().mockResolvedValue(undefined),
+              setVolumeAsync: jest.fn().mockResolvedValue(undefined),
+              pauseAsync: jest.fn().mockResolvedValue(undefined),
+              setPositionAsync: jest.fn().mockResolvedValue(undefined),
+              getStatusAsync: jest.fn().mockResolvedValue({ isLoaded: true, isPlaying: false }),
+              unloadAsync: jest.fn().mockResolvedValue(undefined),
+            },
+          }),
+        },
+      ),
     },
   };
 });
+
+jest.mock('expo-media-library', () => ({
+  MediaType: { audio: 'audio', photo: 'photo', video: 'video' },
+  SortBy: { creationTime: 'creationTime', modificationTime: 'modificationTime' },
+  requestPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
+  getPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
+  getAssetsAsync: jest.fn().mockResolvedValue({ assets: [], endCursor: null, hasNextPage: false }),
+  getAssetInfoAsync: jest.fn().mockResolvedValue({ localUri: null, uri: null }),
+}));
 
 // NetInfo has no native backing under Jest. Default to online so screens
 // behave the way they do on a healthy device; tests that care about the

@@ -8,7 +8,7 @@ jest.mock('../../../api/admin');
 
 const mockedApi = adminApi as jest.Mocked<typeof adminApi>;
 
-const overview = {
+const overview: adminApi.AdminOverview = {
   orgs: 3,
   users: 42,
   verifiedUsers: 40,
@@ -16,12 +16,71 @@ const overview = {
   messages: 12_400,
   scrims: 7,
   newUsersLast7Days: 5,
+  newUsersLast24Hours: 2,
+  guildMembers: 30,
+  rosterMembers: 11,
+  activeUsers24h: 9,
+  activeUsers7d: 21,
+  activeUsers30d: 35,
+  onlineNow: 4,
+  pendingJoinRequests: 0,
 };
 
-function orgRow(id: string, name: string, over: Partial<adminApi.AdminOrgRow> = {}) {
+const health: adminApi.AdminHealth = {
+  checkedAt: '2026-01-01T00:00:00.000Z',
+  status: 'ok',
+  needsAttention: 0,
+  process: {
+    env: 'test',
+    nodeVersion: 'v22.0.0',
+    uptimeSeconds: 120,
+    startedAt: '2026-01-01T00:00:00.000Z',
+    memoryMb: 100,
+    heapUsedMb: 40,
+  },
+  services: [
+    {
+      key: 'database',
+      label: 'PostgreSQL',
+      status: 'up',
+      kind: 'live',
+      detail: 'Query answered',
+      latencyMs: 2,
+    },
+  ],
+};
+
+function member(
+  over: Partial<adminApi.AdminMember> = {},
+): adminApi.AdminMember {
+  return {
+    id: 'u1',
+    name: 'Rhea',
+    email: 'rhea@example.com',
+    inGameName: 'SES-RHEA',
+    inGameUid: null,
+    avatarUrl: null,
+    phone: null,
+    lastSeenAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    emailVerified: true,
+    role: null,
+    joinedAt: '2026-01-01T00:00:00.000Z',
+    online: false,
+    canDirectVoice: false,
+    ...over,
+  };
+}
+
+function orgRow(
+  id: string,
+  name: string,
+  over: Partial<adminApi.AdminOrgRow> = {},
+): adminApi.AdminOrgRow {
   return {
     id,
     name,
+    orgCode: 'CODE123',
     createdAt: '2026-01-01T00:00:00.000Z',
     rosterCount: 4,
     guildCount: 9,
@@ -51,6 +110,7 @@ describe('AdminScreen', () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockedApi.getOverview.mockResolvedValue(overview);
+    mockedApi.getHealth.mockResolvedValue(health);
     mockedApi.listOrgs.mockResolvedValue({
       total: 1,
       skip: 0,
@@ -67,7 +127,7 @@ describe('AdminScreen', () => {
     renderScreen();
     await settle();
 
-    expect(screen.getByText('Orgs')).toBeTruthy();
+    expect(screen.getByText('Guilds')).toBeTruthy();
     expect(screen.getByText('Alpha Squad')).toBeTruthy();
     expect(screen.getByText(/rhea@example.com/)).toBeTruthy();
   });
@@ -112,7 +172,7 @@ describe('AdminScreen', () => {
     await settle();
     mockedApi.listOrgs.mockClear();
 
-    const input = screen.getByLabelText('Search orgs by name');
+    const input = screen.getByLabelText('Search guilds');
     fireEvent.changeText(input, 'a');
     fireEvent.changeText(input, 'al');
     fireEvent.changeText(input, 'alp');
@@ -128,7 +188,7 @@ describe('AdminScreen', () => {
     mockedApi.listOrgs.mockResolvedValue({ total: 0, skip: 0, take: 25, orgs: [] });
     renderScreen();
     await settle();
-    fireEvent.changeText(screen.getByLabelText('Search orgs by name'), 'zzz');
+    fireEvent.changeText(screen.getByLabelText('Search guilds'), 'zzz');
     await settle();
 
     expect(screen.getByText('No orgs match that search.')).toBeTruthy();
@@ -138,21 +198,23 @@ describe('AdminScreen', () => {
     mockedApi.getOrg.mockResolvedValue({
       id: 'org-1',
       name: 'Alpha Squad',
+      orgCode: 'CODE123',
+      rosterCode: 'ROST123',
       createdAt: '2026-01-01T00:00:00.000Z',
-      counts: { guildMembers: 9, messages: 120, scrims: 2, mediaPosts: 3, playerStats: 8 },
-      roster: [
-        {
-          id: 'u1',
-          name: 'Rhea',
-          email: 'rhea@example.com',
-          inGameName: 'SES-RHEA',
-          avatarUrl: null,
-          lastSeenAt: null,
-          role: null,
-          isOwner: true,
-          joinedAt: '2026-01-01T00:00:00.000Z',
-        },
-      ],
+      owner: { id: 'u1', name: 'Rhea', email: 'rhea@example.com' },
+      counts: {
+        guildMembers: 9,
+        rosterMembers: 1,
+        activeGuildMembers24h: 3,
+        messages: 120,
+        scrims: 2,
+        mediaPosts: 3,
+        playerStats: 8,
+        pendingJoinRequests: 0,
+      },
+      guild: [member({ id: 'g1', name: 'Vik', inGameName: 'SES-VIK' })],
+      roster: [member({ isOwner: true })],
+      pendingRequests: [],
     });
     renderScreen();
     await settle();
@@ -163,6 +225,32 @@ describe('AdminScreen', () => {
 
     await act(async () => fireEvent.press(row));
     expect(screen.queryByText(/SES-RHEA/)).toBeNull();
+  });
+
+  it('grants 1-on-1 voice from a member row and re-reads the guild afterwards', async () => {
+    mockedApi.setDirectVoice.mockResolvedValue({
+      userId: 'g1',
+      email: 'vik@example.com',
+      canDirectVoice: true,
+    });
+    renderScreen();
+    await settle();
+
+    await act(async () =>
+      fireEvent.press(screen.getByLabelText('Alpha Squad, 4 roster members')),
+    );
+    const chip = await screen.findByLabelText(
+      'Grant 1-on-1 voice for Vik',
+    );
+    await act(async () => fireEvent.press(chip));
+
+    expect(mockedApi.setDirectVoice).toHaveBeenCalledWith({
+      userId: 'g1',
+      enabled: true,
+    });
+    // The row must come from the server, never from a local guess about
+    // whether the write landed.
+    expect(mockedApi.getOrg).toHaveBeenCalledTimes(2);
   });
 
   it('pages instead of pulling every org at once', async () => {

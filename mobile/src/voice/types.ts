@@ -1,6 +1,9 @@
 import type { VideoTrack } from 'livekit-client';
+import type { MusicShareInfo } from './musicShare';
 
 export type VoiceChannelStatus = 'idle' | 'connecting' | 'connected' | 'error';
+
+export type { MusicShareInfo };
 
 /**
  * Which room a session is in. 'direct' is an admin-granted 1-on-1 call
@@ -59,11 +62,23 @@ export interface VoiceChannelController {
   isScreenSharing: boolean;
   /** Active screen share in the room (local or remote), if any. */
   screenShare: VoiceScreenShare | null;
+  /**
+   * Active music share (peer-to-peer over the voice data channel — not stored
+   * in our DB). Null when nobody is sharing.
+   */
+  musicShare: MusicShareInfo | null;
   join: () => Promise<void>;
   leave: () => void;
   toggleMute: () => void;
   /** Start/stop sharing this device's screen with others in the voice call. */
   toggleScreenShare: () => void;
+  /**
+   * Share a local audio file with everyone in the call (peer-to-peer data
+   * channel — nothing is saved on our servers / DB).
+   */
+  startMusicShare: (pick: { title: string; mime: string; uri: string }) => void;
+  /** Stop the active music share (broadcasts stop if we started it). */
+  stopMusicShare: () => void;
   /** Mute/unmute another person in your own ears only (Discord-style). Kept for backwards compat — calls setParticipantVolume(id, 0). */
   toggleParticipantMute: (participantId: string) => void;
   /** Toggle local hand raise on/off, broadcasting to all participants. */

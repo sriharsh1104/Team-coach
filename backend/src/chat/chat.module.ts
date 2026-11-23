@@ -22,6 +22,6 @@ import { LinkPreviewService } from './link-preview.service';
     LinkPreviewService,
   ],
   controllers: [ChatController],
-  exports: [ChatService, ChatGateway],
+  exports: [ChatService, ChatGateway, ChatPresenceTracker],
 })
 export class ChatModule {}

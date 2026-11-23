@@ -824,6 +824,12 @@ export function useSelfHostedVoiceChannel(
     emitToast('Screen share needs hosted voice. Ask your coach to enable it.');
   }, []);
 
+  const startMusicShare = useCallback((_pick: { title: string; mime: string; uri: string }) => {
+    emitToast('Music share needs hosted voice. Ask your coach to enable it.');
+  }, []);
+
+  const stopMusicShare = useCallback(() => {}, []);
+
   return useMemo<VoiceChannelController>(
     () => ({
       status,
@@ -835,10 +841,13 @@ export function useSelfHostedVoiceChannel(
       isPushToTalk,
       isScreenSharing: false,
       screenShare: null,
+      musicShare: null,
       join,
       leave,
       toggleMute,
       toggleScreenShare,
+      startMusicShare,
+      stopMusicShare,
       toggleParticipantMute,
       toggleHandRaise,
       setParticipantVolume,
@@ -873,6 +882,8 @@ export function useSelfHostedVoiceChannel(
       leave,
       toggleMute,
       toggleScreenShare,
+      startMusicShare,
+      stopMusicShare,
       toggleParticipantMute,
       toggleHandRaise,
       setParticipantVolume,

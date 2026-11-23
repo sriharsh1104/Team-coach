@@ -130,13 +130,24 @@ function buildMainScreenOptions(themeId: 'black' | 'white' | 'lavender') {
 // Persist/restore the current stack so web refresh and native process death
 // don't drop the user back on Home. Phase-tagged in navPersist so a stale
 // Auth route never gets handed to the Main navigator.
-type NavPhase = 'auth' | 'profileSetup' | 'orgSetup' | 'guild' | 'main';
+type NavPhase =
+  | 'auth'
+  | 'profileSetup'
+  | 'orgSetup'
+  | 'guild'
+  | 'main'
+  | 'admin';
 function computeNavPhase(
-  user: { profileComplete: boolean } | null,
+  user: { profileComplete: boolean; isPlatformAdmin?: boolean } | null,
   org: unknown,
   guild: unknown,
 ): NavPhase {
   if (!user) return 'auth';
+  // A platform admin account has no in-game name and no guild — the player
+  // onboarding would ask it for details nothing on the admin screen uses,
+  // with no way past. Admins who DO have a guild fall through to the normal
+  // phases below and reach Admin from the drawer, as before.
+  if (user.isPlatformAdmin && !org && !guild) return 'admin';
   if (!user.profileComplete) return 'profileSetup';
   if (org) return 'main';
   if (guild) return 'guild';
@@ -235,6 +246,40 @@ export function RootNavigator() {
             component={ResetPasswordScreen}
           />
         </AuthStack.Navigator>
+      ) : user.isPlatformAdmin && !org && !guild ? (
+        // Platform admin with no guild of their own: straight to the
+        // dashboard, with the account screens still reachable from it.
+        <MainStack.Navigator screenOptions={mainScreenOptions}>
+          <MainStack.Screen
+            name="Admin"
+            component={AdminScreen}
+            options={() => ({ title: 'Platform Admin' })}
+          />
+          <MainStack.Screen
+            name="Profile"
+            component={ProfileScreen}
+            options={detailOptions(() => ({ title: 'Profile' }))}
+          />
+          <MainStack.Screen
+            name="AccountSettings"
+            component={AccountSettingsScreen}
+            options={detailOptions(() => ({ title: 'Account Settings' }))}
+          />
+          <MainStack.Screen
+            name="TwoFactorSetup"
+            component={TwoFactorSetupScreen}
+            options={detailOptions(() => ({
+              title: 'Two-Factor Authentication',
+            }))}
+          />
+          <MainStack.Screen
+            name="MemberProfile"
+            component={MemberProfileScreen}
+            options={detailOptions(({ route }) => ({
+              title: titleCase(route.params.name),
+            }))}
+          />
+        </MainStack.Navigator>
       ) : !user.profileComplete ? (
         <ProfileSetupStack.Navigator screenOptions={{ headerShown: false }}>
           <ProfileSetupStack.Screen name="CompleteProfile">

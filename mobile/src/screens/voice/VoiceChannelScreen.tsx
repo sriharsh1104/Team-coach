@@ -37,8 +37,10 @@ import { AppIcon } from '../../ui/AppIcon';
 import { haptic } from '../../ui/haptics';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { SkeletonList } from '../../ui/Skeleton';
+import { emitToast } from '../../ui/toastBus';
 import { ChannelAvatar } from '../chat/ChannelAvatar';
 import { AudioOutputPicker } from './AudioOutputPicker';
+import { MusicSharePicker } from './MusicSharePicker';
 import { VoicePingSheet } from './VoicePingSheet';
 import { useSharedStyles } from '../shared';
 import { ThemeColors } from '../../theme';
@@ -527,6 +529,7 @@ function VoiceChannelBody({
   // pulse on the actual transition tells the user they're live without
   // making them watch the status text.
   const [pingOpen, setPingOpen] = useState(false);
+  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
   // Pinging only makes sense for the team room — guild voice is org-wide, so
   // this would be a megaphone rather than a nudge to the people you want in.
   const canPing = inChannel && roomKind === 'team';
@@ -757,6 +760,36 @@ function VoiceChannelBody({
 
             <ScreenShareViewer voice={voice} />
 
+            {voice.musicShare ? (
+              <View style={themed.musicBar}>
+                <AppIcon name="musical-notes" size={18} color={colors.chrome} />
+                <View style={styles.musicBarText}>
+                  <Text style={themed.musicTitle} numberOfLines={1}>
+                    {voice.musicShare.title}
+                  </Text>
+                  <Text style={themed.musicMeta} numberOfLines={1}>
+                    {voice.musicShare.status === 'sending'
+                      ? `Sending… ${Math.round(voice.musicShare.progress * 100)}%`
+                      : voice.musicShare.isLocal
+                        ? 'Playing for everyone'
+                        : `${voice.musicShare.fromName} is sharing`}
+                  </Text>
+                </View>
+                {voice.musicShare.isLocal && (
+                  <Pressable
+                    onPress={() => {
+                      haptic('light');
+                      voice.stopMusicShare();
+                    }}
+                    hitSlop={8}
+                    accessibilityLabel="Stop music"
+                  >
+                    <Text style={themed.musicStop}>Stop</Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : null}
+
             <View style={styles.sectionRow}>
               <Text style={themed.sectionTitle}>In Channel</Text>
               {canPing && (
@@ -882,8 +915,13 @@ function VoiceChannelBody({
               )}
             />
 
-            {/* Bottom bar: [Hand Raise] [Mic/PTT] [Share] [Deafen] [Disconnect] */}
-            <View style={themed.bottomBar}>
+            {/* Bottom bar: [Hand] [Mic] [Screen] [Music] [Audio] [Deafen] [Leave] */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={themed.bottomBar}
+              style={styles.bottomBarScroll}
+            >
               {/* Hand Raise */}
               <Pressable
                 style={[
@@ -943,6 +981,30 @@ function VoiceChannelBody({
                 <AppIcon name="phone-portrait-outline" size={22} color="#fff" />
               </Pressable>
 
+              {/* Share music — peer-to-peer; not stored on our servers */}
+              <Pressable
+                style={[
+                  styles.iconBtn,
+                  voice.musicShare ? styles.iconBtnActive : themed.iconBtnDefault,
+                ]}
+                onPress={() => {
+                  if (voice.musicShare?.isLocal) {
+                    voice.stopMusicShare();
+                    return;
+                  }
+                  if (voice.musicShare) {
+                    emitToast('Someone is already sharing music');
+                    return;
+                  }
+                  setMusicPickerOpen(true);
+                }}
+                accessibilityLabel={
+                  voice.musicShare?.isLocal ? 'Stop music share' : 'Share music'
+                }
+              >
+                <AppIcon name="musical-notes" size={22} color="#fff" />
+              </Pressable>
+
               {/* Audio output: speaker / phone / headphones / bluetooth */}
               <AudioOutputPicker
                 enabled={inChannel}
@@ -959,7 +1021,7 @@ function VoiceChannelBody({
                 accessibilityLabel={voice.isDeafened ? 'Undeafen' : 'Deafen'}
               >
                 <AppIcon
-                  name={voice.isDeafened ? 'headset-off' : 'headset'}
+                  name={voice.isDeafened ? 'volume-mute' : 'volume-high'}
                   size={22}
                   color="#fff"
                 />
@@ -973,7 +1035,13 @@ function VoiceChannelBody({
               >
                 <AppIcon name="phone-down" size={22} color="#fff" />
               </Pressable>
-            </View>
+            </ScrollView>
+
+            <MusicSharePicker
+              visible={musicPickerOpen}
+              onClose={() => setMusicPickerOpen(false)}
+              onPick={(pick) => voice.startMusicShare(pick)}
+            />
 
             <VoicePingSheet
               visible={pingOpen}
@@ -1612,11 +1680,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 4,
   },
+  musicBarText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  bottomBarScroll: {
+    flexGrow: 0,
+  },
   // Compact icon-only action buttons
   iconBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1731,11 +1807,27 @@ function voiceStyles(c: ThemeColors) {
     participantName: { fontSize: 15, color: c.text, flexShrink: 1 },
     mutedHint: { fontSize: 12, color: c.textMuted, marginTop: 2 },
     iconBtnDefault: { backgroundColor: c.surface },
+    musicBar: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 10,
+      marginHorizontal: 16,
+      marginBottom: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    musicTitle: { fontSize: 14, fontWeight: '600' as const, color: c.text },
+    musicMeta: { fontSize: 12, color: c.textMuted },
+    musicStop: { fontSize: 13, fontWeight: '700' as const, color: c.danger },
     bottomBar: {
       flexDirection: 'row' as const,
-      gap: 12,
+      gap: 10,
       paddingVertical: 16,
-      paddingHorizontal: 24,
+      paddingHorizontal: 16,
       borderTopWidth: 1,
       borderTopColor: c.border,
       justifyContent: 'center' as const,

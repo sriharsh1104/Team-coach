@@ -6,15 +6,19 @@ import { haptic } from '../../ui/haptics';
 import {
   audioOutputIcon,
   audioOutputLabel,
+  isExternalOutput,
+  nextToggleOutput,
   type AudioOutputId,
 } from '../../voice/audioOutputs';
 import { useAudioOutput } from '../../voice/useAudioOutput';
 
 /**
- * In-call audio output switch — speaker / phone / headphones / bluetooth,
- * the control every call app has. The button shows the route that is live;
- * tapping opens the list, or flips straight between earpiece and speaker
- * when those are the only two options (the common case with no headphones).
+ * Single in-call audio button (not three separate route icons).
+ *
+ * - Default icon = phone earpiece.
+ * - Tap flips earpiece ↔ speaker when those are the only options.
+ * - When bluetooth / wired headphones are connected, tap opens a sheet so
+ *   the user can pick among Phone / Speaker / Headphones / Bluetooth.
  */
 export function AudioOutputPicker({
   enabled,
@@ -31,11 +35,15 @@ export function AudioOutputPicker({
   // Nothing to switch between — don't show a dead button.
   if (outputs.length < 2 && !openSystemPicker) return null;
 
+  const needsMenu =
+    outputs.some(isExternalOutput) ||
+    outputs.length > 2 ||
+    !!openSystemPicker;
+
   const onPress = () => {
     haptic('light');
-    // Two routes is a toggle, not a menu. Tapping should just flip it.
-    if (outputs.length === 2 && !openSystemPicker) {
-      const next = outputs.find((id) => id !== active);
+    if (!needsMenu) {
+      const next = nextToggleOutput(outputs, active);
       if (next) select(next);
       return;
     }
@@ -55,7 +63,9 @@ export function AudioOutputPicker({
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={
-          active ? `Audio output: ${audioOutputLabel(active)}` : 'Audio output'
+          active
+            ? `Audio output: ${audioOutputLabel(active)}. Tap to switch.`
+            : 'Audio output'
         }
       >
         <AppIcon name={audioOutputIcon(active)} size={22} color="#fff" />
@@ -77,7 +87,7 @@ export function AudioOutputPicker({
             onPress={() => undefined}
           >
             <View style={styles.grabber} />
-            <Text style={styles.title}>Audio output</Text>
+            <Text style={styles.title}>Audio Output</Text>
 
             {outputs.map((id) => {
               const isActive = id === active;
@@ -94,17 +104,19 @@ export function AudioOutputPicker({
                     size={20}
                     color={isActive ? '#22c55e' : 'rgba(255,255,255,0.8)'}
                   />
-                  <Text style={[styles.rowText, isActive && styles.rowTextActive]}>
+                  <Text
+                    style={[styles.rowText, isActive && styles.rowTextActive]}
+                  >
                     {audioOutputLabel(id)}
                   </Text>
-                  {isActive && (
+                  {isActive ? (
                     <AppIcon name="checkmark" size={18} color="#22c55e" />
-                  )}
+                  ) : null}
                 </Pressable>
               );
             })}
 
-            {openSystemPicker && (
+            {openSystemPicker ? (
               <Pressable
                 style={styles.row}
                 onPress={() => {
@@ -113,10 +125,14 @@ export function AudioOutputPicker({
                 }}
                 accessibilityRole="button"
               >
-                <AppIcon name="bluetooth" size={20} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.rowText}>Other devices…</Text>
+                <AppIcon
+                  name="bluetooth"
+                  size={20}
+                  color="rgba(255,255,255,0.8)"
+                />
+                <Text style={styles.rowText}>Other Devices…</Text>
               </Pressable>
-            )}
+            ) : null}
           </Pressable>
         </Pressable>
       </Modal>

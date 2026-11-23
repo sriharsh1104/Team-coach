@@ -4,7 +4,7 @@ import type { NavigationState } from '@react-navigation/native';
 const NAV_STATE_KEY = 'team-coach.navState';
 const DISK_FILE = 'team-coach.nav-state.json';
 
-type NavPhase = 'auth' | 'profileSetup' | 'orgSetup' | 'guild' | 'main';
+type NavPhase = 'auth' | 'profileSetup' | 'orgSetup' | 'guild' | 'main' | 'admin';
 type Stored = { phase: NavPhase; state: NavigationState };
 
 /** In-memory mirror so NavigationContainer can read sync on first paint. */

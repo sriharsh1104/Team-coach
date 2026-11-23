@@ -213,6 +213,7 @@ export class ChatService {
                 select: {
                   id: true,
                   name: true,
+                  email: true,
                   avatarUrl: true,
                   inGameName: true,
                 },
@@ -225,7 +226,13 @@ export class ChatService {
         where: { orgId, userId: { not: userId } },
         include: {
           user: {
-            select: { id: true, name: true, avatarUrl: true, inGameName: true },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+              inGameName: true,
+            },
           },
         },
       }),
@@ -241,6 +248,7 @@ export class ChatService {
       {
         id: string;
         name: string;
+        email: string;
         avatarUrl: string | null;
         inGameName: string | null;
       }
@@ -323,11 +331,13 @@ export class ChatService {
     const toMentionable = (u: {
       id: string;
       name: string;
+      email: string;
       avatarUrl: string | null;
       inGameName: string | null;
     }) => ({
       userId: u.id,
       name: u.name,
+      email: u.email,
       avatarUrl: u.avatarUrl,
       inGameName: u.inGameName,
       channelKey: this.dmChannelKey(userId, u.id),

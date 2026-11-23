@@ -558,23 +558,49 @@ describe('VoiceService 1-on-1 voice', () => {
     return lk;
   }
 
-  function build(flags: Record<string, boolean>) {
+  /** Default guild — tests that care about the guild rule override it. */
+  const GUILD = 'guild-1';
+
+  /**
+   * `flags` is userId → has the permission. `guilds` is userId → which guild
+   * they are in (undefined entry = that default guild, null = no guild), so
+   * a test only has to say the part it is actually about.
+   */
+  function build(
+    flags: Record<string, boolean>,
+    guilds: Record<string, string | null> = {},
+  ) {
+    const guildOf = (id: string) =>
+      id in guilds ? guilds[id] : GUILD;
+    const guildRows = (id: string) => {
+      const orgId = guildOf(id);
+      return orgId ? [{ orgId }] : [];
+    };
+
     const prisma = {
       user: {
         findUnique: jest.fn(({ where }: { where: { id: string } }) =>
           Promise.resolve(
             where.id in flags
-              ? { canDirectVoice: flags[where.id], name: where.id }
+              ? {
+                  canDirectVoice: flags[where.id],
+                  name: where.id,
+                  guildMemberships: guildRows(where.id),
+                }
               : null,
           ),
         ),
         findUniqueOrThrow: jest
           .fn()
           .mockResolvedValue({ id: ME, name: 'Me', avatarUrl: null }),
+        // Mirrors the real query: other holders, in the caller's guild.
         findMany: jest.fn(() =>
           Promise.resolve(
             Object.entries(flags)
-              .filter(([id, on]) => on && id !== ME)
+              .filter(
+                ([id, on]) =>
+                  on && id !== ME && guildOf(id) === guildOf(ME),
+              )
               .map(([id]) => ({
                 id,
                 name: id,
@@ -675,6 +701,7 @@ describe('VoiceService 1-on-1 voice', () => {
       const service = build({ [ME]: false, [PEER]: true });
       await expect(service.listDirectVoicePeers(ME)).resolves.toEqual({
         enabled: false,
+        needsGuild: false,
         peers: [],
       });
     });
@@ -684,6 +711,77 @@ describe('VoiceService 1-on-1 voice', () => {
       const res = await service.listDirectVoicePeers(ME);
       expect(res.enabled).toBe(true);
       expect(res.peers.map((p) => p.id)).toEqual([PEER]);
+    });
+
+    it('leaves out a holder who is in a different guild', async () => {
+      const service = build(
+        { [ME]: true, [PEER]: true },
+        { [PEER]: 'guild-2' },
+      );
+      const res = await service.listDirectVoicePeers(ME);
+      expect(res.enabled).toBe(true);
+      expect(res.peers).toEqual([]);
+    });
+
+    it('flags needsGuild for a holder who is in no guild yet', async () => {
+      const service = build({ [ME]: true, [PEER]: true }, { [ME]: null });
+      await expect(service.listDirectVoicePeers(ME)).resolves.toEqual({
+        enabled: true,
+        needsGuild: true,
+        peers: [],
+      });
+    });
+  });
+
+  describe('both sides must be in the same guild', () => {
+    it('refuses a peer in a different guild', async () => {
+      const service = build(
+        { [ME]: true, [PEER]: true },
+        { [PEER]: 'guild-2' },
+      );
+      await expect(service.getConfig(ME, 'direct', PEER)).rejects.toThrow(
+        /not available with them/,
+      );
+    });
+
+    // Same wording as "no permission" and "no such account", so a caller
+    // cannot use the error to learn who is in which guild.
+    it('says the same thing whether the peer lacks the permission or the guild', async () => {
+      const noPermission = build({ [ME]: true, [PEER]: false });
+      const otherGuild = build(
+        { [ME]: true, [PEER]: true },
+        { [PEER]: 'guild-2' },
+      );
+      const messages = await Promise.all(
+        [noPermission, otherGuild].map((s) =>
+          s.getConfig(ME, 'direct', PEER).catch((e: Error) => e.message),
+        ),
+      );
+      expect(messages[0]).toBe(messages[1]);
+    });
+
+    it('refuses when the caller is in no guild at all', async () => {
+      const service = build({ [ME]: true, [PEER]: true }, { [ME]: null });
+      await expect(service.getConfig(ME, 'direct', PEER)).rejects.toThrow(
+        /Join a guild/,
+      );
+    });
+
+    it('refuses when the peer is in no guild at all', async () => {
+      const service = build({ [ME]: true, [PEER]: true }, { [PEER]: null });
+      await expect(service.getConfig(ME, 'direct', PEER)).rejects.toThrow(
+        /not available with them/,
+      );
+    });
+
+    it('still connects a pair who share one guild', async () => {
+      const service = build({ [ME]: true, [PEER]: true });
+      stubLiveKit(service);
+      const config = (await service.getConfig(ME, 'direct', PEER)) as {
+        max: number;
+        room: string;
+      };
+      expect(config).toMatchObject({ room: 'direct', max: 2 });
     });
   });
 });

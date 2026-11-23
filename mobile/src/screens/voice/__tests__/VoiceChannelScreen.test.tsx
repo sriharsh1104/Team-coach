@@ -42,10 +42,13 @@ function controller(overrides: Partial<any> = {}) {
     isMuted: false,
     isScreenSharing: false,
     screenShare: null,
+    musicShare: null,
     join: jest.fn(),
     leave: jest.fn(),
     toggleMute: jest.fn(),
     toggleScreenShare: jest.fn(),
+    startMusicShare: jest.fn(),
+    stopMusicShare: jest.fn(),
     toggleParticipantMute: jest.fn(),
     ...overrides,
   };

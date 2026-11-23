@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
-import { Modal, Text, TextInput, View, StyleSheet } from 'react-native';
+import {
+  Alert,
+  Modal,
+  Text,
+  TextInput,
+  View,
+  StyleSheet,
+} from 'react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
+import * as chatApi from '../api/chat';
 import { OrgDetail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { OrgSetupStackParamList } from '../navigation/types';
@@ -12,7 +22,13 @@ import { SoftPressable } from '../ui/SoftPressable';
 import { AuthBackButton } from '../ui/AuthBackButton';
 import { CopyButton } from './profile/CopyButton';
 import { ThemeColors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { emitToast } from '../ui/toastBus';
+import { apiErrorMessage } from '../api/apiErrorMessage';
+
+/** Same key ChatService.GUILD_CHANNEL — guild chat photo doubles as org logo. */
+const GUILD_CHANNEL = 'guild';
 
 type Props = NativeStackScreenProps<OrgSetupStackParamList, 'CreateOrg'>;
 
@@ -24,18 +40,59 @@ type CreatedOrg = {
   isOwner: boolean;
 };
 
+type LogoPick = {
+  uri: string;
+  fileName: string;
+  mimeType: string;
+};
+
 export function CreateOrgScreen({ navigation }: Props) {
   const shared = useSharedStyles();
+  const { colors } = useTheme();
   const { setOrg } = useAuth();
   const styles = useThemedStyles(createOrgStyles);
   const [name, setName] = useState('');
+  const [logo, setLogo] = useState<LogoPick | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedOrg | null>(null);
+
+  const onPickLogo = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow gallery access to set a logo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    setLogo({
+      uri: asset.uri,
+      fileName: asset.fileName ?? `org-logo-${Date.now()}.jpg`,
+      mimeType: asset.mimeType ?? 'image/jpeg',
+    });
+  };
 
   const onSubmit = async () => {
     setIsSubmitting(true);
     try {
       const org = await orgApi.createOrg(name.trim());
+      if (logo) {
+        try {
+          await chatApi.uploadChannelAvatar(GUILD_CHANNEL, logo);
+        } catch (err) {
+          emitToast(
+            apiErrorMessage(
+              err,
+              'Org created, but the logo could not be uploaded',
+            ),
+          );
+        }
+      }
       setCreated({
         id: org.id,
         name: org.name,
@@ -64,36 +121,74 @@ export function CreateOrgScreen({ navigation }: Props) {
     <FormScreen>
       <AuthBackButton onPress={() => navigation.navigate('OrgChoice')} />
       <Text style={shared.title}>Create a Org</Text>
-      <Text style={{ color: '#9aa0a6', textAlign: 'center', marginBottom: 16 }}>
-        You become the owner. A coach can be you or someone else.
+      <Text style={{ color: colors.textMuted, textAlign: 'center', marginBottom: 16 }}>
+        You become the owner. Add a logo so your guild stands out in the list.
       </Text>
+
+      <SoftPressable
+        style={styles.logoPicker}
+        onPress={() => void onPickLogo()}
+        pressScale={0.97}
+        accessibilityRole="button"
+        accessibilityLabel={logo ? 'Change org logo' : 'Add org logo'}
+      >
+        <View style={styles.logoCircle}>
+          {logo ? (
+            <Image
+              source={{ uri: logo.uri }}
+              style={staticStyles.logoImg}
+              contentFit="cover"
+            />
+          ) : (
+            <Text style={styles.logoPlaceholder}>
+              {(name.trim()[0] ?? '+').toUpperCase()}
+            </Text>
+          )}
+        </View>
+        <Text style={styles.logoHint}>
+          {logo ? 'Change Logo' : 'Add Logo (Optional)'}
+        </Text>
+      </SoftPressable>
+      {logo ? (
+        <SoftPressable
+          onPress={() => setLogo(null)}
+          pressScale={0.98}
+          accessibilityRole="button"
+          accessibilityLabel="Remove logo"
+        >
+          <Text style={styles.removeLogo}>Remove Logo</Text>
+        </SoftPressable>
+      ) : null}
+
       <TextInput
         style={shared.input}
         placeholder="Org / team name"
-        placeholderTextColor="#8b8f97"
+        placeholderTextColor={colors.textDim}
         value={name}
         onChangeText={setName}
       />
       <SoftPressable
         style={[
           shared.button,
-          (isSubmitting || !name) && shared.buttonDisabled,
+          (isSubmitting || !name.trim()) && shared.buttonDisabled,
         ]}
-        disabled={isSubmitting || !name}
-        onPress={onSubmit}
+        disabled={isSubmitting || !name.trim()}
+        onPress={() => void onSubmit()}
         pressScale={0.98}
       >
-        <ButtonLabel icon="add-circle">Create Org</ButtonLabel>
+        <ButtonLabel icon="add-circle">
+          {isSubmitting ? 'Creating…' : 'Create Org'}
+        </ButtonLabel>
       </SoftPressable>
 
       <Modal visible={!!created} transparent animationType="fade">
         <View style={staticStyles.backdrop}>
-          <View style={staticStyles.card}>
-            <Text style={styles.cardTitle}>Org created 🎉</Text>
+          <View style={[staticStyles.card, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+            <Text style={styles.cardTitle}>Org Created</Text>
             <Text style={styles.cardHint}>
               Share this code with your team so they can join {created?.name}.
             </Text>
-            <View style={staticStyles.codeRow}>
+            <View style={[staticStyles.codeRow, { borderColor: colors.border, backgroundColor: colors.surface }]}>
               <Text style={styles.codeValue}>{created?.orgCode}</Text>
               <CopyButton value={created?.orgCode ?? ''} />
             </View>
@@ -125,9 +220,7 @@ const staticStyles = StyleSheet.create({
     maxWidth: 360,
     borderRadius: 20,
     padding: 24,
-    backgroundColor: '#15161a',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
   codeRow: {
     flexDirection: 'row',
@@ -135,18 +228,50 @@ const staticStyles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 14,
     marginBottom: 20,
-    backgroundColor: 'rgba(255,255,255,0.04)',
   },
+  logoImg: { width: '100%', height: '100%' },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
 function createOrgStyles(c: ThemeColors) {
   return {
+    logoPicker: {
+      alignItems: 'center' as const,
+      marginBottom: 8,
+      gap: 8,
+    },
+    logoCircle: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      overflow: 'hidden' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    logoPlaceholder: {
+      color: c.chrome,
+      fontSize: 28,
+      fontWeight: '800' as const,
+    },
+    logoHint: {
+      color: c.link,
+      fontWeight: '600' as const,
+      fontSize: 14,
+    },
+    removeLogo: {
+      color: c.textMuted,
+      textAlign: 'center' as const,
+      fontSize: 13,
+      marginBottom: 12,
+      fontWeight: '500' as const,
+    },
     cardTitle: {
       color: c.text,
       fontSize: 20,

@@ -30,6 +30,17 @@ export class AdminController {
     return this.adminService.overview();
   }
 
+  /**
+   * Backend service health. Separate from the public GET /health, which is
+   * deliberately dumb (uptime only, no DB) because an uptime pinger hits it
+   * every few minutes. This one actually probes the database and reports the
+   * configuration of every dependent service, so it stays behind the guards.
+   */
+  @Get('health')
+  health() {
+    return this.adminService.health();
+  }
+
   @Get('orgs')
   listOrgs(@Query() query: ListOrgsQueryDto) {
     return this.adminService.listOrgs(query);

@@ -8,6 +8,7 @@ import { OrgService } from './org.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { PushNotificationService } from '../common/push-notification.service';
+import { MediaStorageService } from '../media/media-storage.service';
 
 describe('OrgService leave + browse guilds', () => {
   function build(opts: {
@@ -27,7 +28,10 @@ describe('OrgService leave + browse guilds', () => {
       name: string;
       createdAt: Date;
       _count: { guildMemberships: number; memberships: number };
-      chatChannelMetas?: { avatarUrl: string | null }[];
+      chatChannelMetas?: {
+        avatarUrl: string | null;
+        avatarFileKey?: string | null;
+      }[];
     }>;
   }) {
     const prisma = {
@@ -67,6 +71,9 @@ describe('OrgService leave + browse guilds', () => {
         tokensFor: () => [],
         send: jest.fn().mockResolvedValue(undefined),
       } as unknown as PushNotificationService,
+      {
+        buildDeliveryUrl: jest.fn().mockReturnValue(null),
+      } as unknown as MediaStorageService,
     );
     return { service, prisma };
   }

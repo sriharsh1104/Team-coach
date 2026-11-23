@@ -4,9 +4,32 @@
     {
       "name": "mobile-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "web"],
+      "runtimeArgs": [
+        "run",
+        "web"
+      ],
       "cwd": "mobile",
       "port": 8090
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start:dev"
+      ],
+      "cwd": "backend",
+      "port": 3000
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "web",
+      "port": 5173
     }
   ]
 }

@@ -5,6 +5,7 @@ import {
   AudioOutputId,
   isAudioOutputId,
   keepManualSelection,
+  preferredCallDefault,
   resolveActiveOutput,
   sortAudioOutputs,
 } from './audioOutputs';
@@ -30,10 +31,9 @@ export type AudioOutputState = {
 };
 
 /**
- * In-call audio output switching (speaker / earpiece / wired / bluetooth),
- * the control every call app has. LiveKit routes automatically until
- * something is picked here; after that the pick sticks until that device
- * disappears.
+ * In-call audio output switching (speaker / earpiece / wired / bluetooth).
+ * Defaults to the phone earpiece for call-style audio; a tap flips to
+ * speaker, and external devices appear in the picker when connected.
  *
  * `active` must only be enabled while an AudioSession is running —
  * getAudioOutputs() needs startAudioSession() to have been called, which the
@@ -43,6 +43,7 @@ export function useAudioOutput(enabled: boolean): AudioOutputState {
   const [outputs, setOutputs] = useState<AudioOutputId[]>([]);
   const [manual, setManual] = useState<AudioOutputId | null>(null);
   const manualRef = useRef<AudioOutputId | null>(null);
+  const appliedDefaultRef = useRef(false);
   manualRef.current = manual;
 
   const refresh = useCallback(async () => {
@@ -57,6 +58,20 @@ export function useAudioOutput(enabled: boolean): AudioOutputState {
       // Headphones pulled out → drop the manual pick so routing (and the
       // button's icon) follow the OS again instead of pointing at nothing.
       setManual((prev) => keepManualSelection(next, prev));
+
+      // First time we see routes in this call: pin to earpiece (call default)
+      // unless a headset / bluetooth device is already connected.
+      if (!appliedDefaultRef.current && next.length > 0 && !manualRef.current) {
+        const preferred = preferredCallDefault(next);
+        appliedDefaultRef.current = true;
+        if (preferred) {
+          setManual(preferred);
+          AudioSession.selectAudioOutput(preferred).catch((err) => {
+            console.warn('selectAudioOutput (default) failed:', err);
+            setManual(null);
+          });
+        }
+      }
     } catch {
       // No audio session yet, or the platform does not report outputs.
     }
@@ -66,6 +81,7 @@ export function useAudioOutput(enabled: boolean): AudioOutputState {
     if (!enabled) {
       setOutputs([]);
       setManual(null);
+      appliedDefaultRef.current = false;
       return;
     }
     let cancelled = false;

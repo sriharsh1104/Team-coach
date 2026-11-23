@@ -15,7 +15,7 @@ beforeEach(() => {
 });
 
 describe('MemberProfileScreen', () => {
-  it('shows "No role set yet" when the member has no roles', async () => {
+  it('shows "No in-game role set yet" when the member has no roles', async () => {
     mockedUsersApi.getMemberProfile.mockResolvedValue({
       id: 'user-2',
       name: 'Player 2',
@@ -35,15 +35,16 @@ describe('MemberProfileScreen', () => {
     });
     render(<MemberProfileScreen route={route} navigation={navigation} />);
 
-    await screen.findByText('No role set yet');
+    await screen.findByText('No in-game role set yet');
+    expect(screen.getByText('No social links provided')).toBeTruthy();
     expect(screen.queryByText('Devices')).toBeNull();
   });
 
-  it('shows roles (read-only), IGN/UID, social links, devices, and the org role badge when all are set', async () => {
+  it('shows avatar, roles under the title, IGN/UID, social links, devices, and the org role badge', async () => {
     mockedUsersApi.getMemberProfile.mockResolvedValue({
       id: 'user-2',
       name: 'Player 2',
-      avatarUrl: null,
+      avatarUrl: 'https://cdn.example/avatar.jpg',
       roles: ['SNIPER'],
       inGameName: 'EagleEye',
       inGameUid: 'UID-9',
@@ -60,11 +61,13 @@ describe('MemberProfileScreen', () => {
     render(<MemberProfileScreen route={route} navigation={navigation} />);
 
     await screen.findByText('EagleEye');
+    expect(screen.getByText('Player 2')).toBeTruthy();
     expect(screen.getByText('Sniper')).toBeTruthy();
     expect(screen.getByText('UID-9')).toBeTruthy();
     expect(screen.getByText('Discord: https://discord.gg/team')).toBeTruthy();
     expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();
     expect(screen.getByText('Coach (Owner)')).toBeTruthy();
+    expect(screen.queryByText('No social links provided')).toBeNull();
   });
 
   it('only renders social links that are actually set', async () => {

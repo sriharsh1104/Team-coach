@@ -28,12 +28,15 @@ import {
   VoiceParticipant,
   VoiceScreenShare,
   ConnectionQualityLevel,
+  MusicShareInfo,
 } from './types';
 import type { VoiceRoomKind } from './types';
 import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
 import { playVoiceCue, preloadVoiceCues, unloadVoiceCues } from './voiceCues';
 import { setVoiceScreenSharing } from './voiceScreenShareGate';
 import { createVoiceReconnectPolicy } from './voiceReconnect';
+import { isMusicControlMsg, type MusicControlMsg } from './musicShare';
+import { createMusicShareEngine, type MusicShareEngine } from './musicShareEngine';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -53,10 +56,10 @@ function mapConnectionQuality(q: ConnectionQuality): ConnectionQualityLevel {
   }
 }
 
-// Only hand-raise travels as a data message. Kick / mute used to be
+// Hand-raise + music-share travel as data messages. Kick / mute used to be
 // client-sent data messages that any modified client could fake; they now go
 // through POST /voice/moderate and are enforced by the server.
-type DataMsg = { type: 'hand_raise'; raised: boolean };
+type DataMsg = { type: 'hand_raise'; raised: boolean } | MusicControlMsg;
 
 /** Mirror of backend hosted-room-state (kept tiny on purpose). */
 type RoomState = { listenOnly: boolean; muted: string[]; speakers: string[] };
@@ -122,6 +125,7 @@ export function useHostedVoiceChannel(
   const [isPushToTalk, setIsPushToTalk] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenShare, setScreenShare] = useState<VoiceScreenShare | null>(null);
+  const [musicShare, setMusicShare] = useState<MusicShareInfo | null>(null);
   // Guild voice: host-mute state, derived from room metadata + server permissions.
   const [roomState, setRoomState] = useState<RoomState>(EMPTY_STATE);
   const [isHostMuted, setIsHostMuted] = useState(false);
@@ -129,6 +133,7 @@ export function useHostedVoiceChannel(
   const isMutedRef = useRef(false);
   const roomStateRef = useRef<RoomState>(EMPTY_STATE);
   const isScreenSharingRef = useRef(false);
+  const musicEngineRef = useRef<MusicShareEngine | null>(null);
   isMutedRef.current = isMuted;
 
   const roomRef = useRef<Room | null>(null);
@@ -279,6 +284,18 @@ export function useHostedVoiceChannel(
       .catch((err) => console.warn('publishData error:', err));
   }, []);
 
+  const ensureMusicEngine = useCallback((): MusicShareEngine => {
+    if (musicEngineRef.current) return musicEngineRef.current;
+    const engine = createMusicShareEngine({
+      publish: (msg) => publishData(msg),
+      onChange: (next) => setMusicShare(next),
+      getLocalName: () => roomRef.current?.localParticipant.name || 'You',
+    });
+    engine.setDeafened(isDeafenedRef.current);
+    musicEngineRef.current = engine;
+    return engine;
+  }, [publishData]);
+
   const leave = useCallback(() => {
     // Ref first, disconnect second: RoomEvent.Disconnected fires after this
     // returns, and it uses `roomRef.current !== room` to tell "the user left"
@@ -287,6 +304,9 @@ export function useHostedVoiceChannel(
     roomRef.current = null;
     cuesArmedRef.current = false;
     void unloadVoiceCues();
+    musicEngineRef.current?.dispose();
+    musicEngineRef.current = null;
+    setMusicShare(null);
     if (isScreenSharingRef.current) {
       room?.localParticipant.setScreenShareEnabled(false).catch(() => undefined);
     }
@@ -337,6 +357,9 @@ export function useHostedVoiceChannel(
     setIsPushToTalk(false);
     setIsScreenSharing(false);
     setScreenShare(null);
+    musicEngineRef.current?.dispose();
+    musicEngineRef.current = null;
+    setMusicShare(null);
     isDeafenedRef.current = false;
     isPushToTalkRef.current = false;
     isScreenSharingRef.current = false;
@@ -511,7 +534,12 @@ export function useHostedVoiceChannel(
         RoomEvent.DataReceived,
         (payload: Uint8Array, participant?: RemoteParticipant) => {
           try {
-            const msg = JSON.parse(decoder.decode(payload)) as DataMsg;
+            const raw = JSON.parse(decoder.decode(payload)) as unknown;
+            if (isMusicControlMsg(raw)) {
+              ensureMusicEngine().handleMessage(raw);
+              return;
+            }
+            const msg = raw as DataMsg;
             if (msg.type === 'hand_raise' && participant) {
               if (msg.raised) {
                 // Beep once when a hand goes up (not on repeats / when deafened).
@@ -592,7 +620,7 @@ export function useHostedVoiceChannel(
     }
     // Both playback helpers are stable (no changing deps), so listing them
     // doesn't churn `join` — it just keeps the lint rule honest.
-  }, [url, token, isGuild, syncParticipants, applyPlaybackTo, applyPlaybackToAll]);
+  }, [url, token, isGuild, syncParticipants, applyPlaybackTo, applyPlaybackToAll, ensureMusicEngine]);
 
   const toggleMute = useCallback(() => {
     const room = roomRef.current;
@@ -676,9 +704,34 @@ export function useHostedVoiceChannel(
       isDeafenedRef.current = nextDeafened;
       // Deafen only silences incoming audio — mic stays under mute / PTT control.
       applyPlaybackToAll(room);
+      musicEngineRef.current?.setDeafened(nextDeafened);
       return nextDeafened;
     });
   }, [applyPlaybackToAll]);
+
+  const startMusicShare = useCallback(
+    (pick: { title: string; mime: string; uri: string }) => {
+      if (status !== 'connected' || !roomRef.current) {
+        emitToast('Join voice first to share music');
+        return;
+      }
+      void ensureMusicEngine()
+        .startLocalShare(pick)
+        .then(() => {
+          emitToast('Sharing music — nothing is uploaded to our servers');
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : 'Could not share music';
+          emitToast(message);
+        });
+    },
+    [status, ensureMusicEngine],
+  );
+
+  const stopMusicShare = useCallback(() => {
+    musicEngineRef.current?.stop(true);
+    setMusicShare(null);
+  }, []);
 
   const toggleScreenShare = useCallback(() => {
     const room = roomRef.current;
@@ -823,6 +876,8 @@ export function useHostedVoiceChannel(
   // team <-> guild). Never leave the mic / room connection behind.
   useEffect(() => {
     return () => {
+      musicEngineRef.current?.dispose();
+      musicEngineRef.current = null;
       roomRef.current?.disconnect();
       roomRef.current = null;
       stopVoiceBackground();
@@ -871,10 +926,13 @@ export function useHostedVoiceChannel(
       isPushToTalk,
       isScreenSharing,
       screenShare,
+      musicShare,
       join,
       leave,
       toggleMute,
       toggleScreenShare,
+      startMusicShare,
+      stopMusicShare,
       toggleParticipantMute,
       toggleHandRaise,
       setParticipantVolume,
@@ -907,10 +965,13 @@ export function useHostedVoiceChannel(
       isPushToTalk,
       isScreenSharing,
       screenShare,
+      musicShare,
       join,
       leave,
       toggleMute,
       toggleScreenShare,
+      startMusicShare,
+      stopMusicShare,
       toggleParticipantMute,
       toggleHandRaise,
       setParticipantVolume,
