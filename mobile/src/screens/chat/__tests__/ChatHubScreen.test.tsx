@@ -124,6 +124,7 @@ beforeEach(() => {
     myGuildRole: 'MEMBER',
     onRoster: true,
     canManageRoster: false,
+    achievements: [],
     roster: [],
     members: [
       {

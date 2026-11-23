@@ -384,7 +384,16 @@ export function RootNavigator() {
                 require('../screens/games/GameRoomScreen').GameRoomScreen
               }
               options={detailOptions(({ route }) => ({
-                title: route.params?.game === 'ludo' ? 'Ludo' : route.params?.game === 'rps' ? 'Stone Paper Scissors' : 'Game',
+                title:
+                  route.params?.game === 'ludo'
+                    ? 'Ludo'
+                    : route.params?.game === 'rps'
+                      ? 'Stone Paper Scissors'
+                      : route.params?.game === 'uno'
+                        ? 'Uno'
+                        : route.params?.game === 'boots'
+                          ? 'Boots'
+                          : 'Game',
               }))}
             />
             <MainStack.Screen
@@ -611,7 +620,16 @@ export function RootNavigator() {
                 require('../screens/games/GameRoomScreen').GameRoomScreen
               }
               options={detailOptions(({ route }) => ({
-                title: route.params?.game === 'ludo' ? 'Ludo' : route.params?.game === 'rps' ? 'Stone Paper Scissors' : 'Game',
+                title:
+                  route.params?.game === 'ludo'
+                    ? 'Ludo'
+                    : route.params?.game === 'rps'
+                      ? 'Stone Paper Scissors'
+                      : route.params?.game === 'uno'
+                        ? 'Uno'
+                        : route.params?.game === 'boots'
+                          ? 'Boots'
+                          : 'Game',
               }))}
             />
             <MainStack.Screen

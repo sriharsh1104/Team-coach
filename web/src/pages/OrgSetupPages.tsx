@@ -29,6 +29,7 @@ export function CreateOrgPage() {
   const { setOrg } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
+  const [freeFireGuildId, setFreeFireGuildId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,7 +38,9 @@ export function CreateOrgPage() {
     setBusy(true);
     setError(null);
     try {
-      const org = await orgApi.createOrg(name.trim());
+      const org = await orgApi.createOrg(name.trim(), {
+        freeFireGuildId: freeFireGuildId.trim() || undefined,
+      });
       setOrg({
         id: org.id,
         name: org.name,
@@ -71,6 +74,19 @@ export function CreateOrgPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="ffGuildId">Free Fire guild ID (optional)</label>
+          <input
+            id="ffGuildId"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={freeFireGuildId}
+            onChange={(e) =>
+              setFreeFireGuildId(e.target.value.replace(/\D/g, ''))
+            }
+            placeholder="e.g. 3015174327"
           />
         </div>
         {error ? <p className="error">{error}</p> : null}

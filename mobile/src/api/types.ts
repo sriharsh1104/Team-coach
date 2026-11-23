@@ -270,11 +270,24 @@ export interface GuildMemberRow {
   isOwner: boolean;
 }
 
+/** Tournament grand-final finish shown on the Guild Achievements tab. */
+export interface GuildAchievement {
+  id: string;
+  name: string;
+  /** YYYY-MM-DD */
+  date: string;
+  grandFinalLink: string | null;
+  standing: string;
+  points: number | null;
+}
+
 export interface GuildDetail {
   id: string;
   name: string;
   // Non-null only for owners / coaches / guild leadership — see GET /orgs/guild/me.
   orgCode: string | null;
+  /** Free Fire in-game guild ID (digits), if the owner set one. */
+  freeFireGuildId: string | null;
   /** Personal invite link (`?ref=`) — joins guild only, not roster. */
   referralLink: string | null;
   /** Guild joins attributed to this user's invite link. */
@@ -282,6 +295,7 @@ export interface GuildDetail {
   myGuildRole: GuildRole;
   onRoster: boolean;
   canManageRoster: boolean;
+  achievements: GuildAchievement[];
   roster: GuildRosterMember[];
   members: GuildMemberRow[];
 }

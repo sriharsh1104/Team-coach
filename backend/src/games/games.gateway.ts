@@ -70,6 +70,12 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   boots:clear {roomId}
  *   boots:ready {roomId}
  *   boots:fire {roomId, target}     → RoomView
+ *   uno:play {roomId, cardId, color?} → RoomView
+ *   uno:color {roomId, color}       → RoomView
+ *   uno:draw {roomId}               → RoomView
+ *   uno:pass {roomId}               → RoomView
+ *   uno:call {roomId}               → RoomView
+ *   uno:catch {roomId, targetId}    → RoomView
  * Server → client:
  *   room:update {room, event?}   every change in a room you're in
  *   rooms:changed                lobby list for your org changed
@@ -616,6 +622,80 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
         this.roomIdOf(body, data),
         data.userId,
         body?.target,
+      ),
+    );
+  }
+
+  @SubscribeMessage('uno:play')
+  onUnoPlay(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    body: { roomId?: string; cardId?: string; color?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoPlay(
+        this.roomIdOf(body, data),
+        data.userId,
+        body?.cardId,
+        body?.color,
+      ),
+    );
+  }
+
+  @SubscribeMessage('uno:color')
+  onUnoColor(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string; color?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoChooseColor(
+        this.roomIdOf(body, data),
+        data.userId,
+        body?.color,
+      ),
+    );
+  }
+
+  @SubscribeMessage('uno:draw')
+  onUnoDraw(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoDraw(this.roomIdOf(body, data), data.userId),
+    );
+  }
+
+  @SubscribeMessage('uno:pass')
+  onUnoPass(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoPass(this.roomIdOf(body, data), data.userId),
+    );
+  }
+
+  @SubscribeMessage('uno:call')
+  onUnoCall(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoCall(this.roomIdOf(body, data), data.userId),
+    );
+  }
+
+  @SubscribeMessage('uno:catch')
+  onUnoCatch(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string; targetId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoCatch(
+        this.roomIdOf(body, data),
+        data.userId,
+        body?.targetId,
       ),
     );
   }

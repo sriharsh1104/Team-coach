@@ -3,10 +3,13 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { AnnouncementsScreen } from '../AnnouncementsScreen';
 import * as api from '../../../api/announcements';
 import { ThemeProvider } from '../../../theme/ThemeContext';
+import * as templates from '../savedAnnouncementTemplates';
 
 jest.mock('../../../api/announcements');
+jest.mock('../savedAnnouncementTemplates');
 
 const mockedApi = api as jest.Mocked<typeof api>;
+const mockedTemplates = templates as jest.Mocked<typeof templates>;
 
 function announcement(over: Partial<api.Announcement> = {}): api.Announcement {
   return {
@@ -45,6 +48,18 @@ describe('AnnouncementsScreen', () => {
     jest.clearAllMocks();
     mockedApi.listAnnouncements.mockResolvedValue(listPayload());
     mockedApi.markAllRead.mockResolvedValue({ marked: 1 });
+    mockedTemplates.loadSavedAnnouncementTemplates.mockResolvedValue([]);
+    mockedTemplates.saveAnnouncementTemplate.mockImplementation(
+      async ({ title, body }) => [
+        {
+          id: 't1',
+          title,
+          body,
+          savedAt: new Date().toISOString(),
+        },
+      ],
+    );
+    mockedTemplates.removeSavedAnnouncementTemplate.mockResolvedValue([]);
   });
 
   it('shows the posts and marks them read on open', async () => {
@@ -106,6 +121,47 @@ describe('AnnouncementsScreen', () => {
       title: 'Practice moved',
       body: 'Now at 10pm.',
     });
+  });
+
+  it('saves for reuse without sending, and tapping a title fills the inputs', async () => {
+    mockedApi.listAnnouncements.mockResolvedValue(
+      listPayload({ canPost: true, unread: 0 }),
+    );
+    mockedTemplates.loadSavedAnnouncementTemplates.mockResolvedValue([
+      {
+        id: 't-scrim',
+        title: 'Scrim tonight',
+        body: 'Be in voice by 8:45.',
+        savedAt: new Date().toISOString(),
+      },
+    ]);
+    renderScreen();
+
+    const useSaved = await screen.findByLabelText(
+      'Use saved announcement Scrim tonight',
+    );
+    fireEvent.press(useSaved);
+
+    expect(screen.getByDisplayValue('Scrim tonight')).toBeTruthy();
+    expect(screen.getByDisplayValue('Be in voice by 8:45.')).toBeTruthy();
+    expect(mockedApi.createAnnouncement).not.toHaveBeenCalled();
+
+    fireEvent.changeText(
+      screen.getByLabelText('Announcement title'),
+      'Practice moved',
+    );
+    fireEvent.changeText(
+      screen.getByLabelText('Announcement message'),
+      'Now at 10pm.',
+    );
+    await act(async () =>
+      fireEvent.press(screen.getByLabelText('Save announcement for reuse')),
+    );
+    expect(mockedTemplates.saveAnnouncementTemplate).toHaveBeenCalledWith({
+      title: 'Practice moved',
+      body: 'Now at 10pm.',
+    });
+    expect(mockedApi.createAnnouncement).not.toHaveBeenCalled();
   });
 
   it('will not send a half-filled announcement', async () => {

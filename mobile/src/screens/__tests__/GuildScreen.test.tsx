@@ -25,11 +25,13 @@ const detail = {
   id: 'org-1',
   name: 'Alpha Squad',
   orgCode: '75HCP3',
+  freeFireGuildId: '3015174327',
   referralLink: 'https://app.example.com/join/token?ref=user-1',
   myInviteCount: 3,
   myGuildRole: 'LEADER',
   onRoster: true,
   canManageRoster: true,
+  achievements: [],
   roster: [
     { userId: 'user-1', name: 'Owner Coach', inGameName: 'OC', role: null, isOwner: true },
     { userId: 'user-2', name: 'Teammate', inGameName: 'TM', role: 'PLAYER', isOwner: false },
@@ -155,6 +157,32 @@ describe('GuildScreen', () => {
     await screen.findByText('Waiting Member');
 
     expect(screen.queryByLabelText('Add Waiting Member to roster')).toBeNull();
+  });
+
+  it('shows Achievements tab with grand-final list and owner add form', async () => {
+    mockedOrgApi.getMyGuild.mockResolvedValue({
+      ...detail,
+      achievements: [
+        {
+          id: 'ach-1',
+          name: 'FFWS India',
+          date: '2025-11-01',
+          grandFinalLink: 'https://example.com/gf',
+          standing: '1st',
+          points: 120,
+        },
+      ],
+    } as any);
+    render(<GuildScreen navigation={navigation} route={{} as any} />);
+    await screen.findByText('Alpha Squad');
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Achievements'));
+    });
+
+    expect(await screen.findByText('FFWS India')).toBeTruthy();
+    expect(screen.getByText(/1st · 120 pts/)).toBeTruthy();
+    expect(screen.getByLabelText('Add achievement')).toBeTruthy();
   });
 
   it('switches to the Roster tab and removes a non-owner after confirming', async () => {

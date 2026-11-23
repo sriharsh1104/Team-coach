@@ -92,19 +92,13 @@ export const chatStyles = (c: ThemeColors) => ({
     alignItems: 'center' as const,
     gap: 2,
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    minHeight: 40,
+    // Drop icons below the hairline so they don't look glued to the top edge.
+    paddingTop: 10,
+    paddingBottom: 6,
+    minHeight: 48,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: c.border,
     backgroundColor: c.bg,
-  },
-  selectBarCount: {
-    color: c.textMuted,
-    fontSize: 12,
-    fontWeight: '700' as const,
-    marginRight: 2,
-    minWidth: 14,
-    textAlign: 'center' as const,
   },
   selectBarActions: {
     flex: 1,
@@ -165,8 +159,8 @@ export const chatStyles = (c: ThemeColors) => ({
     marginBottom: 6,
   },
   replyQuoteMine: {
-    backgroundColor: 'rgba(0,0,0,0.12)',
-    borderLeftColor: c.chromeInk,
+    backgroundColor: c.surface,
+    borderLeftColor: c.link,
   },
   replyQuoteName: {
     color: c.link,
@@ -174,9 +168,9 @@ export const chatStyles = (c: ThemeColors) => ({
     fontWeight: '700' as const,
     marginBottom: 1,
   },
-  replyQuoteNameMine: { color: c.chromeInk },
+  replyQuoteNameMine: { color: c.link },
   replyQuoteText: { color: c.textMuted, fontSize: 12 },
-  replyQuoteTextMine: { color: c.chromeInk, opacity: 0.75 },
+  replyQuoteTextMine: { color: c.textMuted },
   metaRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -189,14 +183,14 @@ export const chatStyles = (c: ThemeColors) => ({
     color: c.textDim,
     fontStyle: 'italic' as const,
   },
-  editedLabelMine: { color: c.chromeInk, opacity: 0.55 },
+  editedLabelMine: { color: c.textDim },
   forwardedLabel: {
     fontSize: 11,
     color: c.textDim,
     fontStyle: 'italic' as const,
     marginBottom: 2,
   },
-  forwardedLabelMine: { color: c.chromeInk, opacity: 0.6 },
+  forwardedLabelMine: { color: c.textDim },
   voiceUploading: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -205,7 +199,7 @@ export const chatStyles = (c: ThemeColors) => ({
     paddingVertical: 6,
   },
   voiceUploadingText: { fontSize: 12, color: c.textMuted },
-  voiceUploadingTextMine: { color: c.chromeInk, opacity: 0.8 },
+  voiceUploadingTextMine: { color: c.textMuted },
   timeLabel: { fontSize: 10, color: c.textDim },
   addMatchBtn: {
     flexDirection: 'row' as const,
@@ -220,10 +214,10 @@ export const chatStyles = (c: ThemeColors) => ({
     borderColor: c.border,
     backgroundColor: c.surface,
   },
-  addMatchBtnMine: { borderColor: c.chromeInk, backgroundColor: 'transparent' },
+  addMatchBtnMine: { borderColor: c.border, backgroundColor: c.surface },
   addMatchText: { fontSize: 12, fontWeight: '700' as const, color: c.link },
-  addMatchTextMine: { color: c.chromeInk },
-  timeLabelMine: { color: c.chromeInk, opacity: 0.6 },
+  addMatchTextMine: { color: c.link },
+  timeLabelMine: { color: c.textDim },
   bubbleRow: {
     flexDirection: 'row' as const,
     marginBottom: 10,
@@ -252,16 +246,17 @@ export const chatStyles = (c: ThemeColors) => ({
     backgroundColor: c.link,
   },
   selectCheckMark: { color: c.chromeInk, fontSize: 12, fontWeight: '800' as const },
-  bubbleCol: { maxWidth: '80%' as const, minWidth: 0, alignItems: 'flex-end' as const },
+  bubbleCol: { maxWidth: '85%' as const, minWidth: 0, alignItems: 'flex-end' as const },
+  // Flat copy — no chrome box so the Sacred watermark stays visible behind.
   bubble: {
-    backgroundColor: c.bubbleTheirs,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
     alignSelf: 'stretch' as const,
     maxWidth: '100%' as const,
   },
-  bubbleMine: { backgroundColor: c.bubbleMine },
+  bubbleMine: { backgroundColor: 'transparent' },
   // Image / video with no caption — no padded chrome frame around the media.
   bubbleMediaOnly: {
     backgroundColor: 'transparent',
@@ -270,26 +265,25 @@ export const chatStyles = (c: ThemeColors) => ({
     overflow: 'hidden' as const,
   },
   bubbleHit: {
-    borderWidth: 2,
-    borderColor: c.link,
-    backgroundColor: 'rgba(139, 156, 255, 0.22)',
+    borderWidth: 0,
+    borderRadius: 6,
+    backgroundColor: 'rgba(139, 156, 255, 0.14)',
   },
   bubbleSelected: {
-    borderWidth: 1.5,
-    borderColor: c.link,
+    borderWidth: 0,
+    borderRadius: 6,
+    backgroundColor: 'rgba(139, 156, 255, 0.1)',
   },
-  sender: { fontSize: 11, color: c.textMuted, marginBottom: 2 },
+  sender: { fontSize: 11, color: c.textMuted, marginBottom: 2, fontWeight: '600' as const },
   text: { color: c.text, flexShrink: 1 },
-  textMine: { color: c.bubbleTextMine, flexShrink: 1 },
+  textMine: { color: c.text, flexShrink: 1 },
   stickerEmoji: { fontSize: 56, lineHeight: 64 },
-  // A tinted chip behind the @name, not just bold colored text — same hue as
-  // the link color so it reads as "highlighted" in all three themes without
-  // fighting the bubble's own background.
+  // A tinted chip behind the @name — works without a bubble plate behind it.
   mention: { color: c.link, fontWeight: '700' as const, backgroundColor: `${c.link}33` },
   mentionMine: {
-    color: c.bubbleTextMine,
+    color: c.link,
     fontWeight: '700' as const,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: `${c.link}33`,
   },
   mentionMenu: {
     marginHorizontal: 12,

@@ -824,6 +824,10 @@ export function useSelfHostedVoiceChannel(
     emitToast('Screen share needs hosted voice. Ask your coach to enable it.');
   }, []);
 
+  const toggleCamera = useCallback(() => {
+    emitToast('Video calls need 1-on-1 Direct Voice (hosted).');
+  }, []);
+
   const startMusicShare = useCallback((_pick: { title: string; mime: string; uri: string }) => {
     emitToast('Music share needs hosted voice. Ask your coach to enable it.');
   }, []);
@@ -841,11 +845,15 @@ export function useSelfHostedVoiceChannel(
       isPushToTalk,
       isScreenSharing: false,
       screenShare: null,
+      isCameraOn: false,
+      localCamera: null,
+      remoteCamera: null,
       musicShare: null,
       join,
       leave,
       toggleMute,
       toggleScreenShare,
+      toggleCamera,
       startMusicShare,
       stopMusicShare,
       toggleParticipantMute,
@@ -882,6 +890,7 @@ export function useSelfHostedVoiceChannel(
       leave,
       toggleMute,
       toggleScreenShare,
+      toggleCamera,
       startMusicShare,
       stopMusicShare,
       toggleParticipantMute,

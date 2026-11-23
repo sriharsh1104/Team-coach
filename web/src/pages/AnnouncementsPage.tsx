@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as api from '../api/announcements';
 import { Announcement, AnnouncementList } from '../api/announcements';
+import {
+  loadSavedAnnouncementTemplates,
+  removeSavedAnnouncementTemplate,
+  saveAnnouncementTemplate,
+  type SavedAnnouncementTemplate,
+} from './savedAnnouncementTemplates';
 
 /** Fired once this page has cleared the unread count, so the shell can follow. */
 export const ANNOUNCEMENTS_READ_EVENT = 'announcements:read';
@@ -172,8 +178,12 @@ function Composer({
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [saved, setSaved] = useState<SavedAnnouncementTemplate[]>(() =>
+    loadSavedAnnouncementTemplates(),
+  );
 
   const canSend = title.trim().length > 0 && body.trim().length > 0 && !sending;
+  const canSave = title.trim().length > 0 && body.trim().length > 0 && !sending;
 
   return (
     <form
@@ -219,12 +229,58 @@ function Composer({
         <span className="muted">
           {/* Said plainly before the click, not after — this pushes to every
               member's phone and cannot be unsent. */}
-          Sends a notification to every member of your guild.
+          Sends a notification to every member. Save only what you reuse —
+          tap a saved title below to fill the fields.
         </span>
-        <button type="submit" disabled={!canSend}>
-          {sending ? 'Sending…' : 'Send to everyone'}
-        </button>
+        <div className="announce-composer-actions">
+          <button
+            type="button"
+            className="announce-save"
+            disabled={!canSave}
+            aria-label="Save announcement for reuse"
+            onClick={() => {
+              const next = saveAnnouncementTemplate({ title, body });
+              setSaved(next);
+            }}
+          >
+            Save
+          </button>
+          <button type="submit" disabled={!canSend}>
+            {sending ? 'Sending…' : 'Send to everyone'}
+          </button>
+        </div>
       </div>
+      {saved.length > 0 ? (
+        <div className="announce-saved">
+          <div className="announce-saved-heading">Saved</div>
+          <ul className="announce-saved-list">
+            {saved.map((item) => (
+              <li key={item.id} className="announce-saved-row">
+                <button
+                  type="button"
+                  className="announce-saved-title"
+                  onClick={() => {
+                    setTitle(item.title);
+                    setBody(item.body);
+                  }}
+                >
+                  {item.title}
+                </button>
+                <button
+                  type="button"
+                  className="announce-saved-remove"
+                  aria-label={`Remove saved ${item.title}`}
+                  onClick={() =>
+                    setSaved(removeSavedAnnouncementTemplate(item.id))
+                  }
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </form>
   );
 }

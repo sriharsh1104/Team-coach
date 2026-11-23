@@ -218,6 +218,10 @@ model Org {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
+  // Free Fire in-game guild ID (digits). Optional — set at create or later
+  // by the owner so teammates can find the guild inside Free Fire.
+  freeFireGuildId String?
+
   // Owner-controlled: whether a member can see Team Chat messages from
   // before they joined. Chat history itself is always kept in full either
   // way — this only controls what's displayed to a given member. Defaults
@@ -245,6 +249,30 @@ model Org {
   mapDropPoints      OrgMapDropPoint[]
   guildJoinRequests  GuildJoinRequest[]
   announcements      Announcement[]
+  achievements       OrgAchievement[]
+}
+
+// Guild trophy shelf — tournaments where the org reached grand finals.
+// Everyone in the guild can read; only the org owner can add/remove.
+model OrgAchievement {
+  id             String   @id @default(cuid())
+  orgId          String
+  // Tournament / event name.
+  name           String
+  // Day of the grand final (or the finish date).
+  playedAt       DateTime
+  // Optional VOD / bracket / stream link.
+  grandFinalLink String?
+  // Placement text — "1st", "2nd", "Champion", etc.
+  standing       String
+  // Optional points earned in that event.
+  points         Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, playedAt])
 }
 
 // Org overrides for shared catalog images (Cloudinary / local fileKey).

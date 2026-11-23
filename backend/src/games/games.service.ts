@@ -35,8 +35,22 @@ import {
   RpsPublicState,
   RpsState,
 } from './engines/rps.engine';
+import {
+  createUnoState,
+  UnoColor,
+  UnoPublicState,
+  UnoState,
+  unoCall,
+  unoCatch,
+  unoChooseColor,
+  unoDraw,
+  unoForfeit,
+  unoPass,
+  unoPlay,
+  unoPublicState,
+} from './engines/uno.engine';
 
-export type GameKind = 'rps' | 'ludo' | 'boots';
+export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno';
 
 export const GAME_CATALOG: Record<
   GameKind,
@@ -45,7 +59,10 @@ export const GAME_CATALOG: Record<
   rps: { title: 'Stone Paper Scissors', minPlayers: 2, maxPlayers: 2 },
   ludo: { title: 'Ludo', minPlayers: 2, maxPlayers: 4 },
   boots: { title: 'Boots', minPlayers: 2, maxPlayers: 2 },
+  uno: { title: 'Uno', minPlayers: 2, maxPlayers: 6 },
 };
+
+const UNO_COLORS: UnoColor[] = ['red', 'yellow', 'green', 'blue'];
 
 export interface RoomPlayer {
   userId: string;
@@ -69,6 +86,7 @@ interface Room {
   rps: RpsState | null;
   ludo: LudoState | null;
   boots: BootsState | null;
+  uno: UnoState | null;
   /** Host-chosen boot lengths for Boots (e.g. [5,3,2]). */
   bootsFleet: number[] | null;
   timer: ReturnType<typeof setTimeout> | null;
@@ -90,6 +108,8 @@ export interface RoomView {
   ludo: LudoState | null;
   /** Viewer-scoped — opponent boots stay hidden until sunk. */
   boots: BootsPublicState | null;
+  /** Viewer-scoped — only your hand is full; others are counts. */
+  uno: UnoPublicState | null;
   /** Lobby preview of the Boots fleet sizes. */
   bootsFleet: number[] | null;
   /** Server time when the current action auto-resolves (Ludo turn timer). */
@@ -197,6 +217,7 @@ export class GamesService {
       rps: null,
       ludo: null,
       boots: null,
+      uno: null,
       bootsFleet: game === 'boots' ? normalizeFleet(bootsFleet) : null,
       timer: null,
     };
@@ -252,10 +273,12 @@ export class GamesService {
       if (room.rps) rpsForfeit(room.rps, userId);
       if (room.ludo) ludoRemovePlayer(room.ludo, userId);
       if (room.boots) bootsForfeit(room.boots, userId);
+      if (room.uno) unoForfeit(room.uno, userId);
       if (
         room.rps?.phase === 'done' ||
         room.ludo?.phase === 'done' ||
-        room.boots?.phase === 'done'
+        room.boots?.phase === 'done' ||
+        room.uno?.phase === 'done'
       ) {
         this.finish(room);
         return;
@@ -325,6 +348,7 @@ export class GamesService {
         room.bootsFleet ?? undefined,
       );
     }
+    if (room.game === 'uno') room.uno = createUnoState(ids);
     room.status = 'playing';
     this.emit(room, { type: 'started' });
     this.onOrg(room.orgId);
@@ -342,6 +366,7 @@ export class GamesService {
     room.rps = null;
     room.ludo = null;
     room.boots = null;
+    room.uno = null;
     room.status = 'lobby';
     this.deadlines.delete(room.id);
     this.emit(room, { type: 'rematch' });
@@ -439,6 +464,83 @@ export class GamesService {
       if (parsed) return parsed;
     }
     throw new Error('Pick a cell like B2');
+  }
+
+  // ─── Uno ──────────────────────────────────────────────────────────────
+
+  unoPlay(
+    roomId: string,
+    userId: string,
+    cardId: unknown,
+    color?: unknown,
+  ): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No Uno match in progress');
+    if (typeof cardId !== 'string' || !cardId.trim())
+      throw new Error('Pick a card');
+    const chosen =
+      typeof color === 'string' && UNO_COLORS.includes(color as UnoColor)
+        ? (color as UnoColor)
+        : undefined;
+    unoPlay(room.uno, userId, cardId.trim(), chosen);
+    this.emit(room, { type: 'uno:play', payload: { userId, cardId } });
+    if (room.uno.phase === 'done') this.finish(room);
+    return this.view(room, userId);
+  }
+
+  unoChooseColor(roomId: string, userId: string, color: unknown): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No Uno match in progress');
+    if (typeof color !== 'string' || !UNO_COLORS.includes(color as UnoColor)) {
+      throw new Error('Pick red, yellow, green or blue');
+    }
+    unoChooseColor(room.uno, userId, color as UnoColor);
+    this.emit(room, { type: 'uno:color', payload: { userId, color } });
+    if (room.uno.phase === 'done') this.finish(room);
+    return this.view(room, userId);
+  }
+
+  unoDraw(roomId: string, userId: string): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No Uno match in progress');
+    unoDraw(room.uno, userId);
+    this.emit(room, { type: 'uno:draw', payload: { userId } });
+    return this.view(room, userId);
+  }
+
+  unoPass(roomId: string, userId: string): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No Uno match in progress');
+    unoPass(room.uno, userId);
+    this.emit(room, { type: 'uno:pass', payload: { userId } });
+    return this.view(room, userId);
+  }
+
+  unoCall(roomId: string, userId: string): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No Uno match in progress');
+    unoCall(room.uno, userId);
+    this.emit(room, { type: 'uno:call', payload: { userId } });
+    return this.view(room, userId);
+  }
+
+  unoCatch(roomId: string, userId: string, targetId: unknown): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No Uno match in progress');
+    if (typeof targetId !== 'string' || !targetId.trim())
+      throw new Error('Pick who to catch');
+    unoCatch(room.uno, userId, targetId.trim());
+    this.emit(room, {
+      type: 'uno:catch',
+      payload: { catcherId: userId, targetId },
+    });
+    return this.view(room, userId);
   }
 
   // ─── RPS ──────────────────────────────────────────────────────────────
@@ -575,8 +677,11 @@ export class GamesService {
   }
 
   private emit(room: Room, event?: { type: string; payload?: unknown }) {
-    // Boots hides unhit enemy cells — each player gets their own RoomView.
-    if (room.boots && room.status === 'playing') {
+    // Boots / Uno hide private info — each player gets their own RoomView.
+    if (
+      (room.boots || room.uno) &&
+      (room.status === 'playing' || room.status === 'finished')
+    ) {
       for (const p of room.players) {
         this.onRoom(this.view(room, p.userId), event, p.userId);
       }
@@ -607,6 +712,7 @@ export class GamesService {
         ? { ...room.ludo, tokens: cloneTokens(room.ludo.tokens) }
         : null,
       boots: room.boots ? bootsPublicState(room.boots, viewer) : null,
+      uno: room.uno ? unoPublicState(room.uno, viewer) : null,
       bootsFleet: room.bootsFleet ? [...room.bootsFleet] : null,
       deadline:
         room.ludo && room.ludo.phase !== 'done'

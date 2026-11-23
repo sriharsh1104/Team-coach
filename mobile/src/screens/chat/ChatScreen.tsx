@@ -1725,10 +1725,10 @@ export function ChatScreen({
             style={styles.selectBarClose}
             onPress={exitSelectMode}
           />
-          <Text style={styles.selectBarCount} accessibilityLabel={`${selectedIds.size} selected`}>
-            {selectedIds.size}
-          </Text>
-          <View style={styles.selectBarActions}>
+          <View
+            style={styles.selectBarActions}
+            accessibilityLabel={`${selectedIds.size} selected`}
+          >
             <IconActionButton
               plain
               icon={selectedList[0]?.pinned ? 'pin' : 'pin-outline'}
@@ -1923,7 +1923,12 @@ export function ChatScreen({
 
       <FlatList
         ref={listRef}
-        style={{ flex: 1, minWidth: 0, opacity: listReady ? 1 : 0 }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          backgroundColor: 'transparent',
+          opacity: listReady ? 1 : 0,
+        }}
         contentContainerStyle={{ padding: 16 }}
         // Newest-first + inverted → latest sits at the bottom with no
         // scrollToEnd flash on open (big win on mid-range Android).

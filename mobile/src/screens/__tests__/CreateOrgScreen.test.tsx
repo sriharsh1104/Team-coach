@@ -71,7 +71,9 @@ describe('CreateOrgScreen', () => {
     );
     await pressAndSettle('Create Org');
 
-    expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad');
+    expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad', {
+      freeFireGuildId: undefined,
+    });
     expect(mockedChatApi.uploadChannelAvatar).not.toHaveBeenCalled();
     expect(screen.getByText('ABC123')).toBeTruthy();
     expect(setOrg).not.toHaveBeenCalled();
@@ -131,7 +133,9 @@ describe('CreateOrgScreen', () => {
     );
     await pressAndSettle('Create Org');
 
-    expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad');
+    expect(mockedOrgApi.createOrg).toHaveBeenCalledWith('Alpha Squad', {
+      freeFireGuildId: undefined,
+    });
     expect(mockedChatApi.uploadChannelAvatar).toHaveBeenCalledWith('guild', {
       uri: 'file:///logo.jpg',
       fileName: 'logo.jpg',

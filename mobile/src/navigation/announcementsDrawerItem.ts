@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as announcementsApi from '../api/announcements';
+import { useAuth } from '../auth/AuthContext';
 import { onAnnouncementsRead } from '../screens/announcements/announcementsBus';
 import { goToSection } from './goToSection';
 import type { MainStackParamList } from './types';
@@ -17,11 +18,21 @@ type MainNav = NativeStackNavigationProp<
  * the badge can actually be seen — plus an event from the Announcements
  * screen the instant it clears the count, so the badge never sits there
  * stale right after someone has read everything.
+ *
+ * Skipped when the signed-in account has no guild (platform admin, or
+ * pre-join): that 404 is expected and must not hit the network every
+ * route change just to be swallowed.
  */
 export function useUnreadAnnouncements(open: boolean, routeName: string | null) {
+  const { org, guild } = useAuth();
+  const inAGuild = !!org || !!guild;
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {
+    if (!inAGuild) {
+      setUnread(0);
+      return;
+    }
     let cancelled = false;
     announcementsApi
       .getUnreadCount()
@@ -35,7 +46,7 @@ export function useUnreadAnnouncements(open: boolean, routeName: string | null) 
     return () => {
       cancelled = true;
     };
-  }, [open, routeName]);
+  }, [open, routeName, inAGuild]);
 
   useEffect(() => onAnnouncementsRead(() => setUnread(0)), []);
 

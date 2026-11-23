@@ -356,7 +356,7 @@ export class VoiceService {
       metadata: JSON.stringify({ avatarUrl: user.avatarUrl }),
     });
     // Explicit sources so LiveKit Cloud / room defaults never block in-call
-    // screen share. Mic stays the primary publish; camera not needed for voice.
+    // screen share. Camera is only for admin-granted 1-on-1 (switch voice→video).
     token.addGrant({
       roomJoin: true,
       room: ctx.roomName,
@@ -368,6 +368,7 @@ export class VoiceService {
               TrackSource.MICROPHONE,
               TrackSource.SCREEN_SHARE,
               TrackSource.SCREEN_SHARE_AUDIO,
+              ...(ctx.kind === 'direct' ? [TrackSource.CAMERA] : []),
             ],
           }
         : {}),

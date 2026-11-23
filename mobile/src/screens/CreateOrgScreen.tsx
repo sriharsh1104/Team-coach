@@ -52,6 +52,7 @@ export function CreateOrgScreen({ navigation }: Props) {
   const { setOrg } = useAuth();
   const styles = useThemedStyles(createOrgStyles);
   const [name, setName] = useState('');
+  const [freeFireGuildId, setFreeFireGuildId] = useState('');
   const [logo, setLogo] = useState<LogoPick | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedOrg | null>(null);
@@ -80,7 +81,9 @@ export function CreateOrgScreen({ navigation }: Props) {
   const onSubmit = async () => {
     setIsSubmitting(true);
     try {
-      const org = await orgApi.createOrg(name.trim());
+      const org = await orgApi.createOrg(name.trim(), {
+        freeFireGuildId: freeFireGuildId.trim() || undefined,
+      });
       if (logo) {
         try {
           await chatApi.uploadChannelAvatar(GUILD_CHANNEL, logo);
@@ -166,6 +169,15 @@ export function CreateOrgScreen({ navigation }: Props) {
         placeholderTextColor={colors.textDim}
         value={name}
         onChangeText={setName}
+      />
+      <TextInput
+        style={shared.input}
+        placeholder="Free Fire guild ID (optional)"
+        placeholderTextColor={colors.textDim}
+        value={freeFireGuildId}
+        onChangeText={(t) => setFreeFireGuildId(t.replace(/\D/g, ''))}
+        keyboardType="number-pad"
+        accessibilityLabel="Free Fire guild ID, optional"
       />
       <SoftPressable
         style={[

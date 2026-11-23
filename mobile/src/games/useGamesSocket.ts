@@ -10,6 +10,7 @@ import {
   RoomEvent,
   RoomView,
   RpsChoice,
+  UnoColor,
 } from '../api/games';
 import { emitToast } from '../ui/toastBus';
 
@@ -160,6 +161,15 @@ export function useGamesSocket(listener: Listener) {
     bootsReady: (roomId: string) => call<RoomView>('boots:ready', { roomId }),
     bootsFire: (roomId: string, target: BootsCell | string) =>
       call<RoomView>('boots:fire', { roomId, target }),
+    unoPlay: (roomId: string, cardId: string, color?: UnoColor) =>
+      call<RoomView>('uno:play', { roomId, cardId, color }),
+    unoChooseColor: (roomId: string, color: UnoColor) =>
+      call<RoomView>('uno:color', { roomId, color }),
+    unoDraw: (roomId: string) => call<RoomView>('uno:draw', { roomId }),
+    unoPass: (roomId: string) => call<RoomView>('uno:pass', { roomId }),
+    unoCall: (roomId: string) => call<RoomView>('uno:call', { roomId }),
+    unoCatch: (roomId: string, targetId: string) =>
+      call<RoomView>('uno:catch', { roomId, targetId }),
   };
 }
 

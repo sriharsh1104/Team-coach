@@ -122,7 +122,7 @@ function MessageBubbleInner({
           </View>
         ) : null}
         <View style={styles.bubbleCol}>
-          {!isMine && mediaOnly ? (
+          {mediaOnly ? (
             <Text style={styles.sender}>{formatSenderLabel(message)}</Text>
           ) : null}
           <View
@@ -134,9 +134,9 @@ function MessageBubbleInner({
               isSelected && styles.bubbleSelected,
             ]}
           >
-            {!isMine && !mediaOnly && (
+            {!mediaOnly ? (
               <Text style={styles.sender}>{formatSenderLabel(message)}</Text>
-            )}
+            ) : null}
             {message.forwarded ? (
               <Text style={[styles.forwardedLabel, isMine && styles.forwardedLabelMine]}>
                 ↪ Forwarded

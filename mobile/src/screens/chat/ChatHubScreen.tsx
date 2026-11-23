@@ -556,7 +556,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
       <FadeIn
         animKey={active.channelKey}
         duration={120}
-        style={[styles.flex, { backgroundColor: theme.bg }]}
+        style={styles.flex}
       >
         <ChatFlowHeader
           title={active.title}
@@ -692,7 +692,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
   }
 
   return (
-    <View style={[styles.flex, { backgroundColor: theme.bg }]}>
+    <View style={styles.flex}>
       <Text style={[styles.inboxTitle, { color: theme.text }]}>Chats</Text>
       <View style={{ paddingHorizontal: 16 }}>
         <ListSearchField

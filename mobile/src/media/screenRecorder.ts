@@ -15,7 +15,12 @@ type NativeScreenRecorder = {
   ) => { remove: () => void };
 };
 
-export type ScreenRecordStart = 'started' | 'unavailable' | 'unsupported';
+export type ScreenRecordStart =
+  | 'started'
+  | 'unavailable'
+  | 'unsupported'
+  /** User dismissed the system capture prompt — not an error. */
+  | 'cancelled';
 
 function loadNative(): NativeScreenRecorder | null {
   try {
@@ -27,12 +32,34 @@ function loadNative(): NativeScreenRecorder | null {
 
 const native = loadNative();
 
+function isCancelError(err: unknown): boolean {
+  const code =
+    err && typeof err === 'object' && 'code' in err
+      ? String((err as { code?: unknown }).code ?? '')
+      : '';
+  const message =
+    err && typeof err === 'object' && 'message' in err
+      ? String((err as { message?: unknown }).message ?? '')
+      : String(err ?? '');
+  return (
+    code === 'CANCELLED' ||
+    /cancel/i.test(code) ||
+    /cancel|denied|NotAllowed|AbortError/i.test(message)
+  );
+}
+
 /** Android screen capture keeps running after this app goes to the background. */
 export function startScreenRecording(): Promise<ScreenRecordStart> | ScreenRecordStart {
   if (Platform.OS !== 'android') return 'unsupported';
   if (!native) return 'unavailable';
   if (native.isRecording()) return 'started';
-  return native.start().then(() => 'started' as const);
+  return native
+    .start()
+    .then(() => 'started' as const)
+    .catch((err: unknown) => {
+      if (isCancelError(err)) return 'cancelled' as const;
+      throw err;
+    });
 }
 
 export function stopScreenRecording(): Promise<string | null> {

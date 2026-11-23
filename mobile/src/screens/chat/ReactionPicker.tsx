@@ -42,7 +42,14 @@ export function ReactionPicker({ visible, onClose, onPick }: Props) {
 }
 
 const staticStyles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  // No dim cover — that wash is for media / text sheets; emoji react stays
+  // light so the chat underneath is still readable.
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   row: { flexDirection: 'row', gap: 10, marginTop: 12 },
   emoji: { fontSize: 30 },
 });
@@ -56,14 +63,19 @@ function pickerStyles(c: ThemeColors) {
       borderWidth: 1,
       borderColor: c.border,
     },
-    title: { color: c.textMuted, fontSize: 12, fontWeight: '700' as const, textTransform: 'uppercase' as const, letterSpacing: 0.6 },
+    title: {
+      color: c.textMuted,
+      fontSize: 12,
+      fontWeight: '700' as const,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.6,
+    },
     emojiBtn: {
       width: 44,
       height: 44,
       borderRadius: 22,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
-      backgroundColor: c.surface,
     },
   };
 }

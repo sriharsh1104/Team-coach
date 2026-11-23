@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import {
+  AppState,
+  AppStateStatus,
+  PermissionsAndroid,
+  Platform,
+} from 'react-native';
 import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
-import { Platform } from 'react-native';
 import {
   Room,
   RoomEvent,
@@ -10,7 +14,6 @@ import {
   ConnectionQuality,
   DisconnectReason,
   Track,
-  AudioPresets,
   type VideoTrack,
 } from 'livekit-client';
 import { moderateVoice } from '../api/voice';
@@ -35,6 +38,11 @@ import { attachVoiceChanger, playHandRaiseCue } from './voiceChanger';
 import { playVoiceCue, preloadVoiceCues, unloadVoiceCues } from './voiceCues';
 import { setVoiceScreenSharing } from './voiceScreenShareGate';
 import { createVoiceReconnectPolicy } from './voiceReconnect';
+import {
+  STABLE_VOICE_PUBLISH,
+  VOICE_BITRATE_WEAK,
+  applyMicBitrateForQuality,
+} from './voiceAudioStability';
 import { isMusicControlMsg, type MusicControlMsg } from './musicShare';
 import { createMusicShareEngine, type MusicShareEngine } from './musicShareEngine';
 
@@ -116,6 +124,7 @@ export function useHostedVoiceChannel(
 ): VoiceChannelController {
   const voiceRoom = options.room ?? 'team';
   const isGuild = voiceRoom === 'guild';
+  const isDirect = voiceRoom === 'direct';
   const [status, setStatus] = useState<VoiceChannelStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string>();
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
@@ -125,6 +134,9 @@ export function useHostedVoiceChannel(
   const [isPushToTalk, setIsPushToTalk] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenShare, setScreenShare] = useState<VoiceScreenShare | null>(null);
+  const [isCameraOn, setIsCameraOn] = useState(false);
+  const [localCamera, setLocalCamera] = useState<VoiceScreenShare | null>(null);
+  const [remoteCamera, setRemoteCamera] = useState<VoiceScreenShare | null>(null);
   const [musicShare, setMusicShare] = useState<MusicShareInfo | null>(null);
   // Guild voice: host-mute state, derived from room metadata + server permissions.
   const [roomState, setRoomState] = useState<RoomState>(EMPTY_STATE);
@@ -133,6 +145,7 @@ export function useHostedVoiceChannel(
   const isMutedRef = useRef(false);
   const roomStateRef = useRef<RoomState>(EMPTY_STATE);
   const isScreenSharingRef = useRef(false);
+  const isCameraOnRef = useRef(false);
   const musicEngineRef = useRef<MusicShareEngine | null>(null);
   isMutedRef.current = isMuted;
 
@@ -145,6 +158,8 @@ export function useHostedVoiceChannel(
   const cuesArmedRef = useRef(false);
   /** Avoid toast spam while LiveKit keeps firing Reconnecting. */
   const reconnectToastShownRef = useRef(false);
+  /** One toast per weak-network streak — bitrate adapt runs silently after. */
+  const weakAudioToastShownRef = useRef(false);
   // Per-participant local volumes (0-1); default 1 until changed
   const localVolumesRef = useRef<Map<string, number>>(new Map());
   // Participants who have raised their hand
@@ -242,6 +257,51 @@ export function useHostedVoiceChannel(
     }
   }, []);
 
+  const refreshCameras = useCallback((room: Room) => {
+    const localPub = room.localParticipant.getTrackPublication(Track.Source.Camera);
+    const localTrack = localPub?.track;
+    if (localTrack && localTrack.kind === Track.Kind.Video) {
+      setLocalCamera({
+        participantId: room.localParticipant.identity,
+        participantName: room.localParticipant.name || 'You',
+        isLocal: true,
+        videoTrack: localTrack as VideoTrack,
+      });
+      isCameraOnRef.current = true;
+      setIsCameraOn(true);
+    } else {
+      setLocalCamera(null);
+      if (isCameraOnRef.current) {
+        isCameraOnRef.current = false;
+        setIsCameraOn(false);
+      }
+    }
+
+    let foundRemote = false;
+    for (const p of room.remoteParticipants.values()) {
+      const pub = p.getTrackPublication(Track.Source.Camera);
+      if (!pub) continue;
+      foundRemote = true;
+      if (!pub.isSubscribed) {
+        try {
+          pub.setSubscribed(true);
+        } catch (err) {
+          console.warn('subscribe to camera failed:', err);
+        }
+      }
+      const track = pub.track;
+      setRemoteCamera({
+        participantId: p.identity,
+        participantName: p.name || p.identity,
+        isLocal: false,
+        videoTrack:
+          track && track.kind === Track.Kind.Video ? (track as VideoTrack) : null,
+      });
+      break;
+    }
+    if (!foundRemote) setRemoteCamera(null);
+  }, []);
+
   const syncParticipants = useCallback((room: Room) => {
     setParticipants(
       [...room.remoteParticipants.values()].map((p: RemoteParticipant) => {
@@ -272,7 +332,8 @@ export function useHostedVoiceChannel(
       }),
     );
     refreshScreenShare(room);
-  }, [isGuild, refreshScreenShare]);
+    refreshCameras(room);
+  }, [isGuild, refreshScreenShare, refreshCameras]);
 
   const publishData = useCallback((msg: DataMsg, destinationIdentities?: string[]) => {
     const room = roomRef.current;
@@ -310,6 +371,9 @@ export function useHostedVoiceChannel(
     if (isScreenSharingRef.current) {
       room?.localParticipant.setScreenShareEnabled(false).catch(() => undefined);
     }
+    if (isCameraOnRef.current) {
+      room?.localParticipant.setCameraEnabled(false).catch(() => undefined);
+    }
     room?.disconnect();
     stopVoiceBackground();
     AudioSession.stopAudioSession().catch(() => {});
@@ -329,6 +393,10 @@ export function useHostedVoiceChannel(
     setIsScreenSharing(false);
     setScreenShare(null);
     setVoiceScreenSharing(false);
+    isCameraOnRef.current = false;
+    setIsCameraOn(false);
+    setLocalCamera(null);
+    setRemoteCamera(null);
     roomStateRef.current = EMPTY_STATE;
     isHostMutedRef.current = false;
     setRoomState(EMPTY_STATE);
@@ -357,6 +425,10 @@ export function useHostedVoiceChannel(
     setIsPushToTalk(false);
     setIsScreenSharing(false);
     setScreenShare(null);
+    isCameraOnRef.current = false;
+    setIsCameraOn(false);
+    setLocalCamera(null);
+    setRemoteCamera(null);
     musicEngineRef.current?.dispose();
     musicEngineRef.current = null;
     setMusicShare(null);
@@ -375,14 +447,15 @@ export function useHostedVoiceChannel(
           autoGainControl: true,
         },
         publishDefaults: {
-          // music bitrate stays clearer than speech+DTX (that combo was
-          // chopping mid-words into a "ghrr ghrr" rumble on some Androids).
-          audioPreset: AudioPresets.music,
-          dtx: false,
+          // Speech + RED + no DTX: half the music bitrate so weak uplinks
+          // don't shred packets; RED rebuilds gaps; DTX stays off (speech+DTX
+          // was chopping mid-words into a "ghrr ghrr" rumble on some Androids).
+          ...STABLE_VOICE_PUBLISH,
         },
         // Network drops: keep retrying the same call for ~1 min, then exit.
         reconnectPolicy: createVoiceReconnectPolicy(),
       });
+      weakAudioToastShownRef.current = false;
       roomRef.current = room;
 
       room.on(RoomEvent.ParticipantConnected, (p: RemoteParticipant) => {
@@ -495,13 +568,26 @@ export function useHostedVoiceChannel(
       room.on(
         RoomEvent.ConnectionQualityChanged,
         (quality: ConnectionQuality, participant: Participant) => {
-          if (!participant.isLocal) {
-            connectionQualitiesRef.current.set(
-              participant.identity,
-              mapConnectionQuality(quality),
-            );
-            syncParticipants(room);
+          if (participant.isLocal) {
+            // Shrink mic packets on Poor/Lost so speech still lands; expand
+            // again when the link recovers.
+            void applyMicBitrateForQuality(room, quality).then((bitrate) => {
+              if (bitrate === VOICE_BITRATE_WEAK) {
+                if (!weakAudioToastShownRef.current) {
+                  weakAudioToastShownRef.current = true;
+                  emitToast('Weak network — keeping voice low-bitrate so speech stays clear');
+                }
+              } else {
+                weakAudioToastShownRef.current = false;
+              }
+            });
+            return;
           }
+          connectionQualitiesRef.current.set(
+            participant.identity,
+            mapConnectionQuality(quality),
+          );
+          syncParticipants(room);
         },
       );
       // Guild host-mute: the room metadata carries the mute list, permissions
@@ -807,19 +893,98 @@ export function useHostedVoiceChannel(
             err && typeof err === 'object' && 'message' in err
               ? String((err as { message?: unknown }).message ?? '')
               : '';
-          const denied =
+          // User closed / dismissed the Android share sheet — not a failure
+          // worth toasting ("blocked" / "not allowed" reads as an error).
+          const cancelled =
             name === 'NotAllowedError' ||
-            /NotAllowed/i.test(message) ||
-            /PermissionDenied/i.test(message) ||
-            /permission/i.test(message);
-          emitToast(
-            denied
-              ? 'Screen share blocked — tap Allow on the Android share prompt'
-              : message || 'Could not start screen share',
-          );
+            name === 'AbortError' ||
+            /NotAllowed|AbortError|PermissionDenied|denied|cancel/i.test(
+              message,
+            );
+          if (cancelled) return;
+          emitToast(message || 'Could not start screen share');
         },
       );
   }, [status, refreshScreenShare]);
+
+  const toggleCamera = useCallback(() => {
+    const room = roomRef.current;
+    if (!room || status !== 'connected') return;
+    if (!isDirect) {
+      emitToast('Video is only available on 1-on-1 calls');
+      return;
+    }
+    if (Platform.OS === 'web') {
+      emitToast('Video calls are available on the mobile app');
+      return;
+    }
+    if (isCameraOnRef.current) {
+      room.localParticipant.setCameraEnabled(false).then(
+        () => {
+          isCameraOnRef.current = false;
+          setIsCameraOn(false);
+          refreshCameras(room);
+          emitToast('Camera off — back to voice');
+        },
+        (err) => {
+          console.warn('stop camera failed:', err);
+          emitToast('Could not turn camera off');
+        },
+      );
+      return;
+    }
+
+    const startCamera = async () => {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          {
+            title: 'Camera Access',
+            message:
+              'Sacred Team Coach needs the camera to switch this 1-on-1 call to video.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Not Now',
+          },
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          emitToast('Camera permission is required for video');
+          return;
+        }
+      }
+      // Screen + camera at once is heavy on mid-range phones — drop share first.
+      if (isScreenSharingRef.current) {
+        try {
+          await room.localParticipant.setScreenShareEnabled(false);
+          isScreenSharingRef.current = false;
+          setIsScreenSharing(false);
+          setVoiceScreenSharing(false);
+        } catch (err) {
+          console.warn('stop screen share before camera failed:', err);
+        }
+      }
+      await room.localParticipant.setCameraEnabled(true, {
+        facingMode: 'user',
+      });
+      isCameraOnRef.current = true;
+      setIsCameraOn(true);
+      refreshCameras(room);
+      emitToast('Video on — they can see you now');
+    };
+
+    void startCamera().catch((err: unknown) => {
+      console.warn('start camera failed:', err);
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message?: unknown }).message ?? '')
+          : '';
+      const denied = /NotAllowed|PermissionDenied|permission/i.test(message);
+      emitToast(
+        denied
+          ? 'Camera blocked — allow camera access in settings'
+          : message || 'Could not start video',
+      );
+    });
+  }, [status, isDirect, refreshCameras]);
 
   const togglePushToTalk = useCallback(() => {
     const room = roomRef.current;
@@ -926,11 +1091,15 @@ export function useHostedVoiceChannel(
       isPushToTalk,
       isScreenSharing,
       screenShare,
+      isCameraOn,
+      localCamera,
+      remoteCamera,
       musicShare,
       join,
       leave,
       toggleMute,
       toggleScreenShare,
+      toggleCamera,
       startMusicShare,
       stopMusicShare,
       toggleParticipantMute,
@@ -965,11 +1134,15 @@ export function useHostedVoiceChannel(
       isPushToTalk,
       isScreenSharing,
       screenShare,
+      isCameraOn,
+      localCamera,
+      remoteCamera,
       musicShare,
       join,
       leave,
       toggleMute,
       toggleScreenShare,
+      toggleCamera,
       startMusicShare,
       stopMusicShare,
       toggleParticipantMute,

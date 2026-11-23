@@ -18,7 +18,7 @@ const baseProfile = {
   avatarUrl: null,
   roles: ['IGL'],
   inGameName: 'ShadowStrike',
-  inGameUid: 'UID-0001',
+  inGameUid: '5123456789',
   phone: '+919999999999',
   whatsappUrl: null,
   instagramUrl: null,
@@ -260,7 +260,7 @@ describe('ProfileScreen', () => {
       goToGameTab();
 
       expect(screen.getByText('ShadowStrike')).toBeTruthy();
-      expect(screen.getByText('UID-0001')).toBeTruthy();
+      expect(screen.getByText('5123456789')).toBeTruthy();
       expect(screen.queryByText('Main rig — ROG Phone 8')).toBeNull();
       expect(screen.getByText('Edit')).toBeTruthy();
       expect(screen.queryByText('Role')).toBeNull();
@@ -271,10 +271,21 @@ describe('ProfileScreen', () => {
       await enterGameEditMode();
 
       expect(screen.getByDisplayValue('ShadowStrike')).toBeTruthy();
-      expect(screen.getByDisplayValue('UID-0001')).toBeTruthy();
+      expect(screen.getByDisplayValue('5123456789')).toBeTruthy();
       expect(screen.getByText('Primary rusher')).toBeTruthy();
       expect(screen.getByText('Grenadier/support')).toBeTruthy();
       expect(screen.queryByText('Add Device')).toBeNull();
+    });
+
+    it('UID field keeps digits only', async () => {
+      render(<ProfileScreen />);
+      await enterGameEditMode();
+
+      fireEvent.changeText(
+        screen.getByPlaceholderText('Your in-game UID'),
+        'AB12-34cd',
+      );
+      expect(screen.getByDisplayValue('1234')).toBeTruthy();
     });
 
     it('copies the IGN field value when its Copy button is pressed', async () => {
@@ -302,7 +313,7 @@ describe('ProfileScreen', () => {
       expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
         roles: ['SNIPER'],
         inGameName: 'ShadowStrike',
-        inGameUid: 'UID-0001',
+        inGameUid: '5123456789',
       });
       await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
       expect(screen.queryByText('Role')).toBeNull();
@@ -556,7 +567,7 @@ describe('ProfileScreen', () => {
         phone: null,
       });
       fireEvent.changeText(screen.getByPlaceholderText('Your in-game name'), 'ShadowStrike');
-      fireEvent.changeText(screen.getByPlaceholderText('Your in-game UID'), 'UID-0001');
+      fireEvent.changeText(screen.getByPlaceholderText('Your in-game UID'), '5123456789');
       await act(async () => {
         fireEvent.press(screen.getByText('Continue'));
       });

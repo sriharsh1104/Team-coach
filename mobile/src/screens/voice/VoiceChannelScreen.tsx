@@ -60,6 +60,7 @@ function loadVideoView(): React.ComponentType<{
   videoTrack?: unknown;
   style?: object;
   objectFit?: 'cover' | 'contain';
+  mirror?: boolean;
 }> | null {
   if (Platform.OS === 'web') return null;
   try {
@@ -218,6 +219,77 @@ function ScreenShareViewer({
         </View>
       </Modal>
     </>
+  );
+}
+
+/**
+ * 1-on-1 Direct Voice → video stage: peer fills the frame, local camera is PiP.
+ * Either side can turn their camera on independently mid-call.
+ */
+function DirectCameraStage({ voice }: { voice: VoiceChannelController }) {
+  const local = voice.localCamera;
+  const remote = voice.remoteCamera;
+  const VideoView = useMemo(() => loadVideoView(), []);
+
+  if (!local && !remote) return null;
+
+  const main = remote ?? local;
+  const pip = remote && local ? local : null;
+  const waitingPeer = !!local && !remote;
+
+  const renderTrack = (
+    track: typeof main,
+    style: object,
+    mirror?: boolean,
+  ) => {
+    if (!track) return null;
+    if (VideoView && track.videoTrack) {
+      return (
+        <VideoView
+          videoTrack={track.videoTrack}
+          style={style}
+          objectFit="cover"
+          mirror={mirror}
+        />
+      );
+    }
+    return (
+      <View style={[style, styles.camPlaceholder]}>
+        <Text style={styles.sharePlaceholderText}>
+          {track.isLocal ? 'Starting your camera…' : 'Waiting for video…'}
+        </Text>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.camBox}>
+      <View style={styles.camHeader}>
+        <AppIcon name="videocam-outline" size={14} color="#22c55e" />
+        <Text style={styles.shareHeaderText} numberOfLines={1}>
+          {waitingPeer
+            ? 'Video on — waiting for them to switch'
+            : remote
+              ? `${remote.participantName}`
+              : 'Your camera'}
+        </Text>
+        {voice.isCameraOn ? (
+          <Pressable
+            onPress={voice.toggleCamera}
+            hitSlop={8}
+            accessibilityLabel="Turn off video"
+          >
+            <Text style={styles.shareStop}>Stop</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      <View style={styles.camStage}>
+        {renderTrack(main, styles.camMain, main?.isLocal)}
+        {pip
+          ? renderTrack(pip, styles.camPip, true)
+          : null}
+      </View>
+    </View>
   );
 }
 
@@ -553,6 +625,7 @@ function VoiceChannelBody({
   }, [voice.status, refreshOccupancy]);
 
   const isGuild = voice.room === 'guild';
+  const isDirect = voice.room === 'direct';
   // Kick + announcement: owner only. Individual host-mute: owner / coach / guild leaders.
   const canKick = !!org?.isOwner;
   const canAnnounce = isGuild && !!org?.isOwner;
@@ -739,6 +812,7 @@ function VoiceChannelBody({
             )}
 
             <ScreenShareViewer voice={voice} />
+            {isDirect ? <DirectCameraStage voice={voice} /> : null}
 
             {voice.musicShare ? (
               <View style={themed.musicBar}>
@@ -997,11 +1071,31 @@ function VoiceChannelBody({
                 />
               </Pressable>
 
-              {/* ⋮ — screen share + music share */}
+              {/* 1-on-1: switch voice → video mid-call */}
+              {isDirect ? (
+                <Pressable
+                  style={[
+                    styles.iconBtn,
+                    voice.isCameraOn || voice.remoteCamera
+                      ? styles.iconBtnActive
+                      : themed.iconBtnDefault,
+                  ]}
+                  onPress={voice.toggleCamera}
+                  accessibilityLabel={
+                    voice.isCameraOn ? 'Turn off video' : 'Switch to video'
+                  }
+                >
+                  <AppIcon name="videocam-outline" size={22} color="#fff" />
+                </Pressable>
+              ) : null}
+
+              {/* ⋮ — screen share + music share (+ video on direct) */}
               <Pressable
                 style={[
                   styles.iconBtn,
-                  voice.isScreenSharing || voice.musicShare?.isLocal
+                  voice.isScreenSharing ||
+                  voice.musicShare?.isLocal ||
+                  voice.isCameraOn
                     ? styles.iconBtnActive
                     : themed.iconBtnDefault,
                 ]}
@@ -1028,6 +1122,9 @@ function VoiceChannelBody({
               musicShareLocal={!!voice.musicShare?.isLocal}
               musicShareBusy={!!voice.musicShare && !voice.musicShare.isLocal}
               onToggleScreenShare={voice.toggleScreenShare}
+              allowVideoSwitch={isDirect}
+              isCameraOn={voice.isCameraOn}
+              onToggleCamera={voice.toggleCamera}
               onMusicPress={() => {
                 if (voice.musicShare?.isLocal) {
                   voice.stopMusicShare();
@@ -1439,6 +1536,49 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(34,197,94,0.35)',
   },
+  camBox: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#0b0b0d',
+    borderWidth: 1,
+    borderColor: 'rgba(168,176,255,0.35)',
+  },
+  camHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(168,176,255,0.12)',
+  },
+  camStage: {
+    width: '100%',
+    aspectRatio: 3 / 4,
+    backgroundColor: '#000',
+    position: 'relative',
+  },
+  camMain: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  camPip: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    width: 96,
+    height: 128,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: '#111',
+  },
+  camPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#111',
+  },
   shareHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1665,11 +1805,12 @@ const styles = StyleSheet.create({
   bottomBarScroll: {
     flexGrow: 0,
   },
-  // Compact icon-only action buttons
+  // Compact icon-only action buttons — sized to sit flush so the top
+  // divider doesn't show through big gaps between headphone / ⋮ / leave.
   iconBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1802,9 +1943,9 @@ function voiceStyles(c: ThemeColors) {
     musicStop: { fontSize: 13, fontWeight: '700' as const, color: c.danger },
     bottomBar: {
       flexDirection: 'row' as const,
-      gap: 10,
-      paddingVertical: 16,
-      paddingHorizontal: 16,
+      gap: 6,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
       borderTopWidth: 1,
       borderTopColor: c.border,
       justifyContent: 'center' as const,

@@ -14,6 +14,7 @@ import { Screen } from '../../brand/Screen';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
+import { AppIcon } from '../../ui/AppIcon';
 import { ButtonLabel } from '../../ui/ButtonLabel';
 import { SkeletonList } from '../../ui/Skeleton';
 import { SoftPressable } from '../../ui/SoftPressable';
@@ -22,6 +23,12 @@ import { emitToast } from '../../ui/toastBus';
 import { usePullToRefresh } from '../../ui/usePullToRefresh';
 import { useSharedStyles } from '../shared';
 import { announcementsRead } from './announcementsBus';
+import {
+  loadSavedAnnouncementTemplates,
+  removeSavedAnnouncementTemplate,
+  saveAnnouncementTemplate,
+  type SavedAnnouncementTemplate,
+} from './savedAnnouncementTemplates';
 
 const PAGE_SIZE = 20;
 const TITLE_MAX = 120;
@@ -148,8 +155,16 @@ function Composer({
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<SavedAnnouncementTemplate[]>([]);
+
+  useEffect(() => {
+    void loadSavedAnnouncementTemplates().then(setSaved);
+  }, []);
 
   const canSend = title.trim().length > 0 && body.trim().length > 0 && !sending;
+  const canSave =
+    title.trim().length > 0 && body.trim().length > 0 && !saving && !sending;
 
   return (
     <View style={styles.composer}>
@@ -176,37 +191,112 @@ function Composer({
       {/* Said plainly before the tap, not after — this pushes to every
           member's phone and cannot be unsent. */}
       <Text style={styles.composerNote}>
-        Sends a notification to every member of your guild.
+        Sends a notification to every member of your guild. Save only what you
+        reuse — tap a saved title below to fill the fields.
       </Text>
-      <SoftPressable
-        style={[shared.button, !canSend && styles.buttonDisabled]}
-        disabled={!canSend}
-        onPress={async () => {
-          setSending(true);
-          try {
-            await api.createAnnouncement({
-              title: title.trim(),
-              body: body.trim(),
-            });
-            setTitle('');
-            setBody('');
-            emitToast('Sent to everyone in your guild');
-            await onPosted();
-          } catch (err) {
-            emitToast(apiErrorMessage(err, 'Could not send that announcement'));
-          } finally {
-            setSending(false);
-          }
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Send announcement to everyone"
-      >
-        {sending ? (
-          <ActivityIndicator color={colors.chromeInk} size="small" />
-        ) : (
-          <ButtonLabel icon="send">Send to everyone</ButtonLabel>
-        )}
-      </SoftPressable>
+      <View style={styles.composerActions}>
+        <SoftPressable
+          style={[styles.saveBtn, !canSave && styles.buttonDisabled]}
+          disabled={!canSave}
+          onPress={async () => {
+            setSaving(true);
+            try {
+              const next = await saveAnnouncementTemplate({ title, body });
+              setSaved(next);
+              emitToast('Saved — tap its title next time to reuse');
+            } catch {
+              emitToast('Could not save that');
+            } finally {
+              setSaving(false);
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Save announcement for reuse"
+          pressScale={0.95}
+        >
+          <AppIcon
+            name={saving ? 'star' : 'star-outline'}
+            size={20}
+            color={colors.chrome}
+          />
+          <Text style={[styles.saveBtnText, { color: colors.chrome }]}>
+            {saving ? 'Saving…' : 'Save'}
+          </Text>
+        </SoftPressable>
+        <SoftPressable
+          style={[
+            shared.button,
+            styles.sendBtn,
+            !canSend && styles.buttonDisabled,
+          ]}
+          disabled={!canSend}
+          onPress={async () => {
+            setSending(true);
+            try {
+              await api.createAnnouncement({
+                title: title.trim(),
+                body: body.trim(),
+              });
+              setTitle('');
+              setBody('');
+              emitToast('Sent to everyone in your guild');
+              await onPosted();
+            } catch (err) {
+              emitToast(
+                apiErrorMessage(err, 'Could not send that announcement'),
+              );
+            } finally {
+              setSending(false);
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Send announcement to everyone"
+        >
+          {sending ? (
+            <ActivityIndicator color={colors.chromeInk} size="small" />
+          ) : (
+            <ButtonLabel icon="send">Send to everyone</ButtonLabel>
+          )}
+        </SoftPressable>
+      </View>
+
+      {saved.length > 0 ? (
+        <View style={styles.savedList}>
+          <Text style={styles.savedHeading}>Saved</Text>
+          {saved.map((item) => (
+            <View key={item.id} style={styles.savedRow}>
+              <SoftPressable
+                style={styles.savedTitleHit}
+                onPress={() => {
+                  setTitle(item.title);
+                  setBody(item.body);
+                  emitToast(`Loaded “${item.title}”`);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Use saved announcement ${item.title}`}
+                pressScale={0.98}
+                haptic={false}
+              >
+                <Text style={styles.savedTitle} numberOfLines={1}>
+                  {item.title}
+                </Text>
+              </SoftPressable>
+              <SoftPressable
+                onPress={async () => {
+                  const next = await removeSavedAnnouncementTemplate(item.id);
+                  setSaved(next);
+                }}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove saved ${item.title}`}
+                pressScale={0.92}
+              >
+                <AppIcon name="trash-outline" size={16} color={colors.danger} />
+              </SoftPressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -303,22 +393,63 @@ function announcementStyles(c: ThemeColors) {
     },
     empty: { color: c.textMuted, fontSize: 13, textAlign: 'center' as const },
 
+    // Flat composer — no surface box; inputs sit on the screen watermark.
     composer: { gap: 10, marginBottom: 22 },
     composerBody: { minHeight: 96, paddingTop: 12 },
     composerNote: { color: c.textMuted, fontSize: 12 },
-    buttonDisabled: { opacity: 0.5 },
-
-    card: {
-      padding: 14,
-      marginBottom: 10,
-      borderRadius: 14,
-      backgroundColor: c.surface,
+    composerActions: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 10,
+    },
+    saveBtn: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      borderRadius: 10,
       borderWidth: 1,
       borderColor: c.border,
     },
+    saveBtnText: { fontSize: 14, fontWeight: '700' as const },
+    sendBtn: { flex: 1, marginBottom: 0 },
+    buttonDisabled: { opacity: 0.5 },
+
+    savedList: { marginTop: 4, gap: 0 },
+    savedHeading: {
+      color: c.textMuted,
+      fontSize: 11,
+      fontWeight: '700' as const,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.6,
+      marginBottom: 4,
+    },
+    // Title-only rows — no cards/boxes; pick by title at a glance.
+    savedRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    savedTitleHit: { flex: 1, minWidth: 0 },
+    savedTitle: { color: c.link, fontSize: 14, fontWeight: '600' as const },
+
+    card: {
+      paddingVertical: 12,
+      marginBottom: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
     // Unread gets a left edge rather than a different fill — it still has to
     // be readable once the screen marks everything read a moment later.
-    cardUnread: { borderLeftWidth: 3, borderLeftColor: c.chrome },
+    cardUnread: {
+      borderLeftWidth: 3,
+      borderLeftColor: c.chrome,
+      paddingLeft: 10,
+    },
     cardHead: {
       flexDirection: 'row' as const,
       alignItems: 'flex-start' as const,

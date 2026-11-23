@@ -83,7 +83,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .send({
           roles: ['IGL'],
           inGameName: 'ShadowStrike',
-          inGameUid: 'UID-42',
+          inGameUid: '4200000042',
           discordUrl: 'https://discord.gg/example',
         })
         .expect(200);
@@ -142,7 +142,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .set('Authorization', `Bearer ${holder.accessToken}`)
         .send({
           inGameName: 'UniqueIGN',
-          inGameUid: 'UID-UNIQUE-1',
+          inGameUid: '5123400001',
         })
         .expect(200);
 
@@ -158,16 +158,16 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       const uidDup = await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${other.accessToken}`)
-        .send({ inGameUid: 'UID-UNIQUE-1' })
+        .send({ inGameUid: '5123400001' })
         .expect(409);
       expect(uidDup.body.message).toMatch(/UID/i);
 
-      const uidDupCase = await request(server)
+      const uidLetters = await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${other.accessToken}`)
-        .send({ inGameUid: 'uid-unique-1' })
-        .expect(409);
-      expect(uidDupCase.body.message).toMatch(/UID/i);
+        .send({ inGameUid: 'uid-letters' })
+        .expect(400);
+      expect(String(uidLetters.body.message)).toMatch(/numbers only/i);
     });
 
     it('rejects more than one game role', async () => {
@@ -462,7 +462,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .set('Authorization', `Bearer ${player.accessToken}`)
         .send({
           inGameName: 'HiddenPhone',
-          inGameUid: 'UID-HIDE-1',
+          inGameUid: '5100000001',
         })
         .expect(200);
       await setVerifiedPhone(prisma, player.user.id, '9988776655');
@@ -513,7 +513,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${guildMate.accessToken}`)
-        .send({ inGameName: 'GuildIGN', inGameUid: 'UID-G1' })
+        .send({ inGameName: 'GuildIGN', inGameUid: '6100000001' })
         .expect(200);
       await setVerifiedPhone(prisma, guildMate.user.id, '9123456780');
 

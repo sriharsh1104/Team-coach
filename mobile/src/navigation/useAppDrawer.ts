@@ -43,9 +43,6 @@ export function useOrgDrawer() {
   const isOwner = !!org?.isOwner;
   // Display only — /admin is authorised server-side on every request.
   const isAdmin = !!user?.isPlatformAdmin;
-  // Same rule: this only draws the entry. The 1-on-1 room token re-checks the
-  // permission on BOTH people, so a faked flag reaches nobody.
-  const canDirectVoice = !!user?.canDirectVoice;
   const { open, navigation, openWith, close, routeName, setRouteName } =
     useDrawerHeader();
   const unreadAnnouncements = useUnreadAnnouncements(open, routeName);
@@ -190,23 +187,6 @@ export function useOrgDrawer() {
       ],
     });
 
-    if (canDirectVoice) {
-      sections.push({
-        key: 'private',
-        label: 'Private',
-        split: true,
-        items: [
-          {
-            key: 'directVoice',
-            label: '1-on-1 Voice',
-            icon: 'mic-outline' as const,
-            onPress: () =>
-              goToSection(navigation, 'OrgHome', { screen: 'DirectVoice' }),
-          },
-        ],
-      });
-    }
-
     if (isAdmin) {
       sections.push({
         key: 'platform',
@@ -231,7 +211,6 @@ export function useOrgDrawer() {
     navigation,
     isOwner,
     isAdmin,
-    canDirectVoice,
     routeName,
     unreadAnnouncements,
   ]);
@@ -243,7 +222,6 @@ export function useOrgDrawer() {
 export function useGuildDrawer() {
   const { user } = useAuth();
   const isAdmin = !!user?.isPlatformAdmin;
-  const canDirectVoice = !!user?.canDirectVoice;
   const { open, navigation, openWith, close, routeName, setRouteName } =
     useDrawerHeader();
   const unreadAnnouncements = useUnreadAnnouncements(open, routeName);
@@ -317,22 +295,6 @@ export function useGuildDrawer() {
         ],
       },
     ];
-    if (canDirectVoice) {
-      base.push({
-        key: 'private',
-        label: 'Private',
-        split: true,
-        items: [
-          {
-            key: 'directVoice',
-            label: '1-on-1 Voice',
-            icon: 'mic-outline' as const,
-            onPress: () =>
-              goToSection(navigation, 'GuildHome', { screen: 'DirectVoice' }),
-          },
-        ],
-      });
-    }
     if (isAdmin) {
       base.push({
         key: 'platform',
@@ -352,7 +314,7 @@ export function useGuildDrawer() {
       base,
       drawerItemKeyForRoute(routeName ?? undefined),
     );
-  }, [navigation, isAdmin, canDirectVoice, routeName, unreadAnnouncements]);
+  }, [navigation, isAdmin, routeName, unreadAnnouncements]);
 
   return { open, sections, openWith, close, setRouteName };
 }

@@ -59,4 +59,24 @@ describe('offline request guard', () => {
       apiErrorMessage({ response: { status: 413 } }),
     ).toContain('too large');
   });
+
+  it('does not toast the expected no-guild 404 (admins / pre-join)', async () => {
+    const adapter = jest.fn().mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 404,
+        data: { message: 'You are not part of a guild yet' },
+      },
+      config: { url: '/announcements/unread' },
+      toJSON: () => ({}),
+    });
+    const prev = apiClient.defaults.adapter;
+    apiClient.defaults.adapter = adapter as typeof prev;
+    try {
+      await expect(apiClient.get('/announcements/unread')).rejects.toBeDefined();
+      expect(emitToast).not.toHaveBeenCalled();
+    } finally {
+      apiClient.defaults.adapter = prev;
+    }
+  });
 });

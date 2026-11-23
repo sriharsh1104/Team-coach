@@ -232,6 +232,114 @@ In the Render dashboard for the API service:
 Also set `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, etc. in Render env.
 Use LiveKit (`VOICE_SELF_HOSTED=false`) on Render; self-hosted mediasoup needs UDP.
 
+### Keeping the free Render backend awake
+
+Render's free plan spins a web service down after **15 minutes** with no
+inbound traffic; the next request then waits ~1 minute for spin-up. Since
+Feb 2026 WebSocket traffic counts as activity too, but an idle app sends
+none.
+
+**`.github/workflows/keep-alive.yml` does not solve this, and never did.**
+GitHub Actions schedules are best-effort — runs are queued on shared runners
+and silently dropped under load. Measured on this repo (2026-11-16 → 11-23),
+the `*/10` cron that should fire 144×/day actually fired **~7×/day, with gaps
+of 4–10 hours**. Every run reported success, so the Actions tab looked healthy
+while the service was asleep most of the day. Do not trust a green Actions tab
+as evidence of uptime — check `uptime` in the `/health` response instead:
+
+```bash
+curl -s https://api.sacredesports.com/health
+```
+
+`{"status":"ok","uptime":8234,...}` means the process started 8234s (2h17m)
+ago. A number that keeps resetting to near-zero = it is sleeping.
+
+#### The fix: an external uptime monitor
+
+Use a real monitoring service — they exist for exactly this, are free at this
+volume, and fire on time. Any of these work:
+
+| Service | Free interval |
+|---------|---------------|
+| cron-job.org | 1 min |
+| UptimeRobot | 5 min |
+| Better Stack | 3 min |
+
+Point it at `https://api.sacredesports.com/health`, method GET, expect HTTP
+200. Nothing else to configure — the endpoint is deliberately dumb (no DB
+touch), so pinging it is cheap.
+
+#### The 750-hour budget — how long you can actually stay awake
+
+Render grants **750 free instance hours per workspace per calendar month**.
+Exhaust them and every free web service in the workspace is **suspended until
+the next month**.
+
+Only **free web services** burn these hours, and only while awake — a
+spun-down service costs nothing. Free Postgres, static sites and cron jobs do
+not count. So the whole budget is "how many hours a month is the API awake",
+shared across every free web service on the account (this project should have
+exactly one: the API).
+
+**24/7 is technically possible, but it is a trap:**
+
+| Month | 24/7 costs | Margin left |
+|-------|-----------|-------------|
+| 28 days | 672 h | 78 h (10%) |
+| 30 days | 720 h | 30 h (4%) |
+| **31 days** | **744 h** | **6 h (0.8%)** |
+
+Six hours of headroom in a 31-day month. One redeploy with overlapping
+instances, or a second free web service added later, and the API is suspended
+until the 1st — with no warning beyond an email.
+
+**Budget with a safety margin** (worst case, 31-day month):
+
+| Safety margin | Hours/month | Hours/day | Sleep/day |
+|---------------|-------------|-----------|-----------|
+| 0% | 750 | 24.2 | none |
+| 10% | 675 | 21.8 | 2h 15m |
+| **20%** | **600** | **19.4** | **4h 40m** |
+| 30% | 525 | 16.9 | 7h |
+
+Remember the service stays awake **15 minutes after the last request**, so an
+N-hour ping window costs N + 0.25 h/day, and any real user outside the window
+wakes it for another 15 minutes.
+
+#### Recommended: an 18-hour window, 08:00–02:00 IST
+
+| Ping window | 31-day month | Margin |
+|-------------|--------------|--------|
+| 24 h | 744 h | 6 h |
+| 20 h | 628 h | 122 h |
+| **18 h** | **566 h** | **184 h (25%)** |
+| 16 h | 504 h | 246 h |
+
+18 hours covers every hour anyone actually plays, leaves 184 h for off-window
+wake-ups (a night visitor costs 15 min; even five a night is only 39 h/month),
+and survives a 31-day month with room for redeploys.
+
+Set it up on **cron-job.org** (free, and unlike UptimeRobot's free plan it
+lets you restrict the schedule to specific hours):
+
+| Field | Value |
+|-------|-------|
+| URL | `https://api.sacredesports.com/health` |
+| Method | GET |
+| Schedule | Every 5 minutes |
+| Hours | `8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1` |
+| Timezone | Asia/Kolkata |
+
+The 02:00–08:00 IST gap is the only time anyone pays a cold start, and the app
+already explains that wait (`ServerWakingNotice` on the auth screens, driven
+by `useServerWarmup`).
+
+Check **Render dashboard → Billing → Free instance hours** around the 20th of
+the month. On this schedule it should read roughly 370–400 h. If it is tracking
+toward 750, something else in the workspace is burning hours.
+
+If you want genuine 24/7 with no quota maths, that is the VPS, not Render.
+
 ---
 
 ## 6. Database backups

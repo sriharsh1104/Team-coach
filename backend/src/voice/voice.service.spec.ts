@@ -704,6 +704,18 @@ describe('VoiceService 1-on-1 voice', () => {
     expect(lk.createRoom).toHaveBeenCalledWith(
       expect.objectContaining({ maxParticipants: 2 }),
     );
+    const claims = await new TokenVerifier(
+      'key',
+      'secret-secret-secret-secret',
+    ).verify(config.token);
+    expect(claims.video?.canPublishSources).toEqual(
+      expect.arrayContaining([
+        'microphone',
+        'screen_share',
+        'screen_share_audio',
+        'camera',
+      ]),
+    );
   });
 
   describe('peer list', () => {

@@ -99,6 +99,16 @@ jest.mock('mediasoup-client', () => ({
 jest.mock('livekit-client', () => ({
   Room: jest.fn(),
   RoomEvent: {},
+  Track: {
+    Source: { Microphone: 'microphone', Camera: 'camera', ScreenShare: 'screen_share' },
+    Kind: { Audio: 'audio', Video: 'video' },
+  },
+  ConnectionQuality: { Excellent: 2, Good: 1, Poor: 0, Lost: 3, Unknown: 4 },
+  AudioPresets: {
+    telephone: { maxBitrate: 12_000 },
+    speech: { maxBitrate: 24_000 },
+    music: { maxBitrate: 48_000 },
+  },
 }));
 
 // Real expo-notifications warns loudly on import about Expo Go/SDK 53 removal

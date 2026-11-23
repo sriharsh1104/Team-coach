@@ -4798,14 +4798,11 @@ button.invite-qr-open:hover {
   margin-left: auto;
 }
 
+/* Flat composer — no surface card/box around the fields. */
 .announce-composer {
   display: grid;
   gap: 8px;
-  padding: 16px;
   margin-bottom: 24px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .announce-composer textarea {
@@ -4826,22 +4823,85 @@ button.invite-qr-open:hover {
   font-size: 12px;
 }
 
-.announce-list {
-  display: grid;
-  gap: 10px;
+.announce-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
+.announce-save {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.announce-saved {
+  margin-top: 4px;
+}
+
+.announce-saved-heading {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+  margin-bottom: 2px;
+}
+
+.announce-saved-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.announce-saved-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.announce-saved-title {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--link, #a8b0ff);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.announce-saved-remove {
+  flex-shrink: 0;
+  background: transparent;
+  border: 0;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--danger, #f87171);
+  cursor: pointer;
+}
+
+.announce-list {
+  display: grid;
+  gap: 0;
+}
+
+/* Posted feed as flat rows — no card boxes. */
 .announce-card {
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  border-radius: 0;
 }
 
 /* Unread gets a left edge rather than a different background — it still has
    to be readable once the page marks everything read a moment later. */
 .announce-card.unread {
   border-left: 3px solid var(--chrome);
+  padding-left: 10px;
 }
 
 .announce-card-head {

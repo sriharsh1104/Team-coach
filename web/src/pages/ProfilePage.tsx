@@ -646,8 +646,11 @@ function GameSection({
         <input
           id="pf-uid"
           value={uid}
-          onChange={(e) => setUid(e.target.value)}
+          onChange={(e) => setUid(e.target.value.replace(/\D/g, ''))}
           placeholder="Your in-game UID"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
           required
         />
       </div>

@@ -47,7 +47,7 @@ describe('MemberProfileScreen', () => {
       avatarUrl: 'https://cdn.example/avatar.jpg',
       roles: ['SNIPER'],
       inGameName: 'EagleEye',
-      inGameUid: 'UID-9',
+      inGameUid: '9000000009',
       phone: null,
       whatsappUrl: null,
       instagramUrl: null,
@@ -63,7 +63,7 @@ describe('MemberProfileScreen', () => {
     await screen.findByText('EagleEye');
     expect(screen.getByText('Player 2')).toBeTruthy();
     expect(screen.getByText('Sniper')).toBeTruthy();
-    expect(screen.getByText('UID-9')).toBeTruthy();
+    expect(screen.getByText('9000000009')).toBeTruthy();
     expect(screen.getByText('Discord: https://discord.gg/team')).toBeTruthy();
     expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();
     expect(screen.getByText('Coach (Owner)')).toBeTruthy();

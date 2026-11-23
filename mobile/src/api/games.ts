@@ -3,7 +3,7 @@ import { apiBaseUrl } from './client';
 
 // ── Types mirrored from backend/src/games ──────────────────────────────────
 
-export type GameKind = 'rps' | 'ludo' | 'boots';
+export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno';
 
 export const GAME_CATALOG: Array<{
   id: GameKind;
@@ -31,6 +31,15 @@ export const GAME_CATALOG: Array<{
     minPlayers: 2,
     maxPlayers: 4,
     emoji: '🎲',
+  },
+  {
+    id: 'uno',
+    title: 'Uno',
+    tagline: 'Match color or rank — call Uno at 1',
+    players: '2–6 players',
+    minPlayers: 2,
+    maxPlayers: 6,
+    emoji: '🃏',
   },
   {
     id: 'boots',
@@ -98,6 +107,52 @@ export interface RpsPublicState {
 
 export type LudoColor = 'red' | 'green' | 'yellow' | 'blue';
 
+export type UnoColor = 'red' | 'yellow' | 'green' | 'blue';
+export type UnoRank =
+  | '0'
+  | '1'
+  | '2'
+  | '3'
+  | '4'
+  | '5'
+  | '6'
+  | '7'
+  | '8'
+  | '9'
+  | 'skip'
+  | 'reverse'
+  | 'draw2'
+  | 'wild'
+  | 'wild4';
+
+export type UnoCard = {
+  id: string;
+  color: UnoColor | 'wild';
+  rank: UnoRank;
+};
+
+export type UnoPublicState = {
+  playerIds: string[];
+  handCounts: Record<string, number>;
+  hand: UnoCard[];
+  top: UnoCard | null;
+  color: UnoColor;
+  direction: 1 | -1;
+  turnId: string;
+  phase: 'play' | 'color' | 'done';
+  pendingDraw: number;
+  colorPickerId: string | null;
+  calledUno: Record<string, boolean>;
+  deckCount: number;
+  winnerId: string | null;
+  lastEvent: string | null;
+  playableIds: string[];
+  canDraw: boolean;
+  canPass: boolean;
+  drewThisTurn: boolean;
+  version: number;
+};
+
 export interface LudoState {
   turnOrder: string[];
   colors: Record<string, LudoColor>;
@@ -135,6 +190,7 @@ export interface RoomView {
   rps: RpsPublicState | null;
   ludo: LudoState | null;
   boots: BootsPublicState | null;
+  uno: UnoPublicState | null;
   bootsFleet: number[] | null;
   deadline: number | null;
 }

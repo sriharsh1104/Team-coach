@@ -9,20 +9,20 @@ beforeEach(() => {
 
 describe('CopyableField', () => {
   it('shows the label and value', () => {
-    render(<CopyableField label="UID" value="UID-0001" />);
+    render(<CopyableField label="UID" value="5123456789" />);
     expect(screen.getByText('UID')).toBeTruthy();
-    expect(screen.getByText('UID-0001')).toBeTruthy();
+    expect(screen.getByText('5123456789')).toBeTruthy();
   });
 
   it('copies the value to the clipboard and flashes a Copied state, then reverts', async () => {
     jest.useFakeTimers();
-    render(<CopyableField label="UID" value="UID-0001" />);
+    render(<CopyableField label="UID" value="5123456789" />);
 
     await act(async () => {
       fireEvent.press(screen.getByLabelText('Copy'));
     });
 
-    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('UID-0001');
+    expect(Clipboard.setStringAsync).toHaveBeenCalledWith('5123456789');
     expect(screen.getByLabelText('Copied')).toBeTruthy();
 
     act(() => {

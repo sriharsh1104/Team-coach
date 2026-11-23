@@ -1,9 +1,30 @@
-name: Keep backend alive
+name: Keep backend alive (best effort only)
+
+# ⚠️ THIS IS NOT A RELIABLE KEEP-ALIVE. Do not rely on it.
+#
+# GitHub Actions schedules are best-effort: runs are queued on shared runners
+# and dropped under load. Measured on this repo over 2026-11-16 → 11-23, the
+# `*/10` schedule below (144 runs/day on paper) actually fired about 7 times a
+# day, with gaps of 4–10 hours:
+#
+#   14:26 → 04:03 (623 min) → 23:47 (256 min) → 18:37 (310 min) → 11:29 (428 min) …
+#
+# Every run reports success, so the Actions tab looks healthy while Render —
+# which spins a free service down after 15 minutes idle — is asleep for most
+# of the day. Green ticks here mean "the ping worked", never "the service
+# stayed up".
+#
+# The real keep-alive is an external uptime monitor (cron-job.org) hitting
+# /health every 5 minutes between 08:00 and 02:00 IST. See "Keeping the free
+# Render backend awake" in DEPLOY.md for why that window and not 24/7: the
+# free plan allows 750 instance-hours a month, and a 31-day month at 24/7
+# costs 744 — six hours of headroom for the whole workspace.
+#
+# This file is kept because it costs nothing and does wake the service a few
+# times a day, which is better than nothing if the monitor is ever removed.
 
 on:
   schedule:
-    # Every 10 minutes — Render's free tier spins a service down after
-    # ~15 minutes of inactivity, so this stays comfortably under that.
     - cron: '*/10 * * * *'
   workflow_dispatch: {}
 

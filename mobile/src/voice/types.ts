@@ -63,6 +63,15 @@ export interface VoiceChannelController {
   /** Active screen share in the room (local or remote), if any. */
   screenShare: VoiceScreenShare | null;
   /**
+   * Local front-camera published (1-on-1 direct calls — switch voice→video).
+   * Team/guild voice never turns this on.
+   */
+  isCameraOn: boolean;
+  /** Our own camera track for local preview / PiP. */
+  localCamera: VoiceScreenShare | null;
+  /** Peer camera track in a 1-on-1 call, if they switched to video. */
+  remoteCamera: VoiceScreenShare | null;
+  /**
    * Active music share (peer-to-peer over the voice data channel — not stored
    * in our DB). Null when nobody is sharing.
    */
@@ -72,6 +81,8 @@ export interface VoiceChannelController {
   toggleMute: () => void;
   /** Start/stop sharing this device's screen with others in the voice call. */
   toggleScreenShare: () => void;
+  /** 1-on-1 direct only: publish / unpublish the front camera mid-call. */
+  toggleCamera: () => void;
   /**
    * Share a local audio file with everyone in the call (peer-to-peer data
    * channel — nothing is saved on our servers / DB).

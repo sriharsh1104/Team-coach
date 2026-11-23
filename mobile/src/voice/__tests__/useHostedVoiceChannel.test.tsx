@@ -14,6 +14,7 @@ class FakeRoom {
     permissions: { canPublish: true },
     setMicrophoneEnabled: jest.fn(),
     setScreenShareEnabled: jest.fn().mockResolvedValue(undefined),
+    setCameraEnabled: jest.fn().mockResolvedValue(undefined),
     getTrackPublication: jest.fn(() => undefined),
     publishData: jest.fn().mockResolvedValue(undefined),
   };
@@ -70,6 +71,20 @@ class FakeParticipant {
     ) as jest.Mock;
     return pub;
   }
+
+  /** Publish front camera (1-on-1 video switch). */
+  camera(opts: { subscribed?: boolean } = {}): FakePublication {
+    const subscribed = opts.subscribed !== false;
+    const pub: FakePublication = {
+      isSubscribed: subscribed,
+      setSubscribed: jest.fn(),
+      track: subscribed ? { kind: 'video' } : null,
+    };
+    this.getTrackPublication = jest.fn((source: unknown) =>
+      source === 'camera' ? pub : undefined,
+    ) as jest.Mock;
+    return pub;
+  }
 }
 
 // Jest hoists jest.mock() factories above module-scope consts, so anything
@@ -110,6 +125,7 @@ jest.mock('livekit-client', () => ({
     CLIENT_INITIATED: 1,
   },
   AudioPresets: {
+    telephone: { maxBitrate: 12_000 },
     speech: { maxBitrate: 24_000 },
     music: { maxBitrate: 48_000 },
   },
@@ -146,8 +162,10 @@ const { playVoiceCue } = require('../voiceCues');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { useHostedVoiceChannel } = require('../useHostedVoiceChannel');
 
-async function joinedHook() {
-  const hook = renderHook(() => useHostedVoiceChannel('wss://lk', 'tok'));
+async function joinedHook(options: { room?: 'team' | 'guild' | 'direct' } = {}) {
+  const hook = renderHook(() =>
+    useHostedVoiceChannel('wss://lk', 'tok', { room: options.room }),
+  );
   await act(async () => {
     await hook.result.current.join();
   });
@@ -382,6 +400,48 @@ describe('useHostedVoiceChannel', () => {
 
       expect(hook.result.current.status).toBe('connected');
       expect(peer.setVolume).toHaveBeenCalledWith(0);
+    });
+  });
+
+  describe('1-on-1 switch to video (camera)', () => {
+    it('refuses camera outside a direct call', async () => {
+      const hook = await joinedHook({ room: 'team' });
+      act(() => hook.result.current.toggleCamera());
+      expect(emitToast).toHaveBeenCalledWith(
+        expect.stringMatching(/1-on-1/i),
+      );
+      expect(
+        mockCurrentRoom.localParticipant.setCameraEnabled,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('publishes the front camera on a direct call', async () => {
+      const hook = await joinedHook({ room: 'direct' });
+      await act(async () => {
+        hook.result.current.toggleCamera();
+      });
+      await waitFor(() =>
+        expect(
+          mockCurrentRoom.localParticipant.setCameraEnabled,
+        ).toHaveBeenCalledWith(true, { facingMode: 'user' }),
+      );
+    });
+
+    it('shows a peer camera as soon as the track is subscribed', async () => {
+      const hook = await joinedHook({ room: 'direct' });
+      const peer = mockCurrentRoom.addPeer('bob');
+      peer.camera();
+
+      await act(async () => {
+        mockCurrentRoom.fire('trackSubscribed', {}, {}, peer);
+      });
+
+      await waitFor(() => expect(hook.result.current.remoteCamera).toBeTruthy());
+      expect(hook.result.current.remoteCamera).toMatchObject({
+        participantId: 'bob',
+        isLocal: false,
+      });
+      expect(hook.result.current.remoteCamera?.videoTrack).toBeTruthy();
     });
   });
 

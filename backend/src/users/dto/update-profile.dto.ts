@@ -53,6 +53,7 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)
+  @Matches(/^\d+$/, { message: 'UID must contain only numbers' })
   inGameUid?: string;
 
   @IsOptional()

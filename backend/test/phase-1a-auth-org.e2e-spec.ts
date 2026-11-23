@@ -96,7 +96,7 @@ describe('Phase 1A — Auth + Org (e2e)', () => {
       await request(server)
         .patch('/users/me')
         .set('Authorization', `Bearer ${user.accessToken}`)
-        .send({ inGameUid: 'UID-1' })
+        .send({ inGameUid: '1000000001' })
         .expect(200);
       me = await request(server)
         .get('/auth/me')

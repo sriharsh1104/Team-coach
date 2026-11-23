@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Patch,
   Post,
   Query,
@@ -12,6 +14,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { OrgService } from './org.service';
 import { CreateOrgDto } from './dto/create-org.dto';
+import { CreateAchievementDto } from './dto/create-achievement.dto';
 import { JoinOrgDto } from './dto/join-org.dto';
 import {
   CancelGuildJoinDto,
@@ -23,6 +26,7 @@ import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 import { RemoveMemberDto } from './dto/remove-member.dto';
 import { AddRosterMemberDto } from './dto/add-roster-member.dto';
 import { UpdateOrgSettingsDto } from './dto/update-org-settings.dto';
+import { UpdateFreeFireGuildDto } from './dto/update-freefire-guild.dto';
 import { SetOwnRosterRoleDto } from './dto/set-own-roster-role.dto';
 
 // An org code is guessable by brute force without a limit here — tighter
@@ -180,5 +184,32 @@ export class OrgController {
       user.userId,
       dto.historyVisibleToNewMembers,
     );
+  }
+
+  @Patch('guild/freefire')
+  updateFreeFireGuild(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: UpdateFreeFireGuildDto,
+  ) {
+    return this.orgService.updateFreeFireGuildId(
+      user.userId,
+      dto.freeFireGuildId,
+    );
+  }
+
+  @Post('guild/achievements')
+  createAchievement(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: CreateAchievementDto,
+  ) {
+    return this.orgService.createAchievement(user.userId, dto);
+  }
+
+  @Delete('guild/achievements/:id')
+  deleteAchievement(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.orgService.deleteAchievement(user.userId, id);
   }
 }

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Screen } from '../../brand/Screen';
-import { GAME_CATALOG, RoomView, RpsChoice } from '../../api/games';
+import { GAME_CATALOG, RoomView, RpsChoice, UnoColor } from '../../api/games';
 import { useAuth } from '../../auth/AuthContext';
 import { useGamesSocket, tryGames, GameCandidate } from '../../games/useGamesSocket';
 import { ThemeColors } from '../../theme';
@@ -21,6 +21,7 @@ import { BootsBoard } from './BootsBoard';
 import { LudoBoard, ludoColorHex } from './LudoBoard';
 import { prefer3DByDefault, supports3D } from '../../games/three/GameCanvas';
 import { RpsBoard } from './RpsBoard';
+import { UnoBoard } from './UnoBoard';
 
 const NOTIFY_COOLDOWN_MS = 5 * 60 * 1000;
 
@@ -43,8 +44,11 @@ export function GameRoomScreen() {
   // userId -> when I last notified them (server enforces 1 per 5 min per pair).
   const [notifiedAt, setNotifiedAt] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
-  // Android mid-range defaults to 2D (smoother); iOS / strong devices start in 3D.
-  const [mode, setMode] = useState<'2d' | '3d'>(() => (prefer3DByDefault() ? '3d' : '2d'));
+  // Android mid-range defaults to 2D (smoother); iOS / Uno prefer 3D when GL works.
+  const [mode, setMode] = useState<'2d' | '3d'>(() => {
+    if (route.params?.game === 'uno' && supports3D()) return '3d';
+    return prefer3DByDefault() ? '3d' : '2d';
+  });
   const meId = user?.id ?? '';
 
   const games = useGamesSocket({
@@ -170,7 +174,10 @@ export function GameRoomScreen() {
   const winner = room.players.find(
     (p) =>
       p.userId ===
-      (room.rps?.winnerId ?? room.ludo?.winnerId ?? room.boots?.winnerId),
+      (room.rps?.winnerId ??
+        room.ludo?.winnerId ??
+        room.boots?.winnerId ??
+        room.uno?.winnerId),
   );
 
   const header = (
@@ -257,6 +264,30 @@ export function GameRoomScreen() {
             }
           />
         </ScrollView>
+      </Screen>
+    );
+  }
+  if (room.status === 'playing' && room.uno) {
+    return (
+      <Screen>
+        {header}
+        <UnoBoard
+          room={room}
+          meId={meId}
+          busy={busy}
+          mode={mode}
+          onFallback={() => setMode('2d')}
+          onPlay={(cardId) => void act(() => games.unoPlay(room.id, cardId))}
+          onChooseColor={(color: UnoColor) =>
+            void act(() => games.unoChooseColor(room.id, color))
+          }
+          onDraw={() => void act(() => games.unoDraw(room.id))}
+          onPass={() => void act(() => games.unoPass(room.id))}
+          onCall={() => void act(() => games.unoCall(room.id))}
+          onCatch={(targetId) =>
+            void act(() => games.unoCatch(room.id, targetId))
+          }
+        />
       </Screen>
     );
   }

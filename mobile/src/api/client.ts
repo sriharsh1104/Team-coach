@@ -28,6 +28,13 @@ function shouldSkipErrorToast(error: AxiosError): boolean {
   if (error.code === OFFLINE_ERROR_CODE) return true;
   // Bootstrapping session refresh — don't spam the UI on cold start / 401.
   if (requestUrl(cfg).includes('/auth/me')) return true;
+  // Platform admins (and anyone pre-join) are allowed to have no guild —
+  // several background calls 404 with this message by design. Surfaces that
+  // as a toast read as a bug ("you are not a part of guild").
+  if (error.response?.status === 404) {
+    const msg = apiErrorMessage(error, '');
+    if (/not part of (a )?(guild|org)/i.test(msg)) return true;
+  }
   return false;
 }
 

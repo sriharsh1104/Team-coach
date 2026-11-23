@@ -30,7 +30,11 @@ export function listAnnouncements(
 
 export function getUnreadCount() {
   return apiClient
-    .get<{ unread: number }>('/announcements/unread')
+    .get<{ unread: number }>('/announcements/unread', {
+      // Platform admins (and anyone else with no guild) 404 here by design —
+      // callers treat that as unread=0. Don't toast that expected miss.
+      skipErrorToast: true,
+    })
     .then((r) => r.data.unread);
 }
 

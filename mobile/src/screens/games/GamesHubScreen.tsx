@@ -252,7 +252,14 @@ export function GamesHubScreen() {
           <View style={[styles.modalCard]}>
             <Text style={styles.modalTitle}>How many players?</Text>
             <Text style={styles.modalSub}>Teammates join from this screen.</Text>
-            {([2, 3, 4] as const).map((n) => (
+            {(() => {
+              const spec = playerPick
+                ? GAME_CATALOG.find((g) => g.id === playerPick)
+                : null;
+              const min = spec?.minPlayers ?? 2;
+              const max = spec?.maxPlayers ?? 4;
+              return Array.from({ length: max - min + 1 }, (_, i) => min + i);
+            })().map((n) => (
               <Pressable
                 key={n}
                 style={styles.modalBtn}

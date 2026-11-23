@@ -170,16 +170,35 @@ export function RecordingProvider({ children }: { children: React.ReactNode }) {
       emitToast('Stop voice screen share before recording');
       return;
     }
-    const result = await startScreenRecording();
-    if (result === 'started') {
-      originChannelRef.current = originChannelKey ?? null;
-      setRecording(true);
-      setElapsedSec(0);
-      emitToast('Recording started — Open your game! Stop from widget or notification.');
-    } else if (result === 'unsupported') {
-      emitToast('Screen recording not supported on this device');
-    } else {
-      emitToast('Screen recording not available in this build');
+    try {
+      const result = await startScreenRecording();
+      if (result === 'started') {
+        originChannelRef.current = originChannelKey ?? null;
+        setRecording(true);
+        setElapsedSec(0);
+        emitToast(
+          'Recording started — Open your game! Stop from widget or notification.',
+        );
+      } else if (result === 'cancelled') {
+        // Closed the Android share/capture sheet — stay quiet.
+      } else if (result === 'unsupported') {
+        emitToast('Screen recording not supported on this device');
+      } else {
+        emitToast('Screen recording not available in this build');
+      }
+    } catch (err) {
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message?: unknown }).message ?? '')
+          : '';
+      // Mic denied still deserves a hint; cancel already maps to 'cancelled'.
+      if (/MIC_DENIED|microphone/i.test(message)) {
+        emitToast(
+          'Allow microphone access so screen recording can capture game audio',
+        );
+        return;
+      }
+      emitToast(message || 'Could not start screen recording');
     }
   }, [recording]);
 

@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import * as orgApi from '../../api/org';
 import {
+  GuildAchievement,
   GuildDetail,
   GuildMemberRow,
   GuildRole,
@@ -19,6 +20,7 @@ const PAGE_SIZE = 10;
 const GUILD_TABS = [
   { id: 'members', label: 'Members' },
   { id: 'roster', label: 'Roster' },
+  { id: 'achievements', label: 'Achievements' },
 ] as const;
 type GuildTabId = (typeof GUILD_TABS)[number]['id'];
 const GUILD_TAB_IDS = GUILD_TABS.map((t) => t.id);
@@ -84,6 +86,7 @@ function GuildSetup({
 }) {
   const [mode, setMode] = useState<'choice' | 'create' | 'join'>('choice');
   const [name, setName] = useState('');
+  const [freeFireGuildId, setFreeFireGuildId] = useState('');
   const [orgCode, setOrgCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -93,7 +96,9 @@ function GuildSetup({
     setBusy(true);
     setError(null);
     try {
-      const created = await orgApi.createOrg(name.trim());
+      const created = await orgApi.createOrg(name.trim(), {
+        freeFireGuildId: freeFireGuildId.trim() || undefined,
+      });
       setOrg({
         id: created.id,
         name: created.name,
@@ -186,6 +191,19 @@ function GuildSetup({
                 required
               />
             </div>
+            <div className="field">
+              <label htmlFor="new-ff-guild">Free Fire guild ID (optional)</label>
+              <input
+                id="new-ff-guild"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={freeFireGuildId}
+                onChange={(e) =>
+                  setFreeFireGuildId(e.target.value.replace(/\D/g, ''))
+                }
+                placeholder="e.g. 3015174327"
+              />
+            </div>
             {error ? <p className="error">{error}</p> : null}
             <button className="btn btn-primary" type="submit" disabled={busy}>
               Create org
@@ -257,6 +275,9 @@ function GuildHome() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [ffCopied, setFfCopied] = useState(false);
+  const [ffDraft, setFfDraft] = useState('');
+  const [ffSaving, setFfSaving] = useState(false);
   const [membersPage, setMembersPage] = useState(1);
   const [rosterPage, setRosterPage] = useState(1);
   const { tab, openTab, turn } = useBookTabs(GUILD_TAB_IDS, 'members');
@@ -270,9 +291,19 @@ function GuildHome() {
     }
   }
 
+  async function onCopyFfId() {
+    if (!detail?.freeFireGuildId) return;
+    const ok = await copyText(detail.freeFireGuildId);
+    if (ok) {
+      setFfCopied(true);
+      window.setTimeout(() => setFfCopied(false), 1600);
+    }
+  }
+
   async function load() {
     const next = await orgApi.getMyGuild();
     setDetail(next);
+    setFfDraft(next.freeFireGuildId ?? '');
     await refreshUser();
   }
 
@@ -285,7 +316,7 @@ function GuildHome() {
   function switchTab(next: GuildTabId) {
     openTab(next);
     if (next === 'members') setMembersPage(1);
-    else setRosterPage(1);
+    else if (next === 'roster') setRosterPage(1);
   }
 
   async function onAdd(userId: string, role: MembershipRole) {
@@ -341,6 +372,20 @@ function GuildHome() {
             ) : (
               'Roster is view only'
             )}
+            {detail?.freeFireGuildId ? (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  className="copyable-code"
+                  onClick={() => void onCopyFfId()}
+                  aria-label="Copy Free Fire guild ID"
+                >
+                  FF guild {detail.freeFireGuildId}
+                </button>
+                {ffCopied ? ' · Copied' : ''}
+              </>
+            ) : null}
             {detail ? ` · ${GUILD_ROLE_LABEL[detail.myGuildRole]}` : ''}
             {detail
               ? ` · ${guildMembers.length} member(s) · ${roster.length} on roster`
@@ -358,6 +403,62 @@ function GuildHome() {
             title="Invite & Referral"
             inviteCount={detail.myInviteCount}
           />
+        ) : null}
+
+        {detail?.canManageRoster ? (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <h2 style={{ fontSize: 15, margin: '0 0 8px' }}>
+              Free Fire Guild ID
+            </h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Optional in-game guild number teammates can search in Free Fire.
+            </p>
+            <div className="field" style={{ display: 'flex', gap: 8 }}>
+              <input
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={ffDraft}
+                onChange={(e) =>
+                  setFfDraft(e.target.value.replace(/\D/g, ''))
+                }
+                placeholder="e.g. 3015174327"
+                aria-label="Free Fire guild ID"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={
+                  ffSaving || ffDraft === (detail.freeFireGuildId ?? '')
+                }
+                onClick={() => {
+                  void (async () => {
+                    setFfSaving(true);
+                    setError(null);
+                    try {
+                      const res = await orgApi.setFreeFireGuildId(
+                        ffDraft.trim() || null,
+                      );
+                      setDetail((prev) =>
+                        prev
+                          ? { ...prev, freeFireGuildId: res.freeFireGuildId }
+                          : prev,
+                      );
+                      setFfDraft(res.freeFireGuildId ?? '');
+                    } catch (err: unknown) {
+                      setError(
+                        errorMessage(err, 'Could not save Free Fire guild ID'),
+                      );
+                    } finally {
+                      setFfSaving(false);
+                    }
+                  })();
+                }}
+              >
+                {ffSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
         ) : null}
 
         <nav className="pill-switch" aria-label="Guild lists" role="tablist">
@@ -388,7 +489,7 @@ function GuildHome() {
                 paging={membersPaging}
                 onPage={setMembersPage}
               />
-            ) : (
+            ) : active === 'roster' ? (
               <RosterTab
                 roster={rosterPaging.slice}
                 canManage={!!detail?.canManageRoster}
@@ -397,6 +498,13 @@ function GuildHome() {
                 onRemove={onRemove}
                 paging={rosterPaging}
                 onPage={setRosterPage}
+              />
+            ) : (
+              <AchievementsTab
+                achievements={detail?.achievements ?? []}
+                canManage={!!detail?.canManageRoster}
+                onChanged={() => void load()}
+                onError={(msg) => setError(msg)}
               />
             )
           }
@@ -482,6 +590,199 @@ function MembersTab({
         totalPages={paging.totalPages}
         onPage={onPage}
       />
+    </>
+  );
+}
+
+function formatAchievementDate(iso: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function AchievementsTab({
+  achievements,
+  canManage,
+  onChanged,
+  onError,
+}: {
+  achievements: GuildAchievement[];
+  canManage: boolean;
+  onChanged: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const [date, setDate] = useState('');
+  const [standing, setStanding] = useState('');
+  const [points, setPoints] = useState('');
+  const [link, setLink] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const canSubmit =
+    name.trim().length >= 2 &&
+    /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) &&
+    standing.trim().length >= 1 &&
+    !saving;
+
+  async function onAdd(e: FormEvent) {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setSaving(true);
+    onError('');
+    try {
+      const pts = points.trim() === '' ? undefined : Number(points.trim());
+      if (pts != null && (!Number.isInteger(pts) || pts < 0)) {
+        onError('Points must be a whole number ≥ 0');
+        return;
+      }
+      await orgApi.createGuildAchievement({
+        name: name.trim(),
+        date: date.trim(),
+        standing: standing.trim(),
+        ...(pts != null ? { points: pts } : {}),
+        ...(link.trim() ? { grandFinalLink: link.trim() } : {}),
+      });
+      setName('');
+      setDate('');
+      setStanding('');
+      setPoints('');
+      setLink('');
+      onChanged();
+    } catch (err: unknown) {
+      onError(errorMessage(err, 'Could not add achievement'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDelete(item: GuildAchievement) {
+    if (!window.confirm(`Remove “${item.name}” from achievements?`)) return;
+    setBusyId(item.id);
+    onError('');
+    try {
+      await orgApi.deleteGuildAchievement(item.id);
+      onChanged();
+    } catch (err: unknown) {
+      onError(errorMessage(err, 'Could not remove achievement'));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Grand finals this guild played — standing and points for everyone to
+        see. Only the org owner can add or remove entries.
+      </p>
+      {canManage ? (
+        <form onSubmit={onAdd} className="card" style={{ marginBottom: 16 }}>
+          <h2 style={{ fontSize: 15, margin: '0 0 8px' }}>Add achievement</h2>
+          <div className="field">
+            <label htmlFor="ach-name">Tournament name</label>
+            <input
+              id="ach-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              minLength={2}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="ach-date">Date</label>
+            <input
+              id="ach-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+            />
+          </div>
+          <div className="field" style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <label htmlFor="ach-standing">Standing</label>
+              <input
+                id="ach-standing"
+                value={standing}
+                onChange={(e) => setStanding(e.target.value)}
+                placeholder="e.g. 1st"
+                required
+              />
+            </div>
+            <div style={{ width: 100 }}>
+              <label htmlFor="ach-points">Points</label>
+              <input
+                id="ach-points"
+                inputMode="numeric"
+                value={points}
+                onChange={(e) =>
+                  setPoints(e.target.value.replace(/\D/g, ''))
+                }
+                placeholder="opt."
+              />
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="ach-link">Grand final link (optional)</label>
+            <input
+              id="ach-link"
+              type="url"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="https://…"
+            />
+          </div>
+          <button
+            className="btn btn-primary"
+            type="submit"
+            disabled={!canSubmit}
+          >
+            {saving ? 'Saving…' : 'Add'}
+          </button>
+        </form>
+      ) : null}
+      <div className="list">
+        {achievements.map((item) => (
+          <div
+            key={item.id}
+            className="list-row"
+            style={{ cursor: 'default' }}
+          >
+            <div>
+              <strong>{item.name}</strong>
+              <span>
+                {formatAchievementDate(item.date)} · {item.standing}
+                {item.points != null ? ` · ${item.points} pts` : ''}
+              </span>
+              {item.grandFinalLink ? (
+                <span>
+                  <a
+                    href={item.grandFinalLink}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Grand final
+                  </a>
+                </span>
+              ) : null}
+            </div>
+            {canManage ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busyId === item.id}
+                onClick={() => void onDelete(item)}
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
+        ))}
+        {achievements.length === 0 ? (
+          <p className="muted">No grand finals logged yet.</p>
+        ) : null}
+      </div>
     </>
   );
 }

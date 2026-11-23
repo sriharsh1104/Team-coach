@@ -20,6 +20,7 @@ import {
 import { RealtimeService } from '../realtime/realtime.service';
 import { MediaStorageService } from '../media/media-storage.service';
 import { CreateOrgDto } from './dto/create-org.dto';
+import { CreateAchievementDto } from './dto/create-achievement.dto';
 import { JoinOrgDto } from './dto/join-org.dto';
 import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
@@ -177,6 +178,8 @@ export class OrgService {
       throw new ConflictException('An org with that name already exists');
     }
 
+    const freeFireGuildId = normalizeFreeFireGuildId(dto.freeFireGuildId);
+
     try {
       const org = await this.prisma.$transaction(async (tx) => {
         const createdOrg = await tx.org.create({
@@ -186,6 +189,7 @@ export class OrgService {
             referralToken: generateReferralToken(),
             rosterCode: generateOrgCode(),
             rosterReferralToken: generateReferralToken(),
+            freeFireGuildId,
           },
         });
 
@@ -439,6 +443,78 @@ export class OrgService {
     });
 
     return { historyVisibleToNewMembers };
+  }
+
+  /** Owner sets / clears the Free Fire in-game guild ID shown on Guild. */
+  async updateFreeFireGuildId(
+    currentUserId: string,
+    freeFireGuildId: string | null | undefined,
+  ) {
+    const current = await this.prisma.membership.findFirst({
+      where: { userId: currentUserId },
+    });
+    if (!current) {
+      throw new NotFoundException('You are not part of an org yet');
+    }
+    if (!current.isOwner) {
+      throw new ForbiddenException(
+        'Only the org owner can set the Free Fire guild ID',
+      );
+    }
+    const next = normalizeFreeFireGuildId(freeFireGuildId);
+    await this.prisma.org.update({
+      where: { id: current.orgId },
+      data: { freeFireGuildId: next },
+    });
+    return { freeFireGuildId: next };
+  }
+
+  async createAchievement(currentUserId: string, dto: CreateAchievementDto) {
+    const current = await this.prisma.membership.findFirst({
+      where: { userId: currentUserId },
+    });
+    if (!current) {
+      throw new NotFoundException('You are not part of an org yet');
+    }
+    if (!current.isOwner) {
+      throw new ForbiddenException(
+        'Only the org owner can add guild achievements',
+      );
+    }
+    const playedAt = parseAchievementDate(dto.date);
+    const row = await this.prisma.orgAchievement.create({
+      data: {
+        orgId: current.orgId,
+        name: dto.name.trim(),
+        playedAt,
+        grandFinalLink: normalizeOptionalUrl(dto.grandFinalLink),
+        standing: dto.standing.trim(),
+        points: dto.points ?? null,
+      },
+    });
+    return serializeAchievement(row);
+  }
+
+  async deleteAchievement(currentUserId: string, achievementId: string) {
+    const current = await this.prisma.membership.findFirst({
+      where: { userId: currentUserId },
+    });
+    if (!current) {
+      throw new NotFoundException('You are not part of an org yet');
+    }
+    if (!current.isOwner) {
+      throw new ForbiddenException(
+        'Only the org owner can remove guild achievements',
+      );
+    }
+    const row = await this.prisma.orgAchievement.findFirst({
+      where: { id: achievementId, orgId: current.orgId },
+    });
+    if (!row) {
+      throw new NotFoundException('Achievement not found');
+    }
+    await this.prisma.orgAchievement.delete({ where: { id: row.id } });
+    return { deleted: true };
   }
 
   async changeMemberRole(currentUserId: string, dto: UpdateMemberRoleDto) {
@@ -1128,7 +1204,7 @@ export class OrgService {
     }
 
     const orgId = guild.orgId;
-    const [rosterMembers, guildMembers] = await Promise.all([
+    const [rosterMembers, guildMembers, achievements] = await Promise.all([
       this.prisma.membership.findMany({
         where: { orgId },
         include: {
@@ -1153,6 +1229,10 @@ export class OrgService {
         },
         orderBy: { createdAt: 'asc' },
       }),
+      this.prisma.orgAchievement.findMany({
+        where: { orgId },
+        orderBy: [{ playedAt: 'desc' }, { createdAt: 'desc' }],
+      }),
     ]);
 
     const rosterByUser = new Map(rosterMembers.map((m) => [m.userId, m]));
@@ -1174,6 +1254,7 @@ export class OrgService {
       id: guild.org.id,
       name: guild.org.name,
       orgCode: canShareCode ? guild.org.orgCode : null,
+      freeFireGuildId: guild.org.freeFireGuildId ?? null,
       referralLink: referralLinkFor(guild.org.referralToken, {
         invitedByUserId: userId,
       }),
@@ -1181,6 +1262,7 @@ export class OrgService {
       myGuildRole: guild.role,
       onRoster: !!roster,
       canManageRoster: canManage,
+      achievements: achievements.map(serializeAchievement),
       roster: rosterMembers.map((m) => ({
         userId: m.user.id,
         name: m.user.name,
@@ -1374,4 +1456,57 @@ export class OrgService {
       isOwner,
     };
   }
+}
+
+/** Blank / whitespace → null; otherwise trimmed digits string. */
+function normalizeFreeFireGuildId(
+  value: string | null | undefined,
+): string | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeOptionalUrl(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Parse YYYY-MM-DD into a UTC midnight Date; reject impossible calendar days. */
+function parseAchievementDate(isoDate: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());
+  if (!m) {
+    throw new BadRequestException('Date must be YYYY-MM-DD');
+  }
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== mo - 1 ||
+    dt.getUTCDate() !== d
+  ) {
+    throw new BadRequestException('Invalid date');
+  }
+  return dt;
+}
+
+function serializeAchievement(row: {
+  id: string;
+  name: string;
+  playedAt: Date;
+  grandFinalLink: string | null;
+  standing: string;
+  points: number | null;
+}) {
+  return {
+    id: row.id,
+    name: row.name,
+    date: row.playedAt.toISOString().slice(0, 10),
+    grandFinalLink: row.grandFinalLink,
+    standing: row.standing,
+    points: row.points,
+  };
 }

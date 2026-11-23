@@ -52,9 +52,9 @@ describe('MessageBubble', () => {
     expect(screen.getByText(/Rhea/)).toBeTruthy();
   });
 
-  it('hides the sender name on your own messages', () => {
+  it('still shows who sent it on your own messages (no bubble plate)', () => {
     render(<MessageBubble {...baseProps} message={message()} isMine />);
-    expect(screen.queryByText(/Rhea/)).toBeNull();
+    expect(screen.getByText(/Rhea/)).toBeTruthy();
   });
 
   it('reports taps and long-presses with the message', () => {

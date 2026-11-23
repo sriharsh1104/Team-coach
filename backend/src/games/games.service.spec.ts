@@ -64,4 +64,29 @@ describe('GamesService — several rooms at once', () => {
       'Room not found',
     );
   });
+
+  it('Uno rooms accept 2–6 seats and hide opponent hands per viewer', () => {
+    const room = games.createRoom('org', p('a'), 'uno', 4);
+    expect(room.maxPlayers).toBe(4);
+    expect(room.game).toBe('uno');
+    games.joinRoom(room.id, 'org', p('b'));
+    games.joinRoom(room.id, 'org', p('c'));
+    games.startGame(room.id, 'a');
+
+    const forA = games.roomOf('a');
+    const forB = games.roomOf('b');
+    expect(forA?.uno?.hand).toHaveLength(7);
+    expect(forB?.uno?.hand).toHaveLength(7);
+    expect(forA?.uno?.handCounts.b).toBe(7);
+    // A's hand cards must not leak into B's view.
+    const aIds = new Set((forA?.uno?.hand ?? []).map((c) => c.id));
+    expect((forB?.uno?.hand ?? []).some((c) => aIds.has(c.id))).toBe(false);
+
+    const topId = forA!.uno!.top!.id;
+    const playable = forA!.uno!.playableIds[0];
+    if (playable) {
+      games.unoPlay(room.id, 'a', playable);
+      expect(games.roomOf('b')?.uno?.top?.id).not.toBe(topId);
+    }
+  });
 });

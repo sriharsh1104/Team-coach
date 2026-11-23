@@ -483,7 +483,9 @@ function GameProfileSection({
       <CopyableInput
         placeholder="Your in-game UID"
         value={inGameUid}
-        onChangeText={setInGameUid}
+        onChangeText={(t) => setInGameUid(t.replace(/\D/g, ''))}
+        keyboardType="number-pad"
+        inputMode="numeric"
       />
       {mustComplete && <Text style={styles.requiredHint}>* Required</Text>}
 

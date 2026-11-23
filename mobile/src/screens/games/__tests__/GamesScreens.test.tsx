@@ -54,6 +54,12 @@ function api(overrides: Partial<ReturnType<typeof useGamesSocket>> = {}) {
     bootsClear: jest.fn(),
     bootsReady: jest.fn(),
     bootsFire: jest.fn(),
+    unoPlay: jest.fn(),
+    unoChooseColor: jest.fn(),
+    unoDraw: jest.fn(),
+    unoPass: jest.fn(),
+    unoCall: jest.fn(),
+    unoCatch: jest.fn(),
     ...overrides,
   };
 }
@@ -73,6 +79,7 @@ function lobbyRoom(overrides: Partial<RoomView> = {}): RoomView {
     rps: null,
     ludo: null,
     boots: null,
+    uno: null,
     bootsFleet: null,
     deadline: null,
     ...overrides,
@@ -104,6 +111,7 @@ describe('GamesHubScreen', () => {
     render(<GamesHubScreen />);
     expect(screen.getByText('Stone Paper Scissors')).toBeTruthy();
     expect(screen.getByText('Ludo')).toBeTruthy();
+    expect(screen.getByText('Uno')).toBeTruthy();
     await screen.findByText(/Riya · 1\/2 players/);
     fireEvent.press(screen.getByLabelText('Join Stone Paper Scissors'));
     await waitFor(() => expect(joinRoom).toHaveBeenCalledWith('open1'));
@@ -145,6 +153,21 @@ describe('GamesHubScreen', () => {
     fireEvent.press(screen.getByLabelText('Create Stone Paper Scissors room'));
     await waitFor(() => expect(createRoom).toHaveBeenCalledWith('rps', 2));
     expect(mockNavigate).toHaveBeenCalledWith('GameRoom', { roomId: 'r1', game: 'rps' });
+  });
+
+  it('Uno: asks for 2–6 players then creates the room', async () => {
+    const createRoom = jest
+      .fn()
+      .mockResolvedValue(lobbyRoom({ game: 'uno', title: 'Uno', maxPlayers: 5 }));
+    mockedSocket.mockReturnValue(api({ createRoom }));
+    render(<GamesHubScreen />);
+    fireEvent.press(screen.getByLabelText('Create Uno room'));
+    await screen.findByText('How many players?');
+    expect(screen.getByLabelText('2 players')).toBeTruthy();
+    expect(screen.getByLabelText('6 players')).toBeTruthy();
+    expect(screen.queryByLabelText('7 players')).toBeNull();
+    fireEvent.press(screen.getByLabelText('5 players'));
+    await waitFor(() => expect(createRoom).toHaveBeenCalledWith('uno', 5));
   });
 });
 

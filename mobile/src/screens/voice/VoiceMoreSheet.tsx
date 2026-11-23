@@ -14,7 +14,7 @@ type Row = {
 
 /**
  * In-call ⋮ menu — screen share + music share live here so the bottom bar
- * stays to mic / speaker / deafen / leave.
+ * stays to mic / speaker / deafen / leave. Direct 1-on-1 also gets Switch to Video.
  */
 export function VoiceMoreSheet({
   visible,
@@ -24,6 +24,9 @@ export function VoiceMoreSheet({
   musicShareBusy,
   onToggleScreenShare,
   onMusicPress,
+  allowVideoSwitch = false,
+  isCameraOn = false,
+  onToggleCamera,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -34,10 +37,28 @@ export function VoiceMoreSheet({
   musicShareBusy: boolean;
   onToggleScreenShare: () => void;
   onMusicPress: () => void;
+  /** Admin-granted 1-on-1 Direct Voice only. */
+  allowVideoSwitch?: boolean;
+  isCameraOn?: boolean;
+  onToggleCamera?: () => void;
 }) {
   const insets = useSafeAreaInsets();
 
-  const rows: Row[] = [
+  const rows: Row[] = [];
+  if (allowVideoSwitch && onToggleCamera) {
+    rows.push({
+      key: 'video',
+      label: isCameraOn ? 'Turn Off Video' : 'Switch to Video',
+      icon: 'videocam-outline',
+      active: isCameraOn,
+      onPress: () => {
+        haptic('light');
+        onClose();
+        onToggleCamera();
+      },
+    });
+  }
+  rows.push(
     {
       key: 'screen',
       label: isScreenSharing ? 'Stop Screen Share' : 'Share Screen',
@@ -64,7 +85,7 @@ export function VoiceMoreSheet({
         onMusicPress();
       },
     },
-  ];
+  );
 
   return (
     <Modal

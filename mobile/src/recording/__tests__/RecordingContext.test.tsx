@@ -1,11 +1,12 @@
 import React from 'react';
-import { Alert, AppState } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { RecordingProvider, useRecording } from '../RecordingContext';
 import {
   addScreenRecordingStoppedListener,
   discardRecording,
   saveRecordingToGallery,
+  startScreenRecording,
 } from '../../media/screenRecorder';
 import { emitToast } from '../../ui/toastBus';
 
@@ -18,10 +19,14 @@ jest.mock('../../media/screenRecorder', () => ({
   saveRecordingToGallery: jest.fn(),
   discardRecording: jest.fn(),
 }));
+jest.mock('../../voice/voiceScreenShareGate', () => ({
+  isVoiceScreenSharing: () => false,
+}));
 
 const mockedListen = addScreenRecordingStoppedListener as jest.Mock;
 const mockedSave = saveRecordingToGallery as jest.Mock;
 const mockedDiscard = discardRecording as jest.Mock;
+const mockedStart = startScreenRecording as jest.Mock;
 
 function setup(choice: 'Save' | 'Discard') {
   jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
@@ -83,5 +88,21 @@ describe('RecordingContext save / discard prompt', () => {
     await act(async () => onStopped('file:///cache/x.mp4'));
     await waitFor(() => expect(mockedSave).toHaveBeenCalled());
     expect(hook.result.current.pendingShare).toBeNull();
+  });
+
+  it('stays quiet when the user closes the Android capture sheet', async () => {
+    const original = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    mockedStart.mockResolvedValue('cancelled');
+    try {
+      const { hook } = setup('Discard');
+      await act(async () => {
+        await hook.result.current.startRecording('org:1');
+      });
+      expect(hook.result.current.recording).toBe(false);
+      expect(emitToast).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: original });
+    }
   });
 });
