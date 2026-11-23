@@ -72,7 +72,7 @@ export function AppShellHeader({
           accessibilityRole="button"
           accessibilityLabel="Account Settings"
           hitSlop={8}
-          style={[styles.settingsBtn, { backgroundColor: colors.surface }]}
+          style={styles.settingsBtn}
           pressScale={0.9}
         >
           <Text style={[styles.settingsIcon, { color: colors.icon }]}>⚙</Text>

@@ -260,7 +260,7 @@ export function SideDrawer({
               accessibilityLabel="Close Menu"
               style={styles.closeBtn}
             >
-              <AppIcon name="close" size={26} color={theme.icon} />
+              <AppIcon name="close" size={22} color={theme.icon} />
             </Pressable>
           </View>
 
@@ -313,7 +313,7 @@ export function MenuButton({ onPress }: { onPress: () => void }) {
   return (
     <SoftPressable
       onPress={onPress}
-      style={[styles.menuBtn, { backgroundColor: theme.surface }]}
+      style={styles.menuBtn}
       accessibilityLabel="Open Menu"
       hitSlop={8}
       pressScale={0.94}

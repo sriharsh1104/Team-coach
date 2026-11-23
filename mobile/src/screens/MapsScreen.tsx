@@ -520,7 +520,7 @@ export function MapsScreen(_props: Props) {
               accessibilityLabel="Close"
               hitSlop={10}
             >
-              <AppIcon name="close" size={26} color={colors.chromeInk} />
+              <AppIcon name="close" size={22} color={colors.chromeInk} />
             </Pressable>
           </View>
 

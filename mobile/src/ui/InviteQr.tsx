@@ -126,7 +126,7 @@ export function InviteQr({
       <View style={staticStyles.meta}>
         <Text style={styles.label}>{label}</Text>
         <SoftPressable
-          style={[staticStyles.iconBtn, { backgroundColor: colors.surface }]}
+          style={staticStyles.iconBtn}
           onPress={() => void onDownload()}
           accessibilityLabel="Download QR"
           pressScale={0.94}
@@ -168,7 +168,7 @@ export function InviteQr({
                 accessibilityLabel="Close"
                 hitSlop={10}
               >
-                <AppIcon name="close" size={26} color={colors.chromeInk} />
+                <AppIcon name="close" size={22} color={colors.chromeInk} />
               </Pressable>
             </View>
           </View>

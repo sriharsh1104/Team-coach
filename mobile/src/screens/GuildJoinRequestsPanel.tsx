@@ -131,22 +131,38 @@ export function GuildJoinRequestsPanel({
             ) : (
               <View style={styles.actions}>
                 <SoftPressable
-                  style={[styles.action, styles.reject]}
+                  style={[
+                    styles.action,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.surface,
+                    },
+                  ]}
                   onPress={() => void decide(request, false)}
                   accessibilityRole="button"
                   accessibilityLabel={`Reject ${name}`}
                   pressScale={0.94}
                 >
-                  <AppIcon name="close" size={16} color="#f23f43" />
+                  <AppIcon name="close" size={22} color={colors.icon} />
                 </SoftPressable>
                 <SoftPressable
-                  style={[styles.action, styles.accept]}
+                  style={[
+                    styles.action,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.chrome,
+                    },
+                  ]}
                   onPress={() => void decide(request, true)}
                   accessibilityRole="button"
                   accessibilityLabel={`Accept ${name}`}
                   pressScale={0.94}
                 >
-                  <AppIcon name="checkmark" size={16} color="#0a0a0c" />
+                  <AppIcon
+                    name="checkmark"
+                    size={22}
+                    color={colors.chromeInk}
+                  />
                 </SoftPressable>
               </View>
             )}
@@ -180,16 +196,11 @@ const styles = StyleSheet.create({
   rowSub: { fontSize: 11.5, marginTop: 1 },
   actions: { flexDirection: 'row', gap: 8 },
   action: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  reject: {
-    backgroundColor: 'rgba(242,63,67,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(242,63,67,0.4)',
-  },
-  accept: { backgroundColor: '#22c55e' },
 });

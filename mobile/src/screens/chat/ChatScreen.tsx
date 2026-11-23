@@ -1720,8 +1720,8 @@ export function ChatScreen({
             icon="close"
             label="Cancel selection"
             tooltip="Close"
-            color={colors.link}
-            iconSize={18}
+            color={colors.icon}
+            iconSize={22}
             style={styles.selectBarClose}
             onPress={exitSelectMode}
           />

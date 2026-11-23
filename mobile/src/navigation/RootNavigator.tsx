@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
@@ -34,10 +34,8 @@ import { GameInviteBridge } from '../games/GameInviteBridge';
 import { ChatNotificationBridge } from '../notifications/ChatNotificationBridge';
 import { VoiceNotificationBridge } from '../notifications/VoiceNotificationBridge';
 import { InviteLinkBridge } from '../invite/InviteLinkBridge';
-import { MenuButton, SideDrawer } from '../ui/SideDrawer';
-import { HeaderBackButton } from '../ui/HeaderBackButton';
-import { HeaderOrgInfo } from '../ui/HeaderOrgInfo';
-import { HeaderSettingsButton } from '../ui/HeaderSettingsButton';
+import { SideDrawer } from '../ui/SideDrawer';
+import { SectionStackHeader } from '../ui/SectionStackHeader';
 import { useGuildDrawer, useOrgDrawer } from './useAppDrawer';
 import {
   AuthStackParamList,
@@ -54,11 +52,9 @@ const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
 const ProfileSetupStack = createNativeStackNavigator<ProfileSetupStackParamList>();
 const MainStack = createNativeStackNavigator<MainStackParamList>();
 
-// Top-level drawer destinations (Roster, Maps, Stats, …).
-// Never stack back + hamburger on the left — that ate the title and looked
-// broken (Media / Stats / Maps…). Rule:
-//   • can go back → back on the left, menu moves next to settings on the right
-//   • root section → hamburger alone on the left
+// Top-level drawer destinations (Roster, Maps, Stats, Guild, …).
+// Hamburger stays on the left (same place as Home). Back sits on the row
+// underneath — same layout as ChatFlowHeader when a chat is open.
 function sectionOptions(
   openWith: (nav: any) => void,
   build?: (args: { navigation: any; route: any }) => Record<string, unknown>,
@@ -67,39 +63,19 @@ function sectionOptions(
     const built = build ? build(args) : {};
     const sectionTitle =
       typeof built.title === 'string' ? built.title : args.route.name;
-    const canPop = args.navigation.canGoBack();
     return {
       ...built,
-      headerLeft: () =>
-        canPop ? (
-          <HeaderBackButton onPress={() => args.navigation.goBack()} />
-        ) : (
-          <MenuButton onPress={() => openWith(args.navigation)} />
-        ),
-      // Org identity (name · code · members) rides along under the section
-      // name, and the settings gear is always within reach — the user asked
-      // for the Home header's block on every screen, not just Home.
-      headerTitle: () => <HeaderOrgInfo sectionTitle={sectionTitle} />,
-      headerRight: () => (
-        <View style={styles.sectionHeaderRight}>
-          {canPop ? (
-            <MenuButton onPress={() => openWith(args.navigation)} />
-          ) : null}
-          <HeaderSettingsButton />
-        </View>
+      header: () => (
+        <SectionStackHeader
+          navigation={args.navigation}
+          openWith={openWith}
+          sectionTitle={sectionTitle}
+        />
       ),
       headerBackVisible: false,
     };
   };
 }
-
-const styles = StyleSheet.create({
-  sectionHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-});
 
 // Nested drill-downs (member profile, edit scrim, player stats, …): system
 // back chevron pops to the previous screen. Sidebar is for section switches,

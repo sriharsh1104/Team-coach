@@ -27,7 +27,7 @@ export function HeaderSettingsButton() {
         accessibilityRole="button"
         accessibilityLabel="Account Settings"
         hitSlop={8}
-        style={[styles.gearBtn, { backgroundColor: theme.surface }]}
+        style={styles.gearBtn}
         pressScale={0.9}
       >
         <Text style={[styles.gearIcon, { color: theme.icon }]}>⚙</Text>

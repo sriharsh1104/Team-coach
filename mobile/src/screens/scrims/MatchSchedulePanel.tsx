@@ -412,7 +412,7 @@ export function MatchSchedulePanel({
               onPress={() => setViewingUrl(null)}
               accessibilityLabel="Close"
             >
-              <AppIcon name="close" size={26} color={colors.chromeInk} />
+              <AppIcon name="close" size={22} color={colors.chromeInk} />
             </Pressable>
           </View>
           {viewingUrl ? (

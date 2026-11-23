@@ -273,8 +273,23 @@ export function GuildScreen({ navigation }: Props) {
               value={guildTab}
               onChange={(next) => setGuildTab(next)}
             />
-            {guildTab === 'requests' ? (
-              <GuildJoinRequestsPanel onAccepted={() => void load()} />
+            {/* Keep mounted so switching to Requests doesn't remount/reload
+                the whole inbox the way Members ↔ Roster just swaps rows. */}
+            {canReviewRequests ? (
+              <View
+                style={
+                  guildTab === 'requests'
+                    ? undefined
+                    : staticStyles.hiddenPanel
+                }
+                pointerEvents={guildTab === 'requests' ? 'auto' : 'none'}
+                accessibilityElementsHidden={guildTab !== 'requests'}
+                importantForAccessibility={
+                  guildTab === 'requests' ? 'yes' : 'no-hide-descendants'
+                }
+              >
+                <GuildJoinRequestsPanel onAccepted={() => void load()} />
+              </View>
             ) : null}
             {canManage && guildTab === 'members' ? (
               <Text style={styles.manageHint}>
@@ -554,6 +569,13 @@ function RosterRow({
 const staticStyles = StyleSheet.create({
   list: { flex: 1, minWidth: 0, backgroundColor: 'transparent' },
   listContent: { paddingHorizontal: 16, paddingBottom: 40 },
+  hiddenPanel: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+    opacity: 0,
+  },
   leaveBlock: { marginTop: 20, marginBottom: 12, gap: 8 },
   leaveRow: { alignItems: 'center' },
   inviteCard: {

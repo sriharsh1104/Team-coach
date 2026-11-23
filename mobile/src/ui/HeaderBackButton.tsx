@@ -14,13 +14,13 @@ export function HeaderBackButton({ onPress }: { onPress: () => void }) {
   return (
     <SoftPressable
       onPress={onPress}
-      style={[styles.btn, { backgroundColor: colors.surface }]}
+      style={styles.btn}
       accessibilityRole="button"
       accessibilityLabel="Go back"
       hitSlop={8}
       pressScale={0.92}
     >
-      <AppIcon name="chevron-back" size={22} color={colors.icon} />
+      <AppIcon name="chevron-back" size={26} color={colors.icon} />
     </SoftPressable>
   );
 }
