@@ -164,6 +164,8 @@ export interface ChatMessage {
   mediaUrl: string | null;
   mediaType: 'IMAGE' | 'VIDEO' | null;
   createdAt: string;
+  deletedAt?: string | null;
+  deleted?: boolean;
 }
 
 export interface ChatChannel {
@@ -176,6 +178,8 @@ export interface ChatChannel {
   unreadCount: number;
   lastMessageAt: string | null;
   lastPreview: string | null;
+  muted?: boolean;
+  nickname?: string | null;
 }
 
 export interface ChatTeammate {

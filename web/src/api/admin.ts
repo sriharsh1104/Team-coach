@@ -48,13 +48,20 @@ export interface AdminMember {
   lastSeenAt: string | null;
   createdAt: string;
   emailVerified: boolean;
-  role: string | null;
   joinedAt: string;
   online: boolean;
+  /** Guild seat role, null when they only hold a roster seat. */
+  guildRole: string | null;
+  /** Roster seat role, null when they are guild-only. */
+  rosterRole: string | null;
+  onRoster: boolean;
+  /** False = on this org's roster but their guild seat is elsewhere. */
+  inGuild: boolean;
+  blockedAt: string | null;
+  blockedReason: string | null;
   /** 1-on-1 voice permission — admin-granted, needed on BOTH sides of a call. */
   canDirectVoice: boolean;
-  /** Roster members only. */
-  isOwner?: boolean;
+  isOwner: boolean;
   /** Guild members only — who shared the code/invite that brought them in. */
   invitedBy?: { id: string; name: string; email: string } | null;
 }
@@ -76,8 +83,8 @@ export interface AdminOrgDetail {
     playerStats: number;
     pendingJoinRequests: number;
   };
-  guild: AdminMember[];
-  roster: AdminMember[];
+  /** Guild and roster seats merged — each person appears once. */
+  members: AdminMember[];
   pendingRequests: {
     id: string;
     requestedAt: string;
@@ -169,6 +176,34 @@ export function deleteOrg(id: string, confirmName: string) {
       `/admin/orgs/${id}`,
       { data: { confirmName } },
     )
+    .then((r) => r.data);
+}
+
+/** Lock an account out. Takes effect on their next request. */
+export function blockUser(id: string, reason?: string) {
+  return apiClient
+    .post<{ id: string; email: string; blockedAt: string }>(
+      `/admin/users/${id}/block`,
+      { reason },
+    )
+    .then((r) => r.data);
+}
+
+export function unblockUser(id: string) {
+  return apiClient
+    .post<{ id: string; email: string }>(`/admin/users/${id}/unblock`)
+    .then((r) => r.data);
+}
+
+/**
+ * Delete an account permanently. `confirmEmail` must match — the server
+ * rejects anything else, so a mis-tap on a member row cannot do this.
+ */
+export function deleteUser(id: string, confirmEmail: string) {
+  return apiClient
+    .delete<{ id: string; name: string; email: string }>(`/admin/users/${id}`, {
+      data: { confirmEmail },
+    })
     .then((r) => r.data);
 }
 

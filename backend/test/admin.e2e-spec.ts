@@ -223,11 +223,15 @@ describe('Platform admin (e2e)', () => {
         .set('Authorization', `Bearer ${admin.accessToken}`)
         .expect(200);
 
-      expect(res.body.roster).toHaveLength(1);
-      expect(res.body.roster[0]).toMatchObject({
+      // One merged list: the owner holds both seats, so one row says so.
+      expect(res.body.members).toHaveLength(1);
+      expect(res.body.members[0]).toMatchObject({
         email: owner.user.email,
         isOwner: true,
+        inGuild: true,
+        onRoster: true,
       });
+      expect(res.body.roster).toBeUndefined();
     });
 
     it('counts people, not just orgs — including who is active', async () => {
@@ -344,6 +348,223 @@ describe('Platform admin (e2e)', () => {
         .get('/admin/orgs?take=5000')
         .set('Authorization', `Bearer ${admin.accessToken}`)
         .expect(400);
+    });
+  });
+
+  it('lists each member once, saying which seats they hold', async () => {
+    const owner = await signup(server);
+    const org = await createOrgAs(
+      server,
+      owner.accessToken,
+      'COACH',
+      uniqueOrgName(),
+    );
+    const member = await signup(server);
+    await joinOrgAs(server, member.accessToken, org.rosterCode);
+    const admin = await signup(server);
+    await makeAdmin(admin.user.id);
+
+    const res = await request(server)
+      .get(`/admin/orgs/${org.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+
+    // Both hold both seats — two rows, not four.
+    expect(res.body.members).toHaveLength(2);
+    for (const row of res.body.members) {
+      expect(row.inGuild).toBe(true);
+      expect(row.onRoster).toBe(true);
+    }
+  });
+
+  describe('blocking an account', () => {
+    it('locks the blocked user out on their very next request', async () => {
+      const victim = await signup(server);
+      const admin = await signup(server);
+      await makeAdmin(admin.user.id);
+
+      // Their token works right up to the moment they are blocked.
+      await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${victim.accessToken}`)
+        .expect(200);
+
+      await request(server)
+        .post(`/admin/users/${victim.user.id}/block`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ reason: 'Abusing team chat' })
+        .expect(201);
+
+      // Same token, next request — no waiting for expiry.
+      await request(server)
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${victim.accessToken}`)
+        .expect(401);
+    });
+
+    it('refuses a fresh sign-in, and says why', async () => {
+      const victim = await signup(server);
+      const admin = await signup(server);
+      await makeAdmin(admin.user.id);
+      await request(server)
+        .post(`/admin/users/${victim.user.id}/block`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ reason: 'Abusing team chat' })
+        .expect(201);
+
+      const res = await request(server)
+        .post('/auth/login')
+        .send({ email: victim.user.email, password: 'Password123!' })
+        .expect(401);
+      expect(res.body.message).toMatch(/blocked/i);
+      expect(res.body.message).toMatch(/Abusing team chat/);
+    });
+
+    // Telling a stranger "that account is blocked" confirms the account
+    // exists; a wrong password must look the same either way.
+    it('does not reveal a blocked account to a wrong password', async () => {
+      const victim = await signup(server);
+      const admin = await signup(server);
+      await makeAdmin(admin.user.id);
+      await request(server)
+        .post(`/admin/users/${victim.user.id}/block`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({})
+        .expect(201);
+
+      const res = await request(server)
+        .post('/auth/login')
+        .send({ email: victim.user.email, password: 'WrongPassword1!' })
+        .expect(401);
+      expect(res.body.message).toMatch(/Invalid email or password/);
+      expect(res.body.message).not.toMatch(/blocked/i);
+    });
+
+    it('lets the block be lifted again', async () => {
+      const victim = await signup(server);
+      const admin = await signup(server);
+      await makeAdmin(admin.user.id);
+      const auth = `Bearer ${admin.accessToken}`;
+
+      await request(server)
+        .post(`/admin/users/${victim.user.id}/block`)
+        .set('Authorization', auth)
+        .send({})
+        .expect(201);
+      await request(server)
+        .post(`/admin/users/${victim.user.id}/unblock`)
+        .set('Authorization', auth)
+        .expect(201);
+
+      await request(server)
+        .post('/auth/login')
+        .send({ email: victim.user.email, password: 'Password123!' })
+        .expect(201);
+    });
+
+    it('refuses to block yourself or another admin', async () => {
+      const admin = await signup(server);
+      const other = await signup(server);
+      await makeAdmin(admin.user.id);
+      await makeAdmin(other.user.id);
+      const auth = `Bearer ${admin.accessToken}`;
+
+      await request(server)
+        .post(`/admin/users/${admin.user.id}/block`)
+        .set('Authorization', auth)
+        .send({})
+        .expect(400);
+      await request(server)
+        .post(`/admin/users/${other.user.id}/block`)
+        .set('Authorization', auth)
+        .send({})
+        .expect(403);
+    });
+
+    it('is not something an ordinary user can do', async () => {
+      const a = await signup(server);
+      const b = await signup(server);
+      await request(server)
+        .post(`/admin/users/${b.user.id}/block`)
+        .set('Authorization', `Bearer ${a.accessToken}`)
+        .send({})
+        .expect(403);
+    });
+  });
+
+  describe('deleting an account', () => {
+    it('refuses without the exact email, then deletes with it', async () => {
+      const victim = await signup(server);
+      const admin = await signup(server);
+      await makeAdmin(admin.user.id);
+      const auth = `Bearer ${admin.accessToken}`;
+
+      await request(server)
+        .delete(`/admin/users/${victim.user.id}`)
+        .set('Authorization', auth)
+        .send({ confirmEmail: 'someone@else.com' })
+        .expect(400);
+      expect(
+        await prisma.user.count({ where: { id: victim.user.id } }),
+      ).toBe(1);
+
+      await request(server)
+        .delete(`/admin/users/${victim.user.id}`)
+        .set('Authorization', auth)
+        .send({ confirmEmail: victim.user.email.toUpperCase() })
+        .expect(200);
+      expect(
+        await prisma.user.count({ where: { id: victim.user.id } }),
+      ).toBe(0);
+    });
+
+    it('takes their org seat with them but leaves the org standing', async () => {
+      const owner = await signup(server);
+      const org = await createOrgAs(
+        server,
+        owner.accessToken,
+        'COACH',
+        uniqueOrgName(),
+      );
+      const member = await signup(server);
+      await joinOrgAs(server, member.accessToken, org.rosterCode);
+      const admin = await signup(server);
+      await makeAdmin(admin.user.id);
+
+      await request(server)
+        .delete(`/admin/users/${member.user.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ confirmEmail: member.user.email })
+        .expect(200);
+
+      expect(await prisma.org.count()).toBe(1);
+      expect(
+        await prisma.membership.count({ where: { userId: member.user.id } }),
+      ).toBe(0);
+      // The owner is untouched.
+      expect(
+        await prisma.membership.count({ where: { userId: owner.user.id } }),
+      ).toBe(1);
+    });
+
+    it('refuses to delete yourself or another admin', async () => {
+      const admin = await signup(server);
+      const other = await signup(server);
+      await makeAdmin(admin.user.id);
+      await makeAdmin(other.user.id);
+      const auth = `Bearer ${admin.accessToken}`;
+
+      await request(server)
+        .delete(`/admin/users/${admin.user.id}`)
+        .set('Authorization', auth)
+        .send({ confirmEmail: admin.user.email })
+        .expect(400);
+      await request(server)
+        .delete(`/admin/users/${other.user.id}`)
+        .set('Authorization', auth)
+        .send({ confirmEmail: other.user.email })
+        .expect(403);
+      expect(await prisma.user.count()).toBe(2);
     });
   });
 
@@ -602,7 +823,7 @@ describe('Platform admin (e2e)', () => {
         .get(`/admin/orgs/${org.id}`)
         .set('Authorization', auth)
         .expect(200);
-      expect(before.body.roster[0].canDirectVoice).toBe(false);
+      expect(before.body.members[0].canDirectVoice).toBe(false);
 
       await request(server)
         .post('/admin/direct-voice')
@@ -614,7 +835,7 @@ describe('Platform admin (e2e)', () => {
         .get(`/admin/orgs/${org.id}`)
         .set('Authorization', auth)
         .expect(200);
-      expect(after.body.roster[0].canDirectVoice).toBe(true);
+      expect(after.body.members[0].canDirectVoice).toBe(true);
     });
   });
 

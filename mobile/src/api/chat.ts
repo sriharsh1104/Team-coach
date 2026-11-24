@@ -113,6 +113,16 @@ export function setChannelMuted(channelKey: string, muted: boolean) {
     .then((res) => res.data);
 }
 
+/** Personal nickname for another member — only you see it. Pass null to clear. */
+export function setNickname(targetUserId: string, nickname: string | null) {
+  return apiClient
+    .post<{ targetUserId: string; nickname: string | null }>('/chat/nickname', {
+      targetUserId,
+      nickname,
+    })
+    .then((res) => res.data);
+}
+
 export function createChatReminder(input: {
   channelKey: string;
   message: string;

@@ -2,7 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Screen } from '../../brand/Screen';
-import { GAME_CATALOG, RoomView, RpsChoice, UnoColor } from '../../api/games';
+import {
+  GAME_CATALOG,
+  GameReaction,
+  RoomView,
+  RpsChoice,
+  UnoColor,
+} from '../../api/games';
 import { useAuth } from '../../auth/AuthContext';
 import { useGamesSocket, tryGames, GameCandidate } from '../../games/useGamesSocket';
 import { ThemeColors } from '../../theme';
@@ -19,6 +25,11 @@ import { confirmAsync } from '../../ui/confirmAsync';
 import { FadeIn } from '../../ui/FadeIn';
 import { BootsBoard } from './BootsBoard';
 import { ChessBoard } from './ChessBoard';
+import {
+  ReactionBar,
+  ReactionOverlay,
+  useGameReactions,
+} from './GameReactions';
 import { LudoBoard, ludoColorHex } from './LudoBoard';
 import { prefer3DByDefault, supports3D } from '../../games/three/GameCanvas';
 import { RpsBoard } from './RpsBoard';
@@ -55,10 +66,22 @@ export function GameRoomScreen() {
   );
   const meId = user?.id ?? '';
 
+  const { floaters, show: showReaction } = useGameReactions();
+
   const games = useGamesSocket({
-    onRoom: (next) => {
+    onRoom: (next, event) => {
       if (next.id !== roomId) return;
       setRoom(next);
+      // Reactions ride along on the room event and are never part of the
+      // room itself, so they are handled here rather than read off `next`.
+      if (event?.type === 'reaction') {
+        const payload = event.payload as
+          | { userId?: string; reaction?: GameReaction }
+          | undefined;
+        if (payload?.reaction) {
+          showReaction(payload.reaction, payload.userId === meId);
+        }
+      }
     },
   });
 
@@ -267,7 +290,15 @@ export function GameRoomScreen() {
               void act(() => games.bootsFire(room.id, { col, row }))
             }
           />
+          <ReactionBar
+            onSend={(reaction) =>
+              // Fire-and-forget: a taunt that fails to send is not worth an
+              // error toast in the middle of someone's turn.
+              void games.react(room.id, reaction).catch(() => undefined)
+            }
+          />
         </ScrollView>
+        <ReactionOverlay floaters={floaters} />
       </Screen>
     );
   }

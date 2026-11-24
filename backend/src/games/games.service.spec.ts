@@ -65,6 +65,22 @@ describe('GamesService — several rooms at once', () => {
     );
   });
 
+  it('broadcasts a reaction without storing it, and rejects made-up ones', () => {
+    const room = games.createRoom('org', p('a'), 'boots');
+    games.joinRoom(room.id, 'org', p('b'));
+
+    const view = games.react(room.id, 'a', 'laughing');
+    // It is a moment, not state — nothing about it survives into the room.
+    expect(JSON.stringify(view)).not.toContain('laughing');
+
+    expect(() => games.react(room.id, 'a', 'rude-word')).toThrow(
+      /Unknown reaction/,
+    );
+    expect(() => games.react(room.id, 'outsider', 'cool')).toThrow(
+      /not in this room/,
+    );
+  });
+
   it('Chess seats exactly two, White first, and rejects an illegal move', () => {
     const room = games.createRoom('org', p('a'), 'chess');
     expect(room.maxPlayers).toBe(2);

@@ -12,7 +12,13 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PlatformAdminGuard } from '../auth/guards/platform-admin.guard';
 import { AdminService } from './admin.service';
-import { DeleteOrgDto, ListOrgsQueryDto, SetDirectVoiceDto } from './dto';
+import {
+  BlockUserDto,
+  DeleteOrgDto,
+  DeleteUserDto,
+  ListOrgsQueryDto,
+  SetDirectVoiceDto,
+} from './dto';
 
 /**
  * Platform admin. Read-only apart from the 1-on-1 voice permission and the
@@ -66,6 +72,34 @@ export class AdminController {
     @Body() dto: DeleteOrgDto,
   ) {
     return this.adminService.deleteOrg(user.userId, id, dto);
+  }
+
+  /**
+   * Account moderation. Neither route will touch your own account or another
+   * platform admin — see AdminService.targetUser for why.
+   */
+  @Post('users/:id/block')
+  blockUser(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: BlockUserDto,
+  ) {
+    return this.adminService.blockUser(user.userId, id, dto);
+  }
+
+  @Post('users/:id/unblock')
+  unblockUser(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.adminService.unblockUser(user.userId, id);
+  }
+
+  /** Permanent. The body must carry the account's exact email. */
+  @Delete('users/:id')
+  deleteUser(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: DeleteUserDto,
+  ) {
+    return this.adminService.deleteUser(user.userId, id, dto);
   }
 
   @Get('admins')

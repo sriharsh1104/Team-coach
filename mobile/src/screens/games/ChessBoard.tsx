@@ -1,11 +1,12 @@
-import React, { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import {
   ChessPiece,
   ChessPieceType,
   ChessPromotion,
   RoomView,
   chessIndexToSquare,
+  chessSquareToIndex,
 } from '../../api/games';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
@@ -31,6 +32,12 @@ const PROMOTION_LABEL: Record<ChessPromotion, string> = {
   b: 'Bishop',
   n: 'Knight',
 };
+
+/** Render position (row/col in the 8×8 grid as actually laid out) for a board index. */
+function visualPos(index: number, flip: boolean): { row: number; col: number } {
+  const pos = flip ? 63 - index : index;
+  return { row: Math.floor(pos / 8), col: pos % 8 };
+}
 
 const END_TEXT: Record<string, string> = {
   checkmate: 'Checkmate',
@@ -89,6 +96,47 @@ export function ChessBoard({
     const indices = Array.from({ length: 64 }, (_, i) => i);
     return flip ? indices.reverse() : indices;
   }, [flip]);
+
+  // Without this a move just mutated the board data and the whole 8×8
+  // re-rendered from scratch — the piece "teleported" instead of moving.
+  // This slides a ghost glyph from the old square to the new one on top of
+  // the (already-updated) static grid, and hides the static glyph at the
+  // destination for the ~180ms the slide is in flight so it doesn't show
+  // twice. Skips the very first render so an in-progress game doesn't replay
+  // its last move on load.
+  const [slide, setSlide] = useState<{ piece: ChessPiece; fromIdx: number; toIdx: number } | null>(
+    null,
+  );
+  const slideAnim = useRef(new Animated.Value(1)).current;
+  const slideSeqRef = useRef(0);
+  const lastSeenMoveRef = useRef<string | null>(
+    chess.lastMove ? `${chess.lastMove.from}>${chess.lastMove.to}:${chess.history.length}` : null,
+  );
+  useEffect(() => {
+    const lm = chess.lastMove;
+    if (!lm) return;
+    const key = `${lm.from}>${lm.to}:${chess.history.length}`;
+    if (key === lastSeenMoveRef.current) return;
+    lastSeenMoveRef.current = key;
+    const fromIdx = chessSquareToIndex(lm.from);
+    const toIdx = chessSquareToIndex(lm.to);
+    const piece = chess.board[toIdx];
+    if (!piece) return;
+    const seq = ++slideSeqRef.current;
+    setSlide({ piece, fromIdx, toIdx });
+    slideAnim.setValue(0);
+    Animated.timing(slideAnim, {
+      toValue: 1,
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      if (slideSeqRef.current === seq) setSlide(null);
+    });
+  }, [chess.lastMove, chess.history.length, chess.board, slideAnim]);
+
+  const [gridSize, setGridSize] = useState(0);
+  const cellPx = gridSize / 8;
 
   const tap = (square: string) => {
     if (busy || !myTurn) return;
@@ -154,7 +202,10 @@ export function ChessBoard({
       {/* The tap grid is always rendered: in 3D it sits under the canvas as
           the control surface, because hit-testing a GL scene on a phone is
           far less reliable than tapping a plain 8×8 of Views. */}
-      <View style={[styles.grid, mode === '3d' && styles.gridCompact]}>
+      <View
+        style={[styles.grid, mode === '3d' && styles.gridCompact]}
+        onLayout={(e) => setGridSize(e.nativeEvent.layout.width)}
+      >
         {order.map((index) => {
           const square = chessIndexToSquare(index);
           const piece = chess.board[index];
@@ -165,6 +216,9 @@ export function ChessBoard({
           const isSelected = selected === square;
           const isLast =
             chess.lastMove?.from === square || chess.lastMove?.to === square;
+          // The destination glyph is suppressed while the ghost piece below
+          // is still sliding into it, so the piece doesn't appear twice.
+          const hideForSlide = !!slide && slide.toIdx === index;
           return (
             <Pressable
               key={square}
@@ -178,7 +232,7 @@ export function ChessBoard({
               accessibilityRole="button"
               accessibilityLabel={`${square}${piece ? `, ${piece.color === 'w' ? 'white' : 'black'} ${piece.type}` : ', empty'}`}
             >
-              {mode === '2d' && piece ? (
+              {mode === '2d' && piece && !hideForSlide ? (
                 <Text
                   style={[
                     styles.glyph,
@@ -200,6 +254,17 @@ export function ChessBoard({
             </Pressable>
           );
         })}
+
+        {mode === '2d' && slide && cellPx > 0 ? (
+          <SlidingPiece
+            piece={slide.piece}
+            from={visualPos(slide.fromIdx, flip)}
+            to={visualPos(slide.toIdx, flip)}
+            cellPx={cellPx}
+            progress={slideAnim}
+            styles={styles}
+          />
+        ) : null}
       </View>
 
       <CapturedTray captured={chess.captured} styles={styles} />
@@ -245,6 +310,54 @@ export function ChessBoard({
         </Text>
       ) : null}
     </View>
+  );
+}
+
+/** Ghost glyph that glides from one square to another over the static grid. */
+function SlidingPiece({
+  piece,
+  from,
+  to,
+  cellPx,
+  progress,
+  styles,
+}: {
+  piece: ChessPiece;
+  from: { row: number; col: number };
+  to: { row: number; col: number };
+  cellPx: number;
+  progress: Animated.Value;
+  styles: ReturnType<typeof chessStyles>;
+}) {
+  const translateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [from.col * cellPx, to.col * cellPx],
+  });
+  const translateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [from.row * cellPx, to.row * cellPx],
+  });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.slidingPiece,
+        {
+          width: cellPx,
+          height: cellPx,
+          transform: [{ translateX }, { translateY }],
+        },
+      ]}
+    >
+      <Text
+        style={[
+          styles.glyph,
+          piece.color === 'w' ? styles.glyphWhite : styles.glyphBlack,
+        ]}
+      >
+        {GLYPH[piece.type][piece.color]}
+      </Text>
+    </Animated.View>
   );
 }
 
@@ -303,6 +416,13 @@ function chessStyles(c: ThemeColors) {
     cellLast: { backgroundColor: '#8aa8c8' },
     cellSelected: { backgroundColor: '#e3b84f' },
     glyph: { fontSize: 26, lineHeight: 30 },
+    slidingPiece: {
+      position: 'absolute' as const,
+      top: 0,
+      left: 0,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
     glyphWhite: { color: '#fdfdfd' },
     glyphBlack: { color: '#14161c' },
     dot: {

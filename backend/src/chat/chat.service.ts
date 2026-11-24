@@ -279,6 +279,7 @@ export class ChatService {
       select: { channelKey: true },
     });
     const mutedKeys = new Set(mutedRows.map((r) => r.channelKey));
+    const nickByTarget = await this.loadNicknames(userId, orgId);
     const channelMetas = await this.prisma.chatChannelMeta.findMany({
       where: {
         orgId,
@@ -310,17 +311,20 @@ export class ChatService {
         const channelKey = this.dmChannelKey(userId, u.id);
         const unreadCount = await this.countUnread(userId, orgId, channelKey);
         const last = await this.lastMessage(orgId, channelKey);
+        const nickname = nickByTarget.get(u.id) ?? null;
         return {
           channelKey,
           type: 'DM' as const,
-          title: u.name,
+          title: nickname ?? u.name,
           peerUserId: u.id,
+          peerName: u.name,
           peerAvatarUrl: u.avatarUrl,
           memberCount: null as number | null,
           unreadCount,
           lastMessageAt: last?.createdAt ?? null,
           lastPreview: last ? this.preview(last) : null,
           muted: mutedKeys.has(channelKey),
+          nickname,
         };
       }),
     );
@@ -399,8 +403,15 @@ export class ChatService {
       }),
     ];
 
+    const nicknames: Record<string, string> = {};
+    for (const [targetId, nick] of nickByTarget) {
+      nicknames[targetId] = nick;
+    }
+
     return {
       channels,
+      // Viewer-only aliases keyed by target user id.
+      nicknames,
       // DM candidate pool — the whole guild, not just the roster.
       teammates,
       // Legacy alias = roster only (org / esports chat). Prefer the scoped
@@ -529,19 +540,32 @@ export class ChatService {
       messages.map((m) => m.id),
       userId,
     );
+    const nickByTarget = await this.loadNicknames(userId, orgId);
 
     return this.rescopeForViewer(
-      messages.reverse().map((m) => ({
-        ...this.toResponse(
-          m,
-          m.sender.name,
-          roleByUserId.get(m.senderId),
-          m.replyToId ? replyMap.get(m.replyToId) : undefined,
-          reactionsByMessage.get(m.id),
-        ),
-        starred: starSet.has(m.id),
-        pinned: pinSet.has(m.id),
-      })),
+      messages.reverse().map((m) => {
+        const reply = m.replyToId ? replyMap.get(m.replyToId) : undefined;
+        return {
+          ...this.toResponse(
+            m,
+            this.applyNickname(m.sender.name, m.senderId, nickByTarget),
+            roleByUserId.get(m.senderId),
+            reply
+              ? {
+                  ...reply,
+                  senderName: this.applyNickname(
+                    reply.senderName,
+                    reply.senderId,
+                    nickByTarget,
+                  ),
+                }
+              : undefined,
+            reactionsByMessage.get(m.id),
+          ),
+          starred: starSet.has(m.id),
+          pinned: pinSet.has(m.id),
+        };
+      }),
       userId,
     );
   }
@@ -553,7 +577,12 @@ export class ChatService {
     const { orgId } = await this.resolveChannel(userId, channelKey);
 
     const messages = await this.prisma.chatMessage.findMany({
-      where: { orgId, channelKey, mediaUrl: { not: null } },
+      where: {
+        orgId,
+        channelKey,
+        mediaUrl: { not: null },
+        deletedAt: null,
+      },
       include: { sender: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
       take: HISTORY_LIMIT,
@@ -562,9 +591,14 @@ export class ChatService {
 
     const senderIds = [...new Set(messages.map((m) => m.senderId))];
     const roleByUserId = await this.loadRoles(orgId, senderIds);
+    const nickByTarget = await this.loadNicknames(userId, orgId);
     return this.rescopeForViewer(
       messages.map((m) =>
-        this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+        this.toResponse(
+          m,
+          this.applyNickname(m.sender.name, m.senderId, nickByTarget),
+          roleByUserId.get(m.senderId),
+        ),
       ),
       userId,
     );
@@ -596,6 +630,7 @@ export class ChatService {
       where: {
         orgId,
         channelKey,
+        deletedAt: null,
         text: { contains: query, mode: 'insensitive' },
         ...(historyCutoff ? { createdAt: { gte: historyCutoff } } : {}),
       },
@@ -607,9 +642,14 @@ export class ChatService {
 
     const senderIds = [...new Set(messages.map((m) => m.senderId))];
     const roleByUserId = await this.loadRoles(orgId, senderIds);
+    const nickByTarget = await this.loadNicknames(userId, orgId);
     return this.rescopeForViewer(
       messages.map((m) =>
-        this.toResponse(m, m.sender.name, roleByUserId.get(m.senderId)),
+        this.toResponse(
+          m,
+          this.applyNickname(m.sender.name, m.senderId, nickByTarget),
+          roleByUserId.get(m.senderId),
+        ),
       ),
       userId,
     );
@@ -826,6 +866,9 @@ export class ChatService {
     if (!source) {
       throw new NotFoundException('Message not found');
     }
+    if (source.deletedAt) {
+      throw new BadRequestException('Deleted messages cannot be forwarded');
+    }
     await this.assertChannelAccess(userId, source.orgId, source.channelKey);
     if (!source.text && !source.mediaUrl) {
       throw new BadRequestException('Nothing to forward');
@@ -895,6 +938,9 @@ export class ChatService {
     });
     if (!message) {
       throw new NotFoundException('Message not found');
+    }
+    if (message.deletedAt) {
+      throw new BadRequestException('Deleted messages cannot be edited');
     }
     if (!message.text && !trimmed) {
       throw new BadRequestException('Only text messages can be edited');
@@ -1305,9 +1351,9 @@ export class ChatService {
   }
 
   /**
-   * WhatsApp-style "delete for everyone" — only the sender can remove their
-   * own messages. Returns the rows that were actually deleted so the gateway
-   * can broadcast per-channel.
+   * WhatsApp-style "delete for everyone" — only the sender can soft-delete
+   * their own messages. Content is cleared; the row stays so replies keep a
+   * stable parent and everyone sees "This message has been deleted".
    */
   async deleteOwnMessages(userId: string, ids: string[]) {
     const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
@@ -1320,6 +1366,7 @@ export class ChatService {
         id: { in: uniqueIds },
         senderId: userId,
         orgId,
+        deletedAt: null,
       },
       select: { id: true, channelKey: true, orgId: true },
     });
@@ -1328,10 +1375,73 @@ export class ChatService {
         deleted: [] as Array<{ id: string; channelKey: string; orgId: string }>,
       };
     }
-    await this.prisma.chatMessage.deleteMany({
+    const deletedAt = new Date();
+    await this.prisma.chatMessage.updateMany({
       where: { id: { in: rows.map((r) => r.id) } },
+      data: {
+        deletedAt,
+        text: null,
+        mediaUrl: null,
+        mediaType: null,
+      },
     });
-    return { deleted: rows };
+    return { deleted: rows, deletedAt };
+  }
+
+  /**
+   * Personal nickname for another member — only the viewer sees it. Pass an
+   * empty / null nickname to clear.
+   */
+  async setNickname(
+    userId: string,
+    targetUserId: string,
+    nickname: string | null | undefined,
+  ) {
+    const targetId = targetUserId.trim();
+    if (!targetId || targetId === userId) {
+      throw new BadRequestException('Invalid target user');
+    }
+    const { orgId } = await this.getChatContext(userId);
+    // Target must share this org (roster or guild seat).
+    const [roster, guild] = await Promise.all([
+      this.prisma.membership.findFirst({
+        where: { userId: targetId, orgId },
+        select: { id: true },
+      }),
+      this.prisma.guildMembership.findFirst({
+        where: { userId: targetId, orgId },
+        select: { id: true },
+      }),
+    ]);
+    if (!roster && !guild) {
+      throw new NotFoundException('User not found in this org');
+    }
+
+    const cleaned = (nickname ?? '').trim().slice(0, 32);
+    if (!cleaned) {
+      await this.prisma.chatNickname.deleteMany({
+        where: { userId, orgId, targetUserId: targetId },
+      });
+      return { targetUserId: targetId, nickname: null as string | null };
+    }
+
+    const row = await this.prisma.chatNickname.upsert({
+      where: {
+        userId_orgId_targetUserId: {
+          userId,
+          orgId,
+          targetUserId: targetId,
+        },
+      },
+      create: {
+        userId,
+        orgId,
+        targetUserId: targetId,
+        nickname: cleaned,
+      },
+      update: { nickname: cleaned },
+    });
+    return { targetUserId: targetId, nickname: row.nickname };
   }
 
   async markRead(userId: string, channelKey = ORG_CHANNEL) {
@@ -1443,11 +1553,35 @@ export class ChatService {
     });
   }
 
-  private preview(message: { text: string | null; mediaType: string | null }) {
+  private preview(message: {
+    text: string | null;
+    mediaType: string | null;
+    deletedAt?: Date | null;
+  }) {
+    if (message.deletedAt) return 'This message has been deleted';
     if (message.text) return message.text.slice(0, 80);
     if (message.mediaType === 'IMAGE') return '📷 Photo';
     if (message.mediaType === 'VIDEO') return '🎬 Video';
     return '';
+  }
+
+  private async loadNicknames(
+    userId: string,
+    orgId: string,
+  ): Promise<Map<string, string>> {
+    const rows = await this.prisma.chatNickname.findMany({
+      where: { userId, orgId },
+      select: { targetUserId: true, nickname: true },
+    });
+    return new Map(rows.map((r) => [r.targetUserId, r.nickname]));
+  }
+
+  private applyNickname(
+    name: string,
+    userId: string,
+    nickByTarget: Map<string, string>,
+  ): string {
+    return nickByTarget.get(userId) ?? name;
   }
 
   /** Match `@IGN` tokens in text to channel members (case/punctuation tolerant). */
@@ -1891,9 +2025,11 @@ export class ChatService {
       string,
       {
         id: string;
+        senderId: string;
         text: string | null;
         senderName: string;
         mediaType: string | null;
+        deleted?: boolean;
       }
     >();
     if (unique.length === 0) return map;
@@ -1902,11 +2038,14 @@ export class ChatService {
       include: { sender: { select: { name: true } } },
     });
     for (const row of rows) {
+      const deleted = !!row.deletedAt;
       map.set(row.id, {
         id: row.id,
-        text: row.text,
+        senderId: row.senderId,
+        text: deleted ? null : row.text,
         senderName: row.sender.name,
-        mediaType: row.mediaType,
+        mediaType: deleted ? null : row.mediaType,
+        deleted,
       });
     }
     return map;
@@ -1922,6 +2061,7 @@ export class ChatService {
       mediaType: string | null;
       createdAt: Date;
       editedAt?: Date | null;
+      deletedAt?: Date | null;
       replyToId?: string | null;
       forwarded?: boolean;
     },
@@ -1929,12 +2069,15 @@ export class ChatService {
     senderMembership?: { role: MembershipRole; isOwner: boolean },
     replyTo?: {
       id: string;
+      senderId?: string;
       text: string | null;
       senderName: string;
       mediaType: string | null;
+      deleted?: boolean;
     },
     reactions?: ReactionSummary[],
   ) {
+    const deleted = !!message.deletedAt;
     return {
       id: message.id,
       channelKey: message.channelKey ?? ORG_CHANNEL,
@@ -1944,20 +2087,23 @@ export class ChatService {
       // to read a role from) — the name still shows, just no role badge.
       senderRole: senderMembership?.role ?? null,
       senderIsOwner: senderMembership?.isOwner ?? false,
-      text: message.text,
-      mediaUrl: message.mediaUrl,
-      mediaType: message.mediaType,
+      text: deleted ? null : message.text,
+      mediaUrl: deleted ? null : message.mediaUrl,
+      mediaType: deleted ? null : message.mediaType,
       createdAt: message.createdAt,
-      editedAt: message.editedAt ?? null,
-      forwarded: message.forwarded ?? false,
-      reactions: reactions ?? [],
+      editedAt: deleted ? null : (message.editedAt ?? null),
+      deletedAt: message.deletedAt ?? null,
+      deleted,
+      forwarded: deleted ? false : (message.forwarded ?? false),
+      reactions: deleted ? [] : (reactions ?? []),
       replyToId: message.replyToId ?? null,
       replyTo: replyTo
         ? {
             id: replyTo.id,
-            text: replyTo.text,
+            text: replyTo.deleted ? null : replyTo.text,
             senderName: replyTo.senderName,
-            mediaType: replyTo.mediaType,
+            mediaType: replyTo.deleted ? null : replyTo.mediaType,
+            deleted: !!replyTo.deleted,
           }
         : null,
     };

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Dimensions,
   Easing,
   Pressable,
   StyleSheet,
@@ -18,7 +19,26 @@ import {
 import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 
-const CELL = 40;
+/**
+ * Cell size, sized to the screen instead of a fixed 40px.
+ *
+ * The grid is 6 columns plus one label column, inside the room's 16px
+ * padding — at a hardcoded 40 that came to 280px and left a third of a modern
+ * phone empty beside it. Deriving it fills the width properly (≈52px on a
+ * 430px phone) while the clamp keeps it sane on a very small or very wide
+ * screen.
+ */
+const BOARD_COLUMNS = BOOTS_COLS.length + 1;
+const SCREEN_PADDING = 32;
+const CELL = Math.round(
+  Math.min(
+    64,
+    Math.max(
+      40,
+      (Dimensions.get('window').width - SCREEN_PADDING) / BOARD_COLUMNS,
+    ),
+  ),
+);
 
 type Props = {
   room: RoomView;
@@ -799,7 +819,7 @@ function boardStyles(c: ThemeColors) {
     gridWrap: {
       flexDirection: 'row' as const,
       flexWrap: 'wrap' as const,
-      width: CELL * 7,
+      width: CELL * BOARD_COLUMNS,
     },
     corner: { width: CELL, height: CELL },
     colLabel: {

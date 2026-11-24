@@ -56,7 +56,7 @@ import {
   setVoicePreset,
 } from '../../voice/voiceChanger';
 
-function loadVideoView(): React.ComponentType<{
+export function loadVideoView(): React.ComponentType<{
   videoTrack?: unknown;
   style?: object;
   objectFit?: 'cover' | 'contain';
@@ -841,77 +841,90 @@ function VoiceChannelBody({
 
         {inChannel && (
           <>
-            {isGuild && voice.isListenOnly && (
-              <View style={themed.banner}>
-                <AppIcon name="megaphone" size={16} color={colors.chrome} />
-                <Text style={themed.bannerText}>
-                  {org?.isOwner
-                    ? 'Announcement mode — everyone else is muted.'
-                    : 'Announcement — only the owner can speak right now.'}
-                </Text>
-              </View>
-            )}
-            {isGuild && voice.isHostMuted && !voice.isListenOnly && (
-              <View style={themed.banner}>
-                <AppIcon name="mic-off" size={16} color={colors.danger} />
-                <Text style={themed.bannerText}>A host muted you.</Text>
-              </View>
-            )}
-
-            <ScreenShareViewer voice={voice} />
-            {isDirect ? <DirectCameraStage voice={voice} /> : null}
-
-            {voice.musicShare ? (
-              <View style={themed.musicBar}>
-                <AppIcon name="musical-notes" size={18} color={colors.chrome} />
-                <View style={styles.musicBarText}>
-                  <Text style={themed.musicTitle} numberOfLines={1}>
-                    {voice.musicShare.title}
-                  </Text>
-                  <Text style={themed.musicMeta} numberOfLines={1}>
-                    {voice.musicShare.status === 'sending'
-                      ? `Sending… ${Math.round(voice.musicShare.progress * 100)}%`
-                      : voice.musicShare.isLocal
-                        ? 'Playing for everyone'
-                        : `${voice.musicShare.fromName} is sharing`}
-                  </Text>
-                </View>
-                {voice.musicShare.isLocal && (
-                  <Pressable
-                    onPress={() => {
-                      haptic('light');
-                      voice.stopMusicShare();
-                    }}
-                    hitSlop={8}
-                    accessibilityLabel="Stop music"
-                  >
-                    <Text style={themed.musicStop}>Stop</Text>
-                  </Pressable>
-                )}
-              </View>
-            ) : null}
-
-            <View style={styles.sectionRow}>
-              <Text style={themed.sectionTitle}>In Channel</Text>
-              {canPing && (
-                <Pressable
-                  style={styles.pingBtn}
-                  onPress={() => {
-                    haptic('light');
-                    setPingOpen(true);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Ping teammates to join voice"
-                >
-                  <ButtonLabel icon="person-add" color="#22c55e">
-                    Ping
-                  </ButtonLabel>
-                </Pressable>
-              )}
-            </View>
             <FlatList
               data={listData}
               keyExtractor={(item) => item.id}
+              // The video stage used to sit directly above this list in the
+              // plain flex column below, with nothing scrollable: on a
+              // shorter phone (or once the camera box and a few participants
+              // pushed the content past screen height) the bottom toolbar —
+              // Mic / Video / ⋮ / Leave — got shoved off-screen with no way
+              // to scroll back to it. Folding the video/banners into the
+              // list's own header makes THIS the one scrollable region, so
+              // the toolbar below it stays fixed and always reachable.
+              style={styles.participantList}
+              ListHeaderComponent={
+                <>
+                  {isGuild && voice.isListenOnly && (
+                    <View style={themed.banner}>
+                      <AppIcon name="megaphone" size={16} color={colors.chrome} />
+                      <Text style={themed.bannerText}>
+                        {org?.isOwner
+                          ? 'Announcement mode — everyone else is muted.'
+                          : 'Announcement — only the owner can speak right now.'}
+                      </Text>
+                    </View>
+                  )}
+                  {isGuild && voice.isHostMuted && !voice.isListenOnly && (
+                    <View style={themed.banner}>
+                      <AppIcon name="mic-off" size={16} color={colors.danger} />
+                      <Text style={themed.bannerText}>A host muted you.</Text>
+                    </View>
+                  )}
+
+                  <ScreenShareViewer voice={voice} />
+                  {isDirect ? <DirectCameraStage voice={voice} /> : null}
+
+                  {voice.musicShare ? (
+                    <View style={themed.musicBar}>
+                      <AppIcon name="musical-notes" size={18} color={colors.chrome} />
+                      <View style={styles.musicBarText}>
+                        <Text style={themed.musicTitle} numberOfLines={1}>
+                          {voice.musicShare.title}
+                        </Text>
+                        <Text style={themed.musicMeta} numberOfLines={1}>
+                          {voice.musicShare.status === 'sending'
+                            ? `Sending… ${Math.round(voice.musicShare.progress * 100)}%`
+                            : voice.musicShare.isLocal
+                              ? 'Playing for everyone'
+                              : `${voice.musicShare.fromName} is sharing`}
+                        </Text>
+                      </View>
+                      {voice.musicShare.isLocal && (
+                        <Pressable
+                          onPress={() => {
+                            haptic('light');
+                            voice.stopMusicShare();
+                          }}
+                          hitSlop={8}
+                          accessibilityLabel="Stop music"
+                        >
+                          <Text style={themed.musicStop}>Stop</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  ) : null}
+
+                  <View style={styles.sectionRow}>
+                    <Text style={themed.sectionTitle}>In Channel</Text>
+                    {canPing && (
+                      <Pressable
+                        style={styles.pingBtn}
+                        onPress={() => {
+                          haptic('light');
+                          setPingOpen(true);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Ping teammates to join voice"
+                      >
+                        <ButtonLabel icon="person-add" color="#22c55e">
+                          Ping
+                        </ButtonLabel>
+                      </Pressable>
+                    )}
+                  </View>
+                </>
+              }
               contentContainerStyle={styles.listContent}
               renderItem={({ item }) => (
                 <View style={themed.participantRow}>
@@ -1727,6 +1740,7 @@ const styles = StyleSheet.create({
   },
   connectingBlock: { alignItems: 'center', paddingVertical: 8 },
   errorText: { color: '#f23f43', marginBottom: 12 },
+  participantList: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
   avatarWrapper: {
     width: 40,

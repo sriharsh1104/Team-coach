@@ -34,6 +34,7 @@ import { MarkReadDto } from './dto/mark-read.dto';
 import { DeleteMessagesDto } from './dto/delete-messages.dto';
 import { EditMessageDto } from './dto/edit-message.dto';
 import { MuteChannelDto } from './dto/mute-channel.dto';
+import { SetNicknameDto } from './dto/set-nickname.dto';
 import { PinMessageDto } from './dto/pin-message.dto';
 import { StarMessageDto } from './dto/star-message.dto';
 import { ClearChatDto } from './dto/clear-chat.dto';
@@ -155,11 +156,31 @@ export class ChatController {
 
   @UseGuards(JwtAuthGuard)
   @Post('messages/delete')
-  deleteMessages(
+  async deleteMessages(
     @CurrentUser() user: { userId: string },
     @Body() dto: DeleteMessagesDto,
   ) {
-    return this.chatService.deleteOwnMessages(user.userId, dto.ids);
+    const { deleted } = await this.chatService.deleteOwnMessages(
+      user.userId,
+      dto.ids,
+    );
+    // REST path used to skip the socket broadcast — soft-delete placeholders
+    // would never appear for peers who weren't on the WS emit path.
+    this.chatGateway.broadcastMessagesDeleted(deleted);
+    return { deleted };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('nickname')
+  setNickname(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: SetNicknameDto,
+  ) {
+    return this.chatService.setNickname(
+      user.userId,
+      dto.targetUserId,
+      dto.nickname,
+    );
   }
 
   @UseGuards(JwtAuthGuard)

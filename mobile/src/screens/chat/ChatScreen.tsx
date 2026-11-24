@@ -438,7 +438,26 @@ export function ChatScreen({
           if (payload.channelKey && payload.channelKey !== channelKey) return;
           const ids = payload.ids ?? [];
           if (ids.length === 0) return;
-          setMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+          const idSet = new Set(ids);
+          const deletedAt = new Date().toISOString();
+          // Soft-delete: keep the row so everyone sees the placeholder.
+          setMessages((prev) =>
+            prev.map((m) =>
+              idSet.has(m.id)
+                ? {
+                    ...m,
+                    deleted: true,
+                    deletedAt,
+                    text: null,
+                    mediaUrl: null,
+                    mediaType: null,
+                    editedAt: null,
+                    forwarded: false,
+                    reactions: [],
+                  }
+                : m,
+            ),
+          );
           setSelectedIds((prev) => {
             if (prev.size === 0) return prev;
             const next = new Set(prev);
@@ -834,6 +853,7 @@ export function ChatScreen({
 
   const pinnedPreviewFor = useCallback((m: ChatMessage | undefined) => {
     if (!m) return '';
+    if (m.deleted || m.deletedAt) return 'This message has been deleted';
     if (m.text?.trim()) return m.text.trim();
     if (m.mediaType === 'VIDEO') return 'Video';
     if (m.mediaType === 'AUDIO') return 'Voice note';
@@ -856,10 +876,15 @@ export function ChatScreen({
   const canShowInfo =
     selectedList.length === 1 &&
     selectedList[0]?.senderId === user?.id &&
-    !selectedList[0].id.startsWith('pending:');
+    !selectedList[0].id.startsWith('pending:') &&
+    !selectedList[0].deleted &&
+    !selectedList[0].deletedAt;
 
   const canReply =
-    selectedList.length === 1 && !selectedList[0].id.startsWith('pending:');
+    selectedList.length === 1 &&
+    !selectedList[0].id.startsWith('pending:') &&
+    !selectedList[0].deleted &&
+    !selectedList[0].deletedAt;
 
   // Edit only while nobody else has read it (client hint; server enforces).
   const canEdit = useMemo(() => {
@@ -867,6 +892,7 @@ export function ChatScreen({
     const msg = selectedList[0];
     if (msg.senderId !== user?.id) return false;
     if (msg.id.startsWith('pending:')) return false;
+    if (msg.deleted || msg.deletedAt) return false;
     if (!msg.text?.trim()) return false;
     const { seenBy } = receiptsForMessage(msg.id);
     return seenBy.length === 0;
@@ -877,24 +903,43 @@ export function ChatScreen({
     setSelectedIds(new Set());
   }, []);
 
-  const toggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      if (next.size === 0) {
-        setSelectMode(false);
-      } else {
-        setSelectMode(true);
-      }
-      return next;
-    });
-  }, []);
+  const toggleSelect = useCallback(
+    (msg: ChatMessage) => {
+      // Soft-deleted rows are placeholders — no select actions on them.
+      if (msg.deleted || msg.deletedAt) return;
+      const mine = user?.id;
+      const isMine = !!mine && msg.senderId === mine;
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(msg.id)) {
+          next.delete(msg.id);
+        } else if (isMine) {
+          // Multi-select only among your own messages (delete-for-everyone).
+          // Drop any previously selected peer messages first.
+          for (const id of [...next]) {
+            const row = messages.find((m) => m.id === id);
+            if (row && row.senderId !== mine) next.delete(id);
+          }
+          next.add(msg.id);
+        } else {
+          // Peer message: single-select only (reply / star / forward) —
+          // never batch-select someone else's bubbles for delete.
+          next.clear();
+          next.add(msg.id);
+        }
+        if (next.size === 0) setSelectMode(false);
+        else setSelectMode(true);
+        return next;
+      });
+    },
+    [messages, user?.id],
+  );
 
   const onLongPressMessage = useCallback(
     (msg: ChatMessage) => {
+      if (msg.deleted || msg.deletedAt) return;
       if (selectMode) {
-        toggleSelect(msg.id);
+        toggleSelect(msg);
         return;
       }
       setSelectMode(true);
@@ -910,9 +955,18 @@ export function ChatScreen({
         return;
       }
       if (!selectMode) return;
-      toggleSelect(msg.id);
+      // While batch-selecting your own messages, taps on peer bubbles are
+      // ignored so delete selection can't accidentally mix in theirs.
+      if (
+        msg.senderId !== user?.id &&
+        selectedList.length > 0 &&
+        selectedList.every((m) => m.senderId === user?.id)
+      ) {
+        return;
+      }
+      toggleSelect(msg);
     },
-    [selectMode, toggleSelect],
+    [selectMode, selectedList, toggleSelect, user?.id],
   );
 
   const onDeleteSelected = useCallback(async () => {
@@ -925,7 +979,28 @@ export function ChatScreen({
       .map((m) => m.id);
     const removeIds = [...pendingIds, ...realIds];
     for (const id of pendingIds) clearPendingUpload(id);
-    setMessages((prev) => prev.filter((m) => !removeIds.includes(m.id)));
+    const deletedAt = new Date().toISOString();
+    // Pending uploads never reached the server — drop them. Real messages
+    // become soft-deleted placeholders for everyone.
+    setMessages((prev) =>
+      prev
+        .filter((m) => !pendingIds.includes(m.id))
+        .map((m) =>
+          realIds.includes(m.id)
+            ? {
+                ...m,
+                deleted: true,
+                deletedAt,
+                text: null,
+                mediaUrl: null,
+                mediaType: null,
+                editedAt: null,
+                forwarded: false,
+                reactions: [],
+              }
+            : m,
+        ),
+    );
     exitSelectMode();
     if (realIds.length === 0) return;
     try {

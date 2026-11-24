@@ -82,6 +82,14 @@ export class UsersController {
     return this.usersService.setPushToken(user.userId, dto);
   }
 
+  @Delete('me/push-token')
+  clearPushToken(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: SetPushTokenDto,
+  ) {
+    return this.usersService.clearPushToken(user.userId, dto);
+  }
+
   @Get(':id/profile')
   getMemberProfile(
     @CurrentUser() user: { userId: string },

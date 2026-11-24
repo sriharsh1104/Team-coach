@@ -123,6 +123,27 @@ async function doRegister() {
   }
 }
 
+/**
+ * Best-effort: remove this device's Expo token from the signed-in user before
+ * logout. Must run while the JWT is still valid. Failures never block logout.
+ */
+export async function unregisterPushTokenFromBackend() {
+  if (Platform.OS === 'web') return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Notifications = require('expo-notifications') as typeof import('expo-notifications');
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId as
+      | string
+      | undefined;
+    const tokenResponse = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined,
+    );
+    await usersApi.clearPushToken(tokenResponse.data);
+  } catch (err) {
+    console.warn('Push notification unregister skipped:', err);
+  }
+}
+
 /** Old Android (MIUI etc.) often drops FCM until the app is foregrounded again. */
 function ensureAppStateReregister() {
   if (appStateListenerAttached || Platform.OS === 'web') return;

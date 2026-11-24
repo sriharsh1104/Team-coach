@@ -30,6 +30,7 @@ import { ChatMembersPanel } from './ChatMembersPanel';
 import { ChatMemberProfilePanel } from './ChatMemberProfilePanel';
 import { subscribeOpenChat } from '../../notifications/openChatChannel';
 import { ChatSettingsSheet } from './ChatSettingsSheet';
+import { ConversationOptionsSheet } from './ConversationOptionsSheet';
 import { ChatFlowHeader } from './ChatFlowHeader';
 import { ChannelAvatar } from './ChannelAvatar';
 import { VoiceJoinHeaderButton } from './VoiceJoinHeaderButton';
@@ -96,6 +97,8 @@ export function ChatHubScreen({ onLoadError }: Props) {
   const [directVoicePeerIds, setDirectVoicePeerIds] = useState<Set<string>>(
     () => new Set(),
   );
+  /** Inbox long-press target for mute / nickname. */
+  const [optionsChannel, setOptionsChannel] = useState<ChatChannel | null>(null);
 
   const load = useCallback(async (opts?: { force?: boolean }) => {
     await revalidate(
@@ -376,24 +379,85 @@ export function ChatHubScreen({ onLoadError }: Props) {
     });
   }, [channels, teammates, openChannel]);
 
-  const toggleMute = async () => {
-    if (!active) return;
-    const next = !active.muted;
-    setActive({ ...active, muted: next });
+  const applyMute = async (channelKey: string, next: boolean) => {
+    setActive((prev) =>
+      prev && prev.channelKey === channelKey ? { ...prev, muted: next } : prev,
+    );
     setChannels((prev) =>
       prev.map((c) =>
-        c.channelKey === active.channelKey ? { ...c, muted: next } : c,
+        c.channelKey === channelKey ? { ...c, muted: next } : c,
       ),
     );
+    setOptionsChannel((prev) =>
+      prev && prev.channelKey === channelKey ? { ...prev, muted: next } : prev,
+    );
     try {
-      await chatApi.setChannelMuted(active.channelKey, next);
+      await chatApi.setChannelMuted(channelKey, next);
     } catch {
-      setActive({ ...active, muted: !next });
+      setActive((prev) =>
+        prev && prev.channelKey === channelKey
+          ? { ...prev, muted: !next }
+          : prev,
+      );
       setChannels((prev) =>
         prev.map((c) =>
-          c.channelKey === active.channelKey ? { ...c, muted: !next } : c,
+          c.channelKey === channelKey ? { ...c, muted: !next } : c,
         ),
       );
+      setOptionsChannel((prev) =>
+        prev && prev.channelKey === channelKey
+          ? { ...prev, muted: !next }
+          : prev,
+      );
+    }
+  };
+
+  const toggleMute = async () => {
+    if (!active) return;
+    await applyMute(active.channelKey, !active.muted);
+  };
+
+  const saveNickname = async (
+    peerUserId: string,
+    nickname: string | null,
+    channelKey?: string,
+  ) => {
+    try {
+      const res = await chatApi.setNickname(peerUserId, nickname);
+      const nextNick = res.nickname;
+      const peerName =
+        channels.find((c) => c.peerUserId === peerUserId)?.peerName ??
+        teammates.find((t) => t.userId === peerUserId)?.name ??
+        null;
+      setChannels((prev) =>
+        prev.map((c) => {
+          if (c.peerUserId !== peerUserId) return c;
+          return {
+            ...c,
+            nickname: nextNick,
+            title: nextNick ?? c.peerName ?? c.title,
+            peerName: c.peerName ?? peerName,
+          };
+        }),
+      );
+      if (channelKey) {
+        setActive((prev) =>
+          prev && prev.channelKey === channelKey
+            ? { ...prev, title: nextNick ?? peerName ?? prev.title }
+            : prev,
+        );
+      }
+      setOptionsChannel((prev) =>
+        prev && prev.peerUserId === peerUserId
+          ? {
+              ...prev,
+              nickname: nextNick,
+              title: nextNick ?? prev.peerName ?? prev.title,
+            }
+          : prev,
+      );
+    } catch {
+      // Toast comes from the API client.
     }
   };
 
@@ -418,6 +482,10 @@ export function ChatHubScreen({ onLoadError }: Props) {
         popOverlay();
         return true;
       }
+      if (optionsChannel) {
+        setOptionsChannel(null);
+        return true;
+      }
       if (settingsOpen) {
         setSettingsOpen(false);
         return true;
@@ -439,7 +507,14 @@ export function ChatHubScreen({ onLoadError }: Props) {
     // backToInbox / popOverlay are re-created each render; the deps that
     // matter are the flags the interceptor reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overlayStack.length, settingsOpen, searchOpen, active, starredOnly]);
+  }, [
+    overlayStack.length,
+    optionsChannel,
+    settingsOpen,
+    searchOpen,
+    active,
+    starredOnly,
+  ]);
 
   const openHeaderInfo = () => {
     if (!active) return;
@@ -767,22 +842,22 @@ export function ChatHubScreen({ onLoadError }: Props) {
           if (item.kind === 'group') {
             const ch = item.channel;
             return (
-              <View
+              <SoftPressable
                 style={[
                   styles.row,
                   styles.teamRow,
                   { backgroundColor: theme.surface, borderColor: theme.border },
                 ]}
+                onPress={() => openChannel(ch)}
+                onLongPress={() => setOptionsChannel(ch)}
+                delayLongPress={350}
+                pressScale={0.985}
+                haptic={false}
+                accessibilityRole="button"
+                accessibilityLabel={ch.title}
               >
                 <ChannelAvatar uri={ch.peerAvatarUrl} size={40} />
-                <SoftPressable
-                  style={styles.rowMain}
-                  onPress={() => openChannel(ch)}
-                  pressScale={0.985}
-                  haptic={false}
-                  accessibilityRole="button"
-                  accessibilityLabel={ch.title}
-                >
+                <View style={styles.rowMain}>
                   <Text style={[styles.rowTitle, { color: theme.text }]}>
                     {ch.title}
                   </Text>
@@ -795,7 +870,14 @@ export function ChatHubScreen({ onLoadError }: Props) {
                       ? ` · ${ch.lastPreview}`
                       : ' · No messages yet'}
                   </Text>
-                </SoftPressable>
+                </View>
+                {ch.muted ? (
+                  <AppIcon
+                    name="notifications-off"
+                    size={16}
+                    color={theme.textMuted}
+                  />
+                ) : null}
                 {ch.unreadCount > 0 ? (
                   <View style={[styles.badge, { backgroundColor: theme.chrome }]}>
                     <Text style={[styles.badgeText, { color: theme.chromeInk }]}>
@@ -803,7 +885,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
                     </Text>
                   </View>
                 ) : null}
-              </View>
+              </SoftPressable>
             );
           }
           if (item.kind === 'dm') {
@@ -820,6 +902,8 @@ export function ChatHubScreen({ onLoadError }: Props) {
                     peerUserId: channel.peerUserId,
                   })
                 }
+                onLongPress={() => setOptionsChannel(channel)}
+                delayLongPress={350}
                 pressScale={0.985}
                 haptic={false}
               >
@@ -850,6 +934,13 @@ export function ChatHubScreen({ onLoadError }: Props) {
                     </Text>
                   )}
                 </View>
+                {channel.muted ? (
+                  <AppIcon
+                    name="notifications-off"
+                    size={16}
+                    color={theme.textMuted}
+                  />
+                ) : null}
                 {channel.unreadCount > 0 ? (
                   <View style={[styles.badge, { backgroundColor: theme.chrome }]}>
                     <Text style={[styles.badgeText, { color: theme.chromeInk }]}>
@@ -896,6 +987,30 @@ export function ChatHubScreen({ onLoadError }: Props) {
             </SoftPressable>
           );
         }}
+      />
+      <ConversationOptionsSheet
+        visible={!!optionsChannel}
+        title={optionsChannel?.title ?? ''}
+        muted={!!optionsChannel?.muted}
+        peerUserId={
+          optionsChannel?.type === 'DM' ? optionsChannel.peerUserId : null
+        }
+        nickname={optionsChannel?.nickname ?? null}
+        onClose={() => setOptionsChannel(null)}
+        onToggleMute={() => {
+          if (!optionsChannel) return;
+          void applyMute(optionsChannel.channelKey, !optionsChannel.muted);
+        }}
+        onSaveNickname={
+          optionsChannel?.type === 'DM' && optionsChannel.peerUserId
+            ? (nickname) =>
+                void saveNickname(
+                  optionsChannel.peerUserId!,
+                  nickname,
+                  optionsChannel.channelKey,
+                )
+            : undefined
+        }
       />
     </View>
   );

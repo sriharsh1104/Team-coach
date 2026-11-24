@@ -50,7 +50,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         // from the JWT. A token minted before the grant (or after it was
         // revoked) therefore carries no authority of its own — forging the
         // claim achieves nothing because nothing reads it.
-        select: { tokenVersion: true, isPlatformAdmin: true },
+        select: { tokenVersion: true, isPlatformAdmin: true, blockedAt: true },
       }),
       payload.jti
         ? this.prisma.revokedToken.findUnique({ where: { jti: payload.jti } })
@@ -58,6 +58,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     ]);
     if (!user || user.tokenVersion !== payload.tokenVersion || revoked) {
       throw new UnauthorizedException('Session has been logged out');
+    }
+    // Checked here rather than only at login, so blocking someone who is
+    // already signed in takes effect on their very next request instead of
+    // whenever their token happens to expire. Distinct message: "logged out"
+    // would send a blocked user round the login loop forever.
+    if (user.blockedAt) {
+      throw new UnauthorizedException(
+        'This account has been blocked by an administrator',
+      );
     }
     return {
       userId: payload.sub,

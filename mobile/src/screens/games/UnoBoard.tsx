@@ -55,13 +55,25 @@ function CardChip({
   playable,
   onPress,
   dim,
+  activeColor,
 }: {
   card: UnoCard;
   playable?: boolean;
   onPress?: () => void;
   dim?: boolean;
+  /**
+   * The color actually in play, for a wild card that already landed on top
+   * of the discard. Once a wild is played its face stays black forever
+   * (`card.color` never changes) — without this the biggest, most obvious
+   * thing on the table went black and gave no clue what to match, right
+   * after 1 in 13 cards is played.
+   */
+  activeColor?: UnoColor;
 }) {
-  const bg = FACE[card.color === 'wild' ? 'wild' : card.color];
+  const bg =
+    card.color === 'wild'
+      ? FACE[activeColor ?? 'wild']
+      : FACE[card.color];
   return (
     <Pressable
       onPress={onPress}
@@ -136,7 +148,7 @@ export function UnoBoard({
     <View style={styles.flatTable}>
       <View style={[styles.colorDot, { backgroundColor: FACE[uno.color] }]} />
       {uno.top ? (
-        <CardChip card={uno.top} />
+        <CardChip card={uno.top} activeColor={uno.color} />
       ) : (
         <View style={styles.emptyTop}>
           <Text style={styles.emptyTopText}>—</Text>

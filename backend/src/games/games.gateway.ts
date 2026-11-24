@@ -77,6 +77,7 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   uno:call {roomId}               → RoomView
  *   uno:catch {roomId, targetId}    → RoomView
  *   chess:move {roomId, from, to, promotion?} → RoomView
+ *   room:react {roomId, reaction}   → RoomView (broadcast only, stores nothing)
  * Server → client:
  *   room:update {room, event?}   every change in a room you're in
  *   rooms:changed                lobby list for your org changed
@@ -623,6 +624,20 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
         this.roomIdOf(body, data),
         data.userId,
         body?.target,
+      ),
+    );
+  }
+
+  @SubscribeMessage('room:react')
+  onReact(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string; reaction?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.react(
+        this.roomIdOf(body, data),
+        data.userId,
+        body?.reaction,
       ),
     );
   }

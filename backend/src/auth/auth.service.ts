@@ -402,6 +402,20 @@ export class AuthService {
     return { success: true as const };
   }
 
+  /**
+   * Refuse a blocked account. JwtStrategy stops existing sessions on their
+   * next request; this is what stops a fresh sign-in, with a message that
+   * explains itself instead of a generic failure the user would just retry.
+   */
+  private assertNotBlocked(user: { blockedAt: Date | null; blockedReason: string | null }) {
+    if (!user.blockedAt) return;
+    throw new UnauthorizedException(
+      user.blockedReason
+        ? `This account has been blocked: ${user.blockedReason}`
+        : 'This account has been blocked by an administrator',
+    );
+  }
+
   async login(dto: LoginDto, mobile = false) {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
@@ -418,6 +432,10 @@ export class AuthService {
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid email or password');
     }
+
+    // Checked after the password, on purpose: answering "you are blocked" to
+    // a wrong password would tell a stranger that the account exists.
+    this.assertNotBlocked(user);
 
     if (!user.emailVerified) {
       await this.issueEmailVerificationCode(user.id, user.email);
@@ -611,6 +629,10 @@ export class AuthService {
   // 2FA is a property of the account, not the login method — applies the
   // same way whether credentials came from a password or Google.
   private async completeLoginOrChallenge(user: User, mobile = false) {
+    // Every sign-in funnels through here — password, Google, and the second
+    // leg of 2FA — so this is the one place that cannot be bypassed by
+    // reaching the app through a different door.
+    this.assertNotBlocked(user);
     if (!user.twoFactorEnabled) {
       return this.buildAuthResponse(user, mobile);
     }

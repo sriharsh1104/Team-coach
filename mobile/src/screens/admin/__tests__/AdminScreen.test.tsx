@@ -5,6 +5,11 @@ import * as adminApi from '../../../api/admin';
 import { ThemeProvider } from '../../../theme/ThemeContext';
 
 jest.mock('../../../api/admin');
+// confirmAsync falls through to Alert.alert on native, which never invokes a
+// button under Jest — so the promise would hang and leak into the next test.
+jest.mock('../../../ui/confirmAsync', () => ({
+  confirmAsync: jest.fn().mockResolvedValue(true),
+}));
 
 const mockedApi = adminApi as jest.Mocked<typeof adminApi>;
 
@@ -64,10 +69,16 @@ function member(
     lastSeenAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     emailVerified: true,
-    role: null,
     joinedAt: '2026-01-01T00:00:00.000Z',
     online: false,
+    guildRole: 'MEMBER',
+    rosterRole: null,
+    onRoster: false,
+    inGuild: true,
+    blockedAt: null,
+    blockedReason: null,
     canDirectVoice: false,
+    isOwner: false,
     ...over,
   };
 }
@@ -87,6 +98,33 @@ function orgRow(
     messageCount: 120,
     owner: { id: 'u1', name: 'Rhea', email: 'rhea@example.com' },
     ...over,
+  };
+}
+
+/** One guild with two people, both holding both seats. */
+function orgDetail(): adminApi.AdminOrgDetail {
+  return {
+    id: 'org-1',
+    name: 'Alpha Squad',
+    orgCode: 'CODE123',
+    rosterCode: 'ROST123',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    owner: { id: 'u1', name: 'Rhea', email: 'rhea@example.com' },
+    counts: {
+      guildMembers: 9,
+      rosterMembers: 1,
+      activeGuildMembers24h: 3,
+      messages: 120,
+      scrims: 2,
+      mediaPosts: 3,
+      playerStats: 8,
+      pendingJoinRequests: 0,
+    },
+    members: [
+      member({ id: 'g1', name: 'Vik', inGameName: 'SES-VIK' }),
+      member({ isOwner: true, onRoster: true }),
+    ],
+    pendingRequests: [],
   };
 }
 
@@ -122,6 +160,7 @@ describe('AdminScreen', () => {
     mockedApi.getOverview.mockResolvedValue(overview);
     mockedApi.getHealth.mockResolvedValue(health);
     mockedApi.listDirectVoiceUsers.mockResolvedValue([]);
+    mockedApi.getOrg.mockResolvedValue(orgDetail());
     mockedApi.listOrgs.mockResolvedValue({
       total: 1,
       skip: 0,
@@ -238,8 +277,10 @@ describe('AdminScreen', () => {
         playerStats: 8,
         pendingJoinRequests: 0,
       },
-      guild: [member({ id: 'g1', name: 'Vik', inGameName: 'SES-VIK' })],
-      roster: [member({ isOwner: true })],
+      members: [
+        member({ id: 'g1', name: 'Vik', inGameName: 'SES-VIK' }),
+        member({ isOwner: true, onRoster: true }),
+      ],
       pendingRequests: [],
     });
     renderScreen();
@@ -279,6 +320,41 @@ describe('AdminScreen', () => {
     // The row must come from the server, never from a local guess about
     // whether the write landed.
     expect(mockedApi.getOrg).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows each member once with the seats they hold, not two lists', async () => {
+    renderScreen();
+    await settle();
+    await openGuildsTab();
+    await act(async () =>
+      fireEvent.press(screen.getByLabelText('Alpha Squad, 4 roster members')),
+    );
+
+    // Two people, two rows — the old build listed guild and roster separately
+    // and showed the same person twice.
+    await waitFor(() => expect(screen.getByText(/SES-VIK/)).toBeTruthy());
+    expect(screen.getByText(/Members \(2\)/)).toBeTruthy();
+    expect(screen.queryByText(/^Roster \(/)).toBeNull();
+  });
+
+  it('offers block and delete on a member, and blocks on confirm', async () => {
+    mockedApi.blockUser.mockResolvedValue({
+      id: 'g1',
+      email: 'vik@example.com',
+      blockedAt: '2026-01-02T00:00:00.000Z',
+    });
+    renderScreen();
+    await settle();
+    await openGuildsTab();
+    await act(async () =>
+      fireEvent.press(screen.getByLabelText('Alpha Squad, 4 roster members')),
+    );
+
+    const block = await screen.findByLabelText('Block Vik');
+    expect(screen.getByLabelText('Delete account Vik')).toBeTruthy();
+
+    await act(async () => fireEvent.press(block));
+    expect(mockedApi.blockUser).toHaveBeenCalledWith('g1');
   });
 
   it('pages instead of pulling every org at once', async () => {

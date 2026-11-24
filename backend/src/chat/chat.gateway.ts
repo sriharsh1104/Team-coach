@@ -65,6 +65,29 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
     });
   }
 
+  /** Soft-delete for everyone — REST and socket paths share this emit. */
+  broadcastMessagesDeleted(
+    deleted: Array<{ id: string; channelKey: string; orgId: string }>,
+  ) {
+    if (deleted.length === 0) return;
+    const byRoom = new Map<string, { orgId: string; channelKey: string; ids: string[] }>();
+    for (const row of deleted) {
+      const key = `${row.orgId}::${row.channelKey}`;
+      const bucket = byRoom.get(key) ?? {
+        orgId: row.orgId,
+        channelKey: row.channelKey,
+        ids: [],
+      };
+      bucket.ids.push(row.id);
+      byRoom.set(key, bucket);
+    }
+    for (const { orgId, channelKey, ids } of byRoom.values()) {
+      this.server
+        .to(this.roomFor(orgId, channelKey))
+        .emit('message:deleted', { channelKey, ids });
+    }
+  }
+
   afterInit(server: Server) {
     server.use(async (socket: Socket, next) => {
       try {
@@ -451,20 +474,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayDisconnect {
       data.userId,
       body.ids,
     );
-    if (deleted.length === 0) return;
-
-    // Group by channel so each room only hears about its own removals.
-    const byChannel = new Map<string, string[]>();
-    for (const row of deleted) {
-      const list = byChannel.get(row.channelKey) ?? [];
-      list.push(row.id);
-      byChannel.set(row.channelKey, list);
-    }
-    for (const [channelKey, ids] of byChannel) {
-      this.server
-        .to(this.roomFor(data.orgId, channelKey))
-        .emit('message:deleted', { channelKey, ids });
-    }
+    this.broadcastMessagesDeleted(deleted);
   }
 
   /** Toggle (add/replace/remove) the caller's reaction on one message. */

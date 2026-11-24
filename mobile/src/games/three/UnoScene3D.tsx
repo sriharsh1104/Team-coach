@@ -28,14 +28,22 @@ function CardMesh({
   position,
   rotation = [0, 0, 0],
   scale = 1,
+  activeColor,
 }: {
   card: UnoCard | null;
   position: [number, number, number];
   rotation?: [number, number, number];
   scale?: number;
+  /**
+   * Color actually in play, for when `card` is the discard top and it's a
+   * wild — `card.color` stays 'wild' forever once played, so without this
+   * the one big card everyone looks at renders black no matter what color
+   * must be matched.
+   */
+  activeColor?: UnoColor;
 }) {
   const color = card
-    ? FACE[card.color === 'wild' ? 'wild' : card.color]
+    ? FACE[card.color === 'wild' ? (activeColor ?? 'wild') : card.color]
     : '#1f2937';
   const label =
     card == null
@@ -148,6 +156,7 @@ export function UnoScene3D({ top, color, deckCount, direction }: Props) {
           position={[0.55, 0.08, 0]}
           rotation={[-0.08, 0.12, 0.04]}
           scale={1.05}
+          activeColor={color}
         />
       </group>
     </>

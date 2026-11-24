@@ -14,7 +14,7 @@ const PAGE_SIZE = 25;
 const HEALTH_REFRESH_MS = 30_000;
 
 type Tab = 'overview' | 'guilds' | 'voice' | 'health';
-type MemberTab = 'guild' | 'roster' | 'requests';
+type MemberTab = 'members' | 'requests';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -32,7 +32,7 @@ export function AdminPage() {
   const [skip, setSkip] = useState(0);
   const [selected, setSelected] = useState<AdminOrgDetail | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [memberTab, setMemberTab] = useState<MemberTab>('guild');
+  const [memberTab, setMemberTab] = useState<MemberTab>('members');
   const [voiceUsers, setVoiceUsers] = useState<AdminDirectVoiceUser[] | null>(
     null,
   );
@@ -99,7 +99,7 @@ export function AdminPage() {
 
   const openOrg = (id: string) => {
     setSelectedId(id);
-    setMemberTab('guild');
+    setMemberTab('members');
     adminApi
       .getOrg(id)
       .then((detail) => {
@@ -178,6 +178,47 @@ export function AdminPage() {
     }
   };
 
+  /**
+   * Block / unblock / delete one account.
+   *
+   * Delete asks for the email rather than a yes/no, because the server asks
+   * for it too — and because a member row sits one tap away from the voice
+   * toggle, which is not a neighbourhood for an irreversible action.
+   */
+  const moderate = async (
+    member: AdminMember,
+    action: 'block' | 'unblock' | 'delete',
+  ) => {
+    setError(null);
+    setNotice(null);
+    try {
+      if (action === 'delete') {
+        const typed = window.prompt(
+          `Delete ${member.name} permanently? This removes their account, messages, media and every seat they hold. It cannot be undone.\n\nType their email to confirm:`,
+        );
+        if (!typed) return;
+        await adminApi.deleteUser(member.id, typed.trim());
+        setNotice(`Deleted ${member.email}.`);
+      } else if (action === 'block') {
+        const reason =
+          window.prompt(
+            `Block ${member.name}? They are signed out on their next action and cannot sign back in.\n\nReason (shown to them, optional):`,
+          ) ?? '';
+        // An empty string is a deliberate "no reason"; null means cancelled.
+        if (reason === null) return;
+        await adminApi.blockUser(member.id, reason.trim() || undefined);
+        setNotice(`Blocked ${member.email}.`);
+      } else {
+        await adminApi.unblockUser(member.id);
+        setNotice(`Unblocked ${member.email}.`);
+      }
+      if (selectedId) openOrg(selectedId);
+      void loadOverview();
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'Could not apply that change.');
+    }
+  };
+
   const downServices = health?.services.filter((s) => s.status === 'down') ?? [];
 
   return (
@@ -244,6 +285,7 @@ export function AdminPage() {
               void toggleDirectVoice({ userId }, enabled)
             }
             onDelete={(id, typedName) => void deleteGuild(id, typedName)}
+            onModerate={(member, action) => void moderate(member, action)}
           />
         ) : null}
 
@@ -356,6 +398,7 @@ function GuildsTab({
   voiceBusyId,
   onToggleVoice,
   onDelete,
+  onModerate,
 }: {
   list: AdminOrgList | null;
   search: string;
@@ -371,6 +414,7 @@ function GuildsTab({
   voiceBusyId: string | null;
   onToggleVoice: (userId: string, enabled: boolean) => void;
   onDelete: (id: string, typedName: string) => void;
+  onModerate: (member: AdminMember, action: 'block' | 'unblock' | 'delete') => void;
 }) {
   const total = list?.total ?? 0;
   const pageEnd = Math.min(skip + PAGE_SIZE, total);
@@ -435,6 +479,7 @@ function GuildsTab({
           voiceBusyId={voiceBusyId}
           onToggleVoice={onToggleVoice}
           onDelete={onDelete}
+          onModerate={onModerate}
         />
       ) : null}
     </>
@@ -449,6 +494,7 @@ function GuildDetail({
   voiceBusyId,
   onToggleVoice,
   onDelete,
+  onModerate,
 }: {
   detail: AdminOrgDetail;
   memberTab: MemberTab;
@@ -457,10 +503,12 @@ function GuildDetail({
   voiceBusyId: string | null;
   onToggleVoice: (userId: string, enabled: boolean) => void;
   onDelete: (id: string, typedName: string) => void;
+  onModerate: (member: AdminMember, action: 'block' | 'unblock' | 'delete') => void;
 }) {
+  // One list: guild and roster seats were the same people twice over. Each
+  // row now says which seats it holds instead.
   const tabs: { id: MemberTab; label: string; count: number }[] = [
-    { id: 'guild', label: 'Guild members', count: detail.guild.length },
-    { id: 'roster', label: 'Roster', count: detail.roster.length },
+    { id: 'members', label: 'Members', count: detail.members.length },
     { id: 'requests', label: 'Requests', count: detail.pendingRequests.length },
   ];
 
@@ -521,9 +569,10 @@ function GuildDetail({
         </div>
       ) : (
         <MemberList
-          members={memberTab === 'guild' ? detail.guild : detail.roster}
+          members={detail.members}
           voiceBusyId={voiceBusyId}
           onToggleVoice={onToggleVoice}
+          onModerate={onModerate}
         />
       )}
 
@@ -608,10 +657,12 @@ function MemberList({
   members,
   voiceBusyId,
   onToggleVoice,
+  onModerate,
 }: {
   members: AdminMember[];
   voiceBusyId: string | null;
   onToggleVoice: (userId: string, enabled: boolean) => void;
+  onModerate: (member: AdminMember, action: 'block' | 'unblock' | 'delete') => void;
 }) {
   if (members.length === 0) return <p className="muted">Nobody here yet.</p>;
   return (
@@ -632,7 +683,7 @@ function MemberList({
             </span>
           </span>
           <span className="admin-row-meta">
-            {m.isOwner ? 'Owner' : (m.role ?? 'No role')}
+            {seatLabel(m)}
             <br />
             joined {formatDate(m.joinedAt)} · seen {formatRelative(m.lastSeenAt)}
           </span>
@@ -652,6 +703,26 @@ function MemberList({
               : m.canDirectVoice
                 ? 'Voice on'
                 : 'Voice off'}
+          </button>
+          <button
+            type="button"
+            className={`admin-voice-btn${m.blockedAt ? ' on' : ''}`}
+            onClick={() => onModerate(m, m.blockedAt ? 'unblock' : 'block')}
+            title={
+              m.blockedAt
+                ? `Blocked ${formatDate(m.blockedAt)}${m.blockedReason ? ` — ${m.blockedReason}` : ''}`
+                : 'Block this account'
+            }
+          >
+            {m.blockedAt ? 'Blocked' : 'Block'}
+          </button>
+          <button
+            type="button"
+            className="admin-danger-btn admin-row-btn"
+            onClick={() => onModerate(m, 'delete')}
+            title="Delete this account permanently"
+          >
+            Delete
           </button>
         </div>
       ))}
@@ -888,6 +959,14 @@ function Stat({
       <span className="admin-stat-label">{label}</span>
     </div>
   );
+}
+
+/** Which seats this person holds — the reason the two lists became one. */
+function seatLabel(member: AdminMember): string {
+  if (member.isOwner) return 'Owner';
+  if (!member.inGuild) return `Roster only · ${member.rosterRole ?? 'no role'}`;
+  const guild = member.guildRole ?? 'member';
+  return member.onRoster ? `${guild} · on roster` : `${guild} · guild only`;
 }
 
 function formatUptime(seconds: number): string {

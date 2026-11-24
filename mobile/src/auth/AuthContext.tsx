@@ -22,7 +22,10 @@ import {
   TwoFactorChallengeResponse,
   EmailVerificationChallengeResponse,
 } from '../api/types';
-import { registerPushTokenWithBackend } from '../notifications/registerPushToken';
+import {
+  registerPushTokenWithBackend,
+  unregisterPushTokenFromBackend,
+} from '../notifications/registerPushToken';
 import { emitToast } from '../ui/toastBus';
 
 // Narrow check for "the server rejected this token" vs. any other failure
@@ -255,6 +258,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Brief loading gate so OrgChoice / Main don't paint over each other
     // while the session tears down (was causing stacked Join/Create buttons).
     setIsLoading(true);
+    // Drop this device's push token while the JWT is still valid, so the
+    // next account on the same phone does not keep getting the old user's
+    // notifications. Best-effort — never blocks local logout.
+    try {
+      await Promise.race([
+        unregisterPushTokenFromBackend(),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('push unregister timeout')), 3000),
+        ),
+      ]);
+    } catch {
+      // Offline / permission denied — claim-on-register still covers the
+      // next login.
+    }
     try {
       // 5-second timeout — if the server is sleeping or unreachable the
       // local session is cleared anyway; this prevents the loader from

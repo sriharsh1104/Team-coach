@@ -183,6 +183,50 @@ export function AdminScreen() {
     [selectedId],
   );
 
+  /**
+   * Block / unblock / delete one account. Delete asks for the email because
+   * the server asks for it too — a member row sits one tap from the voice
+   * toggle, which is no place for an irreversible action behind a yes/no.
+   */
+  const moderate = useCallback(
+    async (
+      member: AdminMember,
+      action: 'block' | 'unblock' | 'delete',
+    ) => {
+      try {
+        if (action === 'delete') {
+          const ok = await confirmAsync(
+            `Delete ${member.name}?`,
+            `This removes ${member.email}, their messages, media and every seat they hold. It cannot be undone.`,
+            'Delete account',
+          );
+          if (!ok) return;
+          await adminApi.deleteUser(member.id, member.email);
+          emitToast(`Deleted ${member.email}`);
+        } else if (action === 'block') {
+          const ok = await confirmAsync(
+            `Block ${member.name}?`,
+            'They are signed out on their next action and cannot sign back in until you unblock them.',
+            'Block',
+          );
+          if (!ok) return;
+          await adminApi.blockUser(member.id);
+          emitToast(`Blocked ${member.email}`);
+        } else {
+          await adminApi.unblockUser(member.id);
+          emitToast(`Unblocked ${member.email}`);
+        }
+        if (selectedId) {
+          const fresh = await adminApi.getOrg(selectedId);
+          setDetail(fresh);
+        }
+      } catch (err) {
+        emitToast(apiErrorMessage(err, 'Could not apply that change'));
+      }
+    },
+    [selectedId],
+  );
+
   const deleteGuild = useCallback(
     async (org: { id: string; name: string }) => {
       // Typing the name back is what the server demands too — a tap on the
@@ -234,6 +278,7 @@ export function AdminScreen() {
         openOrg={openOrg}
         busyUserId={busyUserId}
         toggleDirectVoice={toggleDirectVoice}
+        moderate={moderate}
         deleteGuild={deleteGuild}
       />
     </Screen>
@@ -263,6 +308,7 @@ type ContentProps = {
   openOrg: (id: string) => void;
   busyUserId: string | null;
   toggleDirectVoice: (userId: string, enabled: boolean) => void;
+  moderate: (member: AdminMember, action: 'block' | 'unblock' | 'delete') => void;
   deleteGuild: (org: { id: string; name: string }) => void;
 };
 
@@ -404,6 +450,7 @@ function GuildsTab({
   openOrg,
   busyUserId,
   toggleDirectVoice,
+  moderate,
   deleteGuild,
 }: ContentProps & { header: React.ReactElement }) {
   const shared = useSharedStyles();
@@ -485,6 +532,7 @@ function GuildsTab({
           onPress={() => openOrg(item.id)}
           busyUserId={busyUserId}
           onToggleVoice={toggleDirectVoice}
+          onModerate={moderate}
           onDelete={() => deleteGuild(item)}
         />
       )}
@@ -501,6 +549,7 @@ function GuildRow({
   onPress,
   busyUserId,
   onToggleVoice,
+  onModerate,
   onDelete,
 }: {
   org: AdminOrgRow;
@@ -511,6 +560,7 @@ function GuildRow({
   onPress: () => void;
   busyUserId: string | null;
   onToggleVoice: (userId: string, enabled: boolean) => void;
+  onModerate: (member: AdminMember, action: 'block' | 'unblock' | 'delete') => void;
   onDelete: () => void;
 }) {
   return (
@@ -563,22 +613,16 @@ function GuildRow({
                 {formatCount(detail.counts.messages)} messages ·{' '}
                 {detail.counts.scrims} scrims · {detail.counts.mediaPosts} media
               </Text>
-              {/* Guild and roster are separate memberships — a person can be
-                  in one and not the other, so they are listed separately
-                  rather than merged into one list. */}
+              {/* One list: the guild and roster lists were the same people
+                  twice, since joining the roster also creates a guild seat.
+                  Each row now says which seats it holds. */}
               <MemberGroup
-                title={`Guild members (${detail.guild.length})`}
-                members={detail.guild}
+                title={`Members (${detail.members.length})`}
+                members={detail.members}
                 styles={styles}
                 busyId={busyUserId}
                 onToggleVoice={onToggleVoice}
-              />
-              <MemberGroup
-                title={`Roster (${detail.roster.length})`}
-                members={detail.roster}
-                styles={styles}
-                busyId={busyUserId}
-                onToggleVoice={onToggleVoice}
+                onModerate={onModerate}
               />
               {detail.pendingRequests.length > 0 ? (
                 <>
@@ -620,12 +664,14 @@ function MemberGroup({
   styles,
   busyId,
   onToggleVoice,
+  onModerate,
 }: {
   title: string;
   members: AdminMember[];
   styles: ReturnType<typeof adminStyles>;
   busyId: string | null;
   onToggleVoice: (userId: string, enabled: boolean) => void;
+  onModerate: (member: AdminMember, action: 'block' | 'unblock' | 'delete') => void;
 }) {
   if (members.length === 0) return null;
   return (
@@ -639,8 +685,13 @@ function MemberGroup({
               {m.inGameName ? ` · ${m.inGameName}` : ''}
             </Text>
             <Text style={styles.rosterMeta} numberOfLines={1}>
-              {m.isOwner ? 'Owner' : (m.role ?? 'No role')} · {m.email}
+              {seatLabel(m)} · {m.email}
             </Text>
+            {m.blockedAt ? (
+              <Text style={styles.blockedNote} numberOfLines={1}>
+                Blocked{m.blockedReason ? ` — ${m.blockedReason}` : ''}
+              </Text>
+            ) : null}
           </View>
           <SoftPressable
             style={[styles.voiceChip, m.canDirectVoice && styles.voiceChipOn]}
@@ -658,6 +709,26 @@ function MemberGroup({
             >
               {busyId === m.id ? '…' : m.canDirectVoice ? 'Voice on' : 'Voice off'}
             </Text>
+          </SoftPressable>
+          <SoftPressable
+            style={[styles.voiceChip, m.blockedAt && styles.blockedChip]}
+            onPress={() => onModerate(m, m.blockedAt ? 'unblock' : 'block')}
+            accessibilityRole="button"
+            accessibilityLabel={`${m.blockedAt ? 'Unblock' : 'Block'} ${m.name}`}
+          >
+            <Text
+              style={[styles.voiceChipText, m.blockedAt && styles.blockedChipText]}
+            >
+              {m.blockedAt ? 'Blocked' : 'Block'}
+            </Text>
+          </SoftPressable>
+          <SoftPressable
+            style={[styles.voiceChip, styles.deleteChip]}
+            onPress={() => onModerate(m, 'delete')}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete account ${m.name}`}
+          >
+            <Text style={[styles.voiceChipText, styles.deleteChipText]}>Del</Text>
           </SoftPressable>
         </View>
       ))}
@@ -857,6 +928,14 @@ function ServiceRow({
 
 /* ---------------- Bits ---------------- */
 
+/** Which seats this person holds — the reason the two lists became one. */
+function seatLabel(member: AdminMember): string {
+  if (member.isOwner) return 'Owner';
+  if (!member.inGuild) return `Roster only · ${member.rosterRole ?? 'no role'}`;
+  const guild = member.guildRole ?? 'member';
+  return member.onRoster ? `${guild} · on roster` : `${guild} · guild only`;
+}
+
 /** 12400 → "12.4k" so a wide count can't shove the row layout around. */
 function formatCount(n: number): string {
   if (n < 1000) return String(n);
@@ -1017,6 +1096,11 @@ function adminStyles(c: ThemeColors) {
       fontWeight: '700' as const,
     },
     voiceChipTextOn: { color: HEALTHY },
+    blockedChip: { borderColor: c.danger, backgroundColor: 'rgba(248,113,113,0.12)' },
+    blockedChipText: { color: c.danger },
+    deleteChip: { borderColor: c.danger },
+    deleteChipText: { color: c.danger },
+    blockedNote: { color: c.danger, fontSize: 11, marginTop: 1 },
 
     // The only destructive control in the app that reaches across orgs —
     // outlined in danger and parked at the bottom of an expanded guild, so

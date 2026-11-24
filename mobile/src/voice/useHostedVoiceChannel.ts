@@ -197,17 +197,37 @@ export function useHostedVoiceChannel(
     [applyPlaybackTo],
   );
 
+  // Last value actually pushed to setScreenShare. Resync runs on every
+  // TrackPublished/Subscribed/ActiveSpeakersChanged tick (several times a
+  // second), and handing VideoView a brand-new object each time — even one
+  // wrapping the exact same track — made some devices detach/reattach the
+  // native surface on every tick, which is what showed up as the remote
+  // video flickering between visible and blank instead of staying up.
+  const screenShareRef = useRef<VoiceScreenShare | null>(null);
+  const setScreenShareStable = useCallback((next: VoiceScreenShare | null) => {
+    const prev = screenShareRef.current;
+    const same =
+      prev === next ||
+      (!!prev &&
+        !!next &&
+        prev.participantId === next.participantId &&
+        prev.isLocal === next.isLocal &&
+        prev.videoTrack === next.videoTrack);
+    if (same) return;
+    screenShareRef.current = next;
+    setScreenShare(next);
+  }, []);
+
   const refreshScreenShare = useCallback((room: Room) => {
     const localPub = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
     const localTrack = localPub?.track;
     if (localTrack && localTrack.kind === Track.Kind.Video) {
-      const next: VoiceScreenShare = {
+      setScreenShareStable({
         participantId: room.localParticipant.identity,
         participantName: room.localParticipant.name || 'You',
         isLocal: true,
         videoTrack: localTrack as VideoTrack,
-      };
-      setScreenShare(next);
+      });
       isScreenSharingRef.current = true;
       setIsScreenSharing(true);
       setVoiceScreenSharing(true);
@@ -235,7 +255,7 @@ export function useHostedVoiceChannel(
       }
 
       const track = pub.track;
-      setScreenShare({
+      setScreenShareStable({
         participantId: p.identity,
         participantName: p.name || p.identity,
         isLocal: false,
@@ -249,28 +269,48 @@ export function useHostedVoiceChannel(
       return;
     }
 
-    setScreenShare(null);
+    setScreenShareStable(null);
     if (isScreenSharingRef.current) {
       isScreenSharingRef.current = false;
       setIsScreenSharing(false);
       setVoiceScreenSharing(false);
     }
-  }, []);
+  }, [setScreenShareStable]);
+
+  // Same stabilization as screen share — without it the 1-on-1 video stage
+  // re-subscribed its VideoView on every resync tick, which is what made the
+  // other person's camera look like it kept cutting in and out.
+  const localCameraRef = useRef<VoiceScreenShare | null>(null);
+  const remoteCameraRef = useRef<VoiceScreenShare | null>(null);
+  const sameShare = (a: VoiceScreenShare | null, b: VoiceScreenShare | null) =>
+    a === b ||
+    (!!a &&
+      !!b &&
+      a.participantId === b.participantId &&
+      a.isLocal === b.isLocal &&
+      a.videoTrack === b.videoTrack);
 
   const refreshCameras = useCallback((room: Room) => {
     const localPub = room.localParticipant.getTrackPublication(Track.Source.Camera);
     const localTrack = localPub?.track;
     if (localTrack && localTrack.kind === Track.Kind.Video) {
-      setLocalCamera({
+      const next: VoiceScreenShare = {
         participantId: room.localParticipant.identity,
         participantName: room.localParticipant.name || 'You',
         isLocal: true,
         videoTrack: localTrack as VideoTrack,
-      });
+      };
+      if (!sameShare(localCameraRef.current, next)) {
+        localCameraRef.current = next;
+        setLocalCamera(next);
+      }
       isCameraOnRef.current = true;
       setIsCameraOn(true);
     } else {
-      setLocalCamera(null);
+      if (localCameraRef.current !== null) {
+        localCameraRef.current = null;
+        setLocalCamera(null);
+      }
       if (isCameraOnRef.current) {
         isCameraOnRef.current = false;
         setIsCameraOn(false);
@@ -290,16 +330,23 @@ export function useHostedVoiceChannel(
         }
       }
       const track = pub.track;
-      setRemoteCamera({
+      const next: VoiceScreenShare = {
         participantId: p.identity,
         participantName: p.name || p.identity,
         isLocal: false,
         videoTrack:
           track && track.kind === Track.Kind.Video ? (track as VideoTrack) : null,
-      });
+      };
+      if (!sameShare(remoteCameraRef.current, next)) {
+        remoteCameraRef.current = next;
+        setRemoteCamera(next);
+      }
       break;
     }
-    if (!foundRemote) setRemoteCamera(null);
+    if (!foundRemote && remoteCameraRef.current !== null) {
+      remoteCameraRef.current = null;
+      setRemoteCamera(null);
+    }
   }, []);
 
   const syncParticipants = useCallback((room: Room) => {
@@ -391,10 +438,13 @@ export function useHostedVoiceChannel(
     isPushToTalkRef.current = false;
     isScreenSharingRef.current = false;
     setIsScreenSharing(false);
+    screenShareRef.current = null;
     setScreenShare(null);
     setVoiceScreenSharing(false);
     isCameraOnRef.current = false;
     setIsCameraOn(false);
+    localCameraRef.current = null;
+    remoteCameraRef.current = null;
     setLocalCamera(null);
     setRemoteCamera(null);
     roomStateRef.current = EMPTY_STATE;
@@ -424,9 +474,12 @@ export function useHostedVoiceChannel(
     setIsDeafened(false);
     setIsPushToTalk(false);
     setIsScreenSharing(false);
+    screenShareRef.current = null;
     setScreenShare(null);
     isCameraOnRef.current = false;
     setIsCameraOn(false);
+    localCameraRef.current = null;
+    remoteCameraRef.current = null;
     setLocalCamera(null);
     setRemoteCamera(null);
     musicEngineRef.current?.dispose();
@@ -499,6 +552,13 @@ export function useHostedVoiceChannel(
         speakingIdsRef.current.delete(p.identity);
         connectionQualitiesRef.current.delete(p.identity);
         syncParticipants(room);
+        // A 1-on-1 call with nobody left on the other end is over — close the
+        // call UI ourselves instead of leaving it sitting on an empty room,
+        // which used to need a force-close/app restart to get out of.
+        if (isDirect && roomRef.current === room && room.remoteParticipants.size === 0) {
+          emitToast(`${p.name || 'They'} left the call`);
+          leave();
+        }
       });
       // LiveKit retries a dropped connection on its own. Without these two
       // the UI kept claiming "connected" with dead audio for the whole retry,
@@ -706,7 +766,17 @@ export function useHostedVoiceChannel(
     }
     // Both playback helpers are stable (no changing deps), so listing them
     // doesn't churn `join` — it just keeps the lint rule honest.
-  }, [url, token, isGuild, syncParticipants, applyPlaybackTo, applyPlaybackToAll, ensureMusicEngine]);
+  }, [
+    url,
+    token,
+    isGuild,
+    isDirect,
+    syncParticipants,
+    applyPlaybackTo,
+    applyPlaybackToAll,
+    ensureMusicEngine,
+    leave,
+  ]);
 
   const toggleMute = useCallback(() => {
     const room = roomRef.current;

@@ -16,11 +16,18 @@ import {
 } from '../navigation/navigationRef';
 import { useVoiceContext } from './VoiceContext';
 import { AppIcon } from '../ui/AppIcon';
+import { loadVideoView } from '../screens/voice/VoiceChannelScreen';
 
 const BAR_HEIGHT = 56;
 const BAR_WIDTH = 280;
 const EDGE_PAD = 12;
 const DRAG_THRESHOLD = 6;
+// Picture-in-picture thumbnail shown above the pill during a 1-on-1 video
+// call once the user navigates away — without this the video simply vanished
+// the moment you left the Voice screen, with no way to keep watching it.
+const PIP_W = 92;
+const PIP_H = 128;
+const PIP_GAP = 8;
 
 function isGameRoute(name: string | undefined): boolean {
   return name === 'GameRoom' || name === 'Games';
@@ -34,18 +41,38 @@ type Pos = { x: number; y: number };
  * (App.tsx) so native-stack screens cannot cover it. Freely draggable.
  */
 export function VoiceFloatingWidget() {
-  const { controller, isScreenFocused, deactivate } = useVoiceContext();
+  const {
+    controller,
+    isScreenFocused,
+    deactivate,
+    activationRoom,
+    activationPeerId,
+    activationPeerName,
+  } = useVoiceContext();
   const insets = useSafeAreaInsets();
   const [focusedRoute, setFocusedRoute] = useState<string | undefined>(() =>
     getFocusedRouteNameFromRef(),
   );
   const onGame = isGameRoute(focusedRoute);
 
+  const isConnected = controller?.status === 'connected';
+  const room = activationRoom ?? controller?.room ?? 'team';
+  const isGuild = room === 'guild';
+  const isDirect = room === 'direct';
+  // Peer's camera takes priority (that is the point of the call); fall back
+  // to our own feed while we're on camera and they haven't switched yet.
+  const camTrack = isDirect && isConnected
+    ? (controller?.remoteCamera ?? controller?.localCamera ?? null)
+    : null;
+  const showVideo = !!camTrack;
+  const VideoView = useMemo(() => loadVideoView(), []);
+
   const window = Dimensions.get('window');
+  const widgetHeight = BAR_HEIGHT + (showVideo ? PIP_H + PIP_GAP : 0);
   const minX = EDGE_PAD;
   const maxX = Math.max(minX, window.width - EDGE_PAD - BAR_WIDTH);
   const minY = insets.top + EDGE_PAD;
-  const maxY = Math.max(minY, window.height - insets.bottom - EDGE_PAD - BAR_HEIGHT);
+  const maxY = Math.max(minY, window.height - insets.bottom - EDGE_PAD - widgetHeight);
 
   const defaultBottom: Pos = { x: EDGE_PAD, y: maxY };
   const defaultGame: Pos = { x: EDGE_PAD, y: minY };
@@ -56,13 +83,11 @@ export function VoiceFloatingWidget() {
   const dragged = useRef(false);
   const slideAnim = useRef(new Animated.Value(120)).current;
 
-  const isConnected = controller?.status === 'connected';
   // A session that is connecting (incl. a mid-call reconnect) still owns the
   // mic, so the widget stays mounted and can slide back in. Anything else —
   // idle / error — means there is no call to float, and the full-screen layer
   // below must not stay over the app.
   const isLive = isConnected || controller?.status === 'connecting';
-  const isGuild = controller?.room === 'guild';
   const micOff = !!controller && (controller.isMuted || !!controller.isHostMuted);
   const shouldShow = isConnected && !isScreenFocused;
 
@@ -156,6 +181,14 @@ export function VoiceFloatingWidget() {
 
   const handleOpen = () => {
     if (dragged.current) return;
+    if (isDirect) {
+      if (!activationPeerId) return;
+      navigateToVoice('direct', {
+        peerId: activationPeerId,
+        peerName: activationPeerName ?? undefined,
+      });
+      return;
+    }
     navigateToVoice(isGuild ? 'guild' : 'team');
   };
 
@@ -180,37 +213,66 @@ export function VoiceFloatingWidget() {
         pointerEvents={shouldShow ? 'auto' : 'none'}
         {...panResponder.panHandlers}
       >
-        <Pressable style={styles.pill} onPress={handleOpen} accessibilityLabel="Open voice">
-          <View style={styles.liveDot} />
-          <Text style={styles.label} numberOfLines={1}>
-            {isGuild ? 'Guild Voice' : 'Voice'}
-          </Text>
-          <Text style={styles.sub} numberOfLines={1}>
-            {memberCount} member{memberCount !== 1 ? 's' : ''}
-          </Text>
-        </Pressable>
+        {showVideo && (
+          <Pressable
+            style={styles.pipVideoBox}
+            onPress={handleOpen}
+            accessibilityLabel="Open video call"
+          >
+            {VideoView && camTrack?.videoTrack ? (
+              <VideoView
+                videoTrack={camTrack.videoTrack}
+                style={styles.pipVideo}
+                objectFit="cover"
+                mirror={camTrack.isLocal}
+              />
+            ) : (
+              <View style={[styles.pipVideo, styles.pipVideoPlaceholder]}>
+                <AppIcon name="videocam-outline" size={20} color="rgba(255,255,255,0.6)" />
+              </View>
+            )}
+          </Pressable>
+        )}
 
-        <Pressable
-          style={[styles.iconBtn, micOff && styles.iconBtnMuted]}
-          onPress={handleMute}
-          accessibilityLabel={
-            controller.isHostMuted ? 'Muted by host' : controller.isMuted ? 'Unmute' : 'Mute'
-          }
-        >
-          <AppIcon
-            name={micOff ? 'mic-off' : 'mic'}
-            size={18}
-            color={micOff ? '#ef4444' : '#fff'}
-          />
-        </Pressable>
+        <View style={styles.controlsRow}>
+          <Pressable style={styles.pill} onPress={handleOpen} accessibilityLabel="Open voice">
+            <View style={styles.liveDot} />
+            <Text style={styles.label} numberOfLines={1}>
+              {isGuild
+                ? 'Guild Voice'
+                : isDirect
+                  ? activationPeerName || '1-On-1 Voice'
+                  : 'Voice'}
+            </Text>
+            {!isDirect ? (
+              <Text style={styles.sub} numberOfLines={1}>
+                {memberCount} member{memberCount !== 1 ? 's' : ''}
+              </Text>
+            ) : null}
+          </Pressable>
 
-        <Pressable
-          style={[styles.iconBtn, styles.leaveBtn]}
-          onPress={handleLeave}
-          accessibilityLabel="Leave voice"
-        >
-          <AppIcon name="phone-down" size={16} color="#fff" />
-        </Pressable>
+          <Pressable
+            style={[styles.iconBtn, micOff && styles.iconBtnMuted]}
+            onPress={handleMute}
+            accessibilityLabel={
+              controller.isHostMuted ? 'Muted by host' : controller.isMuted ? 'Unmute' : 'Mute'
+            }
+          >
+            <AppIcon
+              name={micOff ? 'mic-off' : 'mic'}
+              size={18}
+              color={micOff ? '#ef4444' : '#fff'}
+            />
+          </Pressable>
+
+          <Pressable
+            style={[styles.iconBtn, styles.leaveBtn]}
+            onPress={handleLeave}
+            accessibilityLabel="Leave voice"
+          >
+            <AppIcon name="phone-down" size={16} color="#fff" />
+          </Pressable>
+        </View>
       </Animated.View>
     </View>
   );
@@ -224,20 +286,41 @@ const styles = StyleSheet.create({
   },
   wrapper: {
     position: 'absolute',
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     backgroundColor: '#1a2a1a',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(34,197,94,0.3)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
+    padding: 8,
+    gap: PIP_GAP,
     shadowColor: '#000',
     shadowOpacity: 0.5,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 24,
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  pipVideoBox: {
+    width: PIP_W,
+    height: PIP_H,
+    alignSelf: 'center',
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  pipVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  pipVideoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   liveDot: {
     width: 8,

@@ -322,8 +322,15 @@ function resolvePlayedCard(state: UnoState, card: UnoCard) {
   }
   if (card.rank === 'reverse') {
     state.direction = state.direction === 1 ? -1 : 1;
-    state.lastEvent = 'Reverse!';
-    advanceTurn(state, 1);
+    if (state.playerIds.length === 2) {
+      // With only two players, reversing direction hands the turn right
+      // back to the player who just played — same as a Skip in real Uno.
+      state.lastEvent = 'Reverse acts as Skip!';
+      advanceTurn(state, 2);
+    } else {
+      state.lastEvent = 'Reverse!';
+      advanceTurn(state, 1);
+    }
     return;
   }
   if (card.rank === 'wild') {

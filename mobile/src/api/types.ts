@@ -81,6 +81,7 @@ export interface ChatReplyPreview {
   text: string | null;
   senderName: string;
   mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO' | null;
+  deleted?: boolean;
 }
 
 export interface ChatReaction {
@@ -103,6 +104,9 @@ export interface ChatMessage {
   mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO' | null;
   createdAt: string;
   editedAt?: string | null;
+  /** Soft-delete — clients render "This message has been deleted". */
+  deletedAt?: string | null;
+  deleted?: boolean;
   replyToId?: string | null;
   replyTo?: ChatReplyPreview | null;
   starred?: boolean;
@@ -139,6 +143,8 @@ export interface ChatChannel {
   type: 'ORG' | 'DM';
   title: string;
   peerUserId: string | null;
+  /** Real peer name before any personal nickname overlay. */
+  peerName?: string | null;
   peerAvatarUrl: string | null;
   /** Org group size (self included). Null for DMs. */
   memberCount?: number | null;
@@ -146,6 +152,8 @@ export interface ChatChannel {
   lastMessageAt: string | null;
   lastPreview: string | null;
   muted?: boolean;
+  /** Viewer-only alias for the DM peer. */
+  nickname?: string | null;
 }
 
 export interface ChatTeammate {
@@ -161,6 +169,8 @@ export interface ChatTeammate {
 
 export interface ChatChannelsResponse {
   channels: ChatChannel[];
+  /** Viewer-only aliases keyed by target user id. */
+  nicknames?: Record<string, string>;
   teammates: ChatTeammate[];
   /** @deprecated Prefer rosterMentionables / guildMentionables by channel. */
   mentionables: ChatTeammate[];

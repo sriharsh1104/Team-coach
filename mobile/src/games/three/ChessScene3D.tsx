@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   ChessColor,
@@ -50,38 +51,80 @@ export function squareToWorld(
   return flip ? [-x, 0, -z] : [x, 0, z];
 }
 
-function PieceMesh({
-  piece,
-  position,
-}: {
-  piece: ChessPiece;
-  position: [number, number, number];
-}) {
-  const color = piece.color === 'w' ? WHITE_PIECE : BLACK_PIECE;
-  // A dark piece under dark studio light reads as a black blob; a little
-  // emissive lift keeps its shape visible without washing out the white set.
-  const emissive = piece.color === 'w' ? '#000000' : '#0b1020';
-  const material = (
-    <meshStandardMaterial
-      color={color}
-      emissive={emissive}
-      roughness={0.45}
-      metalness={0.12}
-    />
-  );
+/**
+ * `position` changes the instant a move lands on the server (new square), but
+ * snapping the mesh straight there is what made moves look like a piece
+ * vanishing and reappearing. The group never takes `position` as a JSX prop
+ * after mount — instead it glides toward the latest target every frame, so a
+ * move reads as a move instead of a teleport. React.memo + the key in
+ * ChessScene3D (one stable id per piece, not per square) is what makes this
+ * possible: without a stable key this component would unmount/remount at the
+ * new square and there would be nothing to animate between.
+ */
+const PieceMesh = React.memo(
+  function PieceMesh({
+    piece,
+    position,
+  }: {
+    piece: ChessPiece;
+    position: [number, number, number];
+  }) {
+    const color = piece.color === 'w' ? WHITE_PIECE : BLACK_PIECE;
+    // A dark piece under dark studio light reads as a black blob; a little
+    // emissive lift keeps its shape visible without washing out the white set.
+    const emissive = piece.color === 'w' ? '#000000' : '#0b1020';
+    const material = (
+      <meshStandardMaterial
+        color={color}
+        emissive={emissive}
+        roughness={0.45}
+        metalness={0.12}
+      />
+    );
 
-  const [x, , z] = position;
-  return (
-    <group position={[x, 0, z]}>
-      {/* Every piece shares a base, so they sit at a consistent height. */}
-      <mesh position={[0, 0.07, 0]} castShadow>
-        <cylinderGeometry args={[0.3, 0.34, 0.14, 20]} />
-        {material}
-      </mesh>
-      <PieceBody type={piece.type}>{material}</PieceBody>
-    </group>
-  );
-}
+    const groupRef = useRef<THREE.Group>(null);
+    const initialPosition = useRef(position);
+    const target = useMemo(
+      () => new THREE.Vector3(position[0], 0, position[2]),
+      [position[0], position[2]],
+    );
+
+    useEffect(() => {
+      // Only ever runs once per mounted piece — place it on its starting
+      // square with no glide (there is no "from" the first time it appears).
+      const [x, , z] = initialPosition.current;
+      groupRef.current?.position.set(x, 0, z);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useFrame((_, delta) => {
+      const g = groupRef.current;
+      if (!g) return;
+      if (g.position.distanceToSquared(target) < 0.0004) {
+        g.position.copy(target);
+        return;
+      }
+      g.position.lerp(target, Math.min(1, delta * 9));
+    });
+
+    return (
+      <group ref={groupRef}>
+        {/* Every piece shares a base, so they sit at a consistent height. */}
+        <mesh position={[0, 0.07, 0]} castShadow>
+          <cylinderGeometry args={[0.3, 0.34, 0.14, 20]} />
+          {material}
+        </mesh>
+        <PieceBody type={piece.type}>{material}</PieceBody>
+      </group>
+    );
+  },
+  (prev, next) =>
+    prev.piece.type === next.piece.type &&
+    prev.piece.color === next.piece.color &&
+    prev.position[0] === next.position[0] &&
+    prev.position[1] === next.position[1] &&
+    prev.position[2] === next.position[2],
+);
 
 /** The part above the base — this is what makes each piece recognisable. */
 function PieceBody({
@@ -185,7 +228,7 @@ function PieceBody({
   }
 }
 
-function Highlight({
+const Highlight = React.memo(function Highlight({
   position,
   color,
   opacity,
@@ -200,7 +243,7 @@ function Highlight({
       <meshBasicMaterial color={color} transparent opacity={opacity} />
     </mesh>
   );
-}
+});
 
 export function ChessScene3D({
   board,
@@ -233,6 +276,41 @@ export function ChessScene3D({
   }, [flip]);
 
   const targetSet = useMemo(() => new Set(targets), [targets]);
+
+  // Board index alone can't be the piece's React key: the same index holds a
+  // different piece before and after a move, so keying on it is what forced
+  // every move to unmount the old piece and mount a new one at the
+  // destination (an instant jump, nothing to glide between). A stable id per
+  // piece — carried across the move via `lastMove` — lets PieceMesh keep its
+  // identity (and its mesh/material) and just slide to the new square.
+  const pieceIdByIndexRef = useRef<Map<number, string>>(new Map());
+  const idSeqRef = useRef(0);
+  const pieceEntries = useMemo(() => {
+    const map = pieceIdByIndexRef.current;
+    if (lastMove) {
+      const fromIdx = chessSquareToIndex(lastMove.from);
+      const toIdx = chessSquareToIndex(lastMove.to);
+      const movingId = map.get(fromIdx);
+      if (movingId) {
+        map.delete(fromIdx);
+        map.delete(toIdx);
+        map.set(toIdx, movingId);
+      }
+    }
+    // Reconcile against the real board: give an id to any occupied square we
+    // aren't tracking yet (first load, castling's rook, a promoted piece),
+    // and drop ids for squares that are no longer occupied (captures).
+    const occupied = new Set<number>();
+    board.forEach((piece, index) => {
+      if (!piece) return;
+      occupied.add(index);
+      if (!map.has(index)) map.set(index, `pc-${idSeqRef.current++}`);
+    });
+    for (const index of [...map.keys()]) {
+      if (!occupied.has(index)) map.delete(index);
+    }
+    return [...map.entries()].map(([index, id]) => ({ id, index }));
+  }, [board, lastMove]);
 
   return (
     <>
@@ -293,15 +371,13 @@ export function ChessScene3D({
         />
       ))}
 
-      {board.map((piece, index) =>
-        piece ? (
-          <PieceMesh
-            key={`p-${index}`}
-            piece={piece}
-            position={squareToWorld(index, flip)}
-          />
-        ) : null,
-      )}
+      {pieceEntries.map(({ id, index }) => {
+        const piece = board[index];
+        if (!piece) return null;
+        return (
+          <PieceMesh key={id} piece={piece} position={squareToWorld(index, flip)} />
+        );
+      })}
     </>
   );
 }

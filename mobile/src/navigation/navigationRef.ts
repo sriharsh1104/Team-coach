@@ -41,9 +41,21 @@ export function notifyFocusedRouteChanged(): void {
   });
 }
 
-export function navigateToVoice(room: 'team' | 'guild') {
+export function navigateToVoice(
+  room: 'team' | 'guild' | 'direct',
+  peer?: { peerId: string; peerName?: string; peerAvatarUrl?: string | null },
+) {
   if (!navigationRef.isReady()) return;
   try {
+    if (room === 'direct') {
+      if (!peer?.peerId) return;
+      navigationRef.navigate('DirectVoice', {
+        peerId: peer.peerId,
+        peerName: peer.peerName,
+        peerAvatarUrl: peer.peerAvatarUrl,
+      });
+      return;
+    }
     navigationRef.navigate(room === 'guild' ? 'GuildVoice' : 'Voice');
   } catch {
     // Navigator not ready / route missing on this stack.

@@ -126,6 +126,37 @@ describe('uno engine', () => {
     expect(s.hands[A].length).toBe(3);
   });
 
+  it('reverse acts as a skip in a 2-player game', () => {
+    const s = createUnoState([A, B], () => 0.4);
+    s.discard = [{ id: 't', color: 'red', rank: '5' }];
+    s.color = 'red';
+    s.direction = 1;
+    s.turnIndex = 0;
+    s.hands[A] = [{ id: 'rev', color: 'red', rank: 'reverse' }];
+    s.hands[B] = [{ id: 'q', color: 'yellow', rank: '2' }];
+    unoPlay(s, A, 'rev');
+    // Only two players: nobody new to hand the turn to, so it comes right
+    // back to A — the same outcome a Skip would have produced.
+    expect(s.playerIds[s.turnIndex]).toBe(A);
+  });
+
+  it('reverse flips direction without skipping in a 3+ player game', () => {
+    const C = 'c';
+    const s = createUnoState([A, B, C], () => 0.6);
+    s.discard = [{ id: 't', color: 'green', rank: '5' }];
+    s.color = 'green';
+    s.direction = 1;
+    s.turnIndex = 0;
+    s.hands[A] = [{ id: 'rev', color: 'green', rank: 'reverse' }];
+    s.hands[B] = [{ id: 'q', color: 'yellow', rank: '2' }];
+    s.hands[C] = [{ id: 'r', color: 'yellow', rank: '3' }];
+    unoPlay(s, A, 'rev');
+    expect(s.direction).toBe(-1);
+    // Direction reversed from A: with 3 players the turn goes to whoever is
+    // now "next" in the new direction, which is C, not B.
+    expect(s.playerIds[s.turnIndex]).toBe(C);
+  });
+
   it('draw then pass when nothing matches', () => {
     const s = createUnoState([A, B], () => 0.9) as UnoState;
     s.discard = [{ id: 't', color: 'red', rank: '0' }];

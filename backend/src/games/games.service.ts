@@ -59,6 +59,14 @@ import {
   createChessState,
 } from './engines/chess.engine';
 
+/**
+ * Taunts players can throw at each other mid-game. A closed set on purpose:
+ * this is broadcast to everyone in the room with no moderation in between, so
+ * it is four fixed reactions rather than "any string the client sends".
+ */
+export const GAME_REACTIONS = ['angry', 'loser', 'laughing', 'cool'] as const;
+export type GameReaction = (typeof GAME_REACTIONS)[number];
+
 export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno' | 'chess';
 
 export const GAME_CATALOG: Record<
@@ -485,6 +493,32 @@ export class GamesService {
       if (parsed) return parsed;
     }
     throw new Error('Pick a cell like B2');
+  }
+
+  // ─── Reactions ────────────────────────────────────────────────────────
+
+  /**
+   * Throw a reaction at the room. Deliberately stores nothing: it is a
+   * moment, not game state, so it never lands in RoomView and a player who
+   * reconnects does not get a backlog of old taunts replayed at them.
+   *
+   * Spam is already handled a layer up — the gateway rate-limits every
+   * message per socket, so this needs no cooldown of its own.
+   */
+  react(roomId: string, userId: string, reaction: unknown): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new Error('Room not found');
+    if (!room.players.some((p) => p.userId === userId)) {
+      throw new Error('You are not in this room');
+    }
+    if (
+      typeof reaction !== 'string' ||
+      !GAME_REACTIONS.includes(reaction as GameReaction)
+    ) {
+      throw new Error('Unknown reaction');
+    }
+    this.emit(room, { type: 'reaction', payload: { userId, reaction } });
+    return this.view(room, userId);
   }
 
   // ─── Chess ────────────────────────────────────────────────────────────

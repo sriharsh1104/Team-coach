@@ -66,3 +66,25 @@ export class DeleteOrgDto {
   @MaxLength(200)
   confirmName: string;
 }
+
+/**
+ * Block one account. The reason is shown to the blocked person at login, so
+ * it is worth writing something they can act on.
+ */
+export class BlockUserDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
+/**
+ * Deleting an account erases its chat, media, stats and every membership
+ * along with it. Same guard as deleting a guild: the email has to be typed
+ * back, so a mis-tap on a member row cannot do this.
+ */
+export class DeleteUserDto {
+  @IsString()
+  @MaxLength(255)
+  confirmEmail: string;
+}

@@ -77,12 +77,21 @@ function MessageBubbleInner({
   onShowInfo,
   onAddMatch,
 }: Props) {
-  const mediaUri = chatApi.resolveChatMediaUrl(message.mediaUrl);
+  const isDeleted = !!(message.deleted || message.deletedAt);
+  const mediaUri = isDeleted
+    ? null
+    : chatApi.resolveChatMediaUrl(message.mediaUrl);
   const mediaOnly =
+    !isDeleted &&
     (message.mediaType === 'IMAGE' || message.mediaType === 'VIDEO') &&
     !message.text?.trim() &&
     !message.replyTo &&
     !message.forwarded;
+  // Multi-select checkboxes are for your own messages (delete batch).
+  // A single peer message can still be selected via long-press for reply/star,
+  // and shows a check while it is the active selection.
+  const canSelect =
+    selectMode && !isDeleted && (isMine || isSelected);
   return (
       <Pressable
         onPress={() => onPress(message)}
@@ -96,7 +105,11 @@ function MessageBubbleInner({
         accessibilityRole="button"
         accessibilityState={{ selected: isSelected }}
         accessibilityLabel={
-          isMine ? 'Your message' : `Message from ${message.senderName}`
+          isDeleted
+            ? 'Deleted message'
+            : isMine
+              ? 'Your message'
+              : `Message from ${message.senderName}`
         }
       >
         {!isMine ? (
@@ -109,7 +122,7 @@ function MessageBubbleInner({
             />
           </View>
         ) : null}
-        {selectMode ? (
+        {canSelect ? (
           <View
             style={[
               styles.selectCheck,
@@ -134,15 +147,25 @@ function MessageBubbleInner({
               isSelected && styles.bubbleSelected,
             ]}
           >
-            {!mediaOnly ? (
+            {!mediaOnly && !isDeleted ? (
               <Text style={styles.sender}>{formatSenderLabel(message)}</Text>
             ) : null}
-            {message.forwarded ? (
+            {isDeleted ? (
+              <Text
+                style={[
+                  styles.deletedLabel,
+                  isMine && styles.deletedLabelMine,
+                ]}
+              >
+                This message has been deleted
+              </Text>
+            ) : null}
+            {!isDeleted && message.forwarded ? (
               <Text style={[styles.forwardedLabel, isMine && styles.forwardedLabelMine]}>
                 ↪ Forwarded
               </Text>
             ) : null}
-            {message.replyTo ? (
+            {!isDeleted && message.replyTo ? (
               <View
                 style={[
                   styles.replyQuote,
@@ -165,10 +188,12 @@ function MessageBubbleInner({
                   ]}
                   numberOfLines={2}
                 >
-                  {message.replyTo.text?.trim() ||
-                    (message.replyTo.mediaType === 'VIDEO'
-                      ? 'Video'
-                      : 'Photo')}
+                  {message.replyTo.deleted
+                    ? 'This message has been deleted'
+                    : message.replyTo.text?.trim() ||
+                      (message.replyTo.mediaType === 'VIDEO'
+                        ? 'Video'
+                        : 'Photo')}
                 </Text>
               </View>
             ) : null}
@@ -320,7 +345,7 @@ function MessageBubbleInner({
                   );
                 })()
               : null}
-            {!selectMode ? (
+            {!isDeleted && !selectMode ? (
               <MessageReactionPills
                 reactions={message.reactions ?? []}
                 onToggle={(emoji) => onToggleReaction(message.id, emoji)}

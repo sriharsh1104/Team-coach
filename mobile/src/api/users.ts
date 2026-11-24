@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { ApiRequestConfig, apiClient } from './client';
 import { Device, Profile, UpdateProfileInput } from './types';
 import { appendFileToFormData } from './uploadFile';
 import { compressForUpload } from '../media/compressForUpload';
@@ -72,6 +72,15 @@ export function removeDevice(deviceId: string) {
 
 export function setPushToken(token: string) {
   return apiClient.patch('/users/me/push-token', { token });
+}
+
+/** Drop this device's Expo token from the signed-in user (logout). */
+export function clearPushToken(token: string) {
+  return apiClient.delete('/users/me/push-token', {
+    data: { token },
+    skipErrorToast: true,
+    skipLoader: true,
+  } as ApiRequestConfig);
 }
 
 export function getMemberProfile(userId: string) {

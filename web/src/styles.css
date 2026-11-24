@@ -4995,3 +4995,12 @@ button.invite-qr-open:hover {
   opacity: 0.45;
   cursor: default;
 }
+
+/* Compact danger action inside a member row — the full-width danger button
+   is for the guild panel, not for a list row. */
+.admin-row-btn {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+}

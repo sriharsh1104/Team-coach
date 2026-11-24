@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,7 +9,12 @@ import { ConfigService } from '@nestjs/config';
 import { ChatPresenceTracker } from '../chat/chat-presence.tracker';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { DeleteOrgDto, SetDirectVoiceDto } from './dto';
+import {
+  BlockUserDto,
+  DeleteOrgDto,
+  DeleteUserDto,
+  SetDirectVoiceDto,
+} from './dto';
 
 /** Page size cap so one call can never pull the whole table. */
 const MAX_PAGE_SIZE = 100;
@@ -300,20 +306,15 @@ export class AdminService {
         playerStats: org._count.playerStats,
         pendingJoinRequests: org.guildJoinRequests.length,
       },
-      guild: org.guildMemberships.map((m) => ({
-        ...m.user,
-        role: m.role,
-        joinedAt: m.createdAt,
-        invitedBy: m.invitedBy,
-        online: this.presence.isOnline(m.user.id),
-      })),
-      roster: org.memberships.map((m) => ({
-        ...m.user,
-        role: m.role,
-        isOwner: m.isOwner,
-        joinedAt: m.createdAt,
-        online: this.presence.isOnline(m.user.id),
-      })),
+      // One list, not two.
+      //
+      // Joining the roster also creates a guild seat, so the two lists were
+      // almost entirely the same people shown twice. Almost: someone already
+      // in another guild keeps it when they join this roster
+      // (OrgService.joinOrg), so they appear on the roster and NOT in the
+      // guild. Dropping the roster list outright would make that person
+      // invisible to an admin, so they are folded in here and flagged instead.
+      members: this.mergeMembers(org.guildMemberships, org.memberships),
       pendingRequests: org.guildJoinRequests.map((r) => ({
         id: r.id,
         requestedAt: r.createdAt,
@@ -413,6 +414,166 @@ export class AdminService {
         ...guild.map((m) => m.userId),
       ]),
     ];
+  }
+
+  /**
+   * The account an admin is about to act on, with the two refusals that apply
+   * to every one of these actions.
+   *
+   * An admin may not act on themselves (locking yourself out of the only
+   * account that can unlock anything is unrecoverable from inside the app),
+   * and may not act on another platform admin — admin-on-admin moderation
+   * belongs in the database, with someone who has server access, not in a
+   * list row behind one tap.
+   */
+  private async targetUser(adminUserId: string, userId: string) {
+    if (userId === adminUserId) {
+      throw new BadRequestException('You cannot do that to your own account');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        isPlatformAdmin: true,
+        blockedAt: true,
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.isPlatformAdmin) {
+      throw new ForbiddenException(
+        'Another platform admin cannot be blocked or deleted from here',
+      );
+    }
+    return user;
+  }
+
+  /**
+   * Block an account. Takes effect on the blocked user's next request, not
+   * when their token expires — JwtStrategy re-reads this column every time.
+   * tokenVersion is also bumped so any cached session is invalid immediately.
+   */
+  async blockUser(adminUserId: string, userId: string, dto: BlockUserDto) {
+    const user = await this.targetUser(adminUserId, userId);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        blockedAt: new Date(),
+        blockedReason: dto.reason?.trim() || null,
+        tokenVersion: { increment: 1 },
+      },
+      select: { id: true, name: true, email: true, blockedAt: true, blockedReason: true },
+    });
+    this.logger.warn(
+      `User ${updated.email} blocked by admin ${adminUserId}${
+        updated.blockedReason ? ` — ${updated.blockedReason}` : ''
+      }`,
+    );
+    return updated;
+  }
+
+  /** Lift a block. The account can sign in again from the next attempt. */
+  async unblockUser(adminUserId: string, userId: string) {
+    const user = await this.targetUser(adminUserId, userId);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { blockedAt: null, blockedReason: null },
+      select: { id: true, name: true, email: true, blockedAt: true },
+    });
+    this.logger.log(`User ${updated.email} unblocked by admin ${adminUserId}`);
+    return updated;
+  }
+
+  /**
+   * Delete an account outright. Everything owned by it cascades away with it;
+   * things merely authored by it (an announcement, an invite attribution)
+   * survive with a null author, which is why org history does not vanish when
+   * a member leaves the platform.
+   *
+   * Not recoverable from the app — only from a database backup.
+   */
+  async deleteUser(adminUserId: string, userId: string, dto: DeleteUserDto) {
+    const user = await this.targetUser(adminUserId, userId);
+    // Compared case-insensitively: emails are already stored lowercased, and
+    // an admin typing their own capitalisation should not be told they got it
+    // wrong. The guild-delete check is case-sensitive because two guilds may
+    // legitimately differ only by case; two accounts cannot.
+    if (dto.confirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+      throw new BadRequestException(
+        'Type the account email exactly as shown to confirm deletion',
+      );
+    }
+
+    const orgIds = await this.prisma.membership.findMany({
+      where: { userId: user.id },
+      select: { orgId: true },
+    });
+
+    await this.prisma.user.delete({ where: { id: user.id } });
+    this.logger.warn(
+      `User ${user.email} (${user.id}) deleted by admin ${adminUserId}`,
+    );
+
+    // Their old teammates' rosters just changed under them.
+    for (const { orgId } of orgIds) {
+      this.realtime.publish(orgId, 'members.changed');
+    }
+    return { id: user.id, name: user.name, email: user.email };
+  }
+
+  /**
+   * Guild seats and roster seats as one list, each row saying which seats it
+   * holds. Guild order is kept (that is the community everyone joins first);
+   * anyone holding only a roster seat is appended.
+   */
+  private mergeMembers(
+    guildMemberships: {
+      role: string;
+      createdAt: Date;
+      user: { id: string } & Record<string, unknown>;
+      invitedBy: { id: string; name: string; email: string } | null;
+    }[],
+    memberships: {
+      role: string | null;
+      isOwner: boolean;
+      createdAt: Date;
+      user: { id: string } & Record<string, unknown>;
+    }[],
+  ) {
+    const rosterByUser = new Map(memberships.map((m) => [m.user.id, m]));
+    const merged = guildMemberships.map((m) => {
+      const roster = rosterByUser.get(m.user.id);
+      rosterByUser.delete(m.user.id);
+      return {
+        ...m.user,
+        guildRole: m.role,
+        joinedAt: m.createdAt,
+        invitedBy: m.invitedBy,
+        onRoster: !!roster,
+        rosterRole: roster?.role ?? null,
+        isOwner: roster?.isOwner ?? false,
+        inGuild: true,
+        online: this.presence.isOnline(m.user.id),
+      };
+    });
+
+    for (const roster of rosterByUser.values()) {
+      merged.push({
+        ...roster.user,
+        guildRole: null as never,
+        joinedAt: roster.createdAt,
+        invitedBy: null,
+        onRoster: true,
+        rosterRole: roster.role,
+        isOwner: roster.isOwner,
+        // Flagged so the dashboard can say "on the roster but in another
+        // guild" rather than silently listing them as a guild member.
+        inGuild: false,
+        online: this.presence.isOnline(roster.user.id),
+      });
+    }
+    return merged;
   }
 
   /** Who currently holds platform admin — so a grant is never invisible. */

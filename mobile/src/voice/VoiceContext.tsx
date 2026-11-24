@@ -35,6 +35,10 @@ type VoiceContextValue = {
    * user just opened when a live call blocks team ↔ guild switch).
    */
   activationRoom: VoiceRoomKind | null;
+  /** 1-on-1 peer id from the live activation (for reopening DirectVoice). */
+  activationPeerId: string | null;
+  /** 1-on-1 peer display name from the live activation. */
+  activationPeerName: string | null;
   /** Whether the voice screen is currently focused (user is looking at it). */
   isScreenFocused: boolean;
   /** Activate a voice session with the given config. */
@@ -48,6 +52,8 @@ type VoiceContextValue = {
 const VoiceContext = createContext<VoiceContextValue>({
   controller: null,
   activationRoom: null,
+  activationPeerId: null,
+  activationPeerName: null,
   isScreenFocused: false,
   activate: () => {},
   deactivate: () => {},
@@ -226,12 +232,22 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const activationRoom = activation ? (activation.room ?? 'team') : null;
+  const activationPeerId =
+    activation?.mode === 'hosted' && activation.peerId
+      ? activation.peerId
+      : null;
+  const activationPeerName =
+    activation?.mode === 'hosted' && activation.peerName
+      ? activation.peerName
+      : null;
 
   return (
     <VoiceContext.Provider
       value={{
         controller,
         activationRoom,
+        activationPeerId,
+        activationPeerName,
         isScreenFocused,
         activate,
         deactivate,

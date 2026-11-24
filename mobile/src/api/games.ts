@@ -114,6 +114,10 @@ export type ChessPublicState = {
 
 export const CHESS_FILES = 'abcdefgh';
 
+/** Mid-game taunts. Closed set — the server rejects anything else. */
+export const GAME_REACTIONS = ['angry', 'loser', 'laughing', 'cool'] as const;
+export type GameReaction = (typeof GAME_REACTIONS)[number];
+
 export function chessIndexToSquare(index: number): string {
   return `${CHESS_FILES[index % 8]}${8 - Math.floor(index / 8)}`;
 }

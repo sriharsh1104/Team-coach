@@ -65,6 +65,14 @@ model User {
   // trusting the token it was issued with.
   isPlatformAdmin Boolean @default(false)
 
+  // Set by a platform admin to lock an account out. Checked in
+  // JwtStrategy.validate on every single request, so a block takes effect on
+  // the blocked user's next action rather than whenever their token happens
+  // to expire. Nullable rather than a boolean so the list can show *when* —
+  // "blocked" with no date is an argument waiting to happen.
+  blockedAt     DateTime?
+  blockedReason String?
+
   // Opt-in, admin-granted: 1-on-1 voice outside any org. Both people need
   // it before a call between them is possible (VoiceService.resolveRoom), so
   // granting it to one person alone exposes nothing. Set from /admin or
@@ -119,6 +127,8 @@ model User {
   chatClears         ChatClear[]
   chatPins           ChatPin[]
   chatReminders      ChatReminder[]
+  chatNicknamesGiven    ChatNickname[] @relation("ChatNicknamesGiven")
+  chatNicknamesReceived ChatNickname[] @relation("ChatNicknamesReceived")
   scrimEvents        ScrimEvent[]
   statExtractions    StatExtraction[]
   playerStats        PlayerStat[]
@@ -241,6 +251,7 @@ model Org {
   chatStars          ChatStar[]
   chatClears         ChatClear[]
   chatReminders      ChatReminder[]
+  chatNicknames      ChatNickname[]
   scrimEvents        ScrimEvent[]
   statExtractions    StatExtraction[]
   playerStats        PlayerStat[]
@@ -393,6 +404,9 @@ model ChatMessage {
   mediaType  MediaType?
   createdAt  DateTime      @default(now())
   editedAt   DateTime?
+  // Soft "delete for everyone" — row stays so replies don't break; clients
+  // render "This message has been deleted" when set.
+  deletedAt  DateTime?
   // WhatsApp-style reply — null for top-level messages.
   replyToId  String?
   replyTo    ChatMessage?  @relation("ChatReplies", fields: [replyToId], references: [id], onDelete: SetNull)
@@ -411,6 +425,25 @@ model ChatMessage {
 
   @@index([orgId, channelKey, createdAt])
   @@index([replyToId])
+}
+
+// Personal alias for another org member — only the viewer sees it (DM title,
+// sender labels). Others keep the real name.
+model ChatNickname {
+  id           String   @id @default(cuid())
+  userId       String
+  orgId        String
+  targetUserId String
+  nickname     String   @db.VarChar(32)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user   User @relation("ChatNicknamesGiven", fields: [userId], references: [id], onDelete: Cascade)
+  target User @relation("ChatNicknamesReceived", fields: [targetUserId], references: [id], onDelete: Cascade)
+  org    Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId, targetUserId])
+  @@index([userId, orgId])
 }
 
 // Per-user mute for a channel — muted channels skip push notifications.

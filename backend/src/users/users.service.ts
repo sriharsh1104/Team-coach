@@ -12,7 +12,7 @@ import { MediaStorageService } from '../media/media-storage.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { SetPushTokenDto } from './dto/set-push-token.dto';
-import { mergePushToken } from '../common/push-tokens';
+import { mergePushToken, removePushToken } from '../common/push-tokens';
 
 const PROFILE_SELECT = {
   id: true,
@@ -293,6 +293,11 @@ export class UsersService {
   }
 
   async setPushToken(userId: string, dto: SetPushTokenDto) {
+    // Expo tokens are per install/device. If another account still has this
+    // token (e.g. logout never cleared it), strip it so the previous user
+    // stops pushing to this phone after an account switch.
+    await this.claimPushToken(userId, dto.token);
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { expoPushToken: true },
@@ -303,6 +308,39 @@ export class UsersService {
       where: { id: userId },
       data: { expoPushToken: mergePushToken(user?.expoPushToken, dto.token) },
     });
+  }
+
+  /**
+   * Drop this device's Expo token from the signed-in user. Called on logout
+   * so the next account on the same phone is not haunted by leftover pushes.
+   */
+  async clearPushToken(userId: string, dto: SetPushTokenDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { expoPushToken: true },
+    });
+    if (!user?.expoPushToken) return;
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { expoPushToken: removePushToken(user.expoPushToken, dto.token) },
+    });
+  }
+
+  /** Remove `token` from every user except `keepUserId`. */
+  private async claimPushToken(keepUserId: string, token: string) {
+    const others = await this.prisma.user.findMany({
+      where: {
+        id: { not: keepUserId },
+        expoPushToken: { contains: token },
+      },
+      select: { id: true, expoPushToken: true },
+    });
+    for (const u of others) {
+      await this.prisma.user.update({
+        where: { id: u.id },
+        data: { expoPushToken: removePushToken(u.expoPushToken, token) },
+      });
+    }
   }
 
   async getMemberProfile(requesterId: string, targetUserId: string) {

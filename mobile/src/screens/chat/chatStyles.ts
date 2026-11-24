@@ -191,6 +191,12 @@ export const chatStyles = (c: ThemeColors) => ({
     marginBottom: 2,
   },
   forwardedLabelMine: { color: c.textDim },
+  deletedLabel: {
+    fontSize: 13,
+    color: c.textMuted,
+    fontStyle: 'italic' as const,
+  },
+  deletedLabelMine: { color: c.textMuted },
   voiceUploading: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
