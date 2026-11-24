@@ -154,9 +154,11 @@ class LiveStreamerModule : Module() {
  *   `?streamid=<key>` from the stream-key field.
  */
 internal fun joinIngestEndpoint(baseRaw: String, keyRaw: String): String? {
-  val base = baseRaw.trim().trimEnd('/')
-  val key = keyRaw.trim()
+  // Paste often brings newlines / spaces — those cause Kick/YouTube EOF.
+  val key = keyRaw.trim().replace("\\s+".toRegex(), "").trimStart('/')
+  var base = baseRaw.trim().replace("\\s+".toRegex(), "").trimEnd('/')
   if (base.isEmpty()) return null
+  base = normalizeIngestBase(base)
   return when {
     base.startsWith("srt://", ignoreCase = true) -> {
       if (Regex("""(?i)streamid=[^&]+""").containsMatchIn(base)) {
@@ -170,8 +172,57 @@ internal fun joinIngestEndpoint(baseRaw: String, keyRaw: String): String? {
     }
     base.startsWith("rtmp://", ignoreCase = true) ||
       base.startsWith("rtmps://", ignoreCase = true) -> {
-      if (key.isEmpty()) null else "$base/$key"
+      if (key.isEmpty()) return null
+      // Avoid …/app/<key>/<key> when the URL already ends with the stream key.
+      if (base.endsWith("/$key")) base else "$base/$key"
     }
     else -> null
   }
+}
+
+/**
+ * YouTube → RTMPS:443. Kick/IVS → RTMPS:443 + `/app` path (not `/live`).
+ */
+internal fun normalizeIngestBase(base: String): String {
+  val youtube =
+    base.contains("youtube.com", ignoreCase = true) ||
+      base.contains("youtu.be", ignoreCase = true) ||
+      base.contains("rtmp.youtube", ignoreCase = true)
+  val kick =
+    base.contains("live-video.net", ignoreCase = true) ||
+      base.contains("kick.com", ignoreCase = true)
+
+  var out = base
+  if (youtube || kick) {
+    if (out.startsWith("rtmp://", ignoreCase = true)) {
+      out = "rtmps://" + out.substring(7)
+    }
+  }
+  if (!out.startsWith("rtmps://", ignoreCase = true)) return out.trimEnd('/')
+
+  val rest = out.substring("rtmps://".length)
+  val hostPort = rest.substringBefore('/')
+  var path = rest.substringAfter('/', missingDelimiterValue = "")
+  val hostWithPort =
+    if (hostPort.contains(':')) hostPort else "$hostPort:443"
+
+  if (kick) {
+    // Dashboard sometimes omits /app or shows a legacy /live path.
+    when {
+      path.isEmpty() || path.equals("live", ignoreCase = true) -> path = "app"
+      path.equals("app", ignoreCase = true) -> Unit
+      path.startsWith("app/", ignoreCase = true) -> Unit
+      else -> {
+        // e.g. bare host path junk → force app
+        if (!path.contains('/')) path = "app"
+      }
+    }
+  } else if (youtube && path.isEmpty()) {
+    path = "live2"
+  }
+
+  out =
+    if (path.isEmpty()) "rtmps://$hostWithPort"
+    else "rtmps://$hostWithPort/$path"
+  return out.trimEnd('/')
 }

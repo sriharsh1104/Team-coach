@@ -27,8 +27,9 @@ export const LIVE_PLATFORMS: Array<{
   {
     id: 'youtube',
     label: 'YouTube',
-    defaultUrl: 'rtmp://a.rtmp.youtube.com/live2',
-    urlHint: 'YouTube Stream URL',
+    // RTMPS :443 — plain rtmp:// often sits on “Starting…” forever on mobile.
+    defaultUrl: 'rtmps://a.rtmp.youtube.com:443/live2',
+    urlHint: 'YouTube Stream URL (use RTMPS)',
     keyHint: 'YouTube Stream Key',
   },
   {

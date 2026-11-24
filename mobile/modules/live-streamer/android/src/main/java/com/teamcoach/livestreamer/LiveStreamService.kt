@@ -20,7 +20,9 @@ import android.util.Log
 import android.view.Surface
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
+import com.pedro.common.AudioCodec
 import com.pedro.common.ConnectChecker
+import com.pedro.common.VideoCodec
 import com.pedro.encoder.input.sources.OrientationForced
 import com.pedro.encoder.input.sources.audio.AudioSource
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
@@ -32,6 +34,8 @@ import com.pedro.library.base.StreamBase
 import com.pedro.library.generic.GenericStream
 import com.pedro.library.multiple.MultiStream
 import com.pedro.library.multiple.MultiType
+import com.pedro.library.util.streamclient.GenericStreamClient
+import com.pedro.library.util.streamclient.RtmpStreamClient
 import com.pedro.library.view.GlStreamInterface
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -148,6 +152,8 @@ class LiveStreamService : Service() {
       override fun onConnectionSuccess() {
         val first = successCount.getAndIncrement() == 0
         Log.i(TAG, "connected[$index] (first=$first)")
+        // YouTube needs an early IDR or Studio sits on “Starting…” with no preview.
+        bumpKeyframes()
         if (first) {
           LiveBridge.resolveStart()
           val manager = getSystemService(NotificationManager::class.java)
@@ -158,13 +164,12 @@ class LiveStreamService : Service() {
       override fun onConnectionFailed(reason: String) {
         val fails = failCount.incrementAndGet()
         Log.e(TAG, "connection failed[$index]: $reason")
+        val nice = friendlyIngestError(reason)
         // Keep going if at least one destination is up; only hard-fail when none connected.
         if (successCount.get() == 0 && fails >= totalTargets) {
-          fail(reason.ifBlank { "Connection to ingest failed" })
+          fail(nice)
         } else if (successCount.get() > 0) {
-          LiveBridge.emitSoftError(
-            "One platform failed to connect: ${reason.ifBlank { "unknown error" }}",
-          )
+          LiveBridge.emitSoftError("One platform failed to connect: $nice")
         }
       }
 
@@ -279,7 +284,9 @@ class LiveStreamService : Service() {
   }
 
   private fun configureGl(gl: GlStreamInterface) {
-    gl.setForceRender(true, 15)
+    // Match encode FPS so YouTube keeps receiving frames even if the
+    // screen is static (menus / pause screens).
+    gl.setForceRender(true, VIDEO_FPS)
     // Fit the whole phone screen into the 16:9 encoder (black bars on the
     // sides when the phone is portrait). Fill would crop top/bottom.
     gl.setAspectRatioMode(AspectRatioMode.Adjust)
@@ -300,6 +307,69 @@ class LiveStreamService : Service() {
     )
   }
 
+  private fun configureCodecs(s: StreamBase) {
+    try {
+      s.setVideoCodec(VideoCodec.H264)
+      s.setAudioCodec(AudioCodec.AAC)
+    } catch (err: Exception) {
+      Log.w(TAG, "set codecs", err)
+    }
+  }
+
+  /**
+   * forceIncrementalTs helps YouTube; Kick/IVS often closes with
+   * "EOF while 1 bytes expected" if it is forced on every RTMP destination.
+   */
+  private fun configureRtmpClient(client: Any?, endpointUrl: String) {
+    val youtube =
+      endpointUrl.contains("youtube", ignoreCase = true) ||
+        endpointUrl.contains("rtmp.youtube", ignoreCase = true)
+    when (client) {
+      is GenericStreamClient -> {
+        client.setReTries(15)
+        if (youtube) client.forceIncrementalTs(true)
+      }
+      is RtmpStreamClient -> {
+        client.setReTries(15)
+        if (youtube) client.forceIncrementalTs(true)
+      }
+    }
+  }
+
+  private fun friendlyIngestError(reason: String): String {
+    val r = reason.lowercase()
+    return if (
+      r.contains("eof") ||
+      r.contains("1 bytes") ||
+      r.contains("1 byte") ||
+      r.contains("connection reset") ||
+      r.contains("broken pipe")
+    ) {
+      "Server closed ingest (EOF) — re-copy Stream URL + Key from the dashboard. Kick URL must end with /app."
+    } else {
+      reason.ifBlank { "Connection to ingest failed" }
+    }
+  }
+
+  private fun bumpKeyframes() {
+    try {
+      stream?.requestKeyframe()
+    } catch (_: Exception) {
+    }
+    main.postDelayed({
+      try {
+        stream?.requestKeyframe()
+      } catch (_: Exception) {
+      }
+    }, 800)
+    main.postDelayed({
+      try {
+        stream?.requestKeyframe()
+      } catch (_: Exception) {
+      }
+    }, 2500)
+  }
+
   /** Current display rotation in degrees (0 / 90 / 180 / 270). */
   private fun displayRotationDegrees(): Int {
     val window = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -316,7 +386,9 @@ class LiveStreamService : Service() {
   private fun startSingle(url: String, proj: MediaProjection, size: Size) {
     val checker = makeChecker(0)
     val generic = GenericStream(applicationContext, checker, NoVideoSource(), MicrophoneSource())
+    configureCodecs(generic)
     configureGl(generic.getGlInterface())
+    configureRtmpClient(generic.getStreamClient(), url)
     val prepared = generic.prepareVideo(
       size.width,
       size.height,
@@ -337,7 +409,9 @@ class LiveStreamService : Service() {
     generic.changeAudioSource(audio)
     stream = generic
     try {
+      Log.i(TAG, "startStream single $url")
       generic.startStream(url)
+      bumpKeyframes()
     } catch (err: Exception) {
       Log.e(TAG, "startStream failed", err)
       fail(err.message ?: "Could not connect to ingest")
@@ -369,6 +443,7 @@ class LiveStreamService : Service() {
       NoVideoSource(),
       MicrophoneSource(),
     )
+    configureCodecs(multi)
     configureGl(multi.getGlInterface())
     val prepared = multi.prepareVideo(
       size.width,
@@ -394,6 +469,17 @@ class LiveStreamService : Service() {
         srtUrls.mapIndexed { i, u -> LiveEndpoint(u, MultiType.SRT, i) }
     liveEndpoints.forEach { ep ->
       try {
+        if (ep.type == MultiType.RTMP) {
+          configureRtmpClient(
+            multi.getStreamClient(MultiType.RTMP, ep.typeIndex),
+            ep.url,
+          )
+        } else {
+          try {
+            multi.getStreamClient(ep.type, ep.typeIndex).setReTries(15)
+          } catch (_: Exception) {
+          }
+        }
         Log.i(TAG, "startStream ${ep.type}[${ep.typeIndex}] ${ep.url}")
         multi.startStream(ep.type, ep.typeIndex, ep.url)
       } catch (err: Exception) {
@@ -401,6 +487,7 @@ class LiveStreamService : Service() {
         makeChecker(0).onConnectionFailed(err.message ?: "Could not connect")
       }
     }
+    bumpKeyframes()
   }
 
   private fun stopAllClients(s: MultiStream) {
@@ -576,10 +663,11 @@ class LiveStreamService : Service() {
      */
     private const val OUTPUT_WIDTH = 1280
     private const val OUTPUT_HEIGHT = 720
-    private const val VIDEO_BITRATE = 4_500_000
+    /** ~3 Mbps @ 720p30 — stable on typical Indian mobile upload; raise later. */
+    private const val VIDEO_BITRATE = 3_000_000
     private const val VIDEO_FPS = 30
     private const val KEYFRAME_INTERVAL_SEC = 2
-    private const val AUDIO_SAMPLE_RATE = 48_000
+    private const val AUDIO_SAMPLE_RATE = 44_100
     private const val AUDIO_BITRATE = 128_000
   }
 }
