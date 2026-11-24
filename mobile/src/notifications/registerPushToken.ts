@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import * as usersApi from '../api/users';
 import * as chatApi from '../api/chat';
 import { getActiveChatChannel } from './activeChatChannel';
+import { getToken } from '../storage/tokenStorage';
 
 const CHAT_REPLY_CATEGORY = 'chat_reply';
 const CHAT_REPLY_ACTION = 'REPLY';
@@ -24,6 +25,12 @@ export async function registerPushTokenWithBackend() {
 
 async function doRegister() {
   try {
+    // `ensureAppStateReregister` below attaches one AppState listener for the
+    // life of the app process — it outlives logout entirely, so without this
+    // check every later foreground (including ones after sign-out) tried to
+    // PATCH the push token with no valid session and surfaced as an
+    // "Unauthorized" toast.
+    if (!(await getToken())) return;
     // require (not dynamic import) — Metro/tsc module settings vary across CI.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Notifications = require('expo-notifications') as typeof import('expo-notifications');

@@ -682,7 +682,6 @@ function MemberGroup({
           <View style={styles.rowMain}>
             <Text style={styles.rosterName} numberOfLines={1}>
               {m.name}
-              {m.inGameName ? ` · ${m.inGameName}` : ''}
             </Text>
             <Text style={styles.rosterMeta} numberOfLines={1}>
               {seatLabel(m)} · {m.email}
@@ -778,7 +777,6 @@ function VoiceTab({
               <View style={styles.rowMain}>
                 <Text style={styles.rosterName} numberOfLines={1}>
                   {u.name}
-                  {u.inGameName ? ` · ${u.inGameName}` : ''}
                 </Text>
                 <Text style={styles.rosterMeta} numberOfLines={1}>
                   {u.email}

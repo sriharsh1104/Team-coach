@@ -25,10 +25,12 @@ import com.pedro.encoder.input.sources.audio.MicrophoneSource
 import com.pedro.encoder.input.sources.audio.MixAudioSource
 import com.pedro.encoder.input.sources.video.NoVideoSource
 import com.pedro.encoder.input.sources.video.ScreenSource
+import com.pedro.encoder.utils.gl.AspectRatioMode
 import com.pedro.library.base.StreamBase
 import com.pedro.library.generic.GenericStream
 import com.pedro.library.multiple.MultiStream
 import com.pedro.library.multiple.MultiType
+import com.pedro.library.view.GlStreamInterface
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -253,7 +255,11 @@ class LiveStreamService : Service() {
       it.acquire(14_400_000L) // 4 hours
     }
 
-    val size = captureSize()
+    // Always publish a 16:9 landscape frame. Portrait phone screens are
+    // letterboxed into it (AspectRatioMode.Adjust) so YouTube Studio's
+    // landscape canvas fills instead of showing a tiny vertical strip.
+    val size = outputSize()
+    Log.i(TAG, "encoding ${size.width}x${size.height} (screen=${screenSize()})")
     try {
       if (urls.size == 1) {
         startSingle(urls[0], proj, size)
@@ -266,10 +272,17 @@ class LiveStreamService : Service() {
     }
   }
 
+  private fun configureGl(gl: GlStreamInterface) {
+    gl.setForceRender(true, 15)
+    // Fit the whole phone screen into the 16:9 encoder (black bars on the
+    // sides when the phone is portrait). Fill would crop top/bottom.
+    gl.setAspectRatioMode(AspectRatioMode.Adjust)
+  }
+
   private fun startSingle(url: String, proj: MediaProjection, size: Size) {
     val checker = makeChecker(0)
     val generic = GenericStream(applicationContext, checker, NoVideoSource(), MicrophoneSource())
-    generic.getGlInterface().setForceRender(true, 15)
+    configureGl(generic.glInterface)
     val prepared = generic.prepareVideo(
       size.width,
       size.height,
@@ -308,7 +321,7 @@ class LiveStreamService : Service() {
       NoVideoSource(),
       MicrophoneSource(),
     )
-    multi.getGlInterface().setForceRender(true, 15)
+    configureGl(multi.glInterface)
     val prepared = multi.prepareVideo(
       size.width,
       size.height,
@@ -449,24 +462,24 @@ class LiveStreamService : Service() {
 
   private data class Size(val width: Int, val height: Int)
 
-  private fun captureSize(): Size {
+  /** Current phone display size (for logs / future adaptive encoding). */
+  private fun screenSize(): Size {
     val metrics = DisplayMetrics()
     val window = getSystemService(WINDOW_SERVICE) as WindowManager
     @Suppress("DEPRECATION")
     window.defaultDisplay.getRealMetrics(metrics)
     var width = metrics.widthPixels
     var height = metrics.heightPixels
-    val longEdge = maxOf(width, height)
-    val cap = 1280
-    if (longEdge > cap) {
-      val scale = cap.toFloat() / longEdge.toFloat()
-      width = (width.toFloat() * scale).toInt()
-      height = (height.toFloat() * scale).toInt()
-    }
     if (width % 2 != 0) width -= 1
     if (height % 2 != 0) height -= 1
     return Size(maxOf(2, width), maxOf(2, height))
   }
+
+  /**
+   * YouTube / Twitch / Kick expect a landscape 16:9 ingest. Always encode
+   * 1280×720; portrait screens are letterboxed by [configureGl].
+   */
+  private fun outputSize(): Size = Size(OUTPUT_WIDTH, OUTPUT_HEIGHT)
 
   companion object {
     const val ACTION_START = "com.teamcoach.livestreamer.START"
@@ -479,5 +492,8 @@ class LiveStreamService : Service() {
     private const val NOTIF_ID = 4412
     private const val CHANNEL = "sacred-go-live"
     private const val TAG = "LiveStream"
+    /** 720p 16:9 — solid YouTube/Twitch ingest without overloading mid phones. */
+    private const val OUTPUT_WIDTH = 1280
+    private const val OUTPUT_HEIGHT = 720
   }
 }

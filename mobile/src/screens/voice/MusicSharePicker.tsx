@@ -69,13 +69,17 @@ export function MusicSharePicker({ visible, onClose, onPick }: Props) {
       // which surfaced as "throttled" and then "you are signed out".
       // Android 13+ needs the audio bucket named explicitly (READ_MEDIA_AUDIO);
       // asking without it comes back denied no matter what the user taps.
-      const audioOnly = { granularPermissions: ['audio' as const] };
+      // The granular-permissions arg IS the array itself, not an object
+      // wrapping it — passing `{ granularPermissions: [...] }` doesn't bridge
+      // to the native side's expected list and throws, which this whole
+      // function was swallowing into the generic "could not open" toast.
+      const audioOnly: MediaLibrary.GranularPermission[] = ['audio'];
       let granted = (
-        await MediaLibrary.getPermissionsAsync(false, audioOnly as never)
+        await MediaLibrary.getPermissionsAsync(false, audioOnly)
       ).granted;
       if (!granted) {
         granted = (
-          await MediaLibrary.requestPermissionsAsync(false, audioOnly as never)
+          await MediaLibrary.requestPermissionsAsync(false, audioOnly)
         ).granted;
       }
       if (!granted) {

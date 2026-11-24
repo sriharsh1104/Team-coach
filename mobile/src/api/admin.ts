@@ -67,15 +67,6 @@ export interface AdminMember {
   id: string;
   name: string;
   email: string;
-  inGameName: string | null;
-  inGameUid: string | null;
-  avatarUrl: string | null;
-  phone: string | null;
-  lastSeenAt: string | null;
-  createdAt: string;
-  emailVerified: boolean;
-  joinedAt: string;
-  online: boolean;
   /** Guild seat role, null when they only hold a roster seat. */
   guildRole: string | null;
   /** Roster seat role, null when they are guild-only. */
@@ -88,8 +79,6 @@ export interface AdminMember {
   /** 1-on-1 voice permission — admin-granted, needed on BOTH sides of a call. */
   canDirectVoice: boolean;
   isOwner: boolean;
-  /** Guild members only — who shared the code/invite that brought them in. */
-  invitedBy?: { id: string; name: string; email: string } | null;
 }
 
 export interface AdminOrgDetail {
@@ -122,9 +111,6 @@ export interface AdminDirectVoiceUser {
   id: string;
   name: string;
   email: string;
-  inGameName: string | null;
-  avatarUrl: string | null;
-  createdAt: string;
   /** A call needs both people in the SAME guild — null means they can call nobody. */
   guild: { id: string; name: string } | null;
 }

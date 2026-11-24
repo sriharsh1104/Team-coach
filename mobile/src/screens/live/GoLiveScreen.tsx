@@ -57,6 +57,7 @@ export function GoLiveScreen(_props: Props) {
   const [label, setLabel] = useState('');
   const [rtmpUrl, setRtmpUrl] = useState('');
   const [streamKey, setStreamKey] = useState('');
+  const [youtubeLiveUrl, setYoutubeLiveUrl] = useState('');
   const [title, setTitle] = useState('');
   const [bannerUri, setBannerUri] = useState<string | null>(null);
   const [loadingKeys, setLoadingKeys] = useState(true);
@@ -74,6 +75,7 @@ export function GoLiveScreen(_props: Props) {
     setLabel(p.label);
     setRtmpUrl(p.rtmpUrl);
     setStreamKey(p.streamKey);
+    setYoutubeLiveUrl(p.youtubeLiveUrl ?? '');
     setTitle(p.title);
     setBannerUri(p.bannerUri || null);
   }, []);
@@ -149,6 +151,8 @@ export function GoLiveScreen(_props: Props) {
       streamKey: streamKey.trim(),
       title: title.trim(),
       bannerUri: bannerUri ?? '',
+      youtubeLiveUrl:
+        editPlatform === 'youtube' ? youtubeLiveUrl.trim() : '',
     };
   }, [
     presetId,
@@ -158,6 +162,7 @@ export function GoLiveScreen(_props: Props) {
     streamKey,
     title,
     bannerUri,
+    youtubeLiveUrl,
     meta.label,
   ]);
 
@@ -239,6 +244,7 @@ export function GoLiveScreen(_props: Props) {
     const destinations: Array<{ rtmpUrl: string; streamKey: string }> = [];
     let overlayTitle = title.trim();
     let overlayBanner = bannerUri;
+    let overlayYoutubeLiveUrl = '';
 
     for (const platform of selected) {
       const [list, activeId] = await Promise.all([
@@ -259,6 +265,9 @@ export function GoLiveScreen(_props: Props) {
         rtmpUrl: preset.rtmpUrl.trim(),
         streamKey: preset.streamKey.trim(),
       });
+      if (platform === 'youtube' && preset.youtubeLiveUrl?.trim()) {
+        overlayYoutubeLiveUrl = preset.youtubeLiveUrl.trim();
+      }
       if (platform === selected[0]) {
         overlayTitle = preset.title?.trim() || overlayTitle;
         overlayBanner = preset.bannerUri || overlayBanner;
@@ -269,6 +278,7 @@ export function GoLiveScreen(_props: Props) {
       destinations,
       title: overlayTitle,
       bannerUri: overlayBanner,
+      youtubeLiveUrl: overlayYoutubeLiveUrl || null,
     });
   };
 
@@ -498,6 +508,28 @@ export function GoLiveScreen(_props: Props) {
           placeholder="Paste your stream key"
           placeholderTextColor={colors.textDim}
         />
+
+        {editPlatform === 'youtube' ? (
+          <>
+            <Text style={styles.label}>YouTube Live Watch URL (optional)</Text>
+            <TextInput
+              style={shared.input}
+              value={youtubeLiveUrl}
+              onChangeText={setYoutubeLiveUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!busy}
+              placeholder="https://youtube.com/watch?v=… or /live/…"
+              placeholderTextColor={colors.textDim}
+            />
+            <Text style={styles.help}>
+              After you go live in YouTube Studio, paste that live watch URL
+              here so viewer comments appear on your stream overlay (needs
+              YOUTUBE_DATA_API_KEY on the server). Team/Guild chat still shows
+              without this.
+            </Text>
+          </>
+        ) : null}
 
         <Text style={styles.help}>
           Save each platform once. At Go Live, every checked platform that has

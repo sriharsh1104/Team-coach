@@ -43,6 +43,7 @@ export type MainStackParamList = {
       }
     | undefined;
   TwoFactorSetup: undefined;
+  Permissions: undefined;
   MemberProfile: { userId: string; name: string };
   MediaFeed: undefined;
   Chat: { channelKey?: string } | undefined;

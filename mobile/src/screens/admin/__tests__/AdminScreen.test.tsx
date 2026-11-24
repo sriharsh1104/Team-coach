@@ -62,15 +62,6 @@ function member(
     id: 'u1',
     name: 'Rhea',
     email: 'rhea@example.com',
-    inGameName: 'SES-RHEA',
-    inGameUid: null,
-    avatarUrl: null,
-    phone: null,
-    lastSeenAt: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    emailVerified: true,
-    joinedAt: '2026-01-01T00:00:00.000Z',
-    online: false,
     guildRole: 'MEMBER',
     rosterRole: null,
     onRoster: false,
@@ -121,7 +112,7 @@ function orgDetail(): adminApi.AdminOrgDetail {
       pendingJoinRequests: 0,
     },
     members: [
-      member({ id: 'g1', name: 'Vik', inGameName: 'SES-VIK' }),
+      member({ id: 'g1', name: 'Vik' }),
       member({ isOwner: true, onRoster: true }),
     ],
     pendingRequests: [],
@@ -278,7 +269,7 @@ describe('AdminScreen', () => {
         pendingJoinRequests: 0,
       },
       members: [
-        member({ id: 'g1', name: 'Vik', inGameName: 'SES-VIK' }),
+        member({ id: 'g1', name: 'Vik' }),
         member({ isOwner: true, onRoster: true }),
       ],
       pendingRequests: [],
@@ -289,10 +280,10 @@ describe('AdminScreen', () => {
 
     const row = screen.getByLabelText('Alpha Squad, 4 roster members');
     await act(async () => fireEvent.press(row));
-    await waitFor(() => expect(screen.getByText(/SES-RHEA/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Vik')).toBeTruthy());
 
     await act(async () => fireEvent.press(row));
-    expect(screen.queryByText(/SES-RHEA/)).toBeNull();
+    expect(screen.queryByText('Vik')).toBeNull();
   });
 
   it('grants 1-on-1 voice from a member row and re-reads the guild afterwards', async () => {
@@ -332,7 +323,7 @@ describe('AdminScreen', () => {
 
     // Two people, two rows — the old build listed guild and roster separately
     // and showed the same person twice.
-    await waitFor(() => expect(screen.getByText(/SES-VIK/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Vik')).toBeTruthy());
     expect(screen.getByText(/Members \(2\)/)).toBeTruthy();
     expect(screen.queryByText(/^Roster \(/)).toBeNull();
   });

@@ -71,7 +71,14 @@ export function removeDevice(deviceId: string) {
 }
 
 export function setPushToken(token: string) {
-  return apiClient.patch('/users/me/push-token', { token });
+  // A background/foreground cycle re-registers this on its own (see
+  // registerPushToken.ts) — if one slips through right around logout, a 401
+  // here is expected, not something the user needs an "Unauthorized" toast
+  // about.
+  return apiClient.patch('/users/me/push-token', { token }, {
+    skipErrorToast: true,
+    skipLoader: true,
+  } as ApiRequestConfig);
 }
 
 /** Drop this device's Expo token from the signed-in user (logout). */

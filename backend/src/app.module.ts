@@ -21,6 +21,7 @@ import { WebsiteModule } from './website/website.module';
 import { MapsModule } from './maps/maps.module';
 import { GamesModule } from './games/games.module';
 import { PhoneVerifyModule } from './phone-verify/phone-verify.module';
+import { LiveModule } from './live/live.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { PhoneVerifyModule } from './phone-verify/phone-verify.module';
     MapsModule,
     GamesModule,
     PhoneVerifyModule,
+    LiveModule,
   ],
   controllers: [AppController, AppUpdateController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

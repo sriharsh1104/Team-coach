@@ -17,7 +17,6 @@ import {
 import { isBiometricAvailable, promptBiometricAuth } from '../auth/biometrics';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
-import { PermissionsSection } from './PermissionsSection';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
 import { BookStage, useBookTabs } from '../ui/BookTabs';
@@ -330,7 +329,18 @@ export function AccountSettingsScreen({ navigation }: Props) {
           }
         </BookStage>
 
-        <PermissionsSection />
+        <Text style={styles.sectionLabel}>Permissions</Text>
+        <Text style={styles.lead}>
+          Camera, microphone, photos and more — see what&apos;s on, and turn
+          on anything you said no to.
+        </Text>
+        <SoftPressable
+          style={styles.primaryBtn}
+          onPress={() => navigation.navigate('Permissions')}
+          pressScale={0.98}
+        >
+          <ButtonLabel icon="settings">Manage Permissions</ButtonLabel>
+        </SoftPressable>
       </ScrollView>
     </Screen>
   );

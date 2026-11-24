@@ -28,6 +28,8 @@ export type LiveStartOpts = {
   destinations: Array<{ rtmpUrl: string; streamKey: string }>;
   title?: string;
   bannerUri?: string | null;
+  /** YouTube watch/live URL or video id — pulls public Live Chat onto overlay. */
+  youtubeLiveUrl?: string | null;
 };
 
 type LiveCtx = {
@@ -37,6 +39,7 @@ type LiveCtx = {
   starting: boolean;
   title: string;
   bannerUri: string | null;
+  youtubeLiveUrl: string | null;
   startLive: (opts: LiveStartOpts) => Promise<boolean>;
   stopLive: () => Promise<void>;
   pauseLive: () => Promise<void>;
@@ -50,6 +53,7 @@ const LiveContext = createContext<LiveCtx>({
   starting: false,
   title: '',
   bannerUri: null,
+  youtubeLiveUrl: null,
   startLive: async () => false,
   stopLive: async () => undefined,
   pauseLive: async () => undefined,
@@ -63,6 +67,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [title, setTitle] = useState('');
   const [bannerUri, setBannerUri] = useState<string | null>(null);
+  const [youtubeLiveUrl, setYoutubeLiveUrl] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startEpochRef = useRef(0);
   const pausedAccumRef = useRef(0);
@@ -109,6 +114,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       setElapsedSec(0);
       setTitle('');
       setBannerUri(null);
+      setYoutubeLiveUrl(null);
       if (error) emitToast(error);
     });
     const unsubErr = addLiveErrorListener((message) => {
@@ -147,6 +153,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
         setStarting(false);
         setTitle('');
         setBannerUri(null);
+        setYoutubeLiveUrl(null);
       }
     });
     return () => sub.remove();
@@ -170,6 +177,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       setStarting(true);
       setTitle((opts.title ?? '').trim());
       setBannerUri(opts.bannerUri?.trim() || null);
+      setYoutubeLiveUrl(opts.youtubeLiveUrl?.trim() || null);
       try {
         const result = await startLiveStream({
           destinations: opts.destinations,
@@ -207,6 +215,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     setElapsedSec(0);
     setTitle('');
     setBannerUri(null);
+    setYoutubeLiveUrl(null);
   }, [clearTimer]);
 
   const pauseLive = useCallback(async () => {
@@ -242,6 +251,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
         starting,
         title,
         bannerUri,
+        youtubeLiveUrl,
         startLive,
         stopLive,
         pauseLive,

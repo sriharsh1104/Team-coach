@@ -217,16 +217,13 @@ export class AdminService {
       id: true,
       name: true,
       email: true,
-      inGameName: true,
-      inGameUid: true,
-      avatarUrl: true,
-      phone: true,
-      lastSeenAt: true,
-      createdAt: true,
-      emailVerified: true,
       // So the admin can grant 1-on-1 voice from the member row itself,
       // rather than copying an email into a separate form.
       canDirectVoice: true,
+      // Needed only for the org-wide "active in last 24h" count below —
+      // stripped back out per-member in mergeMembers() before it reaches
+      // the member list the admin actually sees.
+      lastSeenAt: true,
     } as const;
 
     const org = await this.prisma.org.findUnique({
@@ -262,7 +259,6 @@ export class AdminService {
             role: true,
             createdAt: true,
             user: { select: memberUserSelect },
-            invitedBy: { select: { id: true, name: true, email: true } },
           },
         },
         guildJoinRequests: {
@@ -532,7 +528,6 @@ export class AdminService {
       role: string;
       createdAt: Date;
       user: { id: string } & Record<string, unknown>;
-      invitedBy: { id: string; name: string; email: string } | null;
     }[],
     memberships: {
       role: string | null;
@@ -541,36 +536,36 @@ export class AdminService {
       user: { id: string } & Record<string, unknown>;
     }[],
   ) {
+    // lastSeenAt rides along in memberUserSelect purely for the org-wide
+    // "active in last 24h" count computed before this runs — drop it here so
+    // it never reaches the member list itself.
+    const dropLastSeen = ({ lastSeenAt: _lastSeenAt, ...rest }: Record<string, unknown>) =>
+      rest;
+
     const rosterByUser = new Map(memberships.map((m) => [m.user.id, m]));
     const merged = guildMemberships.map((m) => {
       const roster = rosterByUser.get(m.user.id);
       rosterByUser.delete(m.user.id);
       return {
-        ...m.user,
+        ...dropLastSeen(m.user),
         guildRole: m.role,
-        joinedAt: m.createdAt,
-        invitedBy: m.invitedBy,
         onRoster: !!roster,
         rosterRole: roster?.role ?? null,
         isOwner: roster?.isOwner ?? false,
         inGuild: true,
-        online: this.presence.isOnline(m.user.id),
       };
     });
 
     for (const roster of rosterByUser.values()) {
       merged.push({
-        ...roster.user,
+        ...dropLastSeen(roster.user),
         guildRole: null as never,
-        joinedAt: roster.createdAt,
-        invitedBy: null,
         onRoster: true,
         rosterRole: roster.role,
         isOwner: roster.isOwner,
         // Flagged so the dashboard can say "on the roster but in another
         // guild" rather than silently listing them as a guild member.
         inGuild: false,
-        online: this.presence.isOnline(roster.user.id),
       });
     }
     return merged;
@@ -602,9 +597,6 @@ export class AdminService {
         id: true,
         name: true,
         email: true,
-        inGameName: true,
-        avatarUrl: true,
-        createdAt: true,
         guildMemberships: {
           take: 1,
           select: { org: { select: { id: true, name: true } } },

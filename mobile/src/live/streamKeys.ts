@@ -10,6 +10,11 @@ export type StreamPreset = {
   streamKey: string;
   title: string;
   bannerUri: string;
+  /**
+   * YouTube only — watch/live URL or video id so Go Live can pull public
+   * YouTube Live Chat onto the on-screen overlay (needs YOUTUBE_DATA_API_KEY).
+   */
+  youtubeLiveUrl?: string;
 };
 
 export const LIVE_PLATFORMS: Array<{
@@ -145,6 +150,7 @@ async function migrateLegacyPresets(): Promise<StreamPreset[]> {
       streamKey,
       title,
       bannerUri,
+      youtubeLiveUrl: '',
     });
   }
   await saveAllPresets(seeded);
@@ -262,6 +268,7 @@ export async function deletePreset(id: string): Promise<StreamPreset[]> {
       streamKey: '',
       title: '',
       bannerUri: '',
+      youtubeLiveUrl: '',
     });
   }
   await saveAllPresets(next);
@@ -282,5 +289,6 @@ export function createBlankPreset(
     streamKey: '',
     title: '',
     bannerUri: '',
+    youtubeLiveUrl: '',
   };
 }

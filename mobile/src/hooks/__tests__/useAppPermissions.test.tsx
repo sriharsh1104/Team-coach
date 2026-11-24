@@ -92,10 +92,14 @@ describe('useAppPermissions', () => {
   it('asks Android for the audio bucket by name', async () => {
     render(<FirstLaunch />);
 
+    // The granular-permissions arg IS the array itself (matches the real
+    // expo-media-library signature) — a previous version of this test
+    // asserted the wrong shape (`{ granularPermissions: [...] }`), which is
+    // exactly the bug that made every music-permission call throw.
     await waitFor(() =>
       expect(mockedMedia.requestPermissionsAsync).toHaveBeenCalledWith(
         false,
-        expect.objectContaining({ granularPermissions: ['audio'] }),
+        ['audio'],
       ),
     );
   });

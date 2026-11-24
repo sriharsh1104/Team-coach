@@ -26,6 +26,7 @@ import { GuildScreen } from '../screens/GuildScreen';
 import { OrgSettingsScreen } from '../screens/OrgSettingsScreen';
 import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
 import { TwoFactorSetupScreen } from '../screens/TwoFactorSetupScreen';
+import { PermissionsScreen } from '../screens/PermissionsScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MemberProfileScreen } from '../screens/profile/MemberProfileScreen';
 import { ChatScreenWithMedia } from '../screens/chat/ChatScreenWithMedia';
@@ -289,6 +290,11 @@ export function RootNavigator() {
               }))}
             />
             <MainStack.Screen
+              name="Permissions"
+              component={PermissionsScreen}
+              options={detailOptions(() => ({ title: 'Permissions' }))}
+            />
+            <MainStack.Screen
               name="MemberProfile"
               component={MemberProfileScreen}
               options={detailOptions(({ route }) => ({
@@ -347,6 +353,11 @@ export function RootNavigator() {
               options={detailOptions(() => ({
                 title: 'Two-Factor Authentication',
               }))}
+            />
+            <MainStack.Screen
+              name="Permissions"
+              component={PermissionsScreen}
+              options={detailOptions(() => ({ title: 'Permissions' }))}
             />
             <MainStack.Screen
               name="Chat"
@@ -494,6 +505,11 @@ export function RootNavigator() {
               options={detailOptions(() => ({
                 title: 'Two-Factor Authentication',
               }))}
+            />
+            <MainStack.Screen
+              name="Permissions"
+              component={PermissionsScreen}
+              options={detailOptions(() => ({ title: 'Permissions' }))}
             />
             <MainStack.Screen
               name="MemberProfile"

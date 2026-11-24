@@ -81,9 +81,12 @@ async function markAsked(): Promise<void> {
 
 /**
  * Android 13+ needs the audio bucket named explicitly; on older Android and
- * on iOS this argument is ignored.
+ * on iOS this argument is ignored. This is the array itself — wrapping it in
+ * `{ granularPermissions: [...] }` doesn't bridge to the native side's
+ * expected list and throws, which every call site here was swallowing into
+ * `unknown`/`denied` rather than ever actually granting audio access.
  */
-const AUDIO_GRANULAR = { granularPermissions: ['audio' as const] };
+const AUDIO_GRANULAR: MediaLibrary.GranularPermission[] = ['audio'];
 
 function toState(granted: boolean | undefined): PermissionState {
   if (granted === undefined) return 'unknown';
@@ -105,7 +108,7 @@ async function checkOne(permission: AppPermission): Promise<PermissionState> {
         );
       case 'music':
         return toState(
-          (await MediaLibrary.getPermissionsAsync(false, AUDIO_GRANULAR as never))
+          (await MediaLibrary.getPermissionsAsync(false, AUDIO_GRANULAR))
             .granted,
         );
     }
@@ -132,12 +135,8 @@ async function requestOne(permission: AppPermission): Promise<PermissionState> {
         );
       case 'music':
         return toState(
-          (
-            await MediaLibrary.requestPermissionsAsync(
-              false,
-              AUDIO_GRANULAR as never,
-            )
-          ).granted,
+          (await MediaLibrary.requestPermissionsAsync(false, AUDIO_GRANULAR))
+            .granted,
         );
     }
   } catch {

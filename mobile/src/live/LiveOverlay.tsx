@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Image,
@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as chatApi from '../api/chat';
+import * as liveApi from '../api/live';
 import { ChatMessage } from '../api/types';
 import { getToken } from '../storage/tokenStorage';
 import { useLive } from './LiveContext';
@@ -36,15 +37,44 @@ function commentBody(m: ChatMessage): string | null {
  * and screen-capture picks up the same overlay for viewers.
  */
 export function LiveOverlay() {
-  const { live, paused, title, bannerUri } = useLive();
+  const { live, paused, title, bannerUri, youtubeLiveUrl } = useLive();
   const insets = useSafeAreaInsets();
   const [comments, setComments] = useState<FloatingComment[]>([]);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const seenYtIdsRef = useRef<Set<string>>(new Set());
+
+  const pushComment = useCallback((id: string, name: string, body: string) => {
+    const opacity = new Animated.Value(0);
+    const entry: FloatingComment = { id, name, body, opacity };
+    setComments((prev) => {
+      const next = [...prev, entry];
+      return next.length > MAX_COMMENTS ? next.slice(-MAX_COMMENTS) : next;
+    });
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+
+    const timer = setTimeout(() => {
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 320,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        setComments((prev) => prev.filter((c) => c.id !== id));
+        timersRef.current.delete(id);
+      });
+    }, COMMENT_TTL_MS);
+    timersRef.current.set(id, timer);
+  }, []);
 
   useEffect(() => {
     if (!live) {
       for (const t of timersRef.current.values()) clearTimeout(t);
       timersRef.current.clear();
+      seenYtIdsRef.current.clear();
       setComments([]);
       return;
     }
@@ -72,35 +102,7 @@ export function LiveOverlay() {
       const body = commentBody(message);
       if (!body) return;
       const id = message.id || `${Date.now()}-${Math.random()}`;
-      const opacity = new Animated.Value(0);
-      const entry: FloatingComment = {
-        id,
-        name: message.senderName?.trim() || 'Member',
-        body,
-        opacity,
-      };
-      setComments((prev) => {
-        const next = [...prev, entry];
-        return next.length > MAX_COMMENTS ? next.slice(-MAX_COMMENTS) : next;
-      });
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: true,
-      }).start();
-
-      const timer = setTimeout(() => {
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 320,
-          useNativeDriver: true,
-        }).start(({ finished }) => {
-          if (!finished) return;
-          setComments((prev) => prev.filter((c) => c.id !== id));
-          timersRef.current.delete(id);
-        });
-      }, COMMENT_TTL_MS);
-      timersRef.current.set(id, timer);
+      pushComment(id, message.senderName?.trim() || 'Member', body);
     });
 
     return () => {
@@ -110,7 +112,59 @@ export function LiveOverlay() {
       timersRef.current.clear();
       socket?.off('connect', onConnect);
     };
-  }, [live]);
+  }, [live, pushComment]);
+
+  // YouTube Live Chat (public) — optional; needs YOUTUBE_DATA_API_KEY + watch URL.
+  useEffect(() => {
+    if (!live || !youtubeLiveUrl?.trim()) return;
+
+    let cancelled = false;
+    let pageToken: string | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let primed = false;
+    const seen = seenYtIdsRef.current;
+
+    const poll = async () => {
+      try {
+        const page = await liveApi.fetchYoutubeLiveChat(
+          youtubeLiveUrl.trim(),
+          pageToken,
+        );
+        if (cancelled) return;
+        pageToken = page.nextPageToken;
+        for (const c of page.comments) {
+          if (seen.has(c.id)) continue;
+          seen.add(c.id);
+          // Cap memory for long streams.
+          if (seen.size > 400) {
+            const drop = [...seen].slice(0, seen.size - 300);
+            for (const id of drop) seen.delete(id);
+          }
+          // First page is history catch-up — don't flood the overlay.
+          if (primed) {
+            pushComment(`yt:${c.id}`, c.author, c.text);
+          }
+        }
+        primed = true;
+        const delay = page.pollingIntervalMs || 5000;
+        timer = setTimeout(() => {
+          void poll();
+        }, delay);
+      } catch {
+        if (cancelled) return;
+        // Soft-fail: Team/Guild chat still works; retry in a bit.
+        timer = setTimeout(() => {
+          void poll();
+        }, 8000);
+      }
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [live, youtubeLiveUrl, pushComment]);
 
   if (!live) return null;
 
