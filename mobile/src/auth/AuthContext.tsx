@@ -26,6 +26,7 @@ import {
   registerPushTokenWithBackend,
   unregisterPushTokenFromBackend,
 } from '../notifications/registerPushToken';
+import { setLiveCredentialsOwner } from '../live/streamKeys';
 import { emitToast } from '../ui/toastBus';
 
 // Narrow check for "the server rejected this token" vs. any other failure
@@ -311,6 +312,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOrgState(me.org);
     setGuildState(me.guild);
   }, []);
+
+  // Go Live URL/keys stay on-device per account: logout → next email sees
+  // empty; same user back → their saved presets return.
+  useEffect(() => {
+    setLiveCredentialsOwner(user?.id ?? null);
+  }, [user?.id]);
 
   // Backup for missed SSE: if an admin granted 1-on-1 voice while the app
   // was backgrounded, the next foreground pass re-reads canDirectVoice so

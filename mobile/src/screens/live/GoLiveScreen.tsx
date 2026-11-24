@@ -32,11 +32,23 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { AppIcon } from '../../ui/AppIcon';
+import { SecretField } from '../../ui/SecretField';
 import { emitToast } from '../../ui/toastBus';
 import { confirmAsync } from '../../ui/confirmAsync';
 import { useSharedStyles } from '../shared';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'GoLive'>;
+
+/** RTMP needs URL+key; SRT needs streamid in URL (or URL + key → streamid). */
+function presetHasIngest(p: { rtmpUrl?: string; streamKey?: string } | null | undefined): boolean {
+  const url = p?.rtmpUrl?.trim() ?? '';
+  const key = p?.streamKey?.trim() ?? '';
+  if (!url) return false;
+  if (/^srt:\/\//i.test(url)) {
+    return /streamid=[^&]+/i.test(url) || !!key;
+  }
+  return !!key;
+}
 
 /**
  * Go Live: save YouTube / Twitch / Kick title, banner, stream URL + key.
@@ -255,7 +267,7 @@ export function GoLiveScreen(_props: Props) {
         (platform === editPlatform ? buildCurrent() : null) ||
         list.find((p) => p.id === activeId) ||
         list[0];
-      if (!preset?.rtmpUrl?.trim() || !preset?.streamKey?.trim()) {
+      if (!presetHasIngest(preset)) {
         const name =
           LIVE_PLATFORMS.find((p) => p.id === platform)?.label ?? platform;
         emitToast(`Add stream URL + key for ${name} (or uncheck it)`);
@@ -302,7 +314,7 @@ export function GoLiveScreen(_props: Props) {
     !starting &&
     !loadingKeys &&
     (selected.includes(editPlatform)
-      ? !!(rtmpUrl.trim() && streamKey.trim())
+      ? presetHasIngest({ rtmpUrl, streamKey })
       : true);
 
   return (
@@ -485,28 +497,23 @@ export function GoLiveScreen(_props: Props) {
         </View>
 
         <Text style={styles.label}>{meta.urlHint}</Text>
-        <TextInput
-          style={shared.input}
+        <SecretField
           value={rtmpUrl}
           onChangeText={setRtmpUrl}
-          autoCapitalize="none"
-          autoCorrect={false}
           editable={!busy}
           placeholder={meta.defaultUrl || 'rtmps://…'}
-          placeholderTextColor={colors.textDim}
+          accessibilityLabelShow="Show stream URL"
+          accessibilityLabelHide="Hide stream URL"
         />
 
         <Text style={styles.label}>{meta.keyHint}</Text>
-        <TextInput
-          style={shared.input}
+        <SecretField
           value={streamKey}
           onChangeText={setStreamKey}
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry
           editable={!busy}
           placeholder="Paste your stream key"
-          placeholderTextColor={colors.textDim}
+          accessibilityLabelShow="Show stream key"
+          accessibilityLabelHide="Hide stream key"
         />
 
         {editPlatform === 'youtube' ? (
@@ -533,8 +540,9 @@ export function GoLiveScreen(_props: Props) {
 
         <Text style={styles.help}>
           Save each platform once. At Go Live, every checked platform that has
-          a URL + key receives the same screen. Pause mutes audio; End stops
-          all destinations.
+          a URL + key receives the same screen. Kick accepts RTMPS or SRT
+          (paste the full srt://… URL from the dashboard). Pause mutes audio;
+          End stops all destinations.
         </Text>
 
         {live ? (

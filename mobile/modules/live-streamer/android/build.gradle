@@ -30,7 +30,7 @@ configurations.configureEach {
 
 dependencies {
   implementation "androidx.core:core:1.13.1"
-  // RootEncoder 2.5.2: MediaProjection + MixAudioSource (mic + game) → RTMP(S).
+  // RootEncoder 2.5.2: MediaProjection + MixAudioSource (mic + game) → RTMP(S)/SRT.
   // Chosen over StreamPack for built-in mic/internal mix; pinned for Kotlin 1.9.
   implementation "com.github.pedroSG94.RootEncoder:library:2.5.2"
 }

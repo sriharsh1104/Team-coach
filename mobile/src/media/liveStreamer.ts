@@ -46,7 +46,14 @@ export function startLiveStream(options: {
       url: d.rtmpUrl.trim(),
       key: d.streamKey.trim(),
     }))
-    .filter((d) => d.url && d.key);
+    .filter((d) => {
+      if (!d.url) return false;
+      // SRT (Kick/IVS): streamid may already be in the URL; key optional then.
+      if (/^srt:\/\//i.test(d.url)) {
+        return /streamid=[^&]+/i.test(d.url) || !!d.key;
+      }
+      return !!d.key;
+    });
   if (payload.length === 0) {
     return Promise.reject(new Error('Pick at least one platform with URL + stream key'));
   }

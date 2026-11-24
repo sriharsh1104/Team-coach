@@ -17,9 +17,11 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.Surface
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.pedro.common.ConnectChecker
+import com.pedro.encoder.input.sources.OrientationForced
 import com.pedro.encoder.input.sources.audio.AudioSource
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
 import com.pedro.encoder.input.sources.audio.MixAudioSource
@@ -36,10 +38,12 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Foreground live stream: screen (MediaProjection) + mic mixed with game/
- * media playback audio → one or more RTMP(S) ingest endpoints
- * (YouTube / Twitch / Kick, alone or together).
+ * media playback audio → one or more RTMP(S) / SRT ingest endpoints
+ * (YouTube / Twitch / Kick, alone or together). Kick may use srt://.
  */
 class LiveStreamService : Service() {
+  private data class LiveEndpoint(val url: String, val type: MultiType, val typeIndex: Int)
+
   private val main = Handler(Looper.getMainLooper())
   private var projection: MediaProjection? = null
   private var stream: StreamBase? = null
@@ -47,6 +51,7 @@ class LiveStreamService : Service() {
   private val stopping = AtomicBoolean(false)
   private val videoBitrateBeforePause = AtomicInteger(2_500_000)
   private var endpoints: List<String> = emptyList()
+  private var liveEndpoints: List<LiveEndpoint> = emptyList()
   private val successCount = AtomicInteger(0)
   private val failCount = AtomicInteger(0)
   private var totalTargets = 1
@@ -77,7 +82,7 @@ class LiveStreamService : Service() {
     try {
       setAudioMuted(s, true)
       try {
-        videoBitrateBeforePause.set(2_500_000)
+        videoBitrateBeforePause.set(VIDEO_BITRATE)
         s.setVideoBitrateOnFly(50_000)
       } catch (_: Exception) {
       }
@@ -98,7 +103,7 @@ class LiveStreamService : Service() {
     try {
       setAudioMuted(s, false)
       try {
-        val bitrate = videoBitrateBeforePause.get().takeIf { it > 0 } ?: 2_500_000
+        val bitrate = videoBitrateBeforePause.get().takeIf { it > 0 } ?: VIDEO_BITRATE
         s.setVideoBitrateOnFly(bitrate)
       } catch (_: Exception) {
       }
@@ -227,6 +232,7 @@ class LiveStreamService : Service() {
       return
     }
     endpoints = urls
+    liveEndpoints = emptyList()
     totalTargets = urls.size
     successCount.set(0)
     failCount.set(0)
@@ -277,23 +283,51 @@ class LiveStreamService : Service() {
     // Fit the whole phone screen into the 16:9 encoder (black bars on the
     // sides when the phone is portrait). Fill would crop top/bottom.
     gl.setAspectRatioMode(AspectRatioMode.Adjust)
+    // Kotlin maps get/setAutoHandleOrientation → property (calling the
+    // Java setter by name is an unresolved reference).
+    // Follow real display rotation so landscape games stay upright —
+    // forcing LANDSCAPE previously double-rotated the capture.
+    gl.autoHandleOrientation = true
+    gl.forceOrientation(OrientationForced.NONE)
+    val screen = screenSize()
+    val portrait = screen.height > screen.width
+    gl.setIsPortrait(portrait)
+    gl.setStreamRotation(0)
+    gl.setRotation(0)
+    Log.i(
+      TAG,
+      "gl orient auto (portrait=$portrait display=${displayRotationDegrees()}° screen=${screen.width}x${screen.height})",
+    )
+  }
+
+  /** Current display rotation in degrees (0 / 90 / 180 / 270). */
+  private fun displayRotationDegrees(): Int {
+    val window = getSystemService(WINDOW_SERVICE) as WindowManager
+    @Suppress("DEPRECATION")
+    return when (window.defaultDisplay.rotation) {
+      Surface.ROTATION_0 -> 0
+      Surface.ROTATION_90 -> 90
+      Surface.ROTATION_180 -> 180
+      Surface.ROTATION_270 -> 270
+      else -> 0
+    }
   }
 
   private fun startSingle(url: String, proj: MediaProjection, size: Size) {
     val checker = makeChecker(0)
     val generic = GenericStream(applicationContext, checker, NoVideoSource(), MicrophoneSource())
-    configureGl(generic.glInterface)
+    configureGl(generic.getGlInterface())
     val prepared = generic.prepareVideo(
       size.width,
       size.height,
-      bitrate = 2_500_000,
-      fps = 30,
-      iFrameInterval = 2,
+      bitrate = VIDEO_BITRATE,
+      fps = VIDEO_FPS,
+      iFrameInterval = KEYFRAME_INTERVAL_SEC,
       rotation = 0,
     ) && generic.prepareAudio(
-      sampleRate = 44_100,
+      sampleRate = AUDIO_SAMPLE_RATE,
       isStereo = true,
-      bitrate = 128_000,
+      bitrate = AUDIO_BITRATE,
       echoCanceler = true,
       noiseSuppressor = true,
     )
@@ -311,28 +345,42 @@ class LiveStreamService : Service() {
   }
 
   private fun startMulti(urls: List<String>, proj: MediaProjection, size: Size) {
-    val checkers = Array(urls.size) { i -> makeChecker(i) }
+    // MultiStream indexes are per-protocol (RTMP slot 0 ≠ SRT slot 0).
+    val rtmpUrls = ArrayList<String>()
+    val srtUrls = ArrayList<String>()
+    val rtmpCheckers = ArrayList<ConnectChecker>()
+    val srtCheckers = ArrayList<ConnectChecker>()
+    var global = 0
+    for (url in urls) {
+      if (url.startsWith("srt://", ignoreCase = true)) {
+        srtCheckers.add(makeChecker(global++))
+        srtUrls.add(url)
+      } else {
+        rtmpCheckers.add(makeChecker(global++))
+        rtmpUrls.add(url)
+      }
+    }
     val multi = MultiStream(
       applicationContext,
-      checkers,
+      rtmpCheckers.takeIf { it.isNotEmpty() }?.toTypedArray(),
       null,
-      null,
+      srtCheckers.takeIf { it.isNotEmpty() }?.toTypedArray(),
       null,
       NoVideoSource(),
       MicrophoneSource(),
     )
-    configureGl(multi.glInterface)
+    configureGl(multi.getGlInterface())
     val prepared = multi.prepareVideo(
       size.width,
       size.height,
-      bitrate = 2_500_000,
-      fps = 30,
-      iFrameInterval = 2,
+      bitrate = VIDEO_BITRATE,
+      fps = VIDEO_FPS,
+      iFrameInterval = KEYFRAME_INTERVAL_SEC,
       rotation = 0,
     ) && multi.prepareAudio(
-      sampleRate = 44_100,
+      sampleRate = AUDIO_SAMPLE_RATE,
       isStereo = true,
-      bitrate = 128_000,
+      bitrate = AUDIO_BITRATE,
       echoCanceler = true,
       noiseSuppressor = true,
     )
@@ -341,12 +389,32 @@ class LiveStreamService : Service() {
     multi.changeVideoSource(video)
     multi.changeAudioSource(audio)
     stream = multi
-    urls.forEachIndexed { index, url ->
+    liveEndpoints =
+      rtmpUrls.mapIndexed { i, u -> LiveEndpoint(u, MultiType.RTMP, i) } +
+        srtUrls.mapIndexed { i, u -> LiveEndpoint(u, MultiType.SRT, i) }
+    liveEndpoints.forEach { ep ->
       try {
-        multi.startStream(MultiType.RTMP, index, url)
+        Log.i(TAG, "startStream ${ep.type}[${ep.typeIndex}] ${ep.url}")
+        multi.startStream(ep.type, ep.typeIndex, ep.url)
       } catch (err: Exception) {
-        Log.e(TAG, "startStream[$index] failed", err)
-        makeChecker(index).onConnectionFailed(err.message ?: "Could not connect")
+        Log.e(TAG, "startStream ${ep.type}[${ep.typeIndex}] failed", err)
+        makeChecker(0).onConnectionFailed(err.message ?: "Could not connect")
+      }
+    }
+  }
+
+  private fun stopAllClients(s: MultiStream) {
+    val targets = liveEndpoints.ifEmpty {
+      endpoints.mapIndexed { i, url ->
+        val type =
+          if (url.startsWith("srt://", ignoreCase = true)) MultiType.SRT else MultiType.RTMP
+        LiveEndpoint(url, type, i)
+      }
+    }
+    targets.forEach { ep ->
+      try {
+        s.stopStream(ep.type, ep.typeIndex)
+      } catch (_: Exception) {
       }
     }
   }
@@ -355,14 +423,7 @@ class LiveStreamService : Service() {
     if (!stopping.compareAndSet(false, true)) return
     try {
       when (val s = stream) {
-        is MultiStream -> {
-          endpoints.indices.forEach { i ->
-            try {
-              s.stopStream(MultiType.RTMP, i)
-            } catch (_: Exception) {
-            }
-          }
-        }
+        is MultiStream -> stopAllClients(s)
         else -> s?.stopStream()
       }
     } catch (_: Exception) {
@@ -380,6 +441,7 @@ class LiveStreamService : Service() {
     wakeLock?.let { if (it.isHeld) it.release() }
     wakeLock = null
     endpoints = emptyList()
+    liveEndpoints = emptyList()
     LiveBridge.deliverStopped()
     val manager = getSystemService(NotificationManager::class.java)
     manager.cancel(NOTIF_ID)
@@ -397,14 +459,7 @@ class LiveStreamService : Service() {
     stopping.set(true)
     try {
       when (val s = stream) {
-        is MultiStream -> {
-          endpoints.indices.forEach { i ->
-            try {
-              s.stopStream(MultiType.RTMP, i)
-            } catch (_: Exception) {
-            }
-          }
-        }
+        is MultiStream -> stopAllClients(s)
         else -> s?.stopStream()
       }
     } catch (_: Exception) {
@@ -422,6 +477,7 @@ class LiveStreamService : Service() {
     wakeLock?.let { if (it.isHeld) it.release() }
     wakeLock = null
     endpoints = emptyList()
+    liveEndpoints = emptyList()
     LiveBridge.deliverFailed(message)
     val manager = getSystemService(NotificationManager::class.java)
     manager.cancel(NOTIF_ID)
@@ -476,10 +532,27 @@ class LiveStreamService : Service() {
   }
 
   /**
-   * YouTube / Twitch / Kick expect a landscape 16:9 ingest. Always encode
-   * 1280×720; portrait screens are letterboxed by [configureGl].
+   * YouTube expects landscape. If the phone is already landscape (Free Fire
+   * etc.), encode that aspect scaled to ≤1280 wide — matching capture avoids
+   * the sideways / "teda" rotation. Portrait phones still get a 1280×720
+   * canvas with letterboxing via [configureGl].
    */
-  private fun outputSize(): Size = Size(OUTPUT_WIDTH, OUTPUT_HEIGHT)
+  private fun outputSize(): Size {
+    val screen = screenSize()
+    if (screen.width >= screen.height) {
+      var w = screen.width
+      var h = screen.height
+      if (w > OUTPUT_WIDTH) {
+        val scale = OUTPUT_WIDTH.toFloat() / w.toFloat()
+        w = OUTPUT_WIDTH
+        h = (h.toFloat() * scale).toInt()
+      }
+      if (w % 2 != 0) w -= 1
+      if (h % 2 != 0) h -= 1
+      return Size(maxOf(2, w), maxOf(2, h))
+    }
+    return Size(OUTPUT_WIDTH, OUTPUT_HEIGHT)
+  }
 
   companion object {
     const val ACTION_START = "com.teamcoach.livestreamer.START"
@@ -492,8 +565,21 @@ class LiveStreamService : Service() {
     private const val NOTIF_ID = 4412
     private const val CHANNEL = "sacred-go-live"
     private const val TAG = "LiveStream"
-    /** 720p 16:9 — solid YouTube/Twitch ingest without overloading mid phones. */
+    /**
+     * Encode quality (shared by YouTube / Twitch / Kick).
+     *
+     * Kick max: 1920×1080 @ 60fps, ≤8000 kbps, H.264 CBR, keyframe 2s,
+     * audio stereo ≤48 kHz. Phone-safe defaults below — raise carefully:
+     * - 1080p: OUTPUT_WIDTH=1920, OUTPUT_HEIGHT=1080, VIDEO_BITRATE≈5_500_000
+     * - 60fps: VIDEO_FPS=60, VIDEO_BITRATE≈5_000_000+ (needs strong upload)
+     * Upload rule of thumb: ≥2× video bitrate (4.5 Mbps → ~9 Mbps up).
+     */
     private const val OUTPUT_WIDTH = 1280
     private const val OUTPUT_HEIGHT = 720
+    private const val VIDEO_BITRATE = 4_500_000
+    private const val VIDEO_FPS = 30
+    private const val KEYFRAME_INTERVAL_SEC = 2
+    private const val AUDIO_SAMPLE_RATE = 48_000
+    private const val AUDIO_BITRATE = 128_000
   }
 }

@@ -30,8 +30,9 @@ class LiveStreamerModule : Module() {
     }
 
     /**
-     * destinationsJson: JSON array of { "url": "rtmp…", "key": "…" } (1–3 items).
+     * destinationsJson: JSON array of { "url": "rtmp…|srt…", "key": "…" } (1–3 items).
      * Same screen capture is published to every destination at once.
+     * RTMP(S): url + / + key. SRT (Kick/IVS): streamid in URL, or key → ?streamid=.
      */
     AsyncFunction("start") { destinationsJson: String, promise: Promise ->
       if (LiveBridge.live.get()) {
@@ -48,17 +49,22 @@ class LiveStreamerModule : Module() {
         val arr = JSONArray(destinationsJson)
         for (i in 0 until arr.length()) {
           val obj = arr.getJSONObject(i)
-          val base = obj.optString("url", "").trim().trimEnd('/')
+          val base = obj.optString("url", "").trim()
           val key = obj.optString("key", "").trim()
-          if (base.isEmpty() || key.isEmpty()) continue
-          if (!base.startsWith("rtmp://", ignoreCase = true) &&
-            !base.startsWith("rtmps://", ignoreCase = true)
-          ) {
-            LiveBridge.starting.set(false)
-            promise.reject("BAD_ARGS", "URL must start with rtmp:// or rtmps://", null)
-            return@AsyncFunction
+          val joined = joinIngestEndpoint(base, key)
+          if (joined == null) {
+            if (base.isNotEmpty()) {
+              LiveBridge.starting.set(false)
+              promise.reject(
+                "BAD_ARGS",
+                "URL must be rtmp(s):// or srt:// (SRT needs streamid in URL or a stream key)",
+                null,
+              )
+              return@AsyncFunction
+            }
+            continue
           }
-          endpoints.add("$base/$key")
+          endpoints.add(joined)
         }
       } catch (err: Exception) {
         LiveBridge.starting.set(false)
@@ -137,5 +143,35 @@ class LiveStreamerModule : Module() {
       )
       promise.resolve(null)
     }
+  }
+}
+
+/**
+ * Build the final ingest URL the encoder connects to.
+ * - RTMP(S): `base/key`
+ * - SRT: Kick/IVS style — `streamid` (and optional `passphrase`) live in the URL.
+ *   If the dashboard URL already has `streamid=…`, use it as-is; otherwise append
+ *   `?streamid=<key>` from the stream-key field.
+ */
+internal fun joinIngestEndpoint(baseRaw: String, keyRaw: String): String? {
+  val base = baseRaw.trim().trimEnd('/')
+  val key = keyRaw.trim()
+  if (base.isEmpty()) return null
+  return when {
+    base.startsWith("srt://", ignoreCase = true) -> {
+      if (Regex("""(?i)streamid=[^&]+""").containsMatchIn(base)) {
+        base
+      } else if (key.isNotEmpty()) {
+        val sep = if (base.contains('?')) '&' else '?'
+        "$base${sep}streamid=${android.net.Uri.encode(key)}"
+      } else {
+        null
+      }
+    }
+    base.startsWith("rtmp://", ignoreCase = true) ||
+      base.startsWith("rtmps://", ignoreCase = true) -> {
+      if (key.isEmpty()) null else "$base/$key"
+    }
+    else -> null
   }
 }

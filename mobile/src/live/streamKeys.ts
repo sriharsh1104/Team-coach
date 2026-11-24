@@ -41,9 +41,13 @@ export const LIVE_PLATFORMS: Array<{
   {
     id: 'kick',
     label: 'Kick',
-    defaultUrl: '',
-    urlHint: 'Paste Server URL from Kick dashboard',
-    keyHint: 'Kick Stream Key',
+    // Official Kick RTMPS ingest (Creator Dashboard → Stream URL and Key).
+    // Must keep the /app path; we append the stream key after it.
+    // Or paste Kick’s SRT URL (srt://….srt.live-video.net:9000?streamid=…&passphrase=…)
+    // — if streamid is already in the URL, the key field can stay empty.
+    defaultUrl: 'rtmps://fa723fc1b171.global-contribute.live-video.net:443/app',
+    urlHint: 'Kick Server URL (RTMPS or SRT)',
+    keyHint: 'Kick Stream Key (optional if SRT URL has streamid)',
   },
 ];
 
@@ -55,23 +59,84 @@ const PRESETS_KEY = 'sacred.live.presets.v1';
 const ACTIVE_ID_KEY = 'sacred.live.activePresetId.';
 const SELECTED_PLATFORMS_KEY = 'sacred.live.selectedPlatforms';
 
+/** Signed-in user — Go Live credentials are stored per account on this device. */
+let ownerUserId: string | null = null;
+
+/**
+ * Bind SecureStore reads/writes to this account. Call with `null` on logout so
+ * the next account does not see these keys; call again on login to restore
+ * that user's previously saved presets on this phone.
+ */
+export function setLiveCredentialsOwner(userId: string | null): void {
+  ownerUserId = userId?.trim() || null;
+}
+
+export function getLiveCredentialsOwner(): string | null {
+  return ownerUserId;
+}
+
 function secureStore() {
   if (Platform.OS === 'web') return null;
   return require('expo-secure-store') as typeof import('expo-secure-store');
 }
 
-async function loadString(key: string, fallback = ''): Promise<string> {
+/** Per-user SecureStore key, or null when logged out. */
+function scoped(base: string): string | null {
+  if (!ownerUserId) return null;
+  return `${base}.u.${ownerUserId}`;
+}
+
+async function loadString(base: string, fallback = ''): Promise<string> {
+  const key = scoped(base);
+  if (!key) return fallback;
   const store = secureStore();
   if (!store) return fallback;
   return (await store.getItemAsync(key)) ?? fallback;
 }
 
-async function saveString(key: string, value: string): Promise<void> {
+async function saveString(base: string, value: string): Promise<void> {
+  const key = scoped(base);
+  if (!key) return;
   const store = secureStore();
   if (!store) return;
   const trimmed = value.trim();
   if (!trimmed) await store.deleteItemAsync(key);
   else await store.setItemAsync(key, trimmed);
+}
+
+/**
+ * One-time: move pre-account-scoped keys into the current user's namespace,
+ * then delete the shared keys so another login on this phone cannot see them.
+ */
+async function claimLegacyUnscopedKeys(): Promise<void> {
+  const store = secureStore();
+  if (!store || !ownerUserId) return;
+  const destPresets = scoped(PRESETS_KEY)!;
+  if (await store.getItemAsync(destPresets)) return;
+
+  const legacyBases = [
+    PRESETS_KEY,
+    SELECTED_PLATFORMS_KEY,
+    ...LIVE_PLATFORMS.flatMap((p) => [
+      KEY_PREFIX + p.id,
+      URL_PREFIX + p.id,
+      TITLE_PREFIX + p.id,
+      BANNER_PREFIX + p.id,
+      ACTIVE_ID_KEY + p.id,
+    ]),
+  ];
+
+  let moved = false;
+  for (const base of legacyBases) {
+    const legacy = await store.getItemAsync(base);
+    if (legacy == null) continue;
+    await store.setItemAsync(scoped(base)!, legacy);
+    await store.deleteItemAsync(base);
+    moved = true;
+  }
+  if (moved) {
+    // no-op log surface — kept quiet for production
+  }
 }
 
 function newPresetId(): string {
@@ -141,7 +206,6 @@ async function migrateLegacyPresets(): Promise<StreamPreset[]> {
       loadStreamTitle(p.id),
       loadStreamBannerUri(p.id),
     ]);
-    // Always seed a default slot so the dropdown has something to select.
     seeded.push({
       id: newPresetId(),
       label: defaultPresetLabel(p.id),
@@ -157,7 +221,26 @@ async function migrateLegacyPresets(): Promise<StreamPreset[]> {
   return seeded;
 }
 
+function emptySeedPresets(): StreamPreset[] {
+  return LIVE_PLATFORMS.map((p) => ({
+    id: newPresetId(),
+    label: defaultPresetLabel(p.id),
+    platform: p.id,
+    rtmpUrl: p.defaultUrl,
+    streamKey: '',
+    title: '',
+    bannerUri: '',
+    youtubeLiveUrl: '',
+  }));
+}
+
+/**
+ * Device SecureStore, scoped to the signed-in user.
+ * Logout → other account sees empty defaults; same user back → their keys return.
+ */
 export async function loadAllPresets(): Promise<StreamPreset[]> {
+  if (!ownerUserId) return emptySeedPresets();
+  await claimLegacyUnscopedKeys();
   const raw = await loadString(PRESETS_KEY);
   if (!raw) return migrateLegacyPresets();
   try {
@@ -176,9 +259,11 @@ export async function loadAllPresets(): Promise<StreamPreset[]> {
 }
 
 export async function saveAllPresets(presets: StreamPreset[]): Promise<void> {
+  const key = scoped(PRESETS_KEY);
+  if (!key) return;
   const store = secureStore();
   if (!store) return;
-  await store.setItemAsync(PRESETS_KEY, JSON.stringify(presets));
+  await store.setItemAsync(key, JSON.stringify(presets));
 }
 
 export async function loadPresetsForPlatform(
@@ -257,7 +342,6 @@ export async function deletePreset(id: string): Promise<StreamPreset[]> {
   const all = await loadAllPresets();
   const target = all.find((p) => p.id === id);
   const next = all.filter((p) => p.id !== id);
-  // Keep at least one empty slot per platform.
   if (target && !next.some((p) => p.platform === target.platform)) {
     const meta = LIVE_PLATFORMS.find((p) => p.id === target.platform)!;
     next.push({
