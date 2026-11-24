@@ -56,6 +56,8 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   room:create {game, maxPlayers}  → RoomView
  *   room:join {roomId}              → RoomView
  *   room:leave                      → { ok }
+ *   room:spectate {roomId}          → RoomView   (Chess / Ludo only, once the match is live)
+ *   room:unspectate                 → { ok }
  *   room:start {roomId}             → RoomView
  *   room:rematch {roomId}           → RoomView
  *   room:members                    → [{ userId, name, avatarUrl }] (invite pool)
@@ -69,7 +71,7 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   boots:place-random {roomId}
  *   boots:clear {roomId}
  *   boots:ready {roomId}
- *   boots:fire {roomId, target}     → RoomView
+ *   boots:fire {roomId, target, targetId?} → RoomView   (targetId required with 3+ live opponents)
  *   uno:play {roomId, cardId, color?} → RoomView
  *   uno:color {roomId, color}       → RoomView
  *   uno:draw {roomId}               → RoomView
@@ -288,6 +290,29 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
       const current = this.games.roomOf(data.userId);
       this.games.leaveRoom(data.userId);
       if (current) await this.leaveSocketsOf(data.userId, current.id);
+      return null;
+    });
+  }
+
+  @SubscribeMessage('room:spectate')
+  onSpectate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) => {
+      if (!body?.roomId) throw new Error('roomId is required');
+      return this.games.spectateRoom(body.roomId, data.orgId, {
+        userId: data.userId,
+        name: data.userName,
+        avatarUrl: data.avatarUrl,
+      });
+    });
+  }
+
+  @SubscribeMessage('room:unspectate')
+  onUnspectate(@ConnectedSocket() client: Socket) {
+    return this.run(client, (data) => {
+      this.games.unspectateRoom(data.userId);
       return null;
     });
   }
@@ -617,13 +642,15 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
   @SubscribeMessage('boots:fire')
   onBootsFire(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { roomId?: string; target?: unknown },
+    @MessageBody()
+    body: { roomId?: string; target?: unknown; targetId?: string },
   ) {
     return this.run(client, (data) =>
       this.games.bootsFire(
         this.roomIdOf(body, data),
         data.userId,
         body?.target,
+        body?.targetId,
       ),
     );
   }

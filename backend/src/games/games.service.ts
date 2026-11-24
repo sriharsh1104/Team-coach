@@ -71,13 +71,24 @@ export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno' | 'chess';
 
 export const GAME_CATALOG: Record<
   GameKind,
-  { title: string; minPlayers: number; maxPlayers: number }
+  {
+    title: string;
+    minPlayers: number;
+    maxPlayers: number;
+    /**
+     * Whether a non-player can watch a live match. Only true for games with
+     * no hidden information — Boots (ship positions) and Uno (hands) would
+     * leak a player's private state to anyone who "watched", so they stay
+     * players-only.
+     */
+    spectatable: boolean;
+  }
 > = {
-  rps: { title: 'Stone Paper Scissors', minPlayers: 2, maxPlayers: 2 },
-  ludo: { title: 'Ludo', minPlayers: 2, maxPlayers: 4 },
-  boots: { title: 'Boots', minPlayers: 2, maxPlayers: 2 },
-  uno: { title: 'Uno', minPlayers: 2, maxPlayers: 6 },
-  chess: { title: 'Chess', minPlayers: 2, maxPlayers: 2 },
+  rps: { title: 'Stone Paper Scissors', minPlayers: 2, maxPlayers: 2, spectatable: false },
+  ludo: { title: 'Ludo', minPlayers: 2, maxPlayers: 4, spectatable: true },
+  boots: { title: 'Boots', minPlayers: 2, maxPlayers: 4, spectatable: false },
+  uno: { title: 'Uno', minPlayers: 2, maxPlayers: 6, spectatable: false },
+  chess: { title: 'Chess', minPlayers: 2, maxPlayers: 2, spectatable: true },
 };
 
 const UNO_COLORS: UnoColor[] = ['red', 'yellow', 'green', 'blue'];
@@ -90,6 +101,12 @@ export interface RoomPlayer {
   connected: boolean;
 }
 
+export interface RoomSpectator {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 export type RoomStatus = 'lobby' | 'playing' | 'finished';
 
 interface Room {
@@ -99,6 +116,8 @@ interface Room {
   hostId: string;
   status: RoomStatus;
   players: RoomPlayer[];
+  /** Non-players watching a live, spectatable match (Chess / Ludo only). */
+  spectators: RoomSpectator[];
   maxPlayers: number;
   createdAt: number;
   rps: RpsState | null;
@@ -120,6 +139,9 @@ export interface RoomView {
   hostId: string;
   status: RoomStatus;
   players: RoomPlayer[];
+  spectators: RoomSpectator[];
+  /** Whether a non-player can watch this game live. */
+  spectatable: boolean;
   minPlayers: number;
   maxPlayers: number;
   createdAt: number;
@@ -163,6 +185,13 @@ export class GamesService {
   private readonly rooms = new Map<string, Room>();
   /** userId -> roomId (a user is in at most one room at a time). */
   private readonly userRoom = new Map<string, string>();
+  /**
+   * userId -> roomId for spectating. Separate from `userRoom`: watching a
+   * match carries none of the "one seat, reconnect grace period, forfeit on
+   * drop" stakes a player has, so it gets its own simple map rather than
+   * reusing player bookkeeping.
+   */
+  private readonly spectatorRoom = new Map<string, string>();
   private readonly disconnectTimers = new Map<
     string,
     ReturnType<typeof setTimeout>
@@ -215,6 +244,7 @@ export class GamesService {
     const spec = GAME_CATALOG[game];
     if (!spec) throw new Error('Unknown game');
     this.leaveRoom(host.userId); // one room at a time
+    this.unspectateRoom(host.userId);
     // Socket payloads are untyped at runtime — a non-numeric/garbage
     // maxPlayers (object, NaN, string that doesn't coerce) must not become
     // NaN here, or `players.length >= room.maxPlayers` is false forever and
@@ -233,6 +263,7 @@ export class GamesService {
       hostId: host.userId,
       status: 'lobby',
       players: [{ ...host, seat: 0, connected: true }],
+      spectators: [],
       maxPlayers: max,
       createdAt: Date.now(),
       rps: null,
@@ -268,6 +299,7 @@ export class GamesService {
     if (room.status !== 'lobby') throw new Error('Game already started');
     if (room.players.length >= room.maxPlayers) throw new Error('Room is full');
     this.leaveRoom(player.userId);
+    this.unspectateRoom(player.userId);
     room.players.push({
       ...player,
       seat: room.players.length,
@@ -321,6 +353,9 @@ export class GamesService {
 
   /** Socket dropped: keep the seat for a grace period, then treat as leave. */
   markDisconnected(userId: string): void {
+    // Watching carries no seat to preserve — drop it immediately rather than
+    // holding a grace period a spectator has no way to come back within.
+    this.unspectateRoom(userId);
     const roomId = this.userRoom.get(userId);
     const room = roomId ? this.rooms.get(roomId) : undefined;
     if (!room) return;
@@ -351,6 +386,56 @@ export class GamesService {
     return this.view(room);
   }
 
+  // ─── Spectating ───────────────────────────────────────────────────────
+
+  /** Watch a live, spectatable match (Chess / Ludo) without playing in it. */
+  spectateRoom(
+    roomId: string,
+    orgId: string,
+    viewer: Omit<RoomPlayer, 'seat' | 'connected'>,
+  ): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room || room.orgId !== orgId) throw new Error('Room not found');
+    if (!GAME_CATALOG[room.game].spectatable) {
+      throw new Error('This game cannot be watched');
+    }
+    if (room.status === 'lobby') throw new Error('Nothing to watch yet');
+    if (room.players.some((p) => p.userId === viewer.userId)) {
+      // Already playing — their own view already shows everything.
+      return this.view(room, viewer.userId);
+    }
+    const currentRoomId = this.userRoom.get(viewer.userId);
+    if (currentRoomId && currentRoomId !== room.id) {
+      // Unlike joining/creating a room, watching one should never silently
+      // forfeit a game this person is actively playing elsewhere. Idling in
+      // another room's lobby is fine — nothing to forfeit there.
+      const currentRoom = this.rooms.get(currentRoomId);
+      if (currentRoom?.status === 'playing') {
+        throw new Error('Finish or leave your current game before watching another');
+      }
+    }
+    this.unspectateRoom(viewer.userId); // one watched room at a time
+    if (!room.spectators.some((s) => s.userId === viewer.userId)) {
+      room.spectators.push({ ...viewer });
+    }
+    this.spectatorRoom.set(viewer.userId, room.id);
+    this.emit(room);
+    return this.view(room, viewer.userId);
+  }
+
+  /** Stop watching whichever room this user is currently spectating, if any. */
+  unspectateRoom(userId: string): void {
+    const roomId = this.spectatorRoom.get(userId);
+    if (!roomId) return;
+    this.spectatorRoom.delete(userId);
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    const idx = room.spectators.findIndex((s) => s.userId === userId);
+    if (idx < 0) return;
+    room.spectators.splice(idx, 1);
+    this.emit(room);
+  }
+
   startGame(roomId: string, userId: string): RoomView {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error('Room not found');
@@ -367,10 +452,7 @@ export class GamesService {
       this.armLudoTimer(room);
     }
     if (room.game === 'boots') {
-      room.boots = createBootsState(
-        [ids[0], ids[1]],
-        room.bootsFleet ?? undefined,
-      );
+      room.boots = createBootsState(ids, room.bootsFleet ?? undefined);
     }
     if (room.game === 'uno') room.uno = createUnoState(ids);
     if (room.game === 'chess') {
@@ -463,12 +545,17 @@ export class GamesService {
     return this.view(room, userId);
   }
 
-  bootsFire(roomId: string, userId: string, target: unknown): RoomView {
+  bootsFire(
+    roomId: string,
+    userId: string,
+    target: unknown,
+    targetId?: string,
+  ): RoomView {
     const room = this.rooms.get(roomId);
     if (!room?.boots || room.status !== 'playing')
       throw new Error('No Boots match in progress');
     const cell = this.parseBootsCell(target);
-    fire(room.boots, userId, cell);
+    fire(room.boots, userId, cell, targetId);
     this.emit(room, {
       type: 'boots:shot',
       payload: room.boots.lastShot,
@@ -753,6 +840,8 @@ export class GamesService {
     this.rooms.delete(room.id);
     for (const [uid, rid] of this.userRoom)
       if (rid === room.id) this.userRoom.delete(uid);
+    for (const [uid, rid] of this.spectatorRoom)
+      if (rid === room.id) this.spectatorRoom.delete(uid);
     this.onOrg(room.orgId);
   }
 
@@ -772,13 +861,18 @@ export class GamesService {
   }
 
   private emit(room: Room, event?: { type: string; payload?: unknown }) {
-    // Boots / Uno hide private info — each player gets their own RoomView.
-    if (
-      (room.boots || room.uno) &&
-      (room.status === 'playing' || room.status === 'finished')
-    ) {
+    // Once a match is live, every recipient needs their OWN view: Boots/Uno
+    // hide hands and ship placement, Chess owes each player their correct
+    // `yourColor` (a single shared view would quietly hand both players
+    // White's perspective), and a spectator must never get a player's view
+    // at all. A plain lobby has no such per-viewer state yet, so one shared
+    // broadcast is enough there.
+    if (room.status === 'playing' || room.status === 'finished') {
       for (const p of room.players) {
         this.onRoom(this.view(room, p.userId), event, p.userId);
+      }
+      for (const s of room.spectators) {
+        this.onRoom(this.view(room, s.userId), event, s.userId);
       }
       return;
     }
@@ -799,6 +893,8 @@ export class GamesService {
       hostId: room.hostId,
       status: room.status,
       players: room.players.map((p) => ({ ...p })),
+      spectators: room.spectators.map((s) => ({ ...s })),
+      spectatable: spec.spectatable,
       minPlayers: spec.minPlayers,
       maxPlayers: room.maxPlayers,
       createdAt: room.createdAt,

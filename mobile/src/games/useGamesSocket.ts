@@ -138,6 +138,9 @@ export function useGamesSocket(listener: Listener) {
       }),
     joinRoom: (roomId: string) => call<RoomView>('room:join', { roomId }),
     leaveRoom: () => call<null>('room:leave'),
+    /** Watch a live Chess / Ludo match without playing in it. */
+    spectateRoom: (roomId: string) => call<RoomView>('room:spectate', { roomId }),
+    unspectateRoom: () => call<null>('room:unspectate'),
     startGame: (roomId: string) => call<RoomView>('room:start', { roomId }),
     rematch: (roomId: string) => call<RoomView>('room:rematch', { roomId }),
     invite: (roomId: string, userId: string) => call<null>('room:invite', { roomId, userId }),
@@ -161,8 +164,8 @@ export function useGamesSocket(listener: Listener) {
       call<RoomView>('boots:place-random', { roomId }),
     bootsClear: (roomId: string) => call<RoomView>('boots:clear', { roomId }),
     bootsReady: (roomId: string) => call<RoomView>('boots:ready', { roomId }),
-    bootsFire: (roomId: string, target: BootsCell | string) =>
-      call<RoomView>('boots:fire', { roomId, target }),
+    bootsFire: (roomId: string, target: BootsCell | string, targetId?: string) =>
+      call<RoomView>('boots:fire', { roomId, target, targetId }),
     react: (roomId: string, reaction: GameReaction) =>
       call<RoomView>('room:react', { roomId, reaction }),
     chessMove: (

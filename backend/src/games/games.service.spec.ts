@@ -109,6 +109,28 @@ describe('GamesService — several rooms at once', () => {
     expect(games.roomOf('b')?.chess?.lastMove?.san).toBe('e4');
   });
 
+  it('broadcasts each player their own view, not a shared one biased toward seat 0', () => {
+    // Regression: `emit()` used to send ONE view (computed from seat 0 / White)
+    // to every room/user channel for Chess — meaning Black's broadcast always
+    // said `yourColor: 'w'`. `roomOf()` (a direct per-user fetch) never
+    // exercised that path, so this only shows up by capturing what the
+    // broadcast listener itself receives.
+    const seen: { target?: string; yourColor: 'w' | 'b' | null }[] = [];
+    games.setListeners((room, _event, targetUserId) => {
+      if (room.chess) seen.push({ target: targetUserId, yourColor: room.chess.yourColor });
+    }, () => {});
+
+    const room = games.createRoom('org', p('a'), 'chess');
+    games.joinRoom(room.id, 'org', p('b'));
+    seen.length = 0; // only care about the broadcast from here on
+    games.startGame(room.id, 'a');
+
+    const forA = seen.find((s) => s.target === 'a');
+    const forB = seen.find((s) => s.target === 'b');
+    expect(forA?.yourColor).toBe('w');
+    expect(forB?.yourColor).toBe('b');
+  });
+
   it('Chess hands the win to whoever is left when the other player leaves', () => {
     const room = games.createRoom('org', p('a'), 'chess');
     games.joinRoom(room.id, 'org', p('b'));
@@ -142,5 +164,77 @@ describe('GamesService — several rooms at once', () => {
       games.unoPlay(room.id, 'a', playable);
       expect(games.roomOf('b')?.uno?.top?.id).not.toBe(topId);
     }
+  });
+
+  it('lets a non-player watch a live Chess match, with no yourColor and no moves', () => {
+    const room = games.createRoom('org', p('a'), 'chess');
+    games.joinRoom(room.id, 'org', p('b'));
+    expect(() => games.spectateRoom(room.id, 'org', p('c'))).toThrow(
+      /Nothing to watch yet/,
+    );
+
+    games.startGame(room.id, 'a');
+    const asSpectator = games.spectateRoom(room.id, 'org', p('c'));
+    expect(asSpectator.spectators.map((s) => s.userId)).toEqual(['c']);
+    expect(asSpectator.chess?.yourColor).toBeNull();
+    expect(asSpectator.chess?.board).toBeTruthy(); // board itself is public
+
+    expect(() => games.chessMove(room.id, 'c', 'e2', 'e4')).toThrow(
+      /not in this game/,
+    );
+
+    // Leaving a *player* seat never touches the spectator list.
+    games.unspectateRoom('c');
+    expect(games.roomViewById(room.id)?.spectators).toHaveLength(0);
+  });
+
+  it('broadcasts a spectator their own scoped view alongside the players', () => {
+    const seen: string[] = [];
+    games.setListeners((_room, _event, targetUserId) => {
+      if (targetUserId) seen.push(targetUserId);
+    }, () => {});
+
+    const room = games.createRoom('org', p('a'), 'chess');
+    games.joinRoom(room.id, 'org', p('b'));
+    games.startGame(room.id, 'a');
+    games.spectateRoom(room.id, 'org', p('c'));
+
+    seen.length = 0;
+    games.chessMove(room.id, 'a', 'e2', 'e4');
+    expect(new Set(seen)).toEqual(new Set(['a', 'b', 'c']));
+  });
+
+  it('blocks spectating while actively playing elsewhere, but not while idling in a lobby', () => {
+    const chess = games.createRoom('org', p('a'), 'chess');
+    games.joinRoom(chess.id, 'org', p('b'));
+    games.startGame(chess.id, 'a');
+
+    const otherLobby = games.createRoom('org', p('c'), 'rps');
+    // c is just sitting in an unstarted lobby elsewhere — nothing to forfeit.
+    expect(games.spectateRoom(chess.id, 'org', p('c')).spectators).toHaveLength(1);
+
+    const otherGame = games.createRoom('org', p('d'), 'rps');
+    games.joinRoom(otherGame.id, 'org', p('e'));
+    games.startGame(otherGame.id, 'd'); // d is now mid-match
+    expect(() => games.spectateRoom(chess.id, 'org', p('d'))).toThrow(
+      /Finish or leave your current game/,
+    );
+    expect(games.roomOf('d')?.id).toBe(otherGame.id); // untouched, not forfeited
+  });
+
+  it('refuses to spectate games with hidden information (Boots / Uno)', () => {
+    const boots = games.createRoom('org', p('a'), 'boots');
+    games.joinRoom(boots.id, 'org', p('b'));
+    games.startGame(boots.id, 'a');
+    expect(() => games.spectateRoom(boots.id, 'org', p('c'))).toThrow(
+      /cannot be watched/,
+    );
+
+    const uno = games.createRoom('org', p('d'), 'uno');
+    games.joinRoom(uno.id, 'org', p('e'));
+    games.startGame(uno.id, 'd');
+    expect(() => games.spectateRoom(uno.id, 'org', p('f'))).toThrow(
+      /cannot be watched/,
+    );
   });
 });

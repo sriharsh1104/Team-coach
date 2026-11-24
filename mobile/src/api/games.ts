@@ -54,9 +54,9 @@ export const GAME_CATALOG: Array<{
     id: 'boots',
     title: 'Boots',
     tagline: '6×6 fleet hunt — place boots, then fire',
-    players: '2 players',
+    players: '2–4 players',
     minPlayers: 2,
-    maxPlayers: 2,
+    maxPlayers: 4,
     emoji: '🚢',
   },
 ];
@@ -140,22 +140,36 @@ export type BootsBoot = {
   sunk: boolean;
 };
 
+/** One opponent's board as this viewer may see it. */
+export type BootsEnemyView = {
+  id: string;
+  shots: Record<string, BootsShotResult>;
+  sunkBoots: BootsBoot[];
+  sunkCount: number;
+  fleetSize: number;
+  eliminated: boolean;
+  ready: boolean;
+};
+
 export type BootsPublicState = {
-  playerIds: [string, string];
+  playerIds: string[];
   fleet: number[];
   phase: 'placing' | 'battle' | 'done';
   turnId: string | null;
   lastShot: {
     by: string;
+    /** Who was fired at — always set on a live 3-4 player match. */
+    target?: string;
     cell: BootsCell;
     result: BootsShotResult;
     bootLength?: number;
   } | null;
   winnerId: string | null;
   ready: Record<string, boolean>;
-  own: { boots: BootsBoot[]; shots: Record<string, BootsShotResult> };
-  enemy: { shots: Record<string, BootsShotResult>; sunkBoots: BootsBoot[] };
-  sunkCounts: Record<string, number>;
+  eliminated: Record<string, boolean>;
+  own: { boots: BootsBoot[]; shots: Record<string, BootsShotResult>; sunkCount: number };
+  /** Every other seat, in seat order. */
+  enemies: BootsEnemyView[];
 };
 
 export type RpsChoice = 'stone' | 'paper' | 'scissors';
@@ -250,6 +264,12 @@ export interface RoomPlayer {
   connected: boolean;
 }
 
+export interface RoomSpectator {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 export interface RoomView {
   id: string;
   orgId: string;
@@ -258,6 +278,10 @@ export interface RoomView {
   hostId: string;
   status: 'lobby' | 'playing' | 'finished';
   players: RoomPlayer[];
+  /** Non-players watching a live match (Chess / Ludo only). */
+  spectators: RoomSpectator[];
+  /** Whether this game can be watched at all. */
+  spectatable: boolean;
   minPlayers: number;
   maxPlayers: number;
   createdAt: number;

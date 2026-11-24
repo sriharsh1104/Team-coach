@@ -32,6 +32,9 @@ export function GamesHubScreen() {
   const [busy, setBusy] = useState(false);
   const [playerPick, setPlayerPick] = useState<GameKind | null>(null);
   const [fleetPick, setFleetPick] = useState(false);
+  // Boots now asks "how many players?" before "what fleet?" — this remembers
+  // the player-count answer across that second step.
+  const [pendingBootsMax, setPendingBootsMax] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     const [list, current] = await Promise.all([
@@ -63,6 +66,22 @@ export function GamesHubScreen() {
 
   const openRoom = (room: RoomView) => {
     navigation.navigate('GameRoom', { roomId: room.id, game: room.game });
+  };
+
+  const watch = async (roomId: string) => {
+    setBusy(true);
+    const room = await tryGames(
+      () => games.spectateRoom(roomId),
+      'Could not start watching',
+    );
+    setBusy(false);
+    if (room) {
+      navigation.navigate('GameRoom', {
+        roomId: room.id,
+        game: room.game,
+        spectate: true,
+      });
+    }
   };
 
   /**
@@ -104,33 +123,24 @@ export function GamesHubScreen() {
     fleet?: number[],
   ) => {
     const spec = GAME_CATALOG.find((g) => g.id === game)!;
-    if (game === 'boots' && fleet == null) {
-      setFleetPick(true);
-      return;
-    }
-    if (spec.maxPlayers === spec.minPlayers) {
-      setBusy(true);
-      const room = await tryGames(
-        () =>
-          fleet
-            ? games.createRoom(game, spec.maxPlayers, fleet)
-            : games.createRoom(game, spec.maxPlayers),
-        'Could not create room',
-      );
-      setBusy(false);
-      if (room) openRoom(room);
-      return;
-    }
-    if (maxPlayers == null) {
+    // Player count first (when the game offers a choice at all), so Boots'
+    // fleet step below already knows how many opponents to expect.
+    if (spec.maxPlayers !== spec.minPlayers && maxPlayers == null) {
       setPlayerPick(game);
       return;
     }
+    if (game === 'boots' && fleet == null) {
+      setPendingBootsMax(maxPlayers ?? spec.maxPlayers);
+      setFleetPick(true);
+      return;
+    }
+    const finalMax = maxPlayers ?? spec.maxPlayers;
     setBusy(true);
     const room = await tryGames(
       () =>
         fleet
-          ? games.createRoom(game, maxPlayers, fleet)
-          : games.createRoom(game, maxPlayers),
+          ? games.createRoom(game, finalMax, fleet)
+          : games.createRoom(game, finalMax),
       'Could not create room',
     );
     setBusy(false);
@@ -146,6 +156,15 @@ export function GamesHubScreen() {
   ];
 
   const openRooms = rooms.filter((r) => r.status === 'lobby' && !r.players.some((p) => p.userId === user?.id));
+  // Chess / Ludo matches anyone not already in them can drop by and watch —
+  // Boots/Uno stay off this list since their board/hand would leak to a
+  // "spectator" via the same per-player view everyone else gets.
+  const liveToWatch = rooms.filter(
+    (r) =>
+      r.status === 'playing' &&
+      r.spectatable &&
+      !r.players.some((p) => p.userId === user?.id),
+  );
 
   return (
     <Screen>
@@ -193,6 +212,40 @@ export function GamesHubScreen() {
                 </Pressable>
               ))}
             </View>
+
+            {liveToWatch.length > 0 ? (
+              <>
+                <Text style={styles.section}>Live now</Text>
+                {liveToWatch.map((item) => {
+                  const spec = GAME_CATALOG.find((g) => g.id === item.game);
+                  return (
+                    <View key={item.id} style={styles.room}>
+                      <Text style={staticStyles.roomEmoji}>{spec?.emoji ?? '🎮'}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.roomTitle}>
+                          {item.players.map((p) => p.name).join(' vs ')}
+                        </Text>
+                        <Text style={styles.roomSub}>
+                          {item.title}
+                          {item.spectators.length > 0
+                            ? ` · ${item.spectators.length} watching`
+                            : ''}
+                        </Text>
+                      </View>
+                      <Pressable
+                        style={[styles.watchBtn, busy && staticStyles.dim]}
+                        disabled={busy}
+                        onPress={() => void watch(item.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Watch ${item.title}`}
+                      >
+                        <Text style={styles.watchText}>Watch</Text>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </>
+            ) : null}
 
             <Text style={styles.section}>Open rooms</Text>
             {loading && openRooms.length === 0 ? (
@@ -305,7 +358,9 @@ export function GamesHubScreen() {
                 style={styles.modalBtn}
                 onPress={() => {
                   setFleetPick(false);
-                  void createRoom('boots', 2, p.fleet);
+                  const max = pendingBootsMax ?? 2;
+                  setPendingBootsMax(null);
+                  void createRoom('boots', max, p.fleet);
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={p.label}
@@ -315,7 +370,10 @@ export function GamesHubScreen() {
             ))}
             <Pressable
               style={styles.modalCancel}
-              onPress={() => setFleetPick(false)}
+              onPress={() => {
+                setFleetPick(false);
+                setPendingBootsMax(null);
+              }}
               accessibilityRole="button"
               accessibilityLabel="Cancel"
             >
@@ -429,6 +487,15 @@ function hubStyles(c: ThemeColors) {
     roomSub: { color: c.textMuted, fontSize: 12, marginTop: 2 },
     joinBtn: { backgroundColor: c.chrome, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 },
     joinText: { color: c.chromeInk, fontWeight: '800' as const },
+    watchBtn: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    watchText: { color: c.text, fontWeight: '800' as const },
     offline: { color: c.textDim, fontSize: 12, textAlign: 'center' as const, marginTop: 16 },
   };
 }

@@ -139,8 +139,18 @@ function ScreenShareViewer({
     ? 'Your mic keeps going — screen video only, no device audio'
     : 'Screen video — you still hear them on the mic';
 
+  // Never render a live loopback of your OWN screen share. Android's screen
+  // capture is a mirror of the whole device display, and a SurfaceView-based
+  // VideoView sits on its own hardware-composited layer outside the normal
+  // view tree — showing your own capture here means the capture would need
+  // to contain a smaller copy of itself, which the renderer just resolves to
+  // solid black. That black rectangle is exactly what got captured and sent
+  // on to everyone else too (this box was taking up most/all of the shared
+  // frame), which is why both "I see a black screen" and "they see nothing"
+  // were really the same bug: this live self-preview should never have
+  // existed — every other call app just shows a confirmation message here.
   const videoNode =
-    VideoView && share.videoTrack ? (
+    VideoView && share.videoTrack && !share.isLocal ? (
       <VideoView
         videoTrack={share.videoTrack}
         style={fullscreen ? styles.shareVideoFull : styles.shareVideo}
@@ -907,21 +917,39 @@ function VoiceChannelBody({
 
                   <View style={styles.sectionRow}>
                     <Text style={themed.sectionTitle}>In Channel</Text>
-                    {canPing && (
+                    <View style={styles.sectionRowActions}>
+                      {canPing && (
+                        <Pressable
+                          style={styles.pingBtn}
+                          onPress={() => {
+                            haptic('light');
+                            setPingOpen(true);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Ping teammates to join voice"
+                        >
+                          <ButtonLabel icon="person-add" color="#22c55e">
+                            Ping
+                          </ButtonLabel>
+                        </Pressable>
+                      )}
+                      {/* Moved up from the bottom action bar — screen share +
+                          music share (+ video on direct) live here now. */}
                       <Pressable
-                        style={styles.pingBtn}
-                        onPress={() => {
-                          haptic('light');
-                          setPingOpen(true);
-                        }}
+                        style={[
+                          styles.moreBtn,
+                          (voice.isScreenSharing ||
+                            voice.musicShare?.isLocal ||
+                            voice.isCameraOn) &&
+                            styles.moreBtnActive,
+                        ]}
+                        onPress={() => setMoreOpen(true)}
                         accessibilityRole="button"
-                        accessibilityLabel="Ping teammates to join voice"
+                        accessibilityLabel="Call options"
                       >
-                        <ButtonLabel icon="person-add" color="#22c55e">
-                          Ping
-                        </ButtonLabel>
+                        <AppIcon name="ellipsis-vertical" size={18} color="#fff" />
                       </Pressable>
-                    )}
+                    </View>
                   </View>
                 </>
               }
@@ -1148,22 +1176,6 @@ function VoiceChannelBody({
                   <AppIcon name="videocam-outline" size={22} color="#fff" />
                 </Pressable>
               ) : null}
-
-              {/* ⋮ — screen share + music share (+ video on direct) */}
-              <Pressable
-                style={[
-                  styles.iconBtn,
-                  voice.isScreenSharing ||
-                  voice.musicShare?.isLocal ||
-                  voice.isCameraOn
-                    ? styles.iconBtnActive
-                    : themed.iconBtnDefault,
-                ]}
-                onPress={() => setMoreOpen(true)}
-                accessibilityLabel="Call options"
-              >
-                <AppIcon name="ellipsis-vertical" size={22} color="#fff" />
-              </Pressable>
 
               {/* Disconnect */}
               <Pressable
@@ -1813,6 +1825,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(34,197,94,0.35)',
   },
+  sectionRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  moreBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(148,163,184,0.18)',
+  },
+  moreBtnActive: { backgroundColor: '#f59e0b' },
   participantTap: {
     flex: 1,
     flexDirection: 'row',

@@ -46,6 +46,10 @@ export function GameRoomScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const roomId: string = route.params?.roomId;
+  // Set only by GamesHubScreen's "Watch" button — decides join vs spectate
+  // on first load. Once `room` arrives, `isSpectating` below (derived from
+  // the actual player list) is what everything else keys off.
+  const spectateOnOpen: boolean = !!route.params?.spectate;
   const { user } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(roomStyles);
@@ -90,7 +94,9 @@ export function GameRoomScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const r = await games.joinRoom(roomId);
+        const r = spectateOnOpen
+          ? await games.spectateRoom(roomId)
+          : await games.joinRoom(roomId);
         if (!cancelled) setRoom(r);
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
@@ -147,7 +153,20 @@ export function GameRoomScreen() {
       }
     });
 
+  // Not a player in the room = watching it. There is no other way to be
+  // looking at someone else's room, so this is the one source of truth —
+  // no separate flag to keep in sync with the player list.
+  const isSpectating = !!room && !room.players.some((p) => p.userId === meId);
+
   const leave = useCallback(() => {
+    if (isSpectating) {
+      // No stakes to confirm — watching carries no forfeit.
+      void (async () => {
+        await tryGames(() => games.unspectateRoom());
+        navigation.goBack();
+      })();
+      return;
+    }
     const doLeave = async () => {
       await tryGames(() => games.leaveRoom());
       navigation.goBack();
@@ -165,7 +184,7 @@ export function GameRoomScreen() {
     } else {
       void doLeave();
     }
-  }, [games, navigation, room?.status]);
+  }, [games, navigation, room?.status, isSpectating]);
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -217,8 +236,13 @@ export function GameRoomScreen() {
           {room.status === 'lobby'
             ? `Waiting for players · ${room.players.length}/${room.maxPlayers}`
             : room.status === 'playing'
-              ? 'Live'
+              ? isSpectating
+                ? 'Watching'
+                : 'Live'
               : 'Finished'}
+          {room.spectators.length > 0
+            ? ` · ${room.spectators.length} watching`
+            : ''}
           {!games.connected ? ' · reconnecting…' : ''}
         </Text>
       </View>
@@ -232,8 +256,13 @@ export function GameRoomScreen() {
           <Text style={styles.modeText}>{mode === '3d' ? '3D' : '2D'}</Text>
         </Pressable>
       ) : null}
-      <Pressable onPress={leave} style={styles.leaveBtn} accessibilityRole="button" accessibilityLabel="Leave room">
-        <Text style={styles.leaveText}>Leave</Text>
+      <Pressable
+        onPress={leave}
+        style={styles.leaveBtn}
+        accessibilityRole="button"
+        accessibilityLabel={isSpectating ? 'Stop watching' : 'Leave room'}
+      >
+        <Text style={styles.leaveText}>{isSpectating ? 'Stop watching' : 'Leave'}</Text>
       </Pressable>
     </View>
   );
@@ -261,7 +290,11 @@ export function GameRoomScreen() {
           <LudoBoard
             room={room}
             meId={meId}
-            busy={busy}
+            // Every action button in these boards is already gated on
+            // `busy` — a spectator never has a turn of their own, so
+            // treating them as permanently busy disables roll/move/tap
+            // without touching either board component.
+            busy={busy || isSpectating}
             mode={mode}
             onFallback={() => setMode('2d')}
             onRoll={() => void act(() => games.ludoRoll(room.id))}
@@ -286,8 +319,8 @@ export function GameRoomScreen() {
             onPlaceRandom={() => void act(() => games.bootsPlaceRandom(room.id))}
             onClear={() => void act(() => games.bootsClear(room.id))}
             onReady={() => void act(() => games.bootsReady(room.id))}
-            onFire={(col, row) =>
-              void act(() => games.bootsFire(room.id, { col, row }))
+            onFire={(col, row, targetId) =>
+              void act(() => games.bootsFire(room.id, { col, row }, targetId))
             }
           />
           <ReactionBar
@@ -310,7 +343,7 @@ export function GameRoomScreen() {
           <ChessBoard
             room={room}
             meId={meId}
-            busy={busy}
+            busy={busy || isSpectating}
             mode={mode}
             onFallback={() => setMode('2d')}
             onMove={(from, to, promotion) =>
@@ -381,14 +414,16 @@ export function GameRoomScreen() {
                 {room.rps.scores[room.rps.playerIds[0]]} – {room.rps.scores[room.rps.playerIds[1]]}
               </Text>
             ) : null}
-            <Pressable
-              style={styles.primaryBtn}
-              disabled={busy}
-              onPress={() => void act(() => games.rematch(room.id))}
-              accessibilityRole="button"
-            >
-              <Text style={styles.primaryText}>Play again</Text>
-            </Pressable>
+            {!isSpectating ? (
+              <Pressable
+                style={styles.primaryBtn}
+                disabled={busy}
+                onPress={() => void act(() => games.rematch(room.id))}
+                accessibilityRole="button"
+              >
+                <Text style={styles.primaryText}>Play again</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
@@ -424,7 +459,13 @@ export function GameRoomScreen() {
           </View>
         ))}
 
-        {room.status === 'lobby' ? (
+        {room.status === 'lobby' && isSpectating ? (
+          // A rematch reset the room while we were watching — nothing to
+          // start or invite to from here, just wait for the next round.
+          <Text style={styles.waitHost}>Waiting for the host to start the next game…</Text>
+        ) : null}
+
+        {room.status === 'lobby' && !isSpectating ? (
           <>
             {room.game === 'boots' && room.bootsFleet ? (
               <Text style={styles.subSection}>

@@ -1,9 +1,14 @@
 /**
- * Boots — Battleship-style 2-player fleet hunt on a 6×6 board (A–F × 1–6).
+ * Boots — Battleship-style 2–4 player fleet hunt on a 6×6 board (A–F × 1–6).
  *
  * Each player places boots of configurable lengths (e.g. 5 + 3 + 2),
- * horizontal or vertical. Then they take turns firing at coordinates.
- * Sink every opposing boot to win.
+ * horizontal or vertical. Then they take turns firing — in a 3-4 player
+ * match, choosing which still-alive opponent's board to hit. Turn order is
+ * round-robin over seats (skipping eliminated players), independent of who
+ * you fired at — in a 2-player match that is identical to "alternate with
+ * the other player," which is why the old behaviour falls out of this for
+ * free. Sink a fleet completely and its owner is eliminated; last fleet
+ * afloat wins.
  */
 
 export const BOOTS_COLS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
@@ -11,6 +16,8 @@ export const BOOTS_ROWS = [1, 2, 3, 4, 5, 6] as const;
 export const BOOTS_SIZE = 6;
 /** Default fleet matching the sketch: length-5, length-3, length-2. */
 export const BOOTS_DEFAULT_FLEET = [5, 3, 2] as const;
+export const BOOTS_MIN_PLAYERS = 2;
+export const BOOTS_MAX_PLAYERS = 4;
 
 export type BootsOrientation = 'horizontal' | 'vertical';
 
@@ -32,20 +39,24 @@ export type BootsPhase = 'placing' | 'battle' | 'done';
 
 export type BootsPlayerBoard = {
   boots: Boot[];
-  /** Cells that have been fired at on this board (by the opponent). */
+  /** Cells that have been fired at on this board (by anyone). */
   shots: Record<string, ShotResult>;
   ready: boolean;
 };
 
 export type BootsState = {
-  playerIds: [string, string];
+  playerIds: string[];
   fleet: number[];
   boards: Record<string, BootsPlayerBoard>;
   phase: BootsPhase;
   /** Whose turn it is to fire (battle only). */
   turnId: string | null;
+  /** Fleet fully sunk, or forfeited — out of the match either way. */
+  eliminated: Record<string, boolean>;
   lastShot: {
     by: string;
+    /** Who was fired at — omitted from old 2-player saves, never from new ones. */
+    target?: string;
     cell: BootsCell;
     result: ShotResult;
     bootLength?: number;
@@ -53,27 +64,37 @@ export type BootsState = {
   winnerId: string | null;
 };
 
-/** What one client may see — opponent's unhit cells stay hidden. */
+/** One opponent's board as a viewer may see it. */
+export type BootsEnemyView = {
+  id: string;
+  /** Only revealed shot results (no boot shapes until sunk). */
+  shots: Record<string, ShotResult>;
+  /** Sunk boots are revealed in full so the finder sees the completed shape. */
+  sunkBoots: Boot[];
+  sunkCount: number;
+  fleetSize: number;
+  eliminated: boolean;
+  ready: boolean;
+};
+
+/** What one client may see — opponents' unhit cells stay hidden. */
 export type BootsPublicState = {
-  playerIds: [string, string];
+  playerIds: string[];
   fleet: number[];
   phase: BootsPhase;
   turnId: string | null;
   lastShot: BootsState['lastShot'];
   winnerId: string | null;
   ready: Record<string, boolean>;
-  /** Own board: full boots + shots received. */
+  eliminated: Record<string, boolean>;
+  /** Own board: full boots + shots received + how much of it is destroyed. */
   own: {
     boots: Boot[];
     shots: Record<string, ShotResult>;
+    sunkCount: number;
   };
-  /** Enemy board: only revealed shot results (no boot shapes until sunk…).
-   *  Sunk boots are revealed so the finder sees PQRST-style completion. */
-  enemy: {
-    shots: Record<string, ShotResult>;
-    sunkBoots: Boot[];
-  };
-  sunkCounts: Record<string, number>;
+  /** Every other seat, in seat order. */
+  enemies: BootsEnemyView[];
 };
 
 export function cellKey(c: BootsCell): string {
@@ -115,20 +136,26 @@ export function normalizeFleet(raw: unknown): number[] {
 }
 
 export function createBootsState(
-  playerIds: [string, string],
+  playerIds: string[],
   fleet: number[] = [...BOOTS_DEFAULT_FLEET],
 ): BootsState {
+  if (playerIds.length < BOOTS_MIN_PLAYERS || playerIds.length > BOOTS_MAX_PLAYERS) {
+    throw new Error(`Boots needs ${BOOTS_MIN_PLAYERS}–${BOOTS_MAX_PLAYERS} players`);
+  }
   const sizes = normalizeFleet(fleet);
   const boards: Record<string, BootsPlayerBoard> = {};
+  const eliminated: Record<string, boolean> = {};
   for (const id of playerIds) {
     boards[id] = { boots: [], shots: {}, ready: false };
+    eliminated[id] = false;
   }
   return {
-    playerIds,
+    playerIds: [...playerIds],
     fleet: sizes,
     boards,
     phase: 'placing',
     turnId: null,
+    eliminated,
     lastShot: null,
     winnerId: null,
   };
@@ -147,6 +174,25 @@ function occupiedKeys(boots: Boot[]): Set<string> {
   const set = new Set<string>();
   for (const b of boots) for (const c of b.cells) set.add(cellKey(c));
   return set;
+}
+
+/** Everyone still in the match, in seat order. */
+function aliveIds(state: BootsState): string[] {
+  return state.playerIds.filter((id) => !state.eliminated[id]);
+}
+
+/** The next surviving seat after `afterId`, wrapping around. Falls back to
+ * `afterId` itself only if nobody else survives (win should already have
+ * fired by then). */
+function nextAliveTurn(state: BootsState, afterId: string): string {
+  const ids = state.playerIds;
+  const n = ids.length;
+  const idx = ids.indexOf(afterId);
+  for (let i = 1; i <= n; i++) {
+    const candidate = ids[(idx + i) % n];
+    if (!state.eliminated[candidate]) return candidate;
+  }
+  return afterId;
 }
 
 /** Cells a boot of `length` would cover from `start` in `orientation`. */
@@ -276,11 +322,10 @@ export function markReady(state: BootsState, userId: string): void {
   if (left.length > 0) throw new Error('Place every boot first');
   board.ready = true;
 
-  const [a, b] = state.playerIds;
-  if (state.boards[a].ready && state.boards[b].ready) {
+  if (aliveIds(state).every((id) => state.boards[id].ready)) {
     state.phase = 'battle';
     // First seater shoots first.
-    state.turnId = a;
+    state.turnId = state.playerIds[0];
   }
 }
 
@@ -288,13 +333,25 @@ export function fire(
   state: BootsState,
   userId: string,
   target: BootsCell,
+  targetId?: string,
 ): ShotResult {
   if (state.phase !== 'battle') throw new Error('Not in battle yet');
   if (state.turnId !== userId) throw new Error('Not your turn');
   if (!inBounds(target)) throw new Error('Off the board');
 
-  const [a, b] = state.playerIds;
-  const enemyId = userId === a ? b : a;
+  const liveOpponents = state.playerIds.filter(
+    (id) => id !== userId && !state.eliminated[id],
+  );
+  let enemyId = targetId;
+  if (!enemyId) {
+    if (liveOpponents.length !== 1) {
+      throw new Error('Choose who to fire at');
+    }
+    enemyId = liveOpponents[0];
+  } else if (!liveOpponents.includes(enemyId)) {
+    throw new Error('That player is not a live target');
+  }
+
   const enemy = state.boards[enemyId];
   const key = cellKey(target);
   if (enemy.shots[key]) throw new Error('Already fired there');
@@ -322,66 +379,83 @@ export function fire(
     enemy.shots[key] = 'miss';
   }
 
-  state.lastShot = { by: userId, cell: target, result, bootLength };
+  state.lastShot = { by: userId, target: enemyId, cell: target, result, bootLength };
 
   if (enemy.boots.every((bt) => bt.sunk)) {
+    state.eliminated[enemyId] = true;
+  }
+
+  const survivors = aliveIds(state);
+  if (survivors.length <= 1) {
     state.phase = 'done';
-    state.winnerId = userId;
+    state.winnerId = survivors[0] ?? userId;
     state.turnId = null;
   } else {
-    state.turnId = enemyId;
+    state.turnId = nextAliveTurn(state, userId);
   }
   return result;
 }
 
 export function bootsForfeit(state: BootsState, userId: string): void {
   if (state.phase === 'done') return;
-  const [a, b] = state.playerIds;
-  if (userId !== a && userId !== b) return;
-  state.phase = 'done';
-  state.winnerId = userId === a ? b : a;
-  state.turnId = null;
+  if (!state.playerIds.includes(userId) || state.eliminated[userId]) return;
+  const wasTurn = state.turnId === userId;
+  state.eliminated[userId] = true;
+
+  const survivors = aliveIds(state);
+  if (survivors.length <= 1) {
+    state.phase = 'done';
+    state.winnerId = survivors[0] ?? null;
+    state.turnId = null;
+    return;
+  }
+  if (wasTurn) state.turnId = nextAliveTurn(state, userId);
 }
 
 export function bootsPublicState(
   state: BootsState,
   viewerId: string,
 ): BootsPublicState {
-  const [a, b] = state.playerIds;
-  const enemyId = viewerId === a ? b : viewerId === b ? a : a;
-  const own = state.boards[viewerId] ?? state.boards[a];
-  const enemy = state.boards[enemyId];
+  const own = state.boards[viewerId] ?? state.boards[state.playerIds[0]];
+  const ownId = state.boards[viewerId] ? viewerId : state.playerIds[0];
+
+  const ready: Record<string, boolean> = {};
+  for (const id of state.playerIds) ready[id] = state.boards[id].ready;
+
+  const enemies: BootsEnemyView[] = state.playerIds
+    .filter((id) => id !== ownId)
+    .map((id) => {
+      const board = state.boards[id];
+      return {
+        id,
+        shots: { ...board.shots },
+        sunkBoots: board.boots
+          .filter((bt) => bt.sunk)
+          .map((bt) => ({ ...bt, cells: bt.cells.map((c) => ({ ...c })) })),
+        sunkCount: board.boots.filter((bt) => bt.sunk).length,
+        fleetSize: state.fleet.length,
+        eliminated: !!state.eliminated[id],
+        ready: board.ready,
+      };
+    });
 
   return {
-    playerIds: state.playerIds,
+    playerIds: [...state.playerIds],
     fleet: [...state.fleet],
     phase: state.phase,
     turnId: state.turnId,
     lastShot: state.lastShot,
     winnerId: state.winnerId,
-    ready: {
-      [a]: state.boards[a].ready,
-      [b]: state.boards[b].ready,
-    },
+    ready,
+    eliminated: { ...state.eliminated },
     own: {
       boots: own.boots.map((bt) => ({
         ...bt,
         cells: bt.cells.map((c) => ({ ...c })),
       })),
       shots: { ...own.shots },
+      sunkCount: own.boots.filter((bt) => bt.sunk).length,
     },
-    enemy: {
-      shots: { ...enemy.shots },
-      sunkBoots: enemy.boots
-        .filter((bt) => bt.sunk)
-        .map((bt) => ({
-          ...bt,
-          cells: bt.cells.map((c) => ({ ...c })),
-        })),
-    },
-    sunkCounts: {
-      [a]: state.boards[b].boots.filter((bt) => bt.sunk).length,
-      [b]: state.boards[a].boots.filter((bt) => bt.sunk).length,
-    },
+    enemies,
   };
 }

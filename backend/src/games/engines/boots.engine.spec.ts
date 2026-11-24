@@ -15,10 +15,12 @@ import {
   remainingLengths,
 } from './boots.engine';
 
-describe('boots engine', () => {
-  const A = 'u1';
-  const B = 'u2';
+const A = 'u1';
+const B = 'u2';
+const C = 'u3';
+const D = 'u4';
 
+describe('boots engine', () => {
   it('parses and formats coordinates', () => {
     expect(parseCoord('b2')).toEqual({ col: 1, row: 1 });
     expect(parseCoord('F6')).toEqual({ col: 5, row: 5 });
@@ -30,6 +32,11 @@ describe('boots engine', () => {
     expect(normalizeFleet([5, 3, 2])).toEqual([5, 3, 2]);
     expect(normalizeFleet([4, 1, 3])).toEqual([4, 3, 1]);
     expect(normalizeFleet([])).toEqual([...BOOTS_DEFAULT_FLEET]);
+  });
+
+  it('rejects fewer than 2 or more than 4 players', () => {
+    expect(() => createBootsState([A])).toThrow(/2–4/);
+    expect(() => createBootsState([A, B, C, D, 'u5'])).toThrow(/2–4/);
   });
 
   it('places a vertical 5-boot like the sketch (B2–B6)', () => {
@@ -56,7 +63,7 @@ describe('boots engine', () => {
     ).toThrow(/does not fit/);
   });
 
-  it('random place + ready + alternating fire sinks a fleet', () => {
+  it('random place + ready + alternating fire sinks a fleet (2 players)', () => {
     const state = createBootsState([A, B], [2, 2]);
     placeBootsRandom(state, A, () => 0);
     placeBootsRandom(state, B, () => 0.9);
@@ -65,7 +72,8 @@ describe('boots engine', () => {
     expect(state.phase).toBe('battle');
     expect(state.turnId).toBe(A);
 
-    // Fire every cell on B's board until A wins.
+    // Fire every cell on the opponent's board until someone wins. With only
+    // one live opponent each, `fire` auto-resolves the target.
     let guard = 0;
     while (state.phase === 'battle' && guard++ < 40) {
       const who = state.turnId!;
@@ -94,12 +102,13 @@ describe('boots engine', () => {
     markReady(state, B);
     fire(state, A, { col: 5, row: 0 });
     const view = bootsPublicState(state, A);
-    expect(view.enemy.shots['5,0']).toBe('hit');
-    expect(view.enemy.sunkBoots).toHaveLength(0);
+    expect(view.enemies).toHaveLength(1);
+    expect(view.enemies[0].shots['5,0']).toBe('hit');
+    expect(view.enemies[0].sunkBoots).toHaveLength(0);
     fire(state, B, { col: 0, row: 0 }); // B's turn
     fire(state, A, { col: 5, row: 1 }); // sink
     const after = bootsPublicState(state, A);
-    expect(after.enemy.sunkBoots).toHaveLength(1);
+    expect(after.enemies[0].sunkBoots).toHaveLength(1);
     expect(after.winnerId).toBe(A);
   });
 
@@ -118,5 +127,70 @@ describe('boots engine', () => {
     placeBoot(state, A, { col: 0, row: 0 }, 'horizontal');
     clearBoots(state, A);
     expect(state.boards[A].boots).toHaveLength(0);
+  });
+
+  it('requires a target when more than one opponent is alive (3+ players)', () => {
+    const state = createBootsState([A, B, C], [2]);
+    for (const id of [A, B, C]) {
+      placeBootsRandom(state, id, () => 0);
+      markReady(state, id);
+    }
+    expect(state.phase).toBe('battle');
+    expect(state.turnId).toBe(A);
+    expect(() => fire(state, A, { col: 0, row: 0 })).toThrow(/Choose who to fire at/);
+    expect(() => fire(state, A, { col: 0, row: 0 }, 'not-a-player')).toThrow(
+      /not a live target/,
+    );
+  });
+
+  it('round-robins turn order over seats, skipping eliminated players (3 players)', () => {
+    const state = createBootsState([A, B, C], [1]);
+    // One boot each, at a different known cell on their own board (A1/B1/C1
+    // by column), so each sink target is unambiguous below.
+    placeBoot(state, A, { col: 0, row: 0 }, 'horizontal');
+    placeBoot(state, B, { col: 1, row: 0 }, 'horizontal');
+    placeBoot(state, C, { col: 2, row: 0 }, 'horizontal');
+    markReady(state, A);
+    markReady(state, B);
+    markReady(state, C);
+    expect(state.turnId).toBe(A);
+
+    // A misses B — turn passes to B regardless of who A targeted.
+    fire(state, A, { col: 5, row: 5 }, B);
+    expect(state.turnId).toBe(B);
+
+    // B sinks C's lone boot (at C2, i.e. col 2 row 0) — C is eliminated, turn
+    // still goes to the next seat in order (C), but C is out, so it skips
+    // straight to A.
+    fire(state, B, { col: 2, row: 0 }, C);
+    expect(state.eliminated[C]).toBe(true);
+    expect(state.phase).toBe('battle'); // two players still alive
+    expect(state.turnId).toBe(A);
+
+    // Down to A vs B: no target needed, and sinking B's boot (at B1, col 1
+    // row 0) ends the match.
+    fire(state, A, { col: 1, row: 0 });
+    expect(state.phase).toBe('done');
+    expect(state.winnerId).toBe(A);
+  });
+
+  it('forfeiting mid-battle hands the turn on and eliminates the quitter', () => {
+    const state = createBootsState([A, B, C], [1]);
+    placeBoot(state, A, { col: 0, row: 0 }, 'horizontal');
+    placeBoot(state, B, { col: 1, row: 0 }, 'horizontal');
+    placeBoot(state, C, { col: 2, row: 0 }, 'horizontal');
+    markReady(state, A);
+    markReady(state, B);
+    markReady(state, C);
+    expect(state.turnId).toBe(A);
+
+    bootsForfeit(state, A);
+    expect(state.eliminated[A]).toBe(true);
+    expect(state.phase).toBe('battle');
+    expect(state.turnId).toBe(B);
+
+    bootsForfeit(state, B);
+    expect(state.phase).toBe('done');
+    expect(state.winnerId).toBe(C);
   });
 });

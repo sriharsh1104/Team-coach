@@ -40,6 +40,8 @@ function api(overrides: Partial<ReturnType<typeof useGamesSocket>> = {}) {
     createRoom: jest.fn(),
     joinRoom: jest.fn(),
     leaveRoom: jest.fn().mockResolvedValue(null),
+    spectateRoom: jest.fn(),
+    unspectateRoom: jest.fn().mockResolvedValue(null),
     startGame: jest.fn(),
     rematch: jest.fn(),
     invite: jest.fn().mockResolvedValue(null),
@@ -73,6 +75,8 @@ function lobbyRoom(overrides: Partial<RoomView> = {}): RoomView {
     hostId: 'me',
     status: 'lobby',
     players: [{ userId: 'me', name: 'Me', avatarUrl: null, seat: 0, connected: true }],
+    spectators: [],
+    spectatable: false,
     minPlayers: 2,
     maxPlayers: 2,
     createdAt: Date.now(),
@@ -169,6 +173,40 @@ describe('GamesHubScreen', () => {
     expect(screen.queryByLabelText('7 players')).toBeNull();
     fireEvent.press(screen.getByLabelText('5 players'));
     await waitFor(() => expect(createRoom).toHaveBeenCalledWith('uno', 5));
+  });
+
+  it('Live now: lists a watchable Chess match and starts watching it on tap', async () => {
+    const spectateRoom = jest.fn().mockResolvedValue(
+      lobbyRoom({ id: 'live1', game: 'chess', title: 'Chess', status: 'playing' }),
+    );
+    mockedSocket.mockReturnValue(
+      api({
+        spectateRoom,
+        listRooms: jest.fn().mockResolvedValue([
+          lobbyRoom({
+            id: 'live1',
+            game: 'chess',
+            title: 'Chess',
+            status: 'playing',
+            spectatable: true,
+            players: [
+              { userId: 'other1', name: 'Riya', avatarUrl: null, seat: 0, connected: true },
+              { userId: 'other2', name: 'Arjun', avatarUrl: null, seat: 1, connected: true },
+            ],
+          }),
+        ]),
+      }),
+    );
+    render(<GamesHubScreen />);
+    await screen.findByText('Live now');
+    expect(screen.getByText('Riya vs Arjun')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Watch Chess'));
+    await waitFor(() => expect(spectateRoom).toHaveBeenCalledWith('live1'));
+    expect(mockNavigate).toHaveBeenCalledWith('GameRoom', {
+      roomId: 'live1',
+      game: 'chess',
+      spectate: true,
+    });
   });
 });
 
@@ -295,5 +333,58 @@ describe('GameRoomScreen', () => {
     expect(screen.getByText('1/4')).toBeTruthy(); // one of my tokens is home
     fireEvent.press(screen.getByLabelText('Roll dice'));
     await waitFor(() => expect(ludoRoll).toHaveBeenCalledWith('r1'));
+  });
+
+  it('spectating Ludo: spectates instead of joining, shows Watching/Stop watching, and never rolls', async () => {
+    mockRouteParams = { roomId: 'r1', game: 'ludo', spectate: true };
+    const ludoRoll = jest.fn().mockResolvedValue(null);
+    const unspectateRoom = jest.fn().mockResolvedValue(null);
+    const watching = lobbyRoom({
+      game: 'ludo',
+      title: 'Ludo',
+      status: 'playing',
+      maxPlayers: 4,
+      spectatable: true,
+      spectators: [{ userId: 'me', name: 'Me', avatarUrl: null }],
+      // 'me' is NOT in players — that is what marks this client as a
+      // spectator rather than one of the two actual players.
+      players: [
+        { userId: 'u1', name: 'Priya', avatarUrl: null, seat: 0, connected: true },
+        { userId: 'u2', name: 'Arjun', avatarUrl: null, seat: 1, connected: true },
+      ],
+      ludo: {
+        turnOrder: ['u1', 'u2'],
+        colors: { u1: 'red', u2: 'yellow' },
+        tokens: { u1: [-1, -1, 3, 57], u2: [-1, 0, -1, -1] },
+        turnIndex: 0,
+        phase: 'roll',
+        dice: null,
+        movable: [],
+        sixStreak: 0,
+        winnerId: null,
+        ranking: [],
+        lastEvent: null,
+        version: 1,
+      },
+      deadline: Date.now() + 30_000,
+    });
+    const spectateRoom = jest.fn().mockResolvedValue(watching);
+    const joinRoom = jest.fn();
+    mockedSocket.mockReturnValue(api({ spectateRoom, joinRoom, ludoRoll, unspectateRoom }));
+    render(<GameRoomScreen />);
+
+    await screen.findByText(/Watching/);
+    expect(joinRoom).not.toHaveBeenCalled();
+    expect(spectateRoom).toHaveBeenCalledWith('r1');
+
+    // The roll button exists (it is u1's turn, not mine) but is wired
+    // through `busy`, which spectating forces on — tapping it must not call
+    // through to the server.
+    fireEvent.press(screen.getByLabelText('Roll dice'));
+    expect(ludoRoll).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText('Stop watching'));
+    await waitFor(() => expect(unspectateRoom).toHaveBeenCalled());
+    expect(mockGoBack).toHaveBeenCalled();
   });
 });

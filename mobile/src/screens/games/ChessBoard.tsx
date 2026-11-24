@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { Animated, Easing, Modal, Pressable, StatusBar, Text, View } from 'react-native';
+import { AppIcon } from '../../ui/AppIcon';
 import {
   ChessPiece,
   ChessPieceType,
@@ -138,6 +139,17 @@ export function ChessBoard({
   const [gridSize, setGridSize] = useState(0);
   const cellPx = gridSize / 8;
 
+  // Full screen: the 3D scene normally shares the room screen with a status
+  // line, the tap grid, captured tray and move history, all stacked in a
+  // ScrollView — so the actual board only ever got a fixed, modest slice of
+  // the height. This renders the same tree inside a full-screen Modal
+  // instead, where the canvas is the one flexible element and can expand
+  // into all the space those siblings aren't using.
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    if (mode !== '3d' && fullscreen) setFullscreen(false);
+  }, [mode, fullscreen]);
+
   const tap = (square: string) => {
     if (busy || !myTurn) return;
     if (selected === square) {
@@ -176,18 +188,32 @@ export function ChessBoard({
           ? 'Your move'
           : 'Waiting for their move';
 
-  return (
-    <View style={styles.root}>
-      <Text style={[styles.status, chess.inCheck && styles.statusAlert]}>
-        {status}
-      </Text>
+  const content = (
+    <View style={fullscreen ? styles.rootFull : styles.root}>
+      <View style={styles.statusRow}>
+        <Text
+          style={[styles.status, styles.statusFlex, chess.inCheck && styles.statusAlert]}
+        >
+          {status}
+        </Text>
+        {mode === '3d' ? (
+          <Pressable
+            onPress={() => setFullscreen((v) => !v)}
+            hitSlop={10}
+            accessibilityLabel={fullscreen ? 'Exit full screen' : 'Full screen'}
+            style={styles.expandBtn}
+          >
+            <AppIcon name={fullscreen ? 'contract' : 'expand'} size={18} color={colors.text} />
+          </Pressable>
+        ) : null}
+      </View>
 
       {mode === '3d' ? (
         <GameCanvas
-          style={styles.canvas}
+          style={fullscreen ? styles.canvasFull : styles.canvas}
           camera={CHESS_CAMERA}
           onFallback={onFallback}
-          fallback={<View style={styles.canvas} />}
+          fallback={<View style={fullscreen ? styles.canvasFull : styles.canvas} />}
         >
           <ChessScene3D
             board={chess.board}
@@ -311,6 +337,20 @@ export function ChessBoard({
       ) : null}
     </View>
   );
+
+  if (!fullscreen) return content;
+
+  return (
+    <Modal
+      visible
+      animationType="fade"
+      supportedOrientations={['portrait', 'landscape']}
+      onRequestClose={() => setFullscreen(false)}
+    >
+      <StatusBar hidden />
+      {content}
+    </Modal>
+  );
 }
 
 /** Ghost glyph that glides from one square to another over the static grid. */
@@ -384,6 +424,31 @@ function CapturedTray({
 function chessStyles(c: ThemeColors) {
   return {
     root: { gap: 10 },
+    // Full screen: no sibling ScrollView fighting it for height, so the
+    // canvas below (flex: 1) can actually expand into the space the status
+    // row / tap grid / tray / history don't need.
+    rootFull: {
+      flex: 1,
+      gap: 10,
+      paddingTop: 36,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      backgroundColor: c.bg,
+    },
+    statusRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+    },
+    statusFlex: { flex: 1 },
+    expandBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      backgroundColor: c.surface,
+    },
     status: {
       color: c.textMuted,
       fontSize: 13,
@@ -392,6 +457,7 @@ function chessStyles(c: ThemeColors) {
     },
     statusAlert: { color: c.danger },
     canvas: { width: '100%' as const, aspectRatio: 1.15 },
+    canvasFull: { width: '100%' as const, flex: 1 },
     grid: {
       flexDirection: 'row' as const,
       flexWrap: 'wrap' as const,

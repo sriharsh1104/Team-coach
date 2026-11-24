@@ -4,6 +4,7 @@ import {
   Dimensions,
   Easing,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -48,7 +49,9 @@ type Props = {
   onPlaceRandom: () => void;
   onClear: () => void;
   onReady: () => void;
-  onFire: (col: number, row: number) => void;
+  /** `targetId` picks which opponent's board to hit — required once there is
+   * more than one live opponent, optional (auto-resolved) with just one. */
+  onFire: (col: number, row: number, targetId?: string) => void;
 };
 
 function shotFill(result: BootsShotResult | undefined): string {
@@ -177,11 +180,19 @@ function TurnBanner({
   mode,
   myName,
   enemyName,
+  turnName,
+  winnerName,
   styles,
 }: {
   mode: 'you' | 'them' | 'win' | 'lose' | 'placing' | 'waiting';
   myName: string;
+  /** The opponent whose board is currently shown below — may differ from
+   * whose turn it actually is once there are 2+ opponents. */
   enemyName: string;
+  /** Whoever's turn it is right now — same as enemyName in a 2-player match. */
+  turnName: string;
+  /** Who actually won — distinct from enemyName in a 3-4 player match. */
+  winnerName?: string;
   styles: ReturnType<typeof boardStyles>;
 }) {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -215,11 +226,15 @@ function TurnBanner({
     mode === 'you'
       ? { eyebrow: 'Fire now', title: 'YOUR TURN', sub: `Tap ${enemyName}'s board` }
       : mode === 'them'
-        ? { eyebrow: 'Hold fire', title: `${enemyName.toUpperCase()}'S TURN`, sub: 'Wait for their shot' }
+        ? { eyebrow: 'Hold fire', title: `${turnName.toUpperCase()}'S TURN`, sub: 'Wait for their shot' }
         : mode === 'win'
-          ? { eyebrow: 'Victory', title: 'YOU WIN', sub: 'Every enemy boot found' }
+          ? { eyebrow: 'Victory', title: 'YOU WIN', sub: 'Last fleet afloat' }
           : mode === 'lose'
-            ? { eyebrow: 'Defeat', title: 'THEY WIN', sub: `${enemyName} sank your fleet` }
+            ? {
+                eyebrow: 'Defeat',
+                title: `${(winnerName ?? enemyName).toUpperCase()} WINS`,
+                sub: 'Your fleet is gone',
+              }
             : mode === 'waiting'
               ? { eyebrow: 'Locked in', title: 'WAITING', sub: `${enemyName} is still placing` }
               : {
@@ -429,12 +444,29 @@ export function BootsBoard({
   const styles = useThemedStyles(boardStyles);
   const boots = room.boots as BootsPublicState;
   const [orientation, setOrientation] = useState<BootsOrientation>('horizontal');
+  // Which opponent's board is shown below — only matters once there are 2+
+  // of them; with exactly one this never needs to change.
+  const [selectedEnemyId, setSelectedEnemyId] = useState<string | null>(null);
 
   const me = room.players.find((p) => p.userId === meId);
-  const enemyId = boots.playerIds.find((id) => id !== meId) ?? boots.playerIds[1];
-  const enemy = room.players.find((p) => p.userId === enemyId);
   const myName = me?.name?.trim() || 'You';
-  const enemyName = enemy?.name?.trim() || 'Opponent';
+  const nameOf = (id: string | null | undefined) =>
+    (id && room.players.find((p) => p.userId === id)?.name?.trim()) || 'Opponent';
+
+  const enemies = boots.enemies;
+  const multiEnemy = enemies.length > 1;
+  // Prefer whoever is still manually selected; otherwise default to the
+  // first opponent still in the match rather than one already eliminated.
+  const activeEnemy = useMemo(() => {
+    if (selectedEnemyId) {
+      const found = enemies.find((e) => e.id === selectedEnemyId);
+      if (found) return found;
+    }
+    return enemies.find((e) => !e.eliminated) ?? enemies[0] ?? null;
+  }, [selectedEnemyId, enemies]);
+  const enemyName = nameOf(activeEnemy?.id);
+  const turnName = boots.turnId === meId ? myName : nameOf(boots.turnId);
+  const winnerName = nameOf(boots.winnerId);
 
   const placed = boots.own.boots.length;
   const fleetTotal = boots.fleet.length;
@@ -452,12 +484,15 @@ export function BootsBoard({
   })();
 
   const myReady = !!boots.ready[meId];
-  const enemyReady = !!boots.ready[enemyId];
   const myTurn = boots.turnId === meId;
 
   const last = boots.lastShot;
   const lastText = last
-    ? `${last.by === meId ? 'You' : enemyName} → ${String.fromCharCode(65 + last.cell.col)}${
+    ? `${last.by === meId ? 'You' : nameOf(last.by)}${
+        multiEnemy && last.target
+          ? ` → ${last.target === meId ? 'you' : nameOf(last.target)}`
+          : ''
+      } · ${String.fromCharCode(65 + last.cell.col)}${
         last.cell.row + 1
       }  ${last.result.toUpperCase()}${
         last.bootLength ? ` · sank ${last.bootLength}` : ''
@@ -471,6 +506,7 @@ export function BootsBoard({
           mode={myReady ? 'waiting' : 'placing'}
           myName={myName}
           enemyName={enemyName}
+          turnName={turnName}
           styles={styles}
         />
 
@@ -485,12 +521,19 @@ export function BootsBoard({
               {placed}/{fleetTotal}
             </Text>
           </View>
-          <View style={[styles.metaPill, enemyReady && styles.metaPillReady]}>
-            <Text style={styles.metaPillLabel}>{enemyName}</Text>
-            <Text style={styles.metaPillValue}>
-              {enemyReady ? 'Ready' : 'Placing…'}
-            </Text>
-          </View>
+          {enemies.map((e) => (
+            <View
+              key={e.id}
+              style={[styles.metaPill, e.ready && styles.metaPillReady]}
+            >
+              <Text style={styles.metaPillLabel} numberOfLines={1}>
+                {nameOf(e.id)}
+              </Text>
+              <Text style={styles.metaPillValue}>
+                {e.ready ? 'Ready' : 'Placing…'}
+              </Text>
+            </View>
+          ))}
         </View>
 
         {!myReady ? (
@@ -575,26 +618,24 @@ export function BootsBoard({
         ? 'you'
         : 'them';
 
+  const activeEliminated = !!activeEnemy?.eliminated;
+
   return (
     <View style={styles.root}>
       <TurnBanner
         mode={turnMode}
         myName={myName}
         enemyName={enemyName}
+        turnName={turnName}
+        winnerName={winnerName}
         styles={styles}
       />
 
       <View style={styles.metaRow}>
         <View style={styles.metaPill}>
-          <Text style={styles.metaPillLabel}>You sunk</Text>
+          <Text style={styles.metaPillLabel}>Your fleet</Text>
           <Text style={styles.metaPillValue}>
-            {boots.sunkCounts[meId] ?? 0}/{fleetTotal}
-          </Text>
-        </View>
-        <View style={styles.metaPill}>
-          <Text style={styles.metaPillLabel}>They sunk</Text>
-          <Text style={styles.metaPillValue}>
-            {boots.sunkCounts[enemyId] ?? 0}/{fleetTotal}
+            {boots.own.sunkCount}/{fleetTotal} sunk
           </Text>
         </View>
       </View>
@@ -606,17 +647,65 @@ export function BootsBoard({
         </View>
       ) : null}
 
+      {multiEnemy ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.enemyTabs}
+        >
+          {enemies.map((e) => {
+            const name = nameOf(e.id);
+            const isActive = activeEnemy?.id === e.id;
+            return (
+              <Pressable
+                key={e.id}
+                style={[
+                  styles.enemyTab,
+                  isActive && styles.enemyTabActive,
+                  e.eliminated && styles.enemyTabOut,
+                ]}
+                onPress={() => setSelectedEnemyId(e.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`${name}${
+                  e.eliminated ? ', eliminated' : ''
+                }, ${e.sunkCount}/${e.fleetSize} sunk${
+                  boots.turnId === e.id ? ', their turn' : ''
+                }`}
+              >
+                {boots.turnId === e.id ? (
+                  <View style={styles.enemyTabTurnDot} />
+                ) : null}
+                <Text style={styles.enemyTabName} numberOfLines={1}>
+                  {name}
+                </Text>
+                <Text style={styles.enemyTabSub}>
+                  {e.eliminated ? 'OUT' : `${e.sunkCount}/${e.fleetSize} sunk`}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       <Grid
         title={`${enemyName}'s waters`}
-        badge={myTurn && boots.phase === 'battle' ? 'Fire here' : 'Enemy'}
-        boots={boots.enemy.sunkBoots}
-        shots={boots.enemy.shots}
+        badge={
+          activeEliminated
+            ? 'Eliminated'
+            : myTurn && boots.phase === 'battle'
+              ? 'Fire here'
+              : 'Enemy'
+        }
+        boots={activeEnemy?.sunkBoots ?? []}
+        shots={activeEnemy?.shots ?? {}}
         showBoots
         assembleKind="find"
-        highlighted={boots.phase === 'battle' && myTurn}
-        dimmed={boots.phase === 'battle' && !myTurn}
-        interactive={boots.phase === 'battle' && myTurn && !busy}
-        onPressCell={(col, row) => onFire(col, row)}
+        highlighted={boots.phase === 'battle' && myTurn && !activeEliminated}
+        dimmed={boots.phase === 'battle' && (!myTurn || activeEliminated)}
+        interactive={
+          boots.phase === 'battle' && myTurn && !busy && !!activeEnemy && !activeEliminated
+        }
+        onPressCell={(col, row) => activeEnemy && onFire(col, row, activeEnemy.id)}
       />
 
       <Grid
@@ -735,6 +824,35 @@ function boardStyles(c: ThemeColors) {
       fontSize: 13,
       fontWeight: '700' as const,
       marginTop: 2,
+    },
+
+    enemyTabs: { gap: 8, paddingVertical: 2 },
+    enemyTab: {
+      minWidth: 92,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 12,
+      backgroundColor: 'rgba(14, 116, 144, 0.22)',
+      borderWidth: 1,
+      borderColor: 'rgba(125, 211, 252, 0.22)',
+      alignItems: 'center' as const,
+    },
+    enemyTabActive: {
+      borderColor: '#22c55e',
+      borderWidth: 2,
+      backgroundColor: 'rgba(34, 197, 94, 0.16)',
+    },
+    enemyTabOut: { opacity: 0.45 },
+    enemyTabName: { color: c.text, fontSize: 12, fontWeight: '800' as const },
+    enemyTabSub: { color: c.textMuted, fontSize: 10, marginTop: 2 },
+    enemyTabTurnDot: {
+      position: 'absolute' as const,
+      top: 6,
+      right: 6,
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: '#fbbf24',
     },
 
     nextSize: { color: c.textMuted, fontSize: 13 },
