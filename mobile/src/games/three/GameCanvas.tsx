@@ -44,6 +44,11 @@ type Props = {
   fallback: ReactNode;
   onFallback?: () => void;
   camera?: CanvasProps['camera'];
+  /**
+   * Flat games (the arcade racer) want an orthographic camera, where one
+   * world unit is one screen pixel and nothing shrinks with depth.
+   */
+  orthographic?: boolean;
   children: ReactNode;
 };
 
@@ -52,7 +57,14 @@ type Props = {
  * a GL-availability check and an error boundary that swaps in the 2D board
  * instead of a blank screen if the device's GL context misbehaves.
  */
-export function GameCanvas({ style, fallback, onFallback, camera, children }: Props) {
+export function GameCanvas({
+  style,
+  fallback,
+  onFallback,
+  camera,
+  orthographic,
+  children,
+}: Props) {
   if (!supports3D()) return <>{fallback}</>;
   return (
     <View style={[styles.wrap, style]}>
@@ -60,6 +72,7 @@ export function GameCanvas({ style, fallback, onFallback, camera, children }: Pr
         <Canvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           camera={camera}
+          orthographic={orthographic}
           // Scenes mark meshes castShadow/receiveShadow, but those flags do
           // nothing unless the renderer has a shadow map at all — without
           // this the pieces looked pasted flat onto the board.

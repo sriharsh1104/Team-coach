@@ -3,7 +3,7 @@ import { apiBaseUrl } from './client';
 
 // ── Types mirrored from backend/src/games ──────────────────────────────────
 
-export type GameKind = 'rps' | 'ludo' | 'boots' | 'cut' | 'chess';
+export type GameKind = 'rps' | 'ludo' | 'boots' | 'cut' | 'chess' | 'uno';
 
 export const GAME_CATALOG: Array<{
   id: GameKind;
@@ -51,6 +51,15 @@ export const GAME_CATALOG: Array<{
     emoji: '♞',
   },
   {
+    id: 'uno',
+    title: 'UNO',
+    tagline: 'Match colour or number — shout UNO on your last card',
+    players: '2–4 players',
+    minPlayers: 2,
+    maxPlayers: 4,
+    emoji: '🃏',
+  },
+  {
     id: 'boots',
     title: 'Boots',
     tagline: '6×6 fleet hunt — place boots, then fire',
@@ -60,6 +69,68 @@ export const GAME_CATALOG: Array<{
     emoji: '🚢',
   },
 ];
+
+/* ---------------- UNO ---------------- */
+
+export const UNO_COLORS = ['red', 'blue', 'green', 'yellow'] as const;
+export type UnoColor = (typeof UNO_COLORS)[number];
+
+export type UnoValue =
+  | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
+  | 'skip'
+  | 'reverse'
+  | 'draw2'
+  | 'wild'
+  | 'wild4';
+
+/** `color` is null on a wild that has not been played yet. */
+export type UnoCard = { id: string; color: UnoColor | null; value: UnoValue };
+
+export type UnoEndReason = 'empty-hand' | 'forfeit';
+
+/** Viewer-scoped: your own cards in full, everyone else's as a count. */
+export type UnoPublicState = {
+  playerIds: string[];
+  hand: UnoCard[];
+  counts: Record<string, number>;
+  topCard: UnoCard | null;
+  activeColor: UnoColor;
+  turnIndex: number;
+  turnId: string;
+  /** 1 = down the seat order, -1 = back up it. */
+  direction: 1 | -1;
+  drawPileCount: number;
+  discardCount: number;
+  phase: 'play' | 'done';
+  /** Card ids in `hand` that are legal right now — server-decided. */
+  playable: string[];
+  /** You have taken your card this turn: play it or pass. */
+  youDrew: boolean;
+  drawnCardId: string | null;
+  calledUno: Record<string, boolean>;
+  winnerId: string | null;
+  endReason: UnoEndReason | null;
+  lastEvent: string | null;
+  version: number;
+};
+
+/** Short face label — what is printed big in the middle of the card. */
+export function unoLabel(card: UnoCard): string {
+  switch (card.value) {
+    case 'draw2':
+      return '+2';
+    case 'skip':
+      return '⊘';
+    case 'reverse':
+      return '⇄';
+    case 'wild':
+      return 'W';
+    case 'wild4':
+      return '+4';
+    default:
+      return card.value;
+  }
+}
 
 /* ---------------- Chess ---------------- */
 
@@ -264,6 +335,7 @@ export interface RoomView {
   boots: BootsPublicState | null;
   cut: CutPublicState | null;
   chess: ChessPublicState | null;
+  uno: UnoPublicState | null;
   bootsFleet: number[] | null;
   deadline: number | null;
 }

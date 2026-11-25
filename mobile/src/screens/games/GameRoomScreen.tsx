@@ -24,6 +24,7 @@ import { confirmAsync } from '../../ui/confirmAsync';
 import { FadeIn } from '../../ui/FadeIn';
 import { BootsBoard } from './BootsBoard';
 import { ChessBoard } from './ChessBoard';
+import { UnoBoard } from './UnoBoard';
 import {
   ReactionBar,
   ReactionOverlay,
@@ -339,20 +340,49 @@ export function GameRoomScreen() {
   }
   if (room.status === 'playing' && room.chess) {
     return (
+      // Chess brings its own chrome — brand bar, player strips, move tape and
+      // toolbar — so it replaces the generic room header rather than stacking
+      // under it, and it is not wrapped in a scroll view: the board arena is
+      // the flexible element and takes every pixel the chrome isn't using.
       <Screen>
-        {header}
-        <ScrollView contentContainerStyle={staticStyles.boardStage}>
-          <ChessBoard
-            room={room}
-            meId={meId}
-            busy={busy || isSpectating}
-            mode={mode}
-            onFallback={() => setMode('2d')}
-            onMove={(from, to, promotion) =>
-              void act(() => games.chessMove(room.id, from, to, promotion))
-            }
-          />
-        </ScrollView>
+        <ChessBoard
+          room={room}
+          meId={meId}
+          busy={busy || isSpectating}
+          mode={mode}
+          subtitle={`${room.title}${isSpectating ? ' · Watching' : ''}${
+            !games.connected ? ' · reconnecting…' : ''
+          }`}
+          onModeChange={setMode}
+          onLeave={leave}
+          onFallback={() => setMode('2d')}
+          onMove={(from, to, promotion) =>
+            void act(() => games.chessMove(room.id, from, to, promotion))
+          }
+        />
+      </Screen>
+    );
+  }
+  if (room.status === 'playing' && room.uno) {
+    return (
+      // Like Chess, UNO brings its own full-screen chrome — the table has to
+      // own the height so the hand along the bottom is never clipped.
+      <Screen>
+        <UnoBoard
+          room={room}
+          meId={meId}
+          busy={busy || isSpectating}
+          subtitle={`${room.players.length} players${
+            !games.connected ? ' · reconnecting…' : ''
+          }`}
+          onLeave={leave}
+          onPlay={(cardId, color) =>
+            void act(() => games.unoPlay(room.id, cardId, color))
+          }
+          onDraw={() => void act(() => games.unoDraw(room.id))}
+          onPass={() => void act(() => games.unoPass(room.id))}
+          onCall={() => void act(() => games.unoCall(room.id))}
+        />
       </Screen>
     );
   }
@@ -589,14 +619,6 @@ export function GameRoomScreen() {
 const staticStyles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   lobby: { padding: 16, paddingBottom: 32 },
-  // The board sizes itself to the screen, so any height left over should sit
-  // above and below it rather than piling up underneath as dead space.
-  boardStage: {
-    padding: 12,
-    paddingBottom: 24,
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
   trophy: { fontSize: 40 },
   emptySeat: { opacity: 0.6 },
   dim: { opacity: 0.5 },

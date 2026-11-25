@@ -213,6 +213,28 @@ export function GamesHubScreen() {
               ))}
             </View>
 
+            {/* Not a room game: the racer runs at sixty frames a second on
+                one handset, so it gets its own section rather than sitting
+                among the "create a room" cards. */}
+            <Text style={styles.section}>Same phone</Text>
+            <Pressable
+              style={styles.arcadeCard}
+              onPress={() => navigation.navigate('RoadRash')}
+              accessibilityRole="button"
+              accessibilityLabel="Open Road Rash Rush"
+            >
+              <Text style={staticStyles.roomEmoji}>🏍️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.roomTitle}>Road Rash Rush</Text>
+                <Text style={styles.roomSub}>
+                  Bike combat racing · 1–4 players on this phone
+                </Text>
+              </View>
+              <View style={styles.arcadePill}>
+                <Text style={styles.arcadePillText}>Play</Text>
+              </View>
+            </Pressable>
+
             {liveToWatch.length > 0 ? (
               <>
                 <Text style={styles.section}>Live now</Text>
@@ -471,6 +493,23 @@ function hubStyles(c: ThemeColors) {
     cardPill: { alignSelf: 'flex-start' as const, marginTop: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border },
     cardPillText: { color: c.textMuted, fontSize: 11, fontWeight: '700' as const },
     cardCta: { color: c.link, fontWeight: '800' as const, marginTop: 12, fontSize: 13 },
+    arcadeCard: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 12,
+      padding: 14,
+      borderRadius: 16,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: 'rgba(14,165,233,0.45)',
+    },
+    arcadePill: {
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: '#0ea5e9',
+    },
+    arcadePillText: { color: '#020617', fontSize: 12, fontWeight: '800' as const },
     section: { color: c.textMuted, fontSize: 11, fontWeight: '800' as const, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginTop: 24, marginBottom: 8 },
     empty: { color: c.textDim, fontSize: 13, lineHeight: 18 },
     room: {

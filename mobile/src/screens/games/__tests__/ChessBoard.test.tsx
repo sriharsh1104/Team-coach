@@ -153,7 +153,7 @@ describe('ChessBoard', () => {
     fireEvent.press(cell('a8'));
     // Nothing sent yet — the choice is still open.
     expect(onMove).not.toHaveBeenCalled();
-    expect(screen.getByText('Promote to')).toBeTruthy();
+    expect(screen.getByText('Pawn Promotion')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Promote to Knight'));
     expect(onMove).toHaveBeenCalledWith('a7', 'a8', 'n');

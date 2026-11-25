@@ -74,6 +74,10 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   boots:fire {roomId, target, targetId?} → RoomView   (targetId required with 3+ live opponents)
  *   cut:draw {roomId}               → RoomView
  *   chess:move {roomId, from, to, promotion?} → RoomView
+ *   uno:play {roomId, cardId, color?, callUno?} → RoomView
+ *   uno:draw {roomId}               → RoomView
+ *   uno:pass {roomId}               → RoomView
+ *   uno:call {roomId}               → RoomView
  *   room:react {roomId, reaction}   → RoomView (broadcast only, stores nothing)
  * Server → client:
  *   room:update {room, event?}   every change in a room you're in
@@ -678,6 +682,58 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
         body?.to,
         body?.promotion,
       ),
+    );
+  }
+
+  @SubscribeMessage('uno:play')
+  onUnoPlay(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    body: {
+      roomId?: string;
+      cardId?: string;
+      color?: string;
+      callUno?: boolean;
+    },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoPlay(
+        this.roomIdOf(body, data),
+        data.userId,
+        body?.cardId,
+        body?.color,
+        body?.callUno,
+      ),
+    );
+  }
+
+  @SubscribeMessage('uno:draw')
+  onUnoDraw(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoDraw(this.roomIdOf(body, data), data.userId),
+    );
+  }
+
+  @SubscribeMessage('uno:pass')
+  onUnoPass(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoPass(this.roomIdOf(body, data), data.userId),
+    );
+  }
+
+  @SubscribeMessage('uno:call')
+  onUnoCall(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string },
+  ) {
+    return this.run(client, (data) =>
+      this.games.unoCall(this.roomIdOf(body, data), data.userId),
     );
   }
 

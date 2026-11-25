@@ -57,6 +57,10 @@ function api(overrides: Partial<ReturnType<typeof useGamesSocket>> = {}) {
     bootsReady: jest.fn(),
     bootsFire: jest.fn(),
     cutDraw: jest.fn(),
+    unoPlay: jest.fn(),
+    unoDraw: jest.fn(),
+    unoPass: jest.fn(),
+    unoCall: jest.fn(),
     ...overrides,
   };
 }
@@ -80,6 +84,7 @@ function lobbyRoom(overrides: Partial<RoomView> = {}): RoomView {
     boots: null,
     cut: null,
     chess: null,
+    uno: null,
     bootsFleet: null,
     deadline: null,
     ...overrides,

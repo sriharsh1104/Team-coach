@@ -52,6 +52,19 @@ import {
   chessPublicState,
   createChessState,
 } from './engines/chess.engine';
+import {
+  UNO_COLORS,
+  UnoColor,
+  UnoPublicState,
+  UnoState,
+  createUnoState,
+  unoCall,
+  unoDraw,
+  unoForfeit,
+  unoPass,
+  unoPlay,
+  unoPublicState,
+} from './engines/uno.engine';
 
 /**
  * Taunts players can throw at each other mid-game. A closed set on purpose:
@@ -61,7 +74,7 @@ import {
 export const GAME_REACTIONS = ['angry', 'loser', 'laughing', 'cool'] as const;
 export type GameReaction = (typeof GAME_REACTIONS)[number];
 
-export type GameKind = 'rps' | 'ludo' | 'boots' | 'cut' | 'chess';
+export type GameKind = 'rps' | 'ludo' | 'boots' | 'cut' | 'chess' | 'uno';
 
 export const GAME_CATALOG: Record<
   GameKind,
@@ -82,6 +95,9 @@ export const GAME_CATALOG: Record<
   boots: { title: 'Boots', minPlayers: 2, maxPlayers: 4, spectatable: false },
   cut: { title: 'Cut', minPlayers: 2, maxPlayers: 4, spectatable: true },
   chess: { title: 'Chess', minPlayers: 2, maxPlayers: 2, spectatable: true },
+  // Hands are secret, so a "spectator" would be looking at cards nobody
+  // at the table can see — UNO stays players-only, like Boots.
+  uno: { title: 'UNO', minPlayers: 2, maxPlayers: 4, spectatable: false },
 };
 
 export interface RoomPlayer {
@@ -116,6 +132,7 @@ interface Room {
   boots: BootsState | null;
   cut: CutState | null;
   chess: ChessState | null;
+  uno: UnoState | null;
   /** Host-chosen boot lengths for Boots (e.g. [5,3,2]). */
   bootsFleet: number[] | null;
   timer: ReturnType<typeof setTimeout> | null;
@@ -144,6 +161,8 @@ export interface RoomView {
   cut: CutPublicState | null;
   /** Viewer-scoped only for whose turn it is; the board itself is public. */
   chess: ChessPublicState | null;
+  /** Viewer-scoped — you see your own hand, everyone else's card count. */
+  uno: UnoPublicState | null;
   /** Lobby preview of the Boots fleet sizes. */
   bootsFleet: number[] | null;
   /** Server time when the current action auto-resolves (Ludo turn timer). */
@@ -262,6 +281,7 @@ export class GamesService {
       boots: null,
       cut: null,
       chess: null,
+      uno: null,
       bootsFleet: game === 'boots' ? normalizeFleet(bootsFleet) : null,
       timer: null,
     };
@@ -320,12 +340,14 @@ export class GamesService {
       if (room.boots) bootsForfeit(room.boots, userId);
       if (room.cut) cutForfeit(room.cut, userId);
       if (room.chess) chessForfeit(room.chess, userId);
+      if (room.uno) unoForfeit(room.uno, userId);
       if (
         room.rps?.phase === 'done' ||
         room.ludo?.phase === 'done' ||
         room.boots?.phase === 'done' ||
         room.cut?.phase === 'done' ||
-        room.chess?.phase === 'done'
+        room.chess?.phase === 'done' ||
+        room.uno?.phase === 'done'
       ) {
         this.finish(room);
         return;
@@ -450,6 +472,7 @@ export class GamesService {
       // Seat order decides colour: whoever created the room plays White.
       room.chess = createChessState([ids[0], ids[1]]);
     }
+    if (room.game === 'uno') room.uno = createUnoState(ids);
     room.status = 'playing';
     this.emit(room, { type: 'started' });
     this.onOrg(room.orgId);
@@ -469,6 +492,7 @@ export class GamesService {
     room.boots = null;
     room.cut = null;
     room.chess = null;
+    room.uno = null;
     room.status = 'lobby';
     this.deadlines.delete(room.id);
     this.emit(room, { type: 'rematch' });
@@ -636,6 +660,86 @@ export class GamesService {
       payload: { userId, san: record.san, from: record.from, to: record.to },
     });
     if (room.chess.phase === 'done') this.finish(room);
+    return this.view(room, userId);
+  }
+
+  // ─── UNO ──────────────────────────────────────────────────────────────
+
+  /**
+   * Play one card. Every rule — what matches, what a wild needs, what the
+   * next player is made to take — lives in the engine, so the same code that
+   * told the client which cards were playable is the code that checks this.
+   */
+  unoPlay(
+    roomId: string,
+    userId: string,
+    cardId: unknown,
+    color?: unknown,
+    callUno?: unknown,
+  ): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No UNO match in progress');
+    if (typeof cardId !== 'string' || !cardId.trim())
+      throw new Error('Pick a card to play');
+
+    const chosen =
+      typeof color === 'string' && UNO_COLORS.includes(color as UnoColor)
+        ? (color as UnoColor)
+        : undefined;
+
+    const result = unoPlay(
+      room.uno,
+      userId,
+      cardId.trim(),
+      chosen,
+      callUno === true,
+    );
+    this.emit(room, {
+      type: 'uno:play',
+      payload: {
+        userId,
+        card: result.card,
+        penalised: result.penalised,
+        missedUno: result.missedUno,
+      },
+    });
+    if (room.uno.phase === 'done') this.finish(room);
+    return this.view(room, userId);
+  }
+
+  /** Take one card from the deck. You may then play it, or pass. */
+  unoDraw(roomId: string, userId: string): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No UNO match in progress');
+    const result = unoDraw(room.uno, userId);
+    this.emit(room, {
+      type: 'uno:draw',
+      // The card itself is never broadcast — only the drawer's own view
+      // carries it, and that is built per viewer below.
+      payload: { userId, playable: result.playable },
+    });
+    return this.view(room, userId);
+  }
+
+  /** End your turn after drawing. */
+  unoPass(roomId: string, userId: string): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No UNO match in progress');
+    unoPass(room.uno, userId);
+    this.emit(room, { type: 'uno:pass', payload: { userId } });
+    return this.view(room, userId);
+  }
+
+  /** Shout UNO — allowed from two cards down. */
+  unoCall(roomId: string, userId: string): RoomView {
+    const room = this.rooms.get(roomId);
+    if (!room?.uno || room.status !== 'playing')
+      throw new Error('No UNO match in progress');
+    unoCall(room.uno, userId);
+    this.emit(room, { type: 'uno:called', payload: { userId } });
     return this.view(room, userId);
   }
 
@@ -839,6 +943,7 @@ export class GamesService {
       boots: room.boots ? bootsPublicState(room.boots, viewer) : null,
       cut: room.cut ? cutPublicState(room.cut) : null,
       chess: room.chess ? chessPublicState(room.chess, viewer) : null,
+      uno: room.uno ? unoPublicState(room.uno, viewer) : null,
       bootsFleet: room.bootsFleet ? [...room.bootsFleet] : null,
       deadline:
         room.ludo && room.ludo.phase !== 'done'

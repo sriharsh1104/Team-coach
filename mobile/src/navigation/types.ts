@@ -67,6 +67,11 @@ export type MainStackParamList = {
   PointsTable: undefined;
   SocialHandles: undefined;
   Games: undefined;
-  GameRoom: { roomId: string; game?: 'rps' | 'ludo' | 'boots' | 'cut' | 'chess' };
+  GameRoom: {
+    roomId: string;
+    game?: 'rps' | 'ludo' | 'boots' | 'cut' | 'chess' | 'uno';
+  };
+  /** Same-phone arcade racer — no room, no server. */
+  RoadRash: undefined;
   GoLive: undefined;
 };

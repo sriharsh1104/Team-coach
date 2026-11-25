@@ -405,8 +405,19 @@ export function RootNavigator() {
                         ? 'Cut'
                         : route.params?.game === 'boots'
                           ? 'Boots'
-                          : 'Game',
+                          : route.params?.game === 'uno'
+                            ? 'UNO'
+                            : route.params?.game === 'chess'
+                              ? 'Chess'
+                              : 'Game',
               }))}
+            />
+            <MainStack.Screen
+              name="RoadRash"
+              getComponent={() =>
+                require('../screens/games/RoadRashScreen').RoadRashScreen
+              }
+              options={detailOptions(() => ({ title: 'Road Rash Rush' }))}
             />
             <MainStack.Screen
               name="GoLive"
@@ -653,8 +664,19 @@ export function RootNavigator() {
                         ? 'Cut'
                         : route.params?.game === 'boots'
                           ? 'Boots'
-                          : 'Game',
+                          : route.params?.game === 'uno'
+                            ? 'UNO'
+                            : route.params?.game === 'chess'
+                              ? 'Chess'
+                              : 'Game',
               }))}
+            />
+            <MainStack.Screen
+              name="RoadRash"
+              getComponent={() =>
+                require('../screens/games/RoadRashScreen').RoadRashScreen
+              }
+              options={detailOptions(() => ({ title: 'Road Rash Rush' }))}
             />
             <MainStack.Screen
               name="GoLive"

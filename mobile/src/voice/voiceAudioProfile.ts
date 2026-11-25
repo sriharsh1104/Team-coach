@@ -1,16 +1,10 @@
 import { AndroidAudioTypePresets } from '@livekit/react-native';
 import { isLiveStreaming } from '../media/liveStreamer';
 
-/** Process-wide: true while a voice call is connected or connecting. */
-let inCall = false;
-
-export function setVoiceCallActive(active: boolean) {
-  inCall = active;
-}
-
-export function isVoiceCallActive() {
-  return inCall;
-}
+export {
+  isVoiceCallActive,
+  setVoiceCallActive,
+} from './voiceCallActive';
 
 /**
  * Which Android audio profile a call should play through.
