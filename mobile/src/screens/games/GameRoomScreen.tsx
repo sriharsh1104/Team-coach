@@ -25,6 +25,7 @@ import { FadeIn } from '../../ui/FadeIn';
 import { BootsBoard } from './BootsBoard';
 import { ChessBoard } from './ChessBoard';
 import { UnoBoard } from './UnoBoard';
+import { RaceBoard } from './RaceBoard';
 import {
   ReactionBar,
   ReactionOverlay,
@@ -272,13 +273,20 @@ export function GameRoomScreen() {
 
   if (room.status === 'playing' && room.rps) {
     return (
+      // RPS brings its own arcade chrome (brand bar, scoreboard, leave) so
+      // it replaces the generic room header like Chess / UNO.
       <Screen>
-        {header}
         <RpsBoard
           room={room}
           meId={meId}
           busy={busy}
           mode={mode}
+          subtitle={`${room.title}${isSpectating ? ' · Watching' : ''}${
+            !games.connected ? ' · reconnecting…' : ''
+          }`}
+          onModeChange={setMode}
+          onLeave={leave}
+          leaveLabel={isSpectating ? 'Stop watching' : 'Leave the match'}
           onFallback={() => setMode('2d')}
           onPick={(choice: RpsChoice) => void act(() => games.rpsPick(room.id, choice))}
         />
@@ -287,23 +295,27 @@ export function GameRoomScreen() {
   }
   if (room.status === 'playing' && room.ludo) {
     return (
+      // Ludo Royal owns the screen — seat cards, amber board, roll footer —
+      // so spectators see Watching in the subtitle and Stop watching on leave.
       <Screen>
-        {header}
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-          <LudoBoard
-            room={room}
-            meId={meId}
-            // Every action button in these boards is already gated on
-            // `busy` — a spectator never has a turn of their own, so
-            // treating them as permanently busy disables roll/move/tap
-            // without touching either board component.
-            busy={busy || isSpectating}
-            mode={mode}
-            onFallback={() => setMode('2d')}
-            onRoll={() => void act(() => games.ludoRoll(room.id))}
-            onMove={(i) => void act(() => games.ludoMove(room.id, i))}
-          />
-        </ScrollView>
+        <LudoBoard
+          room={room}
+          meId={meId}
+          // Every action button is already gated on `busy` — a spectator
+          // never has a turn, so treating them as permanently busy disables
+          // roll/move/tap without touching the board component.
+          busy={busy || isSpectating}
+          mode={mode}
+          subtitle={`${room.title}${isSpectating ? ' · Watching' : ''}${
+            !games.connected ? ' · reconnecting…' : ''
+          }`}
+          onModeChange={setMode}
+          onLeave={leave}
+          leaveLabel={isSpectating ? 'Stop watching' : 'Leave the match'}
+          onFallback={() => setMode('2d')}
+          onRoll={() => void act(() => games.ludoRoll(room.id))}
+          onMove={(i) => void act(() => games.ludoMove(room.id, i))}
+        />
       </Screen>
     );
   }
@@ -359,6 +371,27 @@ export function GameRoomScreen() {
           onMove={(from, to, promotion) =>
             void act(() => games.chessMove(room.id, from, to, promotion))
           }
+        />
+      </Screen>
+    );
+  }
+  if (room.status === 'playing' && room.race) {
+    return (
+      // The racer owns the whole screen like Chess and UNO, and like them it
+      // brings its own chrome. Its world arrives on a separate 20Hz channel
+      // rather than through room updates, so it gets the tick subscription
+      // instead of an action callback per move.
+      <Screen>
+        <RaceBoard
+          room={room}
+          meId={meId}
+          busy={busy}
+          subtitle={`${room.players.length} riders${
+            !games.connected ? ' · reconnecting…' : ''
+          }`}
+          onLeave={leave}
+          onInput={(action) => games.raceInput(room.id, action)}
+          onRaceTick={games.onRaceTick}
         />
       </Screen>
     );

@@ -78,8 +78,10 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   uno:draw {roomId}               → RoomView
  *   uno:pass {roomId}               → RoomView
  *   uno:call {roomId}               → RoomView
+ *   race:input {roomId, action}     → nothing (fire and forget, 20Hz world)
  *   room:react {roomId, reaction}   → RoomView (broadcast only, stores nothing)
  * Server → client:
+ *   race:tick {t, b, c, p, ev, done}  20 times a second while a race runs
  *   room:update {room, event?}   every change in a room you're in
  *   rooms:changed                lobby list for your org changed
  *   room:invite {room, from}     someone invited you (queued + sent on connect if you were offline)
@@ -91,6 +93,11 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   private readonly logger = new Logger(GamesGateway.name);
   private readonly limiter = new WsRateLimiter(60, 10_000);
+  /**
+   * Race inputs get their own, much larger budget: 25 a second is well past
+   * what thumbs can manage but still caps a client that misbehaves.
+   */
+  private readonly raceLimiter = new WsRateLimiter(250, 10_000);
   /** userId -> live socket ids (a user may have the app open on two devices). */
   private readonly userSockets = new Map<string, Set<string>>();
   /**
@@ -131,6 +138,12 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
       },
       (orgId) => {
         server.to(this.orgChannel(orgId)).emit('rooms:changed');
+      },
+      // Road Rash's 20Hz world state. Room channel only, no per-user fan-out
+      // and no ack: it is the one message here that is allowed to be lossy,
+      // because another one is along in 50ms.
+      (roomId, tick) => {
+        server.to(this.roomChannel(roomId)).volatile.emit('race:tick', tick);
       },
     );
 
@@ -182,6 +195,7 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   handleDisconnect(client: Socket) {
     this.limiter.clear(client.id);
+    this.raceLimiter.clear(client.id);
     const data = client.data as Partial<GamesSocketData>;
     if (!data?.userId) return;
     const set = this.userSockets.get(data.userId);
@@ -683,6 +697,24 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
         body?.promotion,
       ),
     );
+  }
+
+  /**
+   * A race input. Deliberately outside `run()`: no ack, and its own allowance
+   * — a rider weaving through traffic sends far more than the six messages a
+   * second the turn-based limiter is sized for.
+   */
+  @SubscribeMessage('race:input')
+  onRaceInput(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId?: string; action?: string },
+  ) {
+    if (!this.raceLimiter.allow(client.id)) return;
+    const data = client.data as GamesSocketData;
+    if (!data?.userId) return;
+    const roomId = body?.roomId?.trim() || this.games.roomOf(data.userId)?.id;
+    if (!roomId) return;
+    this.games.raceInput(roomId, data.userId, body?.action);
   }
 
   @SubscribeMessage('uno:play')

@@ -61,6 +61,8 @@ function api(overrides: Partial<ReturnType<typeof useGamesSocket>> = {}) {
     unoDraw: jest.fn(),
     unoPass: jest.fn(),
     unoCall: jest.fn(),
+    raceInput: jest.fn(),
+    onRaceTick: jest.fn(() => () => {}),
     ...overrides,
   };
 }
@@ -85,6 +87,7 @@ function lobbyRoom(overrides: Partial<RoomView> = {}): RoomView {
     cut: null,
     chess: null,
     uno: null,
+    race: null,
     bootsFleet: null,
     deadline: null,
     ...overrides,

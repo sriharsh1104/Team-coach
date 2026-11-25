@@ -65,6 +65,19 @@ import {
   unoPlay,
   unoPublicState,
 } from './engines/uno.engine';
+import {
+  RacePublicState,
+  RaceState,
+  RaceTick,
+  createRaceState,
+  raceAttack,
+  raceForfeit,
+  raceNitro,
+  racePublicState,
+  raceStep,
+  raceSteer,
+  raceTick,
+} from './engines/race.engine';
 
 /**
  * Taunts players can throw at each other mid-game. A closed set on purpose:
@@ -74,7 +87,8 @@ import {
 export const GAME_REACTIONS = ['angry', 'loser', 'laughing', 'cool'] as const;
 export type GameReaction = (typeof GAME_REACTIONS)[number];
 
-export type GameKind = 'rps' | 'ludo' | 'boots' | 'cut' | 'chess' | 'uno';
+export type GameKind =
+  'rps' | 'ludo' | 'boots' | 'cut' | 'chess' | 'uno' | 'race';
 
 export const GAME_CATALOG: Record<
   GameKind,
@@ -98,6 +112,14 @@ export const GAME_CATALOG: Record<
   // Hands are secret, so a "spectator" would be looking at cards nobody
   // at the table can see — UNO stays players-only, like Boots.
   uno: { title: 'UNO', minPlayers: 2, maxPlayers: 4, spectatable: false },
+  // One rider can start alone — the CPU fills the other three bikes — and
+  // nothing on the road is hidden, so anyone may watch.
+  race: {
+    title: 'Road Rash Rush',
+    minPlayers: 1,
+    maxPlayers: 4,
+    spectatable: true,
+  },
 };
 
 export interface RoomPlayer {
@@ -133,6 +155,7 @@ interface Room {
   cut: CutState | null;
   chess: ChessState | null;
   uno: UnoState | null;
+  race: RaceState | null;
   /** Host-chosen boot lengths for Boots (e.g. [5,3,2]). */
   bootsFleet: number[] | null;
   timer: ReturnType<typeof setTimeout> | null;
@@ -163,6 +186,12 @@ export interface RoomView {
   chess: ChessPublicState | null;
   /** Viewer-scoped — you see your own hand, everyone else's card count. */
   uno: UnoPublicState | null;
+  /**
+   * The grid only: who is in which seat and the seed the road is drawn from.
+   * The race itself moves far too fast for this channel and rides on its own
+   * `race:tick` instead.
+   */
+  race: RacePublicState | null;
   /** Lobby preview of the Boots fleet sizes. */
   bootsFleet: number[] | null;
   /** Server time when the current action auto-resolves (Ludo turn timer). */
@@ -176,6 +205,8 @@ export type RoomListener = (
   targetUserId?: string,
 ) => void;
 export type OrgListener = (orgId: string) => void;
+/** Raw, high-frequency broadcast for the one real-time game. */
+export type TickListener = (roomId: string, tick: RaceTick) => void;
 
 const RPS_REVEAL_MS = 2600;
 const LUDO_TURN_MS = 30_000;
@@ -183,6 +214,9 @@ const LUDO_AUTO_MOVE_MS = 700;
 /** How long a disconnected player keeps their seat before being dropped. */
 const DISCONNECT_GRACE_MS = 45_000;
 const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
+/** Road Rash broadcasts at 20Hz, three 60fps frames to a tick. */
+const RACE_TICK_MS = 50;
+const RACE_FRAMES_PER_TICK = 3;
 
 /**
  * In-memory game rooms (single backend instance, same assumption as the
@@ -209,10 +243,21 @@ export class GamesService {
   private readonly deadlines = new Map<string, number>();
   private onRoom: RoomListener = () => {};
   private onOrg: OrgListener = () => {};
+  private onTick: TickListener = () => {};
+  /** roomId -> the 20Hz loop driving a live race. */
+  private readonly raceLoops = new Map<
+    string,
+    ReturnType<typeof setInterval>
+  >();
 
-  setListeners(onRoom: RoomListener, onOrg: OrgListener) {
+  setListeners(
+    onRoom: RoomListener,
+    onOrg: OrgListener,
+    onTick?: TickListener,
+  ) {
     this.onRoom = onRoom;
     this.onOrg = onOrg;
+    if (onTick) this.onTick = onTick;
   }
 
   // ─── lobby ────────────────────────────────────────────────────────────
@@ -282,6 +327,7 @@ export class GamesService {
       cut: null,
       chess: null,
       uno: null,
+      race: null,
       bootsFleet: game === 'boots' ? normalizeFleet(bootsFleet) : null,
       timer: null,
     };
@@ -341,13 +387,15 @@ export class GamesService {
       if (room.cut) cutForfeit(room.cut, userId);
       if (room.chess) chessForfeit(room.chess, userId);
       if (room.uno) unoForfeit(room.uno, userId);
+      if (room.race) raceForfeit(room.race, userId);
       if (
         room.rps?.phase === 'done' ||
         room.ludo?.phase === 'done' ||
         room.boots?.phase === 'done' ||
         room.cut?.phase === 'done' ||
         room.chess?.phase === 'done' ||
-        room.uno?.phase === 'done'
+        room.uno?.phase === 'done' ||
+        room.race?.phase === 'done'
       ) {
         this.finish(room);
         return;
@@ -473,6 +521,12 @@ export class GamesService {
       room.chess = createChessState([ids[0], ids[1]]);
     }
     if (room.game === 'uno') room.uno = createUnoState(ids);
+    if (room.game === 'race') {
+      const names: Record<string, string> = {};
+      for (const p of room.players) names[p.userId] = p.name;
+      room.race = createRaceState(ids, names);
+      this.startRaceLoop(room);
+    }
     room.status = 'playing';
     this.emit(room, { type: 'started' });
     this.onOrg(room.orgId);
@@ -492,7 +546,9 @@ export class GamesService {
     room.boots = null;
     room.cut = null;
     room.chess = null;
+    this.stopRaceLoop(room.id);
     room.uno = null;
+    room.race = null;
     room.status = 'lobby';
     this.deadlines.delete(room.id);
     this.emit(room, { type: 'rematch' });
@@ -661,6 +717,74 @@ export class GamesService {
     });
     if (room.chess.phase === 'done') this.finish(room);
     return this.view(room, userId);
+  }
+
+  // ─── Road Rash (real time) ────────────────────────────────────────────
+
+  /**
+   * One input from one rider.
+   *
+   * Unlike every other action here this returns nothing: at a lane change per
+   * press there is no sense round-tripping a whole room view, and the next
+   * tick — at most 50ms away — already carries the result.
+   */
+  raceInput(roomId: string, userId: string, action: unknown): void {
+    const room = this.rooms.get(roomId);
+    if (!room?.race || room.status !== 'playing') return;
+    switch (action) {
+      case 'left':
+        raceSteer(room.race, userId, -1);
+        break;
+      case 'right':
+        raceSteer(room.race, userId, 1);
+        break;
+      case 'nitro':
+        raceNitro(room.race, userId);
+        break;
+      case 'punch':
+        raceAttack(room.race, userId, 'punch');
+        break;
+      case 'kick':
+        raceAttack(room.race, userId, 'kick');
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Drive the race.
+   *
+   * Twenty ticks a second, each advancing the world three 60fps frames, so
+   * the physics stay the ones the game was tuned at while the wire sees a
+   * twentieth of the traffic. Clients interpolate between ticks.
+   */
+  private startRaceLoop(room: Room) {
+    this.stopRaceLoop(room.id);
+    const timer = setInterval(() => {
+      const live = this.rooms.get(room.id);
+      if (!live?.race || live.status !== 'playing') {
+        this.stopRaceLoop(room.id);
+        return;
+      }
+      raceStep(live.race, RACE_FRAMES_PER_TICK);
+      this.onTick(live.id, raceTick(live.race));
+      if (live.race.phase === 'done') {
+        this.stopRaceLoop(live.id);
+        this.finish(live);
+      }
+    }, RACE_TICK_MS);
+    // Node keeps the process alive for an interval; a game loop should not.
+    timer.unref?.();
+    this.raceLoops.set(room.id, timer);
+  }
+
+  private stopRaceLoop(roomId: string) {
+    const timer = this.raceLoops.get(roomId);
+    if (timer) {
+      clearInterval(timer);
+      this.raceLoops.delete(roomId);
+    }
   }
 
   // ─── UNO ──────────────────────────────────────────────────────────────
@@ -866,6 +990,7 @@ export class GamesService {
 
   private finish(room: Room) {
     this.clearTimer(room);
+    this.stopRaceLoop(room.id);
     this.deadlines.delete(room.id);
     room.status = 'finished';
     this.emit(room, { type: 'finished' });
@@ -874,6 +999,7 @@ export class GamesService {
 
   private destroy(room: Room) {
     this.clearTimer(room);
+    this.stopRaceLoop(room.id);
     this.deadlines.delete(room.id);
     this.rooms.delete(room.id);
     for (const [uid, rid] of this.userRoom)
@@ -944,6 +1070,7 @@ export class GamesService {
       cut: room.cut ? cutPublicState(room.cut) : null,
       chess: room.chess ? chessPublicState(room.chess, viewer) : null,
       uno: room.uno ? unoPublicState(room.uno, viewer) : null,
+      race: room.race ? racePublicState(room.race) : null,
       bootsFleet: room.bootsFleet ? [...room.bootsFleet] : null,
       deadline:
         room.ludo && room.ludo.phase !== 'done'

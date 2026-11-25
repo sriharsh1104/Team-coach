@@ -3,7 +3,14 @@ import { apiBaseUrl } from './client';
 
 // ── Types mirrored from backend/src/games ──────────────────────────────────
 
-export type GameKind = 'rps' | 'ludo' | 'boots' | 'cut' | 'chess' | 'uno';
+export type GameKind =
+  | 'rps'
+  | 'ludo'
+  | 'boots'
+  | 'cut'
+  | 'chess'
+  | 'uno'
+  | 'race';
 
 export const GAME_CATALOG: Array<{
   id: GameKind;
@@ -60,6 +67,15 @@ export const GAME_CATALOG: Array<{
     emoji: '🃏',
   },
   {
+    id: 'race',
+    title: 'Road Rash Rush',
+    tagline: 'Four lanes, real time — kick rivals off their bikes',
+    players: '1–4 players',
+    minPlayers: 1,
+    maxPlayers: 4,
+    emoji: '🏍️',
+  },
+  {
     id: 'boots',
     title: 'Boots',
     tagline: '6×6 fleet hunt — place boots, then fire',
@@ -69,6 +85,61 @@ export const GAME_CATALOG: Array<{
     emoji: '🚢',
   },
 ];
+
+/* ---------------- Road Rash Rush ---------------- */
+
+export type RaceAttack = 'punch' | 'kick';
+/** What a rider's pad can send. */
+export type RaceAction = 'left' | 'right' | 'nitro' | RaceAttack;
+
+export type RaceEvent =
+  | { type: 'swing'; seat: number; move: RaceAttack }
+  | { type: 'hit'; seat: number; target: number; move: RaceAttack }
+  | { type: 'wipeout'; seat: number }
+  | { type: 'crash'; seat: number }
+  | { type: 'nitro'; seat: number }
+  | { type: 'finish'; seat: number };
+
+/**
+ * The grid, which only changes between races. The race itself arrives on the
+ * separate `race:tick` channel — a room view twenty times a second would be
+ * orders of magnitude more traffic than this game needs.
+ */
+export type RacePublicState = {
+  seed: number;
+  finishDist: number;
+  phase: 'play' | 'done';
+  winnerId: string | null;
+  winnerSeat: number | null;
+  endReason: 'finish' | 'forfeit' | null;
+  seats: {
+    seat: number;
+    userId: string | null;
+    name: string;
+    tag: string;
+    color: string;
+    helmet: string;
+  }[];
+};
+
+/**
+ * One frame of the world, 20 times a second. Bare arrays on purpose.
+ * `b` rows are [lane, dist, hp, nitro, speed, flags]; `c` and `p` are
+ * [lane, dist]. Flags: 1 boosting, 2 down, 4 kicking, 8 punching.
+ */
+export type RaceTick = {
+  t: number;
+  b: number[][];
+  c: number[][];
+  p: number[][];
+  ev: RaceEvent[];
+  done: 0 | 1;
+};
+
+export const RACE_FLAG_BOOST = 1;
+export const RACE_FLAG_DOWN = 2;
+export const RACE_FLAG_KICK = 4;
+export const RACE_FLAG_PUNCH = 8;
 
 /* ---------------- UNO ---------------- */
 
@@ -336,6 +407,7 @@ export interface RoomView {
   cut: CutPublicState | null;
   chess: ChessPublicState | null;
   uno: UnoPublicState | null;
+  race: RacePublicState | null;
   bootsFleet: number[] | null;
   deadline: number | null;
 }

@@ -12,6 +12,8 @@ import {
   RpsChoice,
   ChessPromotion,
   GameReaction,
+  RaceAction,
+  RaceTick,
   UnoColor,
 } from '../api/games';
 import { emitToast } from '../ui/toastBus';
@@ -186,6 +188,31 @@ export function useGamesSocket(listener: Listener) {
     unoDraw: (roomId: string) => call<RoomView>('uno:draw', { roomId }),
     unoPass: (roomId: string) => call<RoomView>('uno:pass', { roomId }),
     unoCall: (roomId: string) => call<RoomView>('uno:call', { roomId }),
+    /**
+     * One Road Rash input. Fire-and-forget by design: there is no ack to wait
+     * for and the next world tick — 50ms away at most — carries the result.
+     * A dropped press is better than a stalled thumb.
+     */
+    raceInput: (roomId: string, action: RaceAction) => {
+      socket?.emit('race:input', { roomId, action });
+    },
+    /**
+     * Subscribe to the 20Hz world. Returns the unsubscribe — the caller is a
+     * screen, and a race tick arriving after it unmounts is just garbage.
+     */
+    onRaceTick: (handler: (tick: RaceTick) => void) => {
+      let live = true;
+      let detach: (() => void) | null = null;
+      void ensureSocket().then((s) => {
+        if (!live || !s) return;
+        s.on('race:tick', handler);
+        detach = () => s.off('race:tick', handler);
+      });
+      return () => {
+        live = false;
+        detach?.();
+      };
+    },
   };
 }
 
