@@ -35,6 +35,7 @@ export function HomeHeroTab() {
   const inDesktop = isDesktopApp();
   return (
     <section className="landing-hero">
+      <div className="landing-hero-glow" aria-hidden="true" />
       <p className="landing-eyebrow">Competitive Organisation</p>
       <h1 className="landing-title">Sacred Esports</h1>
       <p className="landing-lead">

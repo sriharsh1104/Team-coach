@@ -16,7 +16,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
-import android.hardware.display.DisplayManager
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -27,21 +27,22 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.DisplayMetrics
 import android.util.Log
-import android.view.Display
-import android.view.Surface
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.pedro.common.AudioCodec
 import com.pedro.common.ConnectChecker
 import com.pedro.common.VideoCodec
 // `object` is a Kotlin keyword — the package segment needs escaping.
 import com.pedro.encoder.input.gl.render.filters.`object`.ImageObjectFilterRender
+import com.pedro.encoder.input.gl.render.filters.`object`.SurfaceFilterRender
 import com.pedro.encoder.input.sources.OrientationForced
 import com.pedro.encoder.input.sources.audio.AudioSource
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
 import com.pedro.encoder.input.sources.audio.MixAudioSource
 import com.pedro.encoder.input.sources.video.NoVideoSource
 import com.pedro.encoder.input.sources.video.ScreenSource
+import com.pedro.encoder.input.video.Camera2ApiManager
 import com.pedro.encoder.utils.gl.AspectRatioMode
 import com.pedro.encoder.utils.gl.TranslateTo
 import com.pedro.library.base.StreamBase
@@ -67,19 +68,22 @@ class LiveStreamService : Service() {
   private var stream: StreamBase? = null
   private var wakeLock: PowerManager.WakeLock? = null
   private val stopping = AtomicBoolean(false)
-  /** Kept so display-rotation changes can be pushed into the GL layer. */
+  /** Kept for BRB / pause overlay filters. */
   private var glInterface: GlStreamInterface? = null
-  private var displayListener: DisplayManager.DisplayListener? = null
-  private val lastPortrait = AtomicBoolean(true)
   private val videoBitrateBeforePause = AtomicInteger(2_500_000)
   /** "Be right back" image the streamer picked — drawn over the game while paused. */
   private var bannerUri: String? = null
   private var brbFilter: ImageObjectFilterRender? = null
+  private var faceFilter: SurfaceFilterRender? = null
+  private var faceCamera: Camera2ApiManager? = null
+  /** User wants face cam on — re-attached after pause BRB clears filters. */
+  private val faceCamWanted = AtomicBoolean(false)
   private var endpoints: List<String> = emptyList()
   private var liveEndpoints: List<LiveEndpoint> = emptyList()
   private val successCount = AtomicInteger(0)
   private val failCount = AtomicInteger(0)
   private var totalTargets = 1
+  private var controlsBubble: LiveControlsBubble? = null
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -98,6 +102,7 @@ class LiveStreamService : Service() {
         return START_NOT_STICKY
       }
       ACTION_MUTE -> setMuted(intent.getBooleanExtra(EXTRA_MUTED, false))
+      ACTION_FACE_CAM -> setFaceCam(intent.getBooleanExtra(EXTRA_FACE_CAM, false))
       ACTION_START -> startLive(intent)
     }
     return START_NOT_STICKY
@@ -120,10 +125,11 @@ class LiveStreamService : Service() {
       if (showingBrb) bumpKeyframes()
       LiveBridge.paused.set(true)
       LiveBridge.emitPaused(true)
+      controlsBubble?.refresh()
       val manager = getSystemService(NotificationManager::class.java)
       manager.notify(
         NOTIF_ID,
-        buildNotification("PAUSED", "Stream paused. Tap Resume in the app."),
+        buildNotification("PAUSED", "Stream paused. Tap the LIVE bubble or notification."),
       )
     } catch (err: Exception) {
       Log.w(TAG, "pause failed", err)
@@ -141,8 +147,134 @@ class LiveStreamService : Service() {
       setAudioMuted(s, muted)
       LiveBridge.muted.set(muted)
       LiveBridge.emitMuted(muted)
+      controlsBubble?.refresh()
+      val manager = getSystemService(NotificationManager::class.java)
+      manager.notify(NOTIF_ID, buildNotification("LIVE", liveNotifText()))
     } catch (err: Exception) {
       Log.w(TAG, "mute failed", err)
+    }
+  }
+
+  private fun toggleMuted() {
+    setMuted(!LiveBridge.muted.get())
+  }
+
+  private fun toggleFaceCam() {
+    setFaceCam(!faceCamWanted.get())
+  }
+
+  /**
+   * Front-camera PiP on the encoded frame (YT/Twitch/Kick viewers see it).
+   * Default off — streamer turns it on from the LIVE bubble / in-app widget.
+   */
+  private fun setFaceCam(enabled: Boolean) {
+    faceCamWanted.set(enabled)
+    if (!enabled) {
+      detachFaceCam()
+      LiveBridge.emitFaceCam(false)
+      controlsBubble?.refresh()
+      return
+    }
+    if (LiveBridge.paused.get()) {
+      // Will attach when resume clears the BRB card.
+      LiveBridge.emitFaceCam(true)
+      controlsBubble?.refresh()
+      return
+    }
+    if (!attachFaceCam()) {
+      faceCamWanted.set(false)
+      LiveBridge.emitFaceCam(false)
+      LiveBridge.emitSoftError("Allow camera access to show your face on stream")
+    } else {
+      LiveBridge.emitFaceCam(true)
+    }
+    controlsBubble?.refresh()
+  }
+
+  private fun attachFaceCam(): Boolean {
+    val gl = glInterface ?: return false
+    if (faceFilter != null) return true
+    if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+      != PackageManager.PERMISSION_GRANTED
+    ) {
+      return false
+    }
+    return try {
+      val filter = SurfaceFilterRender { surfaceTexture ->
+        try {
+          val cam = Camera2ApiManager(applicationContext)
+          // Small preview — PiP box is ~22% of the 1280×720 canvas.
+          cam.prepareCamera(surfaceTexture, 640, 480, 30)
+          cam.openCameraFront()
+          faceCamera = cam
+        } catch (err: Exception) {
+          Log.e(TAG, "front camera open failed", err)
+          main.post {
+            faceCamWanted.set(false)
+            detachFaceCam()
+            LiveBridge.emitFaceCam(false)
+            LiveBridge.emitSoftError("Could not open front camera")
+            controlsBubble?.refresh()
+          }
+        }
+      }
+      // Landscape encode: front sensor usually needs 270° to sit upright.
+      filter.setRotation(270)
+      filter.setScale(22f, 28f)
+      filter.setPosition(TranslateTo.BOTTOM_RIGHT)
+      gl.addFilter(filter)
+      faceFilter = filter
+      true
+    } catch (err: Exception) {
+      Log.e(TAG, "face cam filter failed", err)
+      false
+    }
+  }
+
+  private fun detachFaceCam() {
+    try {
+      faceCamera?.closeCamera()
+    } catch (_: Exception) {
+    }
+    faceCamera = null
+    val filter = faceFilter
+    faceFilter = null
+    if (filter != null) {
+      try {
+        glInterface?.removeFilter(filter)
+      } catch (_: Exception) {
+      }
+      try {
+        filter.release()
+      } catch (_: Exception) {
+      }
+    }
+  }
+
+  private fun showControlsBubble() {
+    main.post {
+      if (controlsBubble == null) {
+        controlsBubble = LiveControlsBubble(
+          applicationContext,
+          onPauseResume = {
+            if (LiveBridge.paused.get()) resumeLive() else pauseLive()
+          },
+          onMuteToggle = { toggleMuted() },
+          onFaceCamToggle = { toggleFaceCam() },
+          onEnd = { stopLive("Ended from bubble") },
+          isPaused = { LiveBridge.paused.get() },
+          isMuted = { LiveBridge.muted.get() },
+          isFaceCam = { faceCamWanted.get() },
+        )
+      }
+      controlsBubble?.show()
+    }
+  }
+
+  private fun hideControlsBubble() {
+    main.post {
+      controlsBubble?.hide()
+      controlsBubble = null
     }
   }
 
@@ -160,6 +292,7 @@ class LiveStreamService : Service() {
       bumpKeyframes()
       LiveBridge.paused.set(false)
       LiveBridge.emitPaused(false)
+      controlsBubble?.refresh()
       val manager = getSystemService(NotificationManager::class.java)
       manager.notify(
         NOTIF_ID,
@@ -185,6 +318,8 @@ class LiveStreamService : Service() {
     if (brbFilter != null) return true
     val card = buildBreakCard() ?: return false
     return try {
+      // Drop face PiP while the full-frame BRB card is up.
+      detachFaceCam()
       val filter = ImageObjectFilterRender()
       // setFilter first, then feed it — the render is attached to the GL
       // thread by setFilter and loads its texture on the next draw.
@@ -211,6 +346,9 @@ class LiveStreamService : Service() {
       glInterface?.clearFilters() ?: filter.release()
     } catch (err: Exception) {
       Log.w(TAG, "clear break screen failed", err)
+    }
+    if (faceCamWanted.get()) {
+      attachFaceCam()
     }
   }
 
@@ -325,6 +463,7 @@ class LiveStreamService : Service() {
         bumpKeyframes()
         if (first) {
           LiveBridge.resolveStart()
+          showControlsBubble()
           val manager = getSystemService(NotificationManager::class.java)
           manager.notify(NOTIF_ID, buildNotification("LIVE", liveNotifText()))
         }
@@ -358,11 +497,11 @@ class LiveStreamService : Service() {
 
   private fun liveNotifText(): String {
     val n = endpoints.size.coerceAtLeast(1)
-    return if (n == 1) {
-      "Streaming to your channel. Tap End to stop."
-    } else {
-      "Streaming to $n platforms. Tap End to stop."
-    }
+    val where =
+      if (n == 1) "Streaming to your channel."
+      else "Streaming to $n platforms."
+    val muted = if (LiveBridge.muted.get()) " Mic muted." else ""
+    return "$where Use the LIVE bubble or Pause/Mute/End here.$muted"
   }
 
   private fun prepareSources(proj: MediaProjection): Pair<ScreenSource, AudioSource> {
@@ -454,84 +593,42 @@ class LiveStreamService : Service() {
     }
   }
 
+  /**
+   * ScreenSource / MediaProjection already delivers upright pixels for the
+   * current display rotation. Enabling autoHandleOrientation double-rotates
+   * landscape games (Free Fire etc.) → sideways “teda” stream on YT/Twitch/Kick.
+   * Always encode a fixed 16:9 landscape canvas; portrait UI letterboxes.
+   */
   private fun configureGl(gl: GlStreamInterface) {
-    // Match encode FPS so YouTube keeps receiving frames even if the
-    // screen is static (menus / pause screens).
     gl.setForceRender(true, VIDEO_FPS)
-    // Fit the whole phone screen into the 16:9 encoder (black bars on the
-    // sides when the phone is portrait). Fill would crop top/bottom.
     gl.setAspectRatioMode(AspectRatioMode.Adjust)
-    // Kotlin maps get/setAutoHandleOrientation → property (calling the
-    // Java setter by name is an unresolved reference).
-    // Follow real display rotation so landscape games stay upright —
-    // forcing LANDSCAPE previously double-rotated the capture.
-    gl.autoHandleOrientation = true
+    gl.autoHandleOrientation = false
     gl.forceOrientation(OrientationForced.NONE)
-    val screen = screenSize()
-    val portrait = screen.height > screen.width
-    gl.setIsPortrait(portrait)
+    // Required for ScreenSource (pedroSG94/RootEncoder#1638 / #1841).
+    gl.setCameraOrientation(0)
+    gl.setIsPortrait(false)
     gl.setStreamRotation(0)
     gl.setRotation(0)
     Log.i(
       TAG,
-      "gl orient auto (portrait=$portrait display=${displayRotationDegrees()}° screen=${screen.width}x${screen.height})",
+      "gl screen-source (cameraOrient=0 auto=false) screen=${screenSize().width}x${screenSize().height}",
     )
     glInterface = gl
-    lastPortrait.set(portrait)
-    watchRotation()
   }
 
-  /**
-   * Orientation is read once when the stream starts — but the whole point of
-   * Go Live is that the streamer then leaves the app and opens a landscape
-   * game. Without following the display from here, the GL layer keeps the
-   * start-time orientation and everything after the rotation arrives 90° out
-   * (a landscape game rendered sideways inside a portrait frame).
-   */
-  private fun watchRotation() {
-    if (displayListener != null) return
-    val manager = getSystemService(DISPLAY_SERVICE) as? DisplayManager ?: return
-    val listener = object : DisplayManager.DisplayListener {
-      override fun onDisplayAdded(displayId: Int) = Unit
-      override fun onDisplayRemoved(displayId: Int) = Unit
-      override fun onDisplayChanged(displayId: Int) {
-        if (displayId != Display.DEFAULT_DISPLAY) return
-        applyRotation()
-      }
-    }
-    displayListener = listener
+  /** changeVideoSource() re-applies ScreenSource orientation — reset to 0. */
+  private fun attachScreenSources(
+    s: StreamBase,
+    video: ScreenSource,
+    audio: AudioSource,
+  ) {
+    s.changeVideoSource(video)
+    s.changeAudioSource(audio)
     try {
-      manager.registerDisplayListener(listener, main)
+      s.getGlInterface().setCameraOrientation(0)
+      s.getGlInterface().setIsPortrait(false)
     } catch (err: Exception) {
-      displayListener = null
-      Log.w(TAG, "could not follow display rotation", err)
-    }
-  }
-
-  private fun applyRotation() {
-    val gl = glInterface ?: return
-    val screen = screenSize()
-    val portrait = screen.height > screen.width
-    // compareAndSet also filters the repeat callbacks Android fires for
-    // brightness / refresh-rate changes on the same display.
-    if (!lastPortrait.compareAndSet(!portrait, portrait)) return
-    try {
-      gl.setIsPortrait(portrait)
-      Log.i(TAG, "rotation → portrait=$portrait (${screen.width}x${screen.height})")
-    } catch (err: Exception) {
-      Log.w(TAG, "rotation update failed", err)
-    }
-  }
-
-  private fun stopWatchingRotation() {
-    val listener = displayListener ?: return
-    displayListener = null
-    glInterface = null
-    try {
-      (getSystemService(DISPLAY_SERVICE) as? DisplayManager)
-        ?.unregisterDisplayListener(listener)
-    } catch (err: Exception) {
-      Log.w(TAG, "unregister display listener", err)
+      Log.w(TAG, "reset screen orientation after changeVideoSource", err)
     }
   }
 
@@ -598,19 +695,6 @@ class LiveStreamService : Service() {
     }, 2500)
   }
 
-  /** Current display rotation in degrees (0 / 90 / 180 / 270). */
-  private fun displayRotationDegrees(): Int {
-    val window = getSystemService(WINDOW_SERVICE) as WindowManager
-    @Suppress("DEPRECATION")
-    return when (window.defaultDisplay.rotation) {
-      Surface.ROTATION_0 -> 0
-      Surface.ROTATION_90 -> 90
-      Surface.ROTATION_180 -> 180
-      Surface.ROTATION_270 -> 270
-      else -> 0
-    }
-  }
-
   private fun startSingle(url: String, proj: MediaProjection, size: Size) {
     val checker = makeChecker(0)
     val generic = GenericStream(applicationContext, checker, NoVideoSource(), MicrophoneSource())
@@ -633,8 +717,7 @@ class LiveStreamService : Service() {
     )
     if (!prepared) throw IllegalStateException("Encoder prepare failed")
     val (video, audio) = prepareSources(proj)
-    generic.changeVideoSource(video)
-    generic.changeAudioSource(audio)
+    attachScreenSources(generic, video, audio)
     stream = generic
     try {
       Log.i(TAG, "startStream single $url")
@@ -689,8 +772,7 @@ class LiveStreamService : Service() {
     )
     if (!prepared) throw IllegalStateException("Encoder prepare failed")
     val (video, audio) = prepareSources(proj)
-    multi.changeVideoSource(video)
-    multi.changeAudioSource(audio)
+    attachScreenSources(multi, video, audio)
     stream = multi
     liveEndpoints =
       rtmpUrls.mapIndexed { i, u -> LiveEndpoint(u, MultiType.RTMP, i) } +
@@ -736,7 +818,10 @@ class LiveStreamService : Service() {
 
   private fun stopLive(reason: String) {
     if (!stopping.compareAndSet(false, true)) return
-    stopWatchingRotation()
+    hideControlsBubble()
+    faceCamWanted.set(false)
+    detachFaceCam()
+    glInterface = null
     try {
       when (val s = stream) {
         is MultiStream -> stopAllClients(s)
@@ -775,6 +860,10 @@ class LiveStreamService : Service() {
 
   private fun fail(message: String) {
     stopping.set(true)
+    hideControlsBubble()
+    faceCamWanted.set(false)
+    detachFaceCam()
+    glInterface = null
     try {
       when (val s = stream) {
         is MultiStream -> stopAllClients(s)
@@ -812,19 +901,33 @@ class LiveStreamService : Service() {
 
   private fun buildNotification(title: String, text: String): Notification {
     ensureChannel()
-    val stopIntent = Intent(this, LiveStreamService::class.java).apply { action = ACTION_STOP }
-    val stopPending = PendingIntent.getService(
-      this,
-      0,
-      stopIntent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-    )
+    val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    fun servicePending(action: String, requestCode: Int, extras: Intent.() -> Unit = {}): PendingIntent {
+      val intent = Intent(this, LiveStreamService::class.java).apply {
+        this.action = action
+        extras()
+      }
+      return PendingIntent.getService(this, requestCode, intent, flags)
+    }
+    val paused = LiveBridge.paused.get()
+    val muted = LiveBridge.muted.get()
+    val pauseResume = if (paused) {
+      servicePending(ACTION_RESUME, 1)
+    } else {
+      servicePending(ACTION_PAUSE, 1)
+    }
+    val muteToggle = servicePending(ACTION_MUTE, 2) {
+      putExtra(EXTRA_MUTED, !muted)
+    }
+    val stopPending = servicePending(ACTION_STOP, 0)
     return NotificationCompat.Builder(this, CHANNEL)
       .setContentTitle(title)
       .setContentText(text)
       .setSmallIcon(android.R.drawable.ic_menu_camera)
       .setOngoing(true)
       .setOnlyAlertOnce(true)
+      .addAction(0, if (paused) "Resume" else "Pause", pauseResume)
+      .addAction(0, if (muted) "Unmute" else "Mute", muteToggle)
       .addAction(0, "End", stopPending)
       .build()
   }
@@ -852,27 +955,11 @@ class LiveStreamService : Service() {
   }
 
   /**
-   * YouTube expects landscape. If the phone is already landscape (Free Fire
-   * etc.), encode that aspect scaled to ≤1280 wide — matching capture avoids
-   * the sideways / "teda" rotation. Portrait phones still get a 1280×720
-   * canvas with letterboxing via [configureGl].
+   * Always 16:9 landscape for YouTube / Twitch / Kick. MediaProjection
+   * already rotates Free Fire etc. upright into this canvas; portrait app
+   * UI is letterboxed (AspectRatioMode.Adjust).
    */
-  private fun outputSize(): Size {
-    val screen = screenSize()
-    if (screen.width >= screen.height) {
-      var w = screen.width
-      var h = screen.height
-      if (w > OUTPUT_WIDTH) {
-        val scale = OUTPUT_WIDTH.toFloat() / w.toFloat()
-        w = OUTPUT_WIDTH
-        h = (h.toFloat() * scale).toInt()
-      }
-      if (w % 2 != 0) w -= 1
-      if (h % 2 != 0) h -= 1
-      return Size(maxOf(2, w), maxOf(2, h))
-    }
-    return Size(OUTPUT_WIDTH, OUTPUT_HEIGHT)
-  }
+  private fun outputSize(): Size = Size(OUTPUT_WIDTH, OUTPUT_HEIGHT)
 
   companion object {
     const val ACTION_START = "com.teamcoach.livestreamer.START"
@@ -881,6 +968,8 @@ class LiveStreamService : Service() {
     const val ACTION_RESUME = "com.teamcoach.livestreamer.RESUME"
     const val ACTION_MUTE = "com.teamcoach.livestreamer.MUTE"
     const val EXTRA_MUTED = "muted"
+    const val ACTION_FACE_CAM = "com.teamcoach.livestreamer.FACE_CAM"
+    const val EXTRA_FACE_CAM = "faceCam"
     const val EXTRA_RESULT_CODE = "resultCode"
     const val EXTRA_DATA = "data"
     const val EXTRA_ENDPOINTS = "endpoints"

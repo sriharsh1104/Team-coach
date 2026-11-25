@@ -6,17 +6,20 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
 /**
- * Invisible activity: mic + notification permission, then the system
- * screen-capture dialog. Full display is requested so the game is streamed.
+ * Invisible activity: mic + notification + overlay permission, then the
+ * system screen-capture dialog. Overlay lets the LIVE bubble sit on Free Fire.
  */
 class LiveCapturePermissionActivity : Activity() {
   private var settled = false
+  private var askedOverlay = false
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -27,6 +30,13 @@ class LiveCapturePermissionActivity : Activity() {
     ) {
       missing.add(android.Manifest.permission.RECORD_AUDIO)
     }
+    // Optional until Face Cam is toggled on, but asking here avoids a dead
+    // prompt while Free Fire is already on top of us.
+    if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+      != PackageManager.PERMISSION_GRANTED
+    ) {
+      missing.add(android.Manifest.permission.CAMERA)
+    }
     if (Build.VERSION.SDK_INT >= 33 &&
       ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
       != PackageManager.PERMISSION_GRANTED
@@ -36,7 +46,7 @@ class LiveCapturePermissionActivity : Activity() {
     if (missing.isNotEmpty()) {
       ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQ_PERMS)
     } else {
-      askProjection()
+      maybeAskOverlayThenProjection()
     }
   }
 
@@ -59,6 +69,28 @@ class LiveCapturePermissionActivity : Activity() {
       finish()
       return
     }
+    maybeAskOverlayThenProjection()
+  }
+
+  private fun maybeAskOverlayThenProjection() {
+    if (Build.VERSION.SDK_INT >= 23 &&
+      !Settings.canDrawOverlays(this) &&
+      !askedOverlay
+    ) {
+      askedOverlay = true
+      try {
+        startActivityForResult(
+          Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:$packageName"),
+          ),
+          REQ_OVERLAY,
+        )
+        return
+      } catch (_: Exception) {
+        // Continue without bubble — notification actions still work.
+      }
+    }
     askProjection()
   }
 
@@ -77,6 +109,11 @@ class LiveCapturePermissionActivity : Activity() {
   @Deprecated("Activity result API")
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
     super.onActivityResult(requestCode, resultCode, data)
+    if (requestCode == REQ_OVERLAY) {
+      // Overlay is optional — stream still starts; bubble only if granted.
+      askProjection()
+      return
+    }
     if (requestCode != REQ_PROJECTION) return
     if (resultCode != RESULT_OK || data == null) {
       settled = true
@@ -114,5 +151,6 @@ class LiveCapturePermissionActivity : Activity() {
   companion object {
     private const val REQ_PERMS = 5101
     private const val REQ_PROJECTION = 5102
+    private const val REQ_OVERLAY = 5103
   }
 }

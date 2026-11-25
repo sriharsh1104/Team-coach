@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '../ui/AppIcon';
@@ -13,23 +13,31 @@ function fmt(sec: number) {
 }
 
 /**
- * Floating LIVE status pill — appears while an RTMP stream is active.
- * Separate from RecordingWidget (REC).
+ * In-app LIVE chip — collapsed by default so it barely covers the screen.
+ * Tap LIVE to expand Pause / Mute / End. (Over Free Fire, the native
+ * system bubble from LiveStreamService is used instead.)
  */
 export function LiveWidget() {
   const {
     live,
     paused,
     muted,
+    faceCam,
     elapsedSec,
     stopLive,
     pauseLive,
     resumeLive,
     toggleMute,
+    toggleFaceCam,
   } = useLive();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const pulse = useRef(new Animated.Value(1)).current;
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!live) setExpanded(false);
+  }, [live]);
 
   useEffect(() => {
     if (!live || paused) {
@@ -70,63 +78,106 @@ export function LiveWidget() {
           },
         ]}
       >
-        <Animated.View
-          style={[
-            styles.dot,
-            { opacity: paused ? 1 : pulse, backgroundColor: paused ? '#f59e0b' : '#ef4444' },
-          ]}
-        />
-        <Text style={[styles.liveLabel, paused && styles.pausedLabel]}>
-          {paused ? 'PAUSED' : 'LIVE'}
-        </Text>
-        <Text style={[styles.timer, { color: colors.text }]}>{fmt(elapsedSec)}</Text>
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <Pressable
-          onPress={() => void (paused ? resumeLive() : pauseLive())}
-          hitSlop={10}
-          accessibilityLabel={paused ? 'Resume live' : 'Pause live'}
-          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
+          onPress={() => setExpanded((open) => !open)}
+          hitSlop={8}
+          accessibilityLabel={expanded ? 'Collapse live controls' : 'Expand live controls'}
+          style={styles.liveTap}
         >
-          <AppIcon
-            name={paused ? 'play' : 'pause'}
-            size={15}
-            color={colors.text}
-          />
-          <Text style={[styles.actionLabel, { color: colors.text }]}>
-            {paused ? 'Resume' : 'Pause'}
-          </Text>
-        </Pressable>
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
-        <Pressable
-          onPress={() => void toggleMute()}
-          hitSlop={10}
-          accessibilityLabel={muted ? 'Unmute stream' : 'Mute stream'}
-          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
-        >
-          <AppIcon
-            name={muted ? 'mic-off' : 'mic'}
-            size={15}
-            color={muted ? '#f59e0b' : colors.text}
-          />
-          <Text
+          <Animated.View
             style={[
-              styles.actionLabel,
-              { color: muted ? '#f59e0b' : colors.text },
+              styles.dot,
+              {
+                opacity: paused ? 1 : pulse,
+                backgroundColor: paused ? '#f59e0b' : '#ef4444',
+              },
             ]}
-          >
-            {muted ? 'Unmute' : 'Mute'}
+          />
+          <Text style={[styles.liveLabel, paused && styles.pausedLabel]}>
+            {paused ? 'PAUSED' : 'LIVE'}
           </Text>
+          <Text style={[styles.timer, { color: colors.text }]}>{fmt(elapsedSec)}</Text>
+          <AppIcon
+            name={expanded ? 'contract' : 'expand'}
+            size={14}
+            color={colors.textMuted}
+          />
         </Pressable>
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
-        <Pressable
-          onPress={() => void stopLive()}
-          hitSlop={10}
-          accessibilityLabel="End live"
-          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
-        >
-          <AppIcon name="stop-circle" size={16} color="#ef4444" />
-          <Text style={styles.stopLabel}>End</Text>
-        </Pressable>
+
+        {expanded ? (
+          <>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Pressable
+              onPress={() => void (paused ? resumeLive() : pauseLive())}
+              hitSlop={10}
+              accessibilityLabel={paused ? 'Resume live' : 'Pause live'}
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
+            >
+              <AppIcon
+                name={paused ? 'play' : 'pause'}
+                size={15}
+                color={colors.text}
+              />
+              <Text style={[styles.actionLabel, { color: colors.text }]}>
+                {paused ? 'Resume' : 'Pause'}
+              </Text>
+            </Pressable>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Pressable
+              onPress={() => void toggleMute()}
+              hitSlop={10}
+              accessibilityLabel={muted ? 'Unmute stream' : 'Mute stream'}
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
+            >
+              <AppIcon
+                name={muted ? 'mic-off' : 'mic'}
+                size={15}
+                color={muted ? '#f59e0b' : colors.text}
+              />
+              <Text
+                style={[
+                  styles.actionLabel,
+                  { color: muted ? '#f59e0b' : colors.text },
+                ]}
+              >
+                {muted ? 'Unmute' : 'Mute'}
+              </Text>
+            </Pressable>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Pressable
+              onPress={() => void toggleFaceCam()}
+              hitSlop={10}
+              accessibilityLabel={
+                faceCam ? 'Hide face camera' : 'Show face camera'
+              }
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
+            >
+              <AppIcon
+                name="camera-outline"
+                size={15}
+                color={faceCam ? '#f59e0b' : colors.text}
+              />
+              <Text
+                style={[
+                  styles.actionLabel,
+                  { color: faceCam ? '#f59e0b' : colors.text },
+                ]}
+              >
+                {faceCam ? 'Face off' : 'Face'}
+              </Text>
+            </Pressable>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Pressable
+              onPress={() => void stopLive()}
+              hitSlop={10}
+              accessibilityLabel="End live"
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
+            >
+              <AppIcon name="stop-circle" size={16} color="#ef4444" />
+              <Text style={styles.stopLabel}>End</Text>
+            </Pressable>
+          </>
+        ) : null}
       </View>
     </View>
   );
@@ -154,6 +205,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 6,
     elevation: 8,
+  },
+  liveTap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   dot: {
     width: 9,

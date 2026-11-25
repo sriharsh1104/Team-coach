@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { isDesktopApp } from '../lib/platform';
+import { startDirectionalTransition } from '../lib/viewTransition';
 import { HomeHeroTab } from './home/HomeHeroTab';
 import { HOME_TABS, HomeTabId, TAB_PATHS, pathToTab } from './home/homeTabs';
 import { SocialFooter } from './home/SocialFooter';
@@ -8,8 +9,6 @@ import { GuildTab } from './home/GuildTab';
 import { RecordsTab } from './home/RecordsTab';
 import { TeamPlayersTab } from './home/TeamPlayersTab';
 import { TournamentsTab } from './home/TournamentsTab';
-
-const TURN_MS = 560;
 
 function tabIndex(id: HomeTabId) {
   return HOME_TABS.findIndex((t) => t.id === id);
@@ -42,7 +41,7 @@ function DesktopHome() {
       <div className="brand-watermark" aria-hidden="true">
         <img src="/sacred-logo-transparent.png" alt="" />
       </div>
-      <main className="landing-main landing-stage">
+      <main className="landing-main landing-stage" tabIndex={-1}>
         <div className="landing-page">
           <GuildTab />
         </div>
@@ -65,31 +64,24 @@ function BrowserHome() {
   // back/forward buttons land on the right tab instead of always resetting
   // to Home. See TAB_PATHS in homeTabs.ts for the id <-> path mapping.
   const tab = pathToTab(location.pathname);
-  const prevTabRef = useRef<HomeTabId>(tab);
-  const [turn, setTurn] = useState<{ id: HomeTabId; dir: 'next' | 'prev' } | null>(
-    null,
-  );
-  const timer = useRef<number | null>(null);
+  const stageRef = useRef<HTMLElement>(null);
+  const skipFocusRef = useRef(true);
 
   useEffect(() => {
-    const prev = prevTabRef.current;
-    if (prev === tab) return;
-    const dir = tabIndex(tab) > tabIndex(prev) ? 'next' : 'prev';
-    setTurn({ id: prev, dir });
-    prevTabRef.current = tab;
-    if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setTurn(null), TURN_MS);
+    // Skip the first paint so refresh doesn't yank focus into the stage.
+    if (skipFocusRef.current) {
+      skipFocusRef.current = false;
+      return;
+    }
+    stageRef.current?.focus({ preventScroll: true });
   }, [tab]);
-
-  useEffect(() => {
-    return () => {
-      if (timer.current) window.clearTimeout(timer.current);
-    };
-  }, []);
 
   function openTab(next: HomeTabId) {
     if (next === tab) return;
-    navigate(TAB_PATHS[next]);
+    const direction = tabIndex(next) > tabIndex(tab) ? 'forward' : 'backward';
+    startDirectionalTransition(() => {
+      navigate(TAB_PATHS[next]);
+    }, direction);
   }
 
   return (
@@ -100,26 +92,31 @@ function BrowserHome() {
 
       <header className="landing-nav">
         <nav className="landing-tabs" aria-label="Home sections">
-          {HOME_TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className={`landing-tab${tab === t.id ? ' active' : ''}`}
-              onClick={() => openTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
+          {HOME_TABS.map((t) => {
+            const selected = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                className={`landing-tab${selected ? ' active' : ''}`}
+                onClick={() => openTab(t.id)}
+              >
+                {t.label}
+              </button>
+            );
+          })}
         </nav>
       </header>
 
-      <main className="landing-main landing-stage">
-        {turn ? (
-          <div className={`landing-page is-leaving leave-${turn.dir}`}>
-            <TabView id={turn.id} />
-          </div>
-        ) : null}
-        <div className={`landing-page${turn ? ` enter-${turn.dir}` : ''}`}>
+      <main
+        ref={stageRef}
+        className="landing-main landing-stage"
+        tabIndex={-1}
+        id="landing-stage"
+      >
+        <div className="landing-page">
           <TabView id={tab} />
         </div>
       </main>

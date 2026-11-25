@@ -9,7 +9,7 @@ import org.json.JSONArray
 class LiveStreamerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("LiveStreamer")
-    Events("onStarted", "onStopped", "onError", "onPaused", "onMuted")
+    Events("onStarted", "onStopped", "onError", "onPaused", "onMuted", "onFaceCam")
 
     OnCreate {
       LiveBridge.module = this@LiveStreamerModule
@@ -33,6 +33,10 @@ class LiveStreamerModule : Module() {
       LiveBridge.muted.get()
     }
 
+    Function("isFaceCam") {
+      LiveBridge.faceCam.get()
+    }
+
     AsyncFunction("setMuted") { muted: Boolean, promise: Promise ->
       if (!LiveBridge.live.get()) {
         promise.resolve(null)
@@ -46,6 +50,24 @@ class LiveStreamerModule : Module() {
         Intent(context, LiveStreamService::class.java).apply {
           action = LiveStreamService.ACTION_MUTE
           putExtra(LiveStreamService.EXTRA_MUTED, muted)
+        },
+      )
+      promise.resolve(null)
+    }
+
+    AsyncFunction("setFaceCam") { enabled: Boolean, promise: Promise ->
+      if (!LiveBridge.live.get()) {
+        promise.resolve(null)
+        return@AsyncFunction
+      }
+      val context = appContext.reactContext ?: run {
+        promise.reject("NO_CONTEXT", "App is not running", null)
+        return@AsyncFunction
+      }
+      context.startService(
+        Intent(context, LiveStreamService::class.java).apply {
+          action = LiveStreamService.ACTION_FACE_CAM
+          putExtra(LiveStreamService.EXTRA_FACE_CAM, enabled)
         },
       )
       promise.resolve(null)

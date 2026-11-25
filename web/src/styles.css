@@ -108,6 +108,7 @@ a:hover {
 }
 
 .landing-tabs {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -117,28 +118,67 @@ a:hover {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+/* Sliding active indicator — CSS Anchor Positioning (Newly available). */
+.landing-tabs::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  position-anchor: --landing-tab-active;
+  /* Prefer self-* so RTL tabs stay consistent with the underline's writing mode. */
+  inset-block-start: calc(anchor(self-end) - 3px);
+  inset-inline-start: anchor(self-start);
+  inset-inline-end: anchor(self-end);
+  /* Border survives forced-colors; background/box-shadow do not. */
+  border-block-end: 0.2lh solid var(--chrome);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .landing-tabs::before {
+    transition: inset 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@supports not (position-anchor: --landing-tab-active) {
+  .landing-tabs::before {
+    content: none;
+  }
+
+  .landing-tab.active {
+    border-block-end: 0.2lh solid currentColor;
+  }
+}
+
 .landing-tab {
+  position: relative;
+  z-index: 1;
   border: none;
   background: transparent;
   color: var(--text-muted);
   font-weight: 700;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 9px 14px;
   border-radius: 10px;
   cursor: pointer;
+  min-block-size: 2.5rem;
   transition:
-    background 0.28s cubic-bezier(0.22, 1, 0.36, 1),
     color 0.28s ease,
-    transform 0.18s ease;
+    background 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .landing-tab:hover {
   color: var(--text);
 }
 
+.landing-tab:focus-visible {
+  outline: 2px solid var(--chrome);
+  outline-offset: 2px;
+}
+
 .landing-tab.active {
-  background: var(--chrome);
-  color: var(--chrome-ink);
+  anchor-name: --landing-tab-active;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .landing-main {
@@ -152,6 +192,70 @@ a:hover {
   perspective: 1600px;
   transform-style: preserve-3d;
   overflow: hidden;
+}
+
+.landing-stage {
+  view-transition-name: landing-stage;
+  outline: none;
+}
+
+/* Directional landing tab transitions (View Transitions API). */
+@keyframes landing-slide-to-left {
+  to {
+    transform: translateX(-18%);
+    opacity: 0;
+  }
+}
+
+@keyframes landing-slide-from-right {
+  from {
+    transform: translateX(18%);
+    opacity: 0;
+  }
+}
+
+@keyframes landing-slide-to-right {
+  to {
+    transform: translateX(18%);
+    opacity: 0;
+  }
+}
+
+@keyframes landing-slide-from-left {
+  from {
+    transform: translateX(-18%);
+    opacity: 0;
+  }
+}
+
+::view-transition-group(landing-stage) {
+  animation-duration: 0.4s;
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: both;
+}
+
+html:active-view-transition-type(forward)::view-transition-old(landing-stage) {
+  animation-name: landing-slide-to-left;
+}
+
+html:active-view-transition-type(forward)::view-transition-new(landing-stage) {
+  animation-name: landing-slide-from-right;
+}
+
+html:active-view-transition-type(backward)::view-transition-old(landing-stage) {
+  animation-name: landing-slide-to-right;
+}
+
+html:active-view-transition-type(backward)::view-transition-new(landing-stage) {
+  animation-name: landing-slide-from-left;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(landing-stage),
+  ::view-transition-old(landing-stage),
+  ::view-transition-new(landing-stage) {
+    animation: none !important;
+  }
 }
 
 /* Inside scrollable .content: don't let overflow:hidden flex-shrink clip tall pages. */
@@ -269,18 +373,78 @@ a:hover {
 }
 
 .landing-hero {
+  position: relative;
+  container-type: inline-size;
+  container-name: landing-hero;
   min-height: min(62vh, 640px);
+  min-height: min(62dvh, 640px);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 48px clamp(20px, 4vw, 48px) 40px;
+  padding: 48px clamp(1.25rem, 4vw, 3rem) 40px;
   max-width: 820px;
+}
+
+.landing-hero-glow {
+  position: absolute;
+  inset: auto -12% -18% -8%;
+  height: min(52cqw, 420px);
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(
+      ellipse at 28% 70%,
+      rgba(201, 204, 209, 0.16),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse at 72% 40%,
+      rgba(255, 255, 255, 0.05),
+      transparent 55%
+    );
+  filter: blur(2px);
+}
+
+.landing-hero > :not(.landing-hero-glow) {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .landing-hero > :not(.landing-hero-glow) {
+    opacity: 1;
+    translate: 0 0;
+    transition:
+      opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+      translate 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-behavior: allow-discrete;
+  }
+
+  @starting-style {
+    .landing-hero > :not(.landing-hero-glow) {
+      opacity: 0;
+      translate: 0 12px;
+    }
+  }
+
+  .landing-hero > .landing-eyebrow {
+    transition-delay: 40ms;
+  }
+  .landing-hero > .landing-title {
+    transition-delay: 90ms;
+  }
+  .landing-hero > .landing-lead {
+    transition-delay: 140ms;
+  }
+  .landing-hero > .landing-cta-row {
+    transition-delay: 190ms;
+  }
 }
 
 .landing-eyebrow {
   margin: 0 0 12px;
   color: var(--chrome);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -288,18 +452,30 @@ a:hover {
 
 .landing-title {
   margin: 0;
-  font-size: clamp(42px, 8vw, 72px);
+  /* Fallback vw scale, then container units when supported. */
+  font-size: clamp(2.25rem, 1rem + 6vw, 4.5rem);
   font-weight: 800;
   letter-spacing: -0.045em;
-  line-height: 0.95;
+  line-height: 0.98;
+  width: fit-content;
+  max-width: 100%;
+  text-wrap: balance;
+}
+
+@supports (font-size: 1cqi) {
+  .landing-title {
+    font-size: clamp(2.25rem, 4.8cqi + 1.1rem, 4.5rem);
+  }
 }
 
 .landing-lead {
   margin: 18px 0 0;
-  max-width: 34rem;
+  max-width: 36rem;
+  max-width: 60ch;
   color: var(--text-muted);
-  font-size: 17px;
+  font-size: clamp(1rem, 0.92rem + 0.35vw, 1.125rem);
   line-height: 1.5;
+  text-wrap: pretty;
 }
 
 .landing-cta-row {
@@ -314,20 +490,37 @@ a:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 14px 20px;
+  padding: 0.875rem 1.25rem;
   border-radius: 14px;
   font-weight: 700;
   text-decoration: none;
   border: 1px solid transparent;
   cursor: pointer;
   font: inherit;
-  transition: transform 0.12s ease;
+  min-block-size: 3rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .landing-cta,
+  .landing-cta-ghost {
+    transition: translate 0.12s ease;
+  }
+
+  .landing-cta:hover,
+  .landing-cta-ghost:hover {
+    translate: 0 -1px;
+  }
 }
 
 .landing-cta:hover,
 .landing-cta-ghost:hover {
   text-decoration: none;
-  transform: translateY(-1px);
+}
+
+.landing-cta:focus-visible,
+.landing-cta-ghost:focus-visible {
+  outline: 2px solid var(--chrome);
+  outline-offset: 3px;
 }
 
 .landing-cta {
@@ -342,7 +535,7 @@ a:hover {
 }
 
 .landing-cta:disabled:hover {
-  transform: none;
+  translate: none;
 }
 
 .landing-cta-soon {

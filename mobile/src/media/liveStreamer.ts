@@ -11,17 +11,26 @@ type NativeLiveStreamer = {
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   setMuted: (muted: boolean) => Promise<void>;
+  setFaceCam: (enabled: boolean) => Promise<void>;
   isLive: () => boolean;
   isPaused: () => boolean;
   isMuted: () => boolean;
+  isFaceCam: () => boolean;
   addListener: (
-    event: 'onStarted' | 'onStopped' | 'onError' | 'onPaused' | 'onMuted',
+    event:
+      | 'onStarted'
+      | 'onStopped'
+      | 'onError'
+      | 'onPaused'
+      | 'onMuted'
+      | 'onFaceCam',
     listener: (event: {
       message?: string;
       code?: string;
       error?: string;
       paused?: boolean;
       muted?: boolean;
+      enabled?: boolean;
     }) => void,
   ) => { remove: () => void };
 };
@@ -105,6 +114,15 @@ export function setLiveMuted(muted: boolean): Promise<void> {
   return native?.setMuted?.(muted) ?? Promise.resolve();
 }
 
+/** Front-camera PiP on the encoded frame. Default off. */
+export function isLiveFaceCam(): boolean {
+  return !!native?.isFaceCam?.();
+}
+
+export function setLiveFaceCam(enabled: boolean): Promise<void> {
+  return native?.setFaceCam?.(enabled) ?? Promise.resolve();
+}
+
 export function addLiveStartedListener(listener: () => void): () => void {
   if (!native) return () => undefined;
   const sub = native.addListener('onStarted', () => listener());
@@ -145,6 +163,16 @@ export function addLivePausedListener(
   if (!native) return () => undefined;
   const sub = native.addListener('onPaused', (event) => {
     listener(!!event?.paused);
+  });
+  return () => sub.remove();
+}
+
+export function addLiveFaceCamListener(
+  listener: (enabled: boolean) => void,
+): () => void {
+  if (!native) return () => undefined;
+  const sub = native.addListener('onFaceCam', (event) => {
+    listener(!!event?.enabled);
   });
   return () => sub.remove();
 }

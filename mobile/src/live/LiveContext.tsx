@@ -10,15 +10,18 @@ import { AppState, Platform } from 'react-native';
 import { isScreenRecording } from '../media/screenRecorder';
 import {
   addLiveErrorListener,
+  addLiveFaceCamListener,
   addLiveMutedListener,
   addLivePausedListener,
   addLiveStartedListener,
   addLiveStoppedListener,
+  isLiveFaceCam,
   isLiveMuted,
   isLivePaused,
   isLiveStreaming,
   pauseLiveStream,
   resumeLiveStream,
+  setLiveFaceCam,
   setLiveMuted,
   startLiveStream,
   stopLiveStream,
@@ -41,6 +44,8 @@ type LiveCtx = {
   paused: boolean;
   /** Mic + game audio silenced, without dropping the video like pause does. */
   muted: boolean;
+  /** Front-camera PiP on the stream (default off). */
+  faceCam: boolean;
   elapsedSec: number;
   starting: boolean;
   title: string;
@@ -51,12 +56,14 @@ type LiveCtx = {
   pauseLive: () => Promise<void>;
   resumeLive: () => Promise<void>;
   toggleMute: () => Promise<void>;
+  toggleFaceCam: () => Promise<void>;
 };
 
 const LiveContext = createContext<LiveCtx>({
   live: false,
   paused: false,
   muted: false,
+  faceCam: false,
   elapsedSec: 0,
   starting: false,
   title: '',
@@ -67,12 +74,14 @@ const LiveContext = createContext<LiveCtx>({
   pauseLive: async () => undefined,
   resumeLive: async () => undefined,
   toggleMute: async () => undefined,
+  toggleFaceCam: async () => undefined,
 });
 
 export function LiveProvider({ children }: { children: React.ReactNode }) {
   const [live, setLive] = useState(() => isLiveStreaming());
   const [paused, setPaused] = useState(() => isLivePaused());
   const [muted, setMuted] = useState(() => isLiveMuted());
+  const [faceCam, setFaceCam] = useState(() => isLiveFaceCam());
   const [starting, setStarting] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [title, setTitle] = useState('');
@@ -114,6 +123,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       setLive(true);
       setPaused(false);
       setMuted(false);
+      setFaceCam(false);
       setStarting(false);
       beginTimer();
     });
@@ -121,6 +131,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       setLive(false);
       setPaused(false);
       setMuted(false);
+      setFaceCam(false);
       setStarting(false);
       clearTimer();
       setElapsedSec(0);
@@ -135,6 +146,9 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     });
     const unsubMute = addLiveMutedListener((isMuted) => {
       setMuted(isMuted);
+    });
+    const unsubFace = addLiveFaceCamListener((enabled) => {
+      setFaceCam(enabled);
     });
     const unsubPause = addLivePausedListener((isPaused) => {
       setPaused(isPaused);
@@ -151,6 +165,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       unsubStop();
       unsubErr();
       unsubMute();
+      unsubFace();
       unsubPause();
       clearTimer();
     };
@@ -164,6 +179,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       setLive(still);
       setPaused(still && isLivePaused());
       setMuted(still && isLiveMuted());
+      setFaceCam(still && isLiveFaceCam());
       if (!still) {
         clearTimer();
         setElapsedSec(0);
@@ -236,6 +252,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     setLive(false);
     setPaused(false);
     setMuted(false);
+    setFaceCam(false);
     setStarting(false);
     clearTimer();
     setElapsedSec(0);
@@ -266,6 +283,17 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     }
   }, [muted]);
 
+  const toggleFaceCam = useCallback(async () => {
+    const next = !faceCam;
+    setFaceCam(next);
+    try {
+      await setLiveFaceCam(next);
+    } catch {
+      setFaceCam(!next);
+      emitToast('Could not toggle face camera');
+    }
+  }, [faceCam]);
+
   const resumeLive = useCallback(async () => {
     try {
       await resumeLiveStream();
@@ -286,6 +314,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
         live,
         paused,
         muted,
+        faceCam,
         elapsedSec,
         starting,
         title,
@@ -296,6 +325,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
         pauseLive,
         resumeLive,
         toggleMute,
+        toggleFaceCam,
       }}
     >
       {children}

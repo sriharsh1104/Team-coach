@@ -13,6 +13,8 @@ internal object LiveBridge {
   val paused = AtomicBoolean(false)
   /** Mic + game audio muted, independently of pause. */
   val muted = AtomicBoolean(false)
+  /** Front-camera PiP on the encoded frame (default off). */
+  val faceCam = AtomicBoolean(false)
 
   var startPromise: Promise? = null
   var stopPromise: Promise? = null
@@ -32,6 +34,7 @@ internal object LiveBridge {
       live.set(true)
       paused.set(false)
       muted.set(false)
+      faceCam.set(false)
       startPromise?.resolve(null)
       startPromise = null
       module?.sendEvent("onStarted", emptyMap<String, Any?>())
@@ -55,6 +58,8 @@ internal object LiveBridge {
       live.set(false)
       starting.set(false)
       paused.set(false)
+      muted.set(false)
+      faceCam.set(false)
       pendingEndpoints = ArrayList()
       module?.sendEvent("onStopped", emptyMap<String, Any?>())
       stopPromise?.resolve(null)
@@ -67,6 +72,8 @@ internal object LiveBridge {
       live.set(false)
       starting.set(false)
       paused.set(false)
+      muted.set(false)
+      faceCam.set(false)
       pendingEndpoints = ArrayList()
       module?.sendEvent("onError", mapOf("message" to message))
       module?.sendEvent("onStopped", mapOf("error" to message))
@@ -86,6 +93,13 @@ internal object LiveBridge {
   fun emitMuted(isMuted: Boolean) {
     main.post {
       module?.sendEvent("onMuted", mapOf("muted" to isMuted))
+    }
+  }
+
+  fun emitFaceCam(enabled: Boolean) {
+    main.post {
+      faceCam.set(enabled)
+      module?.sendEvent("onFaceCam", mapOf("enabled" to enabled))
     }
   }
 
