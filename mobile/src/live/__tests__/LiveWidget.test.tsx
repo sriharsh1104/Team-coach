@@ -55,6 +55,14 @@ describe('LiveWidget', () => {
     expect(screen.getByText('00:01:05')).toBeTruthy();
   });
 
+  it('keeps the timer visible after expanding controls', () => {
+    // Face / Mute / End used to sit on one row and shove the timer off-screen.
+    renderWidget();
+    fireEvent.press(screen.getByLabelText('Expand live controls'));
+    expect(screen.getByText('00:01:05')).toBeTruthy();
+    expect(screen.getByLabelText('Show face camera')).toBeTruthy();
+  });
+
   it('stays collapsed until LIVE is tapped', () => {
     renderWidget();
     expect(screen.queryByLabelText('Mute stream')).toBeNull();

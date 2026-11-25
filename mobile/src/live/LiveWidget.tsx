@@ -14,7 +14,8 @@ function fmt(sec: number) {
 
 /**
  * In-app LIVE chip — collapsed by default so it barely covers the screen.
- * Tap LIVE to expand Pause / Mute / End. (Over Free Fire, the native
+ * Tap LIVE to expand Pause / Mute / Face / End on a second row so the
+ * timer never gets squeezed off-screen. (Over Free Fire, the native
  * system bubble from LiveStreamService is used instead.)
  */
 export function LiveWidget() {
@@ -78,35 +79,43 @@ export function LiveWidget() {
           },
         ]}
       >
-        <Pressable
-          onPress={() => setExpanded((open) => !open)}
-          hitSlop={8}
-          accessibilityLabel={expanded ? 'Collapse live controls' : 'Expand live controls'}
-          style={styles.liveTap}
-        >
-          <Animated.View
-            style={[
-              styles.dot,
-              {
-                opacity: paused ? 1 : pulse,
-                backgroundColor: paused ? '#f59e0b' : '#ef4444',
-              },
-            ]}
-          />
-          <Text style={[styles.liveLabel, paused && styles.pausedLabel]}>
-            {paused ? 'PAUSED' : 'LIVE'}
-          </Text>
-          <Text style={[styles.timer, { color: colors.text }]}>{fmt(elapsedSec)}</Text>
-          <AppIcon
-            name={expanded ? 'contract' : 'expand'}
-            size={14}
-            color={colors.textMuted}
-          />
-        </Pressable>
+        <View style={styles.topRow}>
+          <Pressable
+            onPress={() => setExpanded((open) => !open)}
+            hitSlop={8}
+            accessibilityLabel={
+              expanded ? 'Collapse live controls' : 'Expand live controls'
+            }
+            style={styles.liveTap}
+          >
+            <Animated.View
+              style={[
+                styles.dot,
+                {
+                  opacity: paused ? 1 : pulse,
+                  backgroundColor: paused ? '#f59e0b' : '#ef4444',
+                },
+              ]}
+            />
+            <Text style={[styles.liveLabel, paused && styles.pausedLabel]}>
+              {paused ? 'PAUSED' : 'LIVE'}
+            </Text>
+            <Text
+              style={[styles.timer, { color: colors.text }]}
+              accessibilityLabel={`Live for ${fmt(elapsedSec)}`}
+            >
+              {fmt(elapsedSec)}
+            </Text>
+            <AppIcon
+              name={expanded ? 'contract' : 'expand'}
+              size={14}
+              color={colors.textMuted}
+            />
+          </Pressable>
+        </View>
 
         {expanded ? (
-          <>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.actionsRow}>
             <Pressable
               onPress={() => void (paused ? resumeLive() : pauseLive())}
               hitSlop={10}
@@ -176,7 +185,7 @@ export function LiveWidget() {
               <AppIcon name="stop-circle" size={16} color="#ef4444" />
               <Text style={styles.stopLabel}>End</Text>
             </Pressable>
-          </>
+          </View>
         ) : null}
       </View>
     </View>
@@ -193,9 +202,9 @@ const styles = StyleSheet.create({
     pointerEvents: 'box-none',
   },
   pill: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    maxWidth: '94%',
     paddingVertical: 7,
     paddingHorizontal: 14,
     borderRadius: 24,
@@ -206,10 +215,23 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 8,
   },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   liveTap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingTop: 6,
   },
   dot: {
     width: 9,

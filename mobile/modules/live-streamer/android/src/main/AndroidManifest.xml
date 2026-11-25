@@ -4,6 +4,8 @@
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+  <!-- Face-cam PiP opens Camera2 while the FGS is already running. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
   <!-- Collapsed LIVE bubble over Free Fire / other apps while streaming. -->
@@ -18,7 +20,7 @@
     <service
       android:name=".LiveStreamService"
       android:exported="false"
-      android:foregroundServiceType="mediaProjection"
+      android:foregroundServiceType="mediaProjection|camera"
       android:stopWithTask="false" />
   </application>
 </manifest>

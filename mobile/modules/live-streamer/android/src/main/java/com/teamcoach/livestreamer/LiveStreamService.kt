@@ -199,13 +199,19 @@ class LiveStreamService : Service() {
     ) {
       return false
     }
+    // Android 14+: camera frames stay black unless this FGS declares the
+    // camera type while Camera2 is open.
+    promoteForeground(withCamera = true)
     return try {
+      val out = outputSize()
       val filter = SurfaceFilterRender { surfaceTexture ->
         try {
           val cam = Camera2ApiManager(applicationContext)
-          // Small preview — PiP box is ~22% of the 1280×720 canvas.
-          cam.prepareCamera(surfaceTexture, 640, 480, 30)
-          cam.openCameraFront()
+          // Prefer a modest front preview; fall back if the device rejects it.
+          val opened = openFrontInto(cam, surfaceTexture, 640, 480)
+            || openFrontInto(cam, surfaceTexture, 1280, 720)
+            || openFrontInto(cam, surfaceTexture, out.width, out.height)
+          if (!opened) throw IllegalStateException("no front camera resolution")
           faceCamera = cam
         } catch (err: Exception) {
           Log.e(TAG, "front camera open failed", err)
@@ -218,8 +224,11 @@ class LiveStreamService : Service() {
           }
         }
       }
+      // Match encoder canvas so the PiP texture isn't stretched/blank.
+      filter.setDefaultScale(out.width, out.height)
       // Landscape encode: front sensor usually needs 270° to sit upright.
       filter.setRotation(270)
+      // ~22% width × ~28% height keeps a near-4:3 face box on 16:9.
       filter.setScale(22f, 28f)
       filter.setPosition(TranslateTo.BOTTOM_RIGHT)
       gl.addFilter(filter)
@@ -227,6 +236,26 @@ class LiveStreamService : Service() {
       true
     } catch (err: Exception) {
       Log.e(TAG, "face cam filter failed", err)
+      false
+    }
+  }
+
+  private fun openFrontInto(
+    cam: Camera2ApiManager,
+    surfaceTexture: android.graphics.SurfaceTexture,
+    width: Int,
+    height: Int,
+  ): Boolean {
+    return try {
+      cam.prepareCamera(surfaceTexture, width, height, VIDEO_FPS)
+      cam.openCameraFront()
+      true
+    } catch (err: Exception) {
+      Log.w(TAG, "front cam ${width}x$height failed", err)
+      try {
+        cam.closeCamera()
+      } catch (_: Exception) {
+      }
       false
     }
   }
@@ -248,6 +277,28 @@ class LiveStreamService : Service() {
         filter.release()
       } catch (_: Exception) {
       }
+    }
+  }
+
+  /** Keep MediaProjection (+ optional Camera) FGS types in sync with face cam. */
+  private fun promoteForeground(withCamera: Boolean) {
+    if (Build.VERSION.SDK_INT < 29) return
+    val notification = buildNotification(
+      if (LiveBridge.paused.get()) "LIVE paused" else "LIVE",
+      liveNotifText(),
+    )
+    var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+    if (withCamera &&
+      Build.VERSION.SDK_INT >= 30 &&
+      ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+      == PackageManager.PERMISSION_GRANTED
+    ) {
+      types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+    }
+    try {
+      startForeground(NOTIF_ID, notification, types)
+    } catch (err: Exception) {
+      Log.w(TAG, "promoteForeground failed", err)
     }
   }
 
@@ -522,10 +573,13 @@ class LiveStreamService : Service() {
   private fun startLive(intent: Intent) {
     val notification = buildNotification("Go Live", "Streaming your screen. Tap End to stop.")
     if (Build.VERSION.SDK_INT >= 29) {
-      startForeground(
-        NOTIF_ID,
-        notification,
-        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+      // Include camera type when already granted so Face Cam can open later
+      // without black frames (Android 14+ FGS camera rules).
+      promoteForeground(
+        withCamera = ContextCompat.checkSelfPermission(
+          this,
+          android.Manifest.permission.CAMERA,
+        ) == PackageManager.PERMISSION_GRANTED,
       )
     } else {
       startForeground(NOTIF_ID, notification)
