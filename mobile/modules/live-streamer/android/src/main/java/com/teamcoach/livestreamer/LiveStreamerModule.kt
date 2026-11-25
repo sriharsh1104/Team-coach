@@ -9,7 +9,7 @@ import org.json.JSONArray
 class LiveStreamerModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("LiveStreamer")
-    Events("onStarted", "onStopped", "onError", "onPaused")
+    Events("onStarted", "onStopped", "onError", "onPaused", "onMuted")
 
     OnCreate {
       LiveBridge.module = this@LiveStreamerModule
@@ -29,12 +29,34 @@ class LiveStreamerModule : Module() {
       LiveBridge.paused.get()
     }
 
+    Function("isMuted") {
+      LiveBridge.muted.get()
+    }
+
+    AsyncFunction("setMuted") { muted: Boolean, promise: Promise ->
+      if (!LiveBridge.live.get()) {
+        promise.resolve(null)
+        return@AsyncFunction
+      }
+      val context = appContext.reactContext ?: run {
+        promise.reject("NO_CONTEXT", "App is not running", null)
+        return@AsyncFunction
+      }
+      context.startService(
+        Intent(context, LiveStreamService::class.java).apply {
+          action = LiveStreamService.ACTION_MUTE
+          putExtra(LiveStreamService.EXTRA_MUTED, muted)
+        },
+      )
+      promise.resolve(null)
+    }
+
     /**
      * destinationsJson: JSON array of { "url": "rtmp…|srt…", "key": "…" } (1–3 items).
      * Same screen capture is published to every destination at once.
      * RTMP(S): url + / + key. SRT (Kick/IVS): streamid in URL, or key → ?streamid=.
      */
-    AsyncFunction("start") { destinationsJson: String, promise: Promise ->
+    AsyncFunction("start") { destinationsJson: String, bannerUri: String, promise: Promise ->
       if (LiveBridge.live.get()) {
         promise.resolve(null)
         return@AsyncFunction
@@ -90,6 +112,7 @@ class LiveStreamerModule : Module() {
         return@AsyncFunction
       }
       LiveBridge.pendingEndpoints = endpoints
+      LiveBridge.pendingBanner = bannerUri.trim()
       LiveBridge.startPromise = promise
       activity.startActivity(Intent(activity, LiveCapturePermissionActivity::class.java))
     }

@@ -247,6 +247,18 @@ export function GuildHomeScreen({ navigation }: Props) {
               style={styles.dropdownItem}
               onPress={() => {
                 setSettingsMenuOpen(false);
+                navigation.navigate('Permissions');
+              }}
+              pressScale={0.97}
+            >
+              <Text style={[styles.dropdownItemText, { color: theme.text }]}>
+                Permissions
+              </Text>
+            </SoftPressable>
+            <SoftPressable
+              style={styles.dropdownItem}
+              onPress={() => {
+                setSettingsMenuOpen(false);
                 setThemePickerOpen(true);
               }}
               pressScale={0.97}

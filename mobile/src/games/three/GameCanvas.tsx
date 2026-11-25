@@ -60,6 +60,10 @@ export function GameCanvas({ style, fallback, onFallback, camera, children }: Pr
         <Canvas
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           camera={camera}
+          // Scenes mark meshes castShadow/receiveShadow, but those flags do
+          // nothing unless the renderer has a shadow map at all — without
+          // this the pieces looked pasted flat onto the board.
+          shadows
           // Antialias is expensive on Mali/Adreno mid-range; drop it on Android.
           gl={{ antialias: Platform.OS === 'ios', powerPreference: 'high-performance' }}
         >

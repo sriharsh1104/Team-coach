@@ -8,7 +8,8 @@ import { useAuth } from '../auth/AuthContext';
 import { SoftPressable } from './SoftPressable';
 
 /**
- * The Home header's settings gear (Security / Theme / Logout), packaged for
+ * The Home header's settings gear (Security / Permissions / Theme / Logout),
+ * packaged for
  * the native-stack headerRight so every section screen carries the same
  * controls — not just OrgHome.
  */
@@ -65,6 +66,18 @@ export function HeaderSettingsButton() {
             >
               <Text style={[styles.itemText, { color: theme.text }]}>
                 Security
+              </Text>
+            </SoftPressable>
+            <SoftPressable
+              style={styles.item}
+              onPress={() => {
+                setMenuOpen(false);
+                navigation.navigate('Permissions');
+              }}
+              pressScale={0.97}
+            >
+              <Text style={[styles.itemText, { color: theme.text }]}>
+                Permissions
               </Text>
             </SoftPressable>
             <SoftPressable

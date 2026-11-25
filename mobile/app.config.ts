@@ -123,6 +123,17 @@ const expoConfig: ExpoConfig = {
       },
     ],
     '@config-plugins/react-native-webrtc',
+    [
+      'expo-local-authentication',
+      {
+        // iOS refuses Face ID outright without this string in Info.plist —
+        // unlike Touch ID, which needs no permission description at all. That
+        // asymmetry is exactly why biometric login could work in testing on
+        // an older Touch ID iPhone and silently fail on any Face ID device.
+        faceIDPermission:
+          'Sacred Team Coach uses Face ID to unlock the app with biometric login.',
+      },
+    ],
     'expo-secure-store',
     'react-native-compressor',
     '@react-native-google-signin/google-signin',

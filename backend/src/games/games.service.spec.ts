@@ -141,29 +141,29 @@ describe('GamesService — several rooms at once', () => {
     expect(games.roomOf('b')?.chess?.endReason).toBe('forfeit');
   });
 
-  it('Uno rooms accept 2–6 seats and hide opponent hands per viewer', () => {
-    const room = games.createRoom('org', p('a'), 'uno', 4);
+  it('Cut rooms seat 2–4 and show every board to everyone', () => {
+    const room = games.createRoom('org', p('a'), 'cut', 4);
     expect(room.maxPlayers).toBe(4);
-    expect(room.game).toBe('uno');
+    expect(room.game).toBe('cut');
     games.joinRoom(room.id, 'org', p('b'));
     games.joinRoom(room.id, 'org', p('c'));
     games.startGame(room.id, 'a');
 
     const forA = games.roomOf('a');
-    const forB = games.roomOf('b');
-    expect(forA?.uno?.hand).toHaveLength(7);
-    expect(forB?.uno?.hand).toHaveLength(7);
-    expect(forA?.uno?.handCounts.b).toBe(7);
-    // A's hand cards must not leak into B's view.
-    const aIds = new Set((forA?.uno?.hand ?? []).map((c) => c.id));
-    expect((forB?.uno?.hand ?? []).some((c) => aIds.has(c.id))).toBe(false);
+    expect(forA?.cut?.turnId).toBe('a');
+    // Nothing is hidden in Cut — every player's board is in every view.
+    expect(Object.keys(forA?.cut?.cut ?? {}).sort()).toEqual(['a', 'b', 'c']);
+    expect(forA?.cut?.cut.b).toEqual([]);
 
-    const topId = forA!.uno!.top!.id;
-    const playable = forA!.uno!.playableIds[0];
-    if (playable) {
-      games.unoPlay(room.id, 'a', playable);
-      expect(games.roomOf('b')?.uno?.top?.id).not.toBe(topId);
-    }
+    // Only the player holding the card may draw.
+    expect(() => games.cutDraw(room.id, 'b')).toThrow(/Not your turn/);
+    games.cutDraw(room.id, 'a');
+    const after = games.roomOf('b')?.cut;
+    expect(after?.lastDraw).toBeGreaterThanOrEqual(1);
+    expect(after?.lastDraw).toBeLessThanOrEqual(9);
+    expect(after?.lastDrawBy).toBe('a');
+    // A fresh number keeps the card; a repeat passes it on.
+    expect(after?.turnId).toBe(after?.lastWasRepeat ? 'b' : 'a');
   });
 
   it('lets a non-player watch a live Chess match, with no yourColor and no moves', () => {
@@ -230,11 +230,15 @@ describe('GamesService — several rooms at once', () => {
       /cannot be watched/,
     );
 
-    const uno = games.createRoom('org', p('d'), 'uno');
-    games.joinRoom(uno.id, 'org', p('e'));
-    games.startGame(uno.id, 'd');
-    expect(() => games.spectateRoom(uno.id, 'org', p('f'))).toThrow(
-      /cannot be watched/,
-    );
+  });
+
+  it('lets a non-player watch Cut, which hides nothing', () => {
+    const room = games.createRoom('org', p('a'), 'cut');
+    games.joinRoom(room.id, 'org', p('b'));
+    games.startGame(room.id, 'a');
+    const view = games.spectateRoom(room.id, 'org', p('c'));
+    expect(view.spectators.map((s) => s.userId)).toEqual(['c']);
+    expect(view.cut?.cut.a).toEqual([]);
+    expect(() => games.cutDraw(room.id, 'c')).toThrow(/Not your turn/);
   });
 });

@@ -9,7 +9,15 @@ import * as tokenStorage from '../../storage/tokenStorage';
 
 jest.mock('../../api/auth');
 jest.mock('../../auth/AuthContext');
-jest.mock('../../auth/biometrics');
+jest.mock('../../auth/biometrics', () => ({
+  // describeBiometricKinds is a pure formatter — keep the real one so the
+  // rendered label reflects whatever biometricKinds the test sets up,
+  // instead of an auto-mocked stub returning undefined.
+  ...jest.requireActual('../../auth/biometrics'),
+  isBiometricAvailable: jest.fn(),
+  getBiometricKinds: jest.fn(),
+  promptBiometricAuth: jest.fn(),
+}));
 jest.mock('../../storage/tokenStorage', () => ({
   getBiometricEnabled: jest.fn(),
   setBiometricEnabled: jest.fn(),
@@ -54,6 +62,7 @@ beforeEach(() => {
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockedUseAuth.mockReturnValue({ user: baseUser, applyAuthResponse, refreshUser });
   mockedBiometrics.isBiometricAvailable.mockResolvedValue(false);
+  mockedBiometrics.getBiometricKinds.mockResolvedValue([]);
   mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
   mockedTokenStorage.getBiometricEnabled.mockResolvedValue(false);
   mockedTokenStorage.setBiometricEnabled.mockResolvedValue(undefined);

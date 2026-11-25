@@ -18,22 +18,104 @@ import {
  * matters for telling them apart at this size.
  */
 
+/**
+ * Pulled back from [0, 7.4, 6.2] / fov 42: at that framing the near rank sat
+ * right on the bottom edge of the canvas and the closest pieces were cropped
+ * in half. This keeps the same viewing angle but leaves margin around the
+ * whole board.
+ */
 export const CHESS_CAMERA = {
-  position: [0, 7.4, 6.2] as [number, number, number],
-  fov: 42,
+  position: [0, 8.6, 7.4] as [number, number, number],
+  fov: 44,
   near: 0.1,
   far: 60,
 };
 
 /** One board square, in world units. */
 const SQ = 1;
-const LIGHT_SQUARE = '#d9c7a7';
-const DARK_SQUARE = '#6b4f3a';
-const WHITE_PIECE = '#f3f4f6';
-const BLACK_PIECE = '#1f2430';
+const LIGHT_SQUARE = '#eadbba';
+const DARK_SQUARE = '#6f5138';
+const FRAME = '#2f2017';
+const WHITE_PIECE = '#efe4cc';
+const BLACK_PIECE = '#33241c';
 const SELECT = '#f5c451';
 const TARGET = '#4ade80';
 const LAST_MOVE = '#60a5fa';
+
+/**
+ * Piece silhouettes as lathe profiles — `[radius, height]` pairs revolved
+ * around the Y axis, which is literally how a real set is turned on a lathe.
+ *
+ * The pieces used to be stacks of whole primitives (a cylinder with a sphere
+ * on top for a pawn, a cone for a bishop), which read as "blobs on bases"
+ * rather than chess pieces. A profile costs exactly the same at runtime —
+ * it's still one small generated geometry, no model file to download or
+ * parse — but it gives the collar, flare and finial that make each piece
+ * recognisable at a glance.
+ */
+type Profile = [number, number][];
+
+const PAWN: Profile = [
+  [0, 0], [0.3, 0], [0.3, 0.05], [0.25, 0.09], [0.18, 0.12],
+  [0.11, 0.17], [0.1, 0.26], [0.12, 0.3],
+  [0.18, 0.33], [0.15, 0.36],
+  [0.175, 0.41], [0.165, 0.47], [0.1, 0.54], [0, 0.57],
+];
+
+const ROOK: Profile = [
+  [0, 0], [0.33, 0], [0.33, 0.06], [0.27, 0.1], [0.21, 0.14],
+  [0.19, 0.22], [0.19, 0.36], [0.22, 0.42],
+  [0.28, 0.46], [0.28, 0.56], [0.22, 0.56], [0.22, 0.5], [0, 0.5],
+];
+
+const BISHOP: Profile = [
+  [0, 0], [0.31, 0], [0.31, 0.055], [0.26, 0.095], [0.18, 0.135],
+  [0.115, 0.21], [0.105, 0.31],
+  [0.185, 0.35], [0.155, 0.385],
+  [0.195, 0.44], [0.175, 0.54], [0.105, 0.63], [0.055, 0.69],
+  [0.07, 0.72], [0, 0.76],
+];
+
+const KNIGHT_BASE: Profile = [
+  [0, 0], [0.32, 0], [0.32, 0.06], [0.26, 0.1], [0.19, 0.14],
+  [0.145, 0.21], [0.14, 0.3],
+  [0.185, 0.34], [0.16, 0.37], [0, 0.37],
+];
+
+const QUEEN: Profile = [
+  [0, 0], [0.35, 0], [0.35, 0.065], [0.29, 0.105], [0.2, 0.16],
+  [0.135, 0.27], [0.125, 0.41],
+  [0.205, 0.47], [0.175, 0.51],
+  [0.245, 0.62], [0.225, 0.68],
+  [0.12, 0.72], [0.1, 0.76], [0.135, 0.8], [0, 0.85],
+];
+
+const KING: Profile = [
+  [0, 0], [0.35, 0], [0.35, 0.065], [0.29, 0.105], [0.2, 0.16],
+  [0.135, 0.29], [0.125, 0.45],
+  [0.205, 0.51], [0.175, 0.55],
+  [0.235, 0.66], [0.215, 0.72],
+  [0.115, 0.76], [0, 0.79],
+];
+
+function toLathePoints(profile: Profile): THREE.Vector2[] {
+  return profile.map(([x, y]) => new THREE.Vector2(x, y));
+}
+
+/** Built once at module load — stable references so R3F never rebuilds the
+ * geometry on a re-render. */
+const LATHE: Record<ChessPieceType, THREE.Vector2[]> = {
+  p: toLathePoints(PAWN),
+  r: toLathePoints(ROOK),
+  b: toLathePoints(BISHOP),
+  // The knight's turned part stops at the collar; its head is built on top.
+  n: toLathePoints(KNIGHT_BASE),
+  q: toLathePoints(QUEEN),
+  k: toLathePoints(KING),
+};
+
+/** Lathe segments: enough to look turned, few enough for a mid-range GPU. */
+const LATHE_SEGMENTS = 24;
 
 /**
  * Board index (0 = a8) → world position. `flip` turns the board so the
@@ -109,12 +191,13 @@ const PieceMesh = React.memo(
 
     return (
       <group ref={groupRef}>
-        {/* Every piece shares a base, so they sit at a consistent height. */}
-        <mesh position={[0, 0.07, 0]} castShadow>
-          <cylinderGeometry args={[0.3, 0.34, 0.14, 20]} />
+        {/* One turned profile per piece — base, stem, collar and finial all
+            in a single geometry, the way the real thing is made. */}
+        <mesh castShadow receiveShadow>
+          <latheGeometry args={[LATHE[piece.type], LATHE_SEGMENTS]} />
           {material}
         </mesh>
-        <PieceBody type={piece.type}>{material}</PieceBody>
+        <PieceDetail type={piece.type}>{material}</PieceDetail>
       </group>
     );
   },
@@ -126,8 +209,21 @@ const PieceMesh = React.memo(
     prev.position[2] === next.position[2],
 );
 
-/** The part above the base — this is what makes each piece recognisable. */
-function PieceBody({
+/** Four blocks round the rook's rim — a lathe can only turn rings, and the
+ * notched top is the one feature that says "rook" at a glance. */
+const CRENELLATIONS: [number, number][] = [
+  [0.24, 0],
+  [-0.24, 0],
+  [0, 0.24],
+  [0, -0.24],
+];
+
+/**
+ * The parts a lathe can't turn, because they aren't symmetric about the
+ * axis: the rook's notches, the knight's head, the king's cross and the
+ * queen's crown points. Everything else is already in the profile.
+ */
+function PieceDetail({
   type,
   children,
 }: {
@@ -135,96 +231,87 @@ function PieceBody({
   children: React.ReactNode;
 }) {
   switch (type) {
-    case 'p':
-      return (
-        <>
-          <mesh position={[0, 0.24, 0]}>
-            <cylinderGeometry args={[0.13, 0.22, 0.22, 16]} />
-            {children}
-          </mesh>
-          <mesh position={[0, 0.42, 0]}>
-            <sphereGeometry args={[0.16, 16, 16]} />
-            {children}
-          </mesh>
-        </>
-      );
     case 'r':
       return (
         <>
-          <mesh position={[0, 0.34, 0]}>
-            <cylinderGeometry args={[0.24, 0.27, 0.42, 16]} />
-            {children}
-          </mesh>
-          {/* Crenellations — the one feature that says "rook" instantly. */}
-          <mesh position={[0, 0.6, 0]}>
-            <boxGeometry args={[0.52, 0.14, 0.52]} />
-            {children}
-          </mesh>
+          {CRENELLATIONS.map(([x, z], i) => (
+            <mesh key={i} position={[x, 0.59, z]} castShadow>
+              <boxGeometry args={[0.13, 0.12, 0.13]} />
+              {children}
+            </mesh>
+          ))}
         </>
       );
     case 'n':
+      // A horse in profile: neck leaning forward, muzzle, cheek and two
+      // ears. Crude up close, but from the board's viewing angle it reads
+      // as a knight rather than the tilted brick it used to be.
       return (
         <>
-          <mesh position={[0, 0.3, 0]}>
-            <cylinderGeometry args={[0.18, 0.26, 0.34, 16]} />
+          <mesh position={[0, 0.5, 0.02]} rotation={[0.26, 0, 0]} castShadow>
+            <boxGeometry args={[0.2, 0.34, 0.2]} />
             {children}
           </mesh>
-          {/* Angled head, tilted forward so it reads as a horse in profile. */}
-          <mesh position={[0, 0.58, 0.06]} rotation={[0.5, 0, 0]}>
-            <boxGeometry args={[0.22, 0.4, 0.3]} />
+          <mesh position={[0, 0.65, 0.14]} rotation={[0.75, 0, 0]} castShadow>
+            <boxGeometry args={[0.18, 0.24, 0.17]} />
             {children}
           </mesh>
-        </>
-      );
-    case 'b':
-      return (
-        <>
-          <mesh position={[0, 0.34, 0]}>
-            <coneGeometry args={[0.24, 0.48, 18]} />
+          {/* Muzzle */}
+          <mesh position={[0, 0.6, 0.26]} rotation={[0.2, 0, 0]} castShadow>
+            <boxGeometry args={[0.15, 0.12, 0.16]} />
             {children}
           </mesh>
-          <mesh position={[0, 0.64, 0]}>
-            <sphereGeometry args={[0.1, 14, 14]} />
+          {/* Mane down the back of the neck */}
+          <mesh position={[0, 0.62, -0.09]} rotation={[-0.3, 0, 0]} castShadow>
+            <boxGeometry args={[0.1, 0.3, 0.1]} />
+            {children}
+          </mesh>
+          {/* Ears */}
+          <mesh position={[0.06, 0.78, 0.02]} castShadow>
+            <coneGeometry args={[0.035, 0.1, 8]} />
+            {children}
+          </mesh>
+          <mesh position={[-0.06, 0.78, 0.02]} castShadow>
+            <coneGeometry args={[0.035, 0.1, 8]} />
             {children}
           </mesh>
         </>
       );
     case 'q':
+      // Crown points round the flared rim.
       return (
         <>
-          <mesh position={[0, 0.38, 0]}>
-            <cylinderGeometry args={[0.16, 0.28, 0.54, 18]} />
-            {children}
-          </mesh>
-          <mesh position={[0, 0.68, 0]}>
-            <torusGeometry args={[0.16, 0.05, 10, 20]} />
-            {children}
-          </mesh>
-          <mesh position={[0, 0.8, 0]}>
-            <sphereGeometry args={[0.1, 14, 14]} />
-            {children}
-          </mesh>
+          {[0, 1, 2, 3, 4, 5].map((i) => {
+            const a = (i / 6) * Math.PI * 2;
+            return (
+              <mesh
+                key={i}
+                position={[Math.cos(a) * 0.2, 0.71, Math.sin(a) * 0.2]}
+                castShadow
+              >
+                <sphereGeometry args={[0.045, 10, 10]} />
+                {children}
+              </mesh>
+            );
+          })}
         </>
       );
     case 'k':
-    default:
       return (
         <>
-          <mesh position={[0, 0.4, 0]}>
-            <cylinderGeometry args={[0.17, 0.29, 0.58, 18]} />
-            {children}
-          </mesh>
           {/* Cross on top — the king is the tallest piece on the board. */}
-          <mesh position={[0, 0.78, 0]}>
-            <boxGeometry args={[0.1, 0.3, 0.1]} />
+          <mesh position={[0, 0.9, 0]} castShadow>
+            <boxGeometry args={[0.07, 0.24, 0.07]} />
             {children}
           </mesh>
-          <mesh position={[0, 0.82, 0]}>
-            <boxGeometry args={[0.26, 0.1, 0.1]} />
+          <mesh position={[0, 0.93, 0]} castShadow>
+            <boxGeometry args={[0.2, 0.07, 0.07]} />
             {children}
           </mesh>
         </>
       );
+    default:
+      return null;
   }
 }
 
@@ -314,14 +401,35 @@ export function ChessScene3D({
 
   return (
     <>
-      <ambientLight intensity={0.75} />
-      <directionalLight position={[4, 9, 5]} intensity={1.15} />
-      <directionalLight position={[-5, 6, -4]} intensity={0.35} />
+      <ambientLight intensity={0.62} />
+      {/* The key light casts: without a shadow the pieces look pasted onto
+          the squares rather than standing on them. */}
+      <directionalLight
+        position={[4, 9, 5]}
+        intensity={1.25}
+        castShadow
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-camera-left={-7}
+        shadow-camera-right={7}
+        shadow-camera-top={7}
+        shadow-camera-bottom={-7}
+        shadow-camera-near={1}
+        shadow-camera-far={24}
+      />
+      <directionalLight position={[-5, 6, -4]} intensity={0.32} />
 
       {/* Table surround, so the board does not float in a void. */}
-      <mesh position={[0, -0.12, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[11, 11]} />
-        <meshStandardMaterial color="#141820" roughness={0.9} />
+      <mesh position={[0, -0.3, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[14, 14]} />
+        <meshStandardMaterial color="#141820" roughness={0.95} />
+      </mesh>
+
+      {/* A real board has thickness and a border the coordinates sit on —
+          flat planes on their own read as a printed mat. */}
+      <mesh position={[0, -0.13, 0]} receiveShadow>
+        <boxGeometry args={[9.1, 0.26, 9.1]} />
+        <meshStandardMaterial color={FRAME} roughness={0.55} metalness={0.08} />
       </mesh>
 
       {squares.map((square) => (

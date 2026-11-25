@@ -67,6 +67,6 @@ export type MainStackParamList = {
   PointsTable: undefined;
   SocialHandles: undefined;
   Games: undefined;
-  GameRoom: { roomId: string; game?: 'rps' | 'ludo' | 'boots' | 'uno' };
+  GameRoom: { roomId: string; game?: 'rps' | 'ludo' | 'boots' | 'cut' | 'chess' };
   GoLive: undefined;
 };

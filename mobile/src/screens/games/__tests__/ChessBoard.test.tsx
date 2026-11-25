@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { ChessBoard } from '../ChessBoard';
 import {
@@ -64,6 +65,49 @@ describe('ChessBoard', () => {
     expect(screen.getByLabelText('e2, white p')).toBeTruthy();
     expect(screen.getByLabelText('e8, black k')).toBeTruthy();
     expect(screen.getByLabelText('a4, empty')).toBeTruthy();
+  });
+
+  it('gives every square a real, square, identical size', () => {
+    // Regression: squares were sized with `width: '12.5%'` + `aspectRatio: 1`
+    // inside an `aspectRatio: 1` wrapping flex container, and Yoga never
+    // resolved a height from that — empty squares collapsed to nothing, so
+    // the four empty middle ranks vanished and the whole 2D board rendered
+    // as a letterbox strip. In 3D, where no glyphs are drawn, every square
+    // collapsed and the tap grid became an empty black box.
+    const sizeOf = (square: string) => {
+      const style = StyleSheet.flatten(cell(square).props.style) as {
+        width?: number;
+        height?: number;
+      };
+      return { width: style.width, height: style.height };
+    };
+
+    renderBoard({});
+    const corner = sizeOf('a1');
+    expect(typeof corner.width).toBe('number');
+    expect(corner.width).toBeGreaterThan(0);
+    expect(corner.height).toBe(corner.width);
+
+    // An empty middle square must measure exactly the same as an occupied
+    // one — that equality is the thing that used to break.
+    expect(sizeOf('d4')).toEqual(corner);
+    expect(sizeOf('e2')).toEqual(corner);
+    expect(sizeOf('h8')).toEqual(corner);
+  });
+
+  it('shows both players with what they captured and who leads on material', () => {
+    renderBoard({
+      // White took a knight and a pawn (4), Black took a pawn (1).
+      captured: { w: ['n', 'p'], b: ['p'] },
+    });
+
+    // The fixture has no room.players, so the seats fall back to You /
+    // Opponent — the strips must still render rather than blowing up on an
+    // undefined player list.
+    expect(screen.getByText('You')).toBeTruthy();
+    expect(screen.getByText('Opponent')).toBeTruthy();
+    // 4 − 1 = 3, shown once, against the side that is actually ahead.
+    expect(screen.getByText('+3')).toBeTruthy();
   });
 
   it('sends the move when you tap a piece and then a legal square', () => {

@@ -3,7 +3,7 @@ import { apiBaseUrl } from './client';
 
 // ── Types mirrored from backend/src/games ──────────────────────────────────
 
-export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno' | 'chess';
+export type GameKind = 'rps' | 'ludo' | 'boots' | 'cut' | 'chess';
 
 export const GAME_CATALOG: Array<{
   id: GameKind;
@@ -33,13 +33,13 @@ export const GAME_CATALOG: Array<{
     emoji: '🎲',
   },
   {
-    id: 'uno',
-    title: 'Uno',
-    tagline: 'Match color or rank — call Uno at 1',
-    players: '2–6 players',
+    id: 'cut',
+    title: 'Cut',
+    tagline: 'Cut 1–9 off your board — a repeat ends your turn',
+    players: '2–4 players',
     minPlayers: 2,
-    maxPlayers: 6,
-    emoji: '🃏',
+    maxPlayers: 4,
+    emoji: '🔢',
   },
   {
     id: 'chess',
@@ -195,49 +195,23 @@ export interface RpsPublicState {
 
 export type LudoColor = 'red' | 'green' | 'yellow' | 'blue';
 
-export type UnoColor = 'red' | 'yellow' | 'green' | 'blue';
-export type UnoRank =
-  | '0'
-  | '1'
-  | '2'
-  | '3'
-  | '4'
-  | '5'
-  | '6'
-  | '7'
-  | '8'
-  | '9'
-  | 'skip'
-  | 'reverse'
-  | 'draw2'
-  | 'wild'
-  | 'wild4';
+/** Every player cuts these same nine numbers off their own board. */
+export const CUT_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-export type UnoCard = {
-  id: string;
-  color: UnoColor | 'wild';
-  rank: UnoRank;
-};
-
-export type UnoPublicState = {
+export type CutPublicState = {
   playerIds: string[];
-  handCounts: Record<string, number>;
-  hand: UnoCard[];
-  top: UnoCard | null;
-  color: UnoColor;
-  direction: 1 | -1;
+  /** Per player, the numbers they have already cut (ascending). */
+  cut: Record<string, number[]>;
+  turnIndex: number;
   turnId: string;
-  phase: 'play' | 'color' | 'done';
-  pendingDraw: number;
-  colorPickerId: string | null;
-  calledUno: Record<string, boolean>;
-  deckCount: number;
+  phase: 'play' | 'done';
+  /** The number showing on the shared card, null before the first draw. */
+  lastDraw: number | null;
+  lastDrawBy: string | null;
+  /** True when that draw was already cut — i.e. it ended the drawer's turn. */
+  lastWasRepeat: boolean;
   winnerId: string | null;
   lastEvent: string | null;
-  playableIds: string[];
-  canDraw: boolean;
-  canPass: boolean;
-  drewThisTurn: boolean;
   version: number;
 };
 
@@ -288,7 +262,7 @@ export interface RoomView {
   rps: RpsPublicState | null;
   ludo: LudoState | null;
   boots: BootsPublicState | null;
-  uno: UnoPublicState | null;
+  cut: CutPublicState | null;
   chess: ChessPublicState | null;
   bootsFleet: number[] | null;
   deadline: number | null;

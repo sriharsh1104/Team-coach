@@ -36,19 +36,13 @@ import {
   RpsState,
 } from './engines/rps.engine';
 import {
-  createUnoState,
-  UnoColor,
-  UnoPublicState,
-  UnoState,
-  unoCall,
-  unoCatch,
-  unoChooseColor,
-  unoDraw,
-  unoForfeit,
-  unoPass,
-  unoPlay,
-  unoPublicState,
-} from './engines/uno.engine';
+  CutPublicState,
+  CutState,
+  createCutState,
+  cutDraw,
+  cutForfeit,
+  cutPublicState,
+} from './engines/cut.engine';
 import {
   ChessMove,
   ChessState,
@@ -67,7 +61,7 @@ import {
 export const GAME_REACTIONS = ['angry', 'loser', 'laughing', 'cool'] as const;
 export type GameReaction = (typeof GAME_REACTIONS)[number];
 
-export type GameKind = 'rps' | 'ludo' | 'boots' | 'uno' | 'chess';
+export type GameKind = 'rps' | 'ludo' | 'boots' | 'cut' | 'chess';
 
 export const GAME_CATALOG: Record<
   GameKind,
@@ -77,9 +71,8 @@ export const GAME_CATALOG: Record<
     maxPlayers: number;
     /**
      * Whether a non-player can watch a live match. Only true for games with
-     * no hidden information — Boots (ship positions) and Uno (hands) would
-     * leak a player's private state to anyone who "watched", so they stay
-     * players-only.
+     * no hidden information — Boots would leak ship positions to anyone who
+     * "watched", so it stays players-only.
      */
     spectatable: boolean;
   }
@@ -87,11 +80,9 @@ export const GAME_CATALOG: Record<
   rps: { title: 'Stone Paper Scissors', minPlayers: 2, maxPlayers: 2, spectatable: false },
   ludo: { title: 'Ludo', minPlayers: 2, maxPlayers: 4, spectatable: true },
   boots: { title: 'Boots', minPlayers: 2, maxPlayers: 4, spectatable: false },
-  uno: { title: 'Uno', minPlayers: 2, maxPlayers: 6, spectatable: false },
+  cut: { title: 'Cut', minPlayers: 2, maxPlayers: 4, spectatable: true },
   chess: { title: 'Chess', minPlayers: 2, maxPlayers: 2, spectatable: true },
 };
-
-const UNO_COLORS: UnoColor[] = ['red', 'yellow', 'green', 'blue'];
 
 export interface RoomPlayer {
   userId: string;
@@ -123,7 +114,7 @@ interface Room {
   rps: RpsState | null;
   ludo: LudoState | null;
   boots: BootsState | null;
-  uno: UnoState | null;
+  cut: CutState | null;
   chess: ChessState | null;
   /** Host-chosen boot lengths for Boots (e.g. [5,3,2]). */
   bootsFleet: number[] | null;
@@ -149,8 +140,8 @@ export interface RoomView {
   ludo: LudoState | null;
   /** Viewer-scoped — opponent boots stay hidden until sunk. */
   boots: BootsPublicState | null;
-  /** Viewer-scoped — only your hand is full; others are counts. */
-  uno: UnoPublicState | null;
+  /** Fully public — Cut hides nothing from anyone. */
+  cut: CutPublicState | null;
   /** Viewer-scoped only for whose turn it is; the board itself is public. */
   chess: ChessPublicState | null;
   /** Lobby preview of the Boots fleet sizes. */
@@ -269,7 +260,7 @@ export class GamesService {
       rps: null,
       ludo: null,
       boots: null,
-      uno: null,
+      cut: null,
       chess: null,
       bootsFleet: game === 'boots' ? normalizeFleet(bootsFleet) : null,
       timer: null,
@@ -327,13 +318,13 @@ export class GamesService {
       if (room.rps) rpsForfeit(room.rps, userId);
       if (room.ludo) ludoRemovePlayer(room.ludo, userId);
       if (room.boots) bootsForfeit(room.boots, userId);
-      if (room.uno) unoForfeit(room.uno, userId);
+      if (room.cut) cutForfeit(room.cut, userId);
       if (room.chess) chessForfeit(room.chess, userId);
       if (
         room.rps?.phase === 'done' ||
         room.ludo?.phase === 'done' ||
         room.boots?.phase === 'done' ||
-        room.uno?.phase === 'done' ||
+        room.cut?.phase === 'done' ||
         room.chess?.phase === 'done'
       ) {
         this.finish(room);
@@ -454,7 +445,7 @@ export class GamesService {
     if (room.game === 'boots') {
       room.boots = createBootsState(ids, room.bootsFleet ?? undefined);
     }
-    if (room.game === 'uno') room.uno = createUnoState(ids);
+    if (room.game === 'cut') room.cut = createCutState(ids);
     if (room.game === 'chess') {
       // Seat order decides colour: whoever created the room plays White.
       room.chess = createChessState([ids[0], ids[1]]);
@@ -476,7 +467,7 @@ export class GamesService {
     room.rps = null;
     room.ludo = null;
     room.boots = null;
-    room.uno = null;
+    room.cut = null;
     room.chess = null;
     room.status = 'lobby';
     this.deadlines.delete(room.id);
@@ -648,80 +639,23 @@ export class GamesService {
     return this.view(room, userId);
   }
 
-  // ─── Uno ──────────────────────────────────────────────────────────────
+  // ─── Cut ──────────────────────────────────────────────────────────────
 
-  unoPlay(
-    roomId: string,
-    userId: string,
-    cardId: unknown,
-    color?: unknown,
-  ): RoomView {
+  /**
+   * Draw the shared card. A fresh number is cut and the same player draws
+   * again; a number they have already cut ends their turn — that is the
+   * whole game, so there is only this one action.
+   */
+  cutDraw(roomId: string, userId: string): RoomView {
     const room = this.rooms.get(roomId);
-    if (!room?.uno || room.status !== 'playing')
-      throw new Error('No Uno match in progress');
-    if (typeof cardId !== 'string' || !cardId.trim())
-      throw new Error('Pick a card');
-    const chosen =
-      typeof color === 'string' && UNO_COLORS.includes(color as UnoColor)
-        ? (color as UnoColor)
-        : undefined;
-    unoPlay(room.uno, userId, cardId.trim(), chosen);
-    this.emit(room, { type: 'uno:play', payload: { userId, cardId } });
-    if (room.uno.phase === 'done') this.finish(room);
-    return this.view(room, userId);
-  }
-
-  unoChooseColor(roomId: string, userId: string, color: unknown): RoomView {
-    const room = this.rooms.get(roomId);
-    if (!room?.uno || room.status !== 'playing')
-      throw new Error('No Uno match in progress');
-    if (typeof color !== 'string' || !UNO_COLORS.includes(color as UnoColor)) {
-      throw new Error('Pick red, yellow, green or blue');
-    }
-    unoChooseColor(room.uno, userId, color as UnoColor);
-    this.emit(room, { type: 'uno:color', payload: { userId, color } });
-    if (room.uno.phase === 'done') this.finish(room);
-    return this.view(room, userId);
-  }
-
-  unoDraw(roomId: string, userId: string): RoomView {
-    const room = this.rooms.get(roomId);
-    if (!room?.uno || room.status !== 'playing')
-      throw new Error('No Uno match in progress');
-    unoDraw(room.uno, userId);
-    this.emit(room, { type: 'uno:draw', payload: { userId } });
-    return this.view(room, userId);
-  }
-
-  unoPass(roomId: string, userId: string): RoomView {
-    const room = this.rooms.get(roomId);
-    if (!room?.uno || room.status !== 'playing')
-      throw new Error('No Uno match in progress');
-    unoPass(room.uno, userId);
-    this.emit(room, { type: 'uno:pass', payload: { userId } });
-    return this.view(room, userId);
-  }
-
-  unoCall(roomId: string, userId: string): RoomView {
-    const room = this.rooms.get(roomId);
-    if (!room?.uno || room.status !== 'playing')
-      throw new Error('No Uno match in progress');
-    unoCall(room.uno, userId);
-    this.emit(room, { type: 'uno:call', payload: { userId } });
-    return this.view(room, userId);
-  }
-
-  unoCatch(roomId: string, userId: string, targetId: unknown): RoomView {
-    const room = this.rooms.get(roomId);
-    if (!room?.uno || room.status !== 'playing')
-      throw new Error('No Uno match in progress');
-    if (typeof targetId !== 'string' || !targetId.trim())
-      throw new Error('Pick who to catch');
-    unoCatch(room.uno, userId, targetId.trim());
+    if (!room?.cut || room.status !== 'playing')
+      throw new Error('No Cut match in progress');
+    const result = cutDraw(room.cut, userId);
     this.emit(room, {
-      type: 'uno:catch',
-      payload: { catcherId: userId, targetId },
+      type: 'cut:draw',
+      payload: { userId, number: result.number, repeat: result.repeat },
     });
+    if (room.cut.phase === 'done') this.finish(room);
     return this.view(room, userId);
   }
 
@@ -861,8 +795,8 @@ export class GamesService {
   }
 
   private emit(room: Room, event?: { type: string; payload?: unknown }) {
-    // Once a match is live, every recipient needs their OWN view: Boots/Uno
-    // hide hands and ship placement, Chess owes each player their correct
+    // Once a match is live, every recipient needs their OWN view: Boots
+    // hides ship placement, Chess owes each player their correct
     // `yourColor` (a single shared view would quietly hand both players
     // White's perspective), and a spectator must never get a player's view
     // at all. A plain lobby has no such per-viewer state yet, so one shared
@@ -903,7 +837,7 @@ export class GamesService {
         ? { ...room.ludo, tokens: cloneTokens(room.ludo.tokens) }
         : null,
       boots: room.boots ? bootsPublicState(room.boots, viewer) : null,
-      uno: room.uno ? unoPublicState(room.uno, viewer) : null,
+      cut: room.cut ? cutPublicState(room.cut) : null,
       chess: room.chess ? chessPublicState(room.chess, viewer) : null,
       bootsFleet: room.bootsFleet ? [...room.bootsFleet] : null,
       deadline:

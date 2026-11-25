@@ -11,6 +11,8 @@ internal object LiveBridge {
   val live = AtomicBoolean(false)
   val starting = AtomicBoolean(false)
   val paused = AtomicBoolean(false)
+  /** Mic + game audio muted, independently of pause. */
+  val muted = AtomicBoolean(false)
 
   var startPromise: Promise? = null
   var stopPromise: Promise? = null
@@ -20,11 +22,16 @@ internal object LiveBridge {
   @Volatile
   var pendingEndpoints: ArrayList<String> = ArrayList()
 
+  /** "Be right back" image, handed to the service so pause can broadcast it. */
+  @Volatile
+  var pendingBanner: String = ""
+
   fun resolveStart() {
     main.post {
       starting.set(false)
       live.set(true)
       paused.set(false)
+      muted.set(false)
       startPromise?.resolve(null)
       startPromise = null
       module?.sendEvent("onStarted", emptyMap<String, Any?>())
@@ -73,6 +80,12 @@ internal object LiveBridge {
   fun emitPaused(isPaused: Boolean) {
     main.post {
       module?.sendEvent("onPaused", mapOf("paused" to isPaused))
+    }
+  }
+
+  fun emitMuted(isMuted: Boolean) {
+    main.post {
+      module?.sendEvent("onMuted", mapOf("muted" to isMuted))
     }
   }
 

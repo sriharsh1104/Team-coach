@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Device, types as mediasoupTypes } from 'mediasoup-client';
 import { Socket } from 'socket.io-client';
 import { mediaDevices } from '@livekit/react-native-webrtc';
-import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
+import { AudioSession } from '@livekit/react-native';
+import { callAudioTypeOptions } from './voiceAudioProfile';
 import { connectVoiceSocket, VoiceRoomKind } from '../api/voice';
 import { emitToast } from '../ui/toastBus';
 import {
@@ -517,7 +518,7 @@ export function useSelfHostedVoiceChannel(
       // can come out of the earpiece at phone-call volume.
       try {
         await AudioSession.configureAudio({
-          android: { audioTypeOptions: AndroidAudioTypePresets.communication },
+          android: { audioTypeOptions: callAudioTypeOptions() },
         });
         await AudioSession.startAudioSession();
       } catch (err) {

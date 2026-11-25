@@ -10,16 +10,20 @@ import { AppState, Platform } from 'react-native';
 import { isScreenRecording } from '../media/screenRecorder';
 import {
   addLiveErrorListener,
+  addLiveMutedListener,
   addLivePausedListener,
   addLiveStartedListener,
   addLiveStoppedListener,
+  isLiveMuted,
   isLivePaused,
   isLiveStreaming,
   pauseLiveStream,
   resumeLiveStream,
+  setLiveMuted,
   startLiveStream,
   stopLiveStream,
 } from '../media/liveStreamer';
+import { isVoiceCallActive } from '../voice/voiceAudioProfile';
 import { isVoiceScreenSharing } from '../voice/voiceScreenShareGate';
 import { emitToast } from '../ui/toastBus';
 
@@ -35,6 +39,8 @@ export type LiveStartOpts = {
 type LiveCtx = {
   live: boolean;
   paused: boolean;
+  /** Mic + game audio silenced, without dropping the video like pause does. */
+  muted: boolean;
   elapsedSec: number;
   starting: boolean;
   title: string;
@@ -44,11 +50,13 @@ type LiveCtx = {
   stopLive: () => Promise<void>;
   pauseLive: () => Promise<void>;
   resumeLive: () => Promise<void>;
+  toggleMute: () => Promise<void>;
 };
 
 const LiveContext = createContext<LiveCtx>({
   live: false,
   paused: false,
+  muted: false,
   elapsedSec: 0,
   starting: false,
   title: '',
@@ -58,11 +66,13 @@ const LiveContext = createContext<LiveCtx>({
   stopLive: async () => undefined,
   pauseLive: async () => undefined,
   resumeLive: async () => undefined,
+  toggleMute: async () => undefined,
 });
 
 export function LiveProvider({ children }: { children: React.ReactNode }) {
   const [live, setLive] = useState(() => isLiveStreaming());
   const [paused, setPaused] = useState(() => isLivePaused());
+  const [muted, setMuted] = useState(() => isLiveMuted());
   const [starting, setStarting] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [title, setTitle] = useState('');
@@ -103,12 +113,14 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     const unsubStart = addLiveStartedListener(() => {
       setLive(true);
       setPaused(false);
+      setMuted(false);
       setStarting(false);
       beginTimer();
     });
     const unsubStop = addLiveStoppedListener((error) => {
       setLive(false);
       setPaused(false);
+      setMuted(false);
       setStarting(false);
       clearTimer();
       setElapsedSec(0);
@@ -120,6 +132,9 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     const unsubErr = addLiveErrorListener((message) => {
       setStarting(false);
       emitToast(message);
+    });
+    const unsubMute = addLiveMutedListener((isMuted) => {
+      setMuted(isMuted);
     });
     const unsubPause = addLivePausedListener((isPaused) => {
       setPaused(isPaused);
@@ -135,6 +150,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       unsubStart();
       unsubStop();
       unsubErr();
+      unsubMute();
       unsubPause();
       clearTimer();
     };
@@ -147,6 +163,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       const still = isLiveStreaming();
       setLive(still);
       setPaused(still && isLivePaused());
+      setMuted(still && isLiveMuted());
       if (!still) {
         clearTimer();
         setElapsedSec(0);
@@ -181,6 +198,8 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       try {
         const result = await startLiveStream({
           destinations: opts.destinations,
+          // Native keeps it so pause can paint it over the captured game.
+          bannerUri: opts.bannerUri ?? null,
         });
         if (result === 'unsupported') {
           setStarting(false);
@@ -191,6 +210,12 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
           setStarting(false);
           emitToast('Rebuild the Android app to enable Go Live');
           return false;
+        }
+        // A call already playing is locked to Android's voice-call audio
+        // path, which the platform refuses to let the broadcast capture.
+        // Rejoining builds it as media audio, which does reach viewers.
+        if (isVoiceCallActive()) {
+          emitToast('Rejoin the voice call so your friends are heard on stream');
         }
         return true;
       } catch (err: any) {
@@ -210,6 +235,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     }
     setLive(false);
     setPaused(false);
+    setMuted(false);
     setStarting(false);
     clearTimer();
     setElapsedSec(0);
@@ -227,6 +253,18 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       emitToast('Could not pause live');
     }
   }, []);
+
+  const toggleMute = useCallback(async () => {
+    const next = !muted;
+    // Optimistic: the native onMuted event confirms (or corrects) it.
+    setMuted(next);
+    try {
+      await setLiveMuted(next);
+    } catch {
+      setMuted(!next);
+      emitToast('Could not change the stream mic');
+    }
+  }, [muted]);
 
   const resumeLive = useCallback(async () => {
     try {
@@ -247,6 +285,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       value={{
         live,
         paused,
+        muted,
         elapsedSec,
         starting,
         title,
@@ -256,6 +295,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
         stopLive,
         pauseLive,
         resumeLive,
+        toggleMute,
       }}
     >
       {children}

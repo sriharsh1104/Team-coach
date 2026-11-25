@@ -72,12 +72,7 @@ type Ack<T> = { ok: true; room: T } | { ok: false; error: string };
  *   boots:clear {roomId}
  *   boots:ready {roomId}
  *   boots:fire {roomId, target, targetId?} → RoomView   (targetId required with 3+ live opponents)
- *   uno:play {roomId, cardId, color?} → RoomView
- *   uno:color {roomId, color}       → RoomView
- *   uno:draw {roomId}               → RoomView
- *   uno:pass {roomId}               → RoomView
- *   uno:call {roomId}               → RoomView
- *   uno:catch {roomId, targetId}    → RoomView
+ *   cut:draw {roomId}               → RoomView
  *   chess:move {roomId, from, to, promotion?} → RoomView
  *   room:react {roomId, reaction}   → RoomView (broadcast only, stores nothing)
  * Server → client:
@@ -686,77 +681,13 @@ export class GamesGateway implements OnGatewayInit, OnGatewayDisconnect {
     );
   }
 
-  @SubscribeMessage('uno:play')
-  onUnoPlay(
-    @ConnectedSocket() client: Socket,
-    @MessageBody()
-    body: { roomId?: string; cardId?: string; color?: string },
-  ) {
-    return this.run(client, (data) =>
-      this.games.unoPlay(
-        this.roomIdOf(body, data),
-        data.userId,
-        body?.cardId,
-        body?.color,
-      ),
-    );
-  }
-
-  @SubscribeMessage('uno:color')
-  onUnoColor(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() body: { roomId?: string; color?: string },
-  ) {
-    return this.run(client, (data) =>
-      this.games.unoChooseColor(
-        this.roomIdOf(body, data),
-        data.userId,
-        body?.color,
-      ),
-    );
-  }
-
-  @SubscribeMessage('uno:draw')
-  onUnoDraw(
+  @SubscribeMessage('cut:draw')
+  onCutDraw(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { roomId?: string },
   ) {
     return this.run(client, (data) =>
-      this.games.unoDraw(this.roomIdOf(body, data), data.userId),
-    );
-  }
-
-  @SubscribeMessage('uno:pass')
-  onUnoPass(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() body: { roomId?: string },
-  ) {
-    return this.run(client, (data) =>
-      this.games.unoPass(this.roomIdOf(body, data), data.userId),
-    );
-  }
-
-  @SubscribeMessage('uno:call')
-  onUnoCall(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() body: { roomId?: string },
-  ) {
-    return this.run(client, (data) =>
-      this.games.unoCall(this.roomIdOf(body, data), data.userId),
-    );
-  }
-
-  @SubscribeMessage('uno:catch')
-  onUnoCatch(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() body: { roomId?: string; targetId?: string },
-  ) {
-    return this.run(client, (data) =>
-      this.games.unoCatch(
-        this.roomIdOf(body, data),
-        data.userId,
-        body?.targetId,
-      ),
+      this.games.cutDraw(this.roomIdOf(body, data), data.userId),
     );
   }
 

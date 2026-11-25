@@ -87,6 +87,10 @@ function MessageBubbleInner({
     !message.text?.trim() &&
     !message.replyTo &&
     !message.forwarded;
+  // One rule, one place: the label used to be spelled out at both render
+  // sites below and they drifted apart — a refactor dropped `isMine` from
+  // one of them and your own role started showing on your own messages.
+  const senderLabel = isDeleted ? null : formatSenderLabel(message, isMine);
   // Multi-select checkboxes are for your own messages (delete batch).
   // A single peer message can still be selected via long-press for reply/star,
   // and shows a check while it is the active selection.
@@ -135,8 +139,8 @@ function MessageBubbleInner({
           </View>
         ) : null}
         <View style={styles.bubbleCol}>
-          {mediaOnly ? (
-            <Text style={styles.sender}>{formatSenderLabel(message)}</Text>
+          {mediaOnly && senderLabel ? (
+            <Text style={styles.sender}>{senderLabel}</Text>
           ) : null}
           <View
             style={[
@@ -147,8 +151,8 @@ function MessageBubbleInner({
               isSelected && styles.bubbleSelected,
             ]}
           >
-            {!mediaOnly && !isDeleted ? (
-              <Text style={styles.sender}>{formatSenderLabel(message)}</Text>
+            {!mediaOnly && senderLabel ? (
+              <Text style={styles.sender}>{senderLabel}</Text>
             ) : null}
             {isDeleted ? (
               <Text

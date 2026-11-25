@@ -5,7 +5,8 @@ import {
   PermissionsAndroid,
   Platform,
 } from 'react-native';
-import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
+import { AudioSession } from '@livekit/react-native';
+import { callAudioTypeOptions } from './voiceAudioProfile';
 import {
   Room,
   RoomEvent,
@@ -711,7 +712,7 @@ export function useHostedVoiceChannel(
       // VOICE_COMMUNICATION mode). LiveKit RN needs this started explicitly.
       try {
         await AudioSession.configureAudio({
-          android: { audioTypeOptions: AndroidAudioTypePresets.communication },
+          android: { audioTypeOptions: callAudioTypeOptions() },
         });
         await AudioSession.startAudioSession();
       } catch (err) {

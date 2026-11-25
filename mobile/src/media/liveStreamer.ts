@@ -2,20 +2,26 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 import { Platform } from 'react-native';
 
 type NativeLiveStreamer = {
-  /** JSON array of `{ url, key }` — one shared screen capture to every destination. */
-  start: (destinationsJson: string) => Promise<void>;
+  /**
+   * JSON array of `{ url, key }` — one shared screen capture to every
+   * destination. `bannerUri` is the break card pause paints over the frame.
+   */
+  start: (destinationsJson: string, bannerUri: string) => Promise<void>;
   stop: () => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
+  setMuted: (muted: boolean) => Promise<void>;
   isLive: () => boolean;
   isPaused: () => boolean;
+  isMuted: () => boolean;
   addListener: (
-    event: 'onStarted' | 'onStopped' | 'onError' | 'onPaused',
+    event: 'onStarted' | 'onStopped' | 'onError' | 'onPaused' | 'onMuted',
     listener: (event: {
       message?: string;
       code?: string;
       error?: string;
       paused?: boolean;
+      muted?: boolean;
     }) => void,
   ) => { remove: () => void };
 };
@@ -37,6 +43,8 @@ const native = loadNative();
 /** Android screen capture keeps streaming after this app goes to the background. */
 export function startLiveStream(options: {
   destinations: LiveDestination[];
+  /** Shown to viewers while the stream is paused ("be right back"). */
+  bannerUri?: string | null;
 }): Promise<LiveStartResult> | LiveStartResult {
   if (Platform.OS !== 'android') return 'unsupported';
   if (!native) return 'unavailable';
@@ -58,7 +66,7 @@ export function startLiveStream(options: {
     return Promise.reject(new Error('Pick at least one platform with URL + stream key'));
   }
   return native
-    .start(JSON.stringify(payload))
+    .start(JSON.stringify(payload), options.bannerUri?.trim() || '')
     .then(() => 'started' as const);
 }
 
@@ -85,6 +93,18 @@ export function isLivePaused(): boolean {
   return !!native?.isPaused?.();
 }
 
+export function isLiveMuted(): boolean {
+  return !!native?.isMuted?.();
+}
+
+/**
+ * Mute is deliberately separate from pause: killing the mic for a moment
+ * should not also drop the video to the 50 kbps slideshow pause uses.
+ */
+export function setLiveMuted(muted: boolean): Promise<void> {
+  return native?.setMuted?.(muted) ?? Promise.resolve();
+}
+
 export function addLiveStartedListener(listener: () => void): () => void {
   if (!native) return () => undefined;
   const sub = native.addListener('onStarted', () => listener());
@@ -105,6 +125,16 @@ export function addLiveErrorListener(listener: (message: string) => void): () =>
   if (!native) return () => undefined;
   const sub = native.addListener('onError', (event) => {
     listener(event?.message || event?.error || 'Live stream error');
+  });
+  return () => sub.remove();
+}
+
+export function addLiveMutedListener(
+  listener: (muted: boolean) => void,
+): () => void {
+  if (!native) return () => undefined;
+  const sub = native.addListener('onMuted', (event) => {
+    listener(!!event?.muted);
   });
   return () => sub.remove();
 }

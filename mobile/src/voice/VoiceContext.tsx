@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import { VoiceChannelController, VoiceRoomKind } from './types';
+import { setVoiceCallActive } from './voiceAudioProfile';
 
 export type VoiceActivation =
   // Hosted (LiveKit): url + room token from GET /voice/config.
@@ -208,12 +209,17 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!controller) {
       wasLiveRef.current = false;
+      setVoiceCallActive(false);
       return;
     }
     if (controller.status === 'connected' || controller.status === 'connecting') {
       wasLiveRef.current = true;
+      // Go Live reads this to warn that an already-running call's audio
+      // cannot be re-routed into the broadcast without rejoining.
+      setVoiceCallActive(true);
       return;
     }
+    setVoiceCallActive(false);
     // 'error' keeps the holder so the screen can offer Try Again.
     if (wasLiveRef.current && controller.status === 'idle') {
       wasLiveRef.current = false;

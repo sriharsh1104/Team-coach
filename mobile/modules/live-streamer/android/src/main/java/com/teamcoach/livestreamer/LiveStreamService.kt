@@ -8,8 +8,18 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.hardware.display.DisplayManager
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -17,12 +27,15 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.Display
 import android.view.Surface
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.pedro.common.AudioCodec
 import com.pedro.common.ConnectChecker
 import com.pedro.common.VideoCodec
+// `object` is a Kotlin keyword — the package segment needs escaping.
+import com.pedro.encoder.input.gl.render.filters.`object`.ImageObjectFilterRender
 import com.pedro.encoder.input.sources.OrientationForced
 import com.pedro.encoder.input.sources.audio.AudioSource
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
@@ -30,6 +43,7 @@ import com.pedro.encoder.input.sources.audio.MixAudioSource
 import com.pedro.encoder.input.sources.video.NoVideoSource
 import com.pedro.encoder.input.sources.video.ScreenSource
 import com.pedro.encoder.utils.gl.AspectRatioMode
+import com.pedro.encoder.utils.gl.TranslateTo
 import com.pedro.library.base.StreamBase
 import com.pedro.library.generic.GenericStream
 import com.pedro.library.multiple.MultiStream
@@ -53,7 +67,14 @@ class LiveStreamService : Service() {
   private var stream: StreamBase? = null
   private var wakeLock: PowerManager.WakeLock? = null
   private val stopping = AtomicBoolean(false)
+  /** Kept so display-rotation changes can be pushed into the GL layer. */
+  private var glInterface: GlStreamInterface? = null
+  private var displayListener: DisplayManager.DisplayListener? = null
+  private val lastPortrait = AtomicBoolean(true)
   private val videoBitrateBeforePause = AtomicInteger(2_500_000)
+  /** "Be right back" image the streamer picked — drawn over the game while paused. */
+  private var bannerUri: String? = null
+  private var brbFilter: ImageObjectFilterRender? = null
   private var endpoints: List<String> = emptyList()
   private var liveEndpoints: List<LiveEndpoint> = emptyList()
   private val successCount = AtomicInteger(0)
@@ -76,6 +97,7 @@ class LiveStreamService : Service() {
         resumeLive()
         return START_NOT_STICKY
       }
+      ACTION_MUTE -> setMuted(intent.getBooleanExtra(EXTRA_MUTED, false))
       ACTION_START -> startLive(intent)
     }
     return START_NOT_STICKY
@@ -85,11 +107,17 @@ class LiveStreamService : Service() {
     val s = stream ?: return
     try {
       setAudioMuted(s, true)
+      // Viewers must see the "be right back" card, not a frozen game — the
+      // in-app overlay can never cover the game, only the encoder can.
+      val showingBrb = showBreakScreen()
       try {
         videoBitrateBeforePause.set(VIDEO_BITRATE)
-        s.setVideoBitrateOnFly(50_000)
+        // A still card needs a few hundred kbps to look clean; a blind
+        // 50 kbps makes the banner arrive as blocks.
+        s.setVideoBitrateOnFly(if (showingBrb) 400_000 else 50_000)
       } catch (_: Exception) {
       }
+      if (showingBrb) bumpKeyframes()
       LiveBridge.paused.set(true)
       LiveBridge.emitPaused(true)
       val manager = getSystemService(NotificationManager::class.java)
@@ -102,15 +130,34 @@ class LiveStreamService : Service() {
     }
   }
 
+  /**
+   * Mute on its own, separate from pause: a streamer often wants to kill the
+   * mic for a moment without dropping the video to a 50 kbps slideshow.
+   * Pause still mutes too, so this only tracks the explicit toggle.
+   */
+  private fun setMuted(muted: Boolean) {
+    val s = stream ?: return
+    try {
+      setAudioMuted(s, muted)
+      LiveBridge.muted.set(muted)
+      LiveBridge.emitMuted(muted)
+    } catch (err: Exception) {
+      Log.w(TAG, "mute failed", err)
+    }
+  }
+
   private fun resumeLive() {
     val s = stream ?: return
     try {
-      setAudioMuted(s, false)
+      // Resuming must not un-mute someone who muted on purpose first.
+      setAudioMuted(s, LiveBridge.muted.get())
+      hideBreakScreen()
       try {
         val bitrate = videoBitrateBeforePause.get().takeIf { it > 0 } ?: VIDEO_BITRATE
         s.setVideoBitrateOnFly(bitrate)
       } catch (_: Exception) {
       }
+      bumpKeyframes()
       LiveBridge.paused.set(false)
       LiveBridge.emitPaused(false)
       val manager = getSystemService(NotificationManager::class.java)
@@ -124,6 +171,128 @@ class LiveStreamService : Service() {
     } catch (err: Exception) {
       Log.w(TAG, "resume failed", err)
     }
+  }
+
+  /**
+   * Cover the encoded frame with the streamer's break card. The GL filter is
+   * the only place this can happen: our React overlay draws inside the app,
+   * and the thing being captured is whatever game is on top of it.
+   *
+   * @return true if the card is actually on screen now.
+   */
+  private fun showBreakScreen(): Boolean {
+    val gl = glInterface ?: return false
+    if (brbFilter != null) return true
+    val card = buildBreakCard() ?: return false
+    return try {
+      val filter = ImageObjectFilterRender()
+      // setFilter first, then feed it — the render is attached to the GL
+      // thread by setFilter and loads its texture on the next draw.
+      gl.setFilter(filter)
+      filter.setImage(card)
+      filter.setScale(100f, 100f)
+      filter.setPosition(TranslateTo.CENTER)
+      filter.setAlpha(1f)
+      brbFilter = filter
+      true
+    } catch (err: Exception) {
+      Log.w(TAG, "break screen failed", err)
+      brbFilter = null
+      false
+    }
+  }
+
+  private fun hideBreakScreen() {
+    val filter = brbFilter ?: return
+    brbFilter = null
+    try {
+      // clearFilters releases the render on the GL thread; releasing it here
+      // would touch GL from the wrong thread.
+      glInterface?.clearFilters() ?: filter.release()
+    } catch (err: Exception) {
+      Log.w(TAG, "clear break screen failed", err)
+    }
+  }
+
+  /**
+   * The chosen banner letterboxed onto a full encoder-sized frame, so the
+   * 100%-scale filter never stretches it. No banner picked → a plain
+   * "Be right back" card, which still beats showing the live game.
+   */
+  private fun buildBreakCard(): Bitmap? {
+    val size = outputSize()
+    val card = try {
+      Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
+    } catch (err: OutOfMemoryError) {
+      Log.w(TAG, "break card alloc failed", err)
+      return null
+    }
+    val canvas = Canvas(card)
+    canvas.drawColor(Color.BLACK)
+
+    val banner = decodeBanner(size.width, size.height)
+    if (banner != null) {
+      val scale = minOf(
+        size.width.toFloat() / banner.width.toFloat(),
+        size.height.toFloat() / banner.height.toFloat(),
+      )
+      val w = banner.width * scale
+      val h = banner.height * scale
+      val left = (size.width - w) / 2f
+      val top = (size.height - h) / 2f
+      canvas.drawBitmap(
+        banner,
+        Rect(0, 0, banner.width, banner.height),
+        RectF(left, top, left + w, top + h),
+        Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG),
+      )
+      banner.recycle()
+      return card
+    }
+
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.WHITE
+      textAlign = Paint.Align.CENTER
+      textSize = size.height * 0.12f
+      typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    canvas.drawText(
+      "Be right back",
+      size.width / 2f,
+      size.height / 2f + paint.textSize / 3f,
+      paint,
+    )
+    return card
+  }
+
+  /** Banner comes from the picker as file:// or content:// — both open here. */
+  private fun decodeBanner(maxWidth: Int, maxHeight: Int): Bitmap? {
+    val uri = bannerUri?.takeIf { it.isNotBlank() } ?: return null
+    return try {
+      val parsed = Uri.parse(uri)
+      val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      contentResolver.openInputStream(parsed)?.use {
+        BitmapFactory.decodeStream(it, null, bounds)
+      }
+      val opts = BitmapFactory.Options().apply {
+        inSampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, maxWidth, maxHeight)
+      }
+      contentResolver.openInputStream(parsed)?.use {
+        BitmapFactory.decodeStream(it, null, opts)
+      }
+    } catch (err: Exception) {
+      Log.w(TAG, "banner decode failed", err)
+      null
+    }
+  }
+
+  private fun sampleSizeFor(width: Int, height: Int, maxWidth: Int, maxHeight: Int): Int {
+    if (width <= 0 || height <= 0) return 1
+    var sample = 1
+    while (width / (sample * 2) >= maxWidth && height / (sample * 2) >= maxHeight) {
+      sample *= 2
+    }
+    return sample
   }
 
   private fun setAudioMuted(s: StreamBase, muted: Boolean) {
@@ -237,6 +406,8 @@ class LiveStreamService : Service() {
       return
     }
     endpoints = urls
+    bannerUri = intent.getStringExtra(EXTRA_BANNER)?.takeIf { it.isNotBlank() }
+    brbFilter = null
     liveEndpoints = emptyList()
     totalTargets = urls.size
     successCount.set(0)
@@ -305,6 +476,63 @@ class LiveStreamService : Service() {
       TAG,
       "gl orient auto (portrait=$portrait display=${displayRotationDegrees()}° screen=${screen.width}x${screen.height})",
     )
+    glInterface = gl
+    lastPortrait.set(portrait)
+    watchRotation()
+  }
+
+  /**
+   * Orientation is read once when the stream starts — but the whole point of
+   * Go Live is that the streamer then leaves the app and opens a landscape
+   * game. Without following the display from here, the GL layer keeps the
+   * start-time orientation and everything after the rotation arrives 90° out
+   * (a landscape game rendered sideways inside a portrait frame).
+   */
+  private fun watchRotation() {
+    if (displayListener != null) return
+    val manager = getSystemService(DISPLAY_SERVICE) as? DisplayManager ?: return
+    val listener = object : DisplayManager.DisplayListener {
+      override fun onDisplayAdded(displayId: Int) = Unit
+      override fun onDisplayRemoved(displayId: Int) = Unit
+      override fun onDisplayChanged(displayId: Int) {
+        if (displayId != Display.DEFAULT_DISPLAY) return
+        applyRotation()
+      }
+    }
+    displayListener = listener
+    try {
+      manager.registerDisplayListener(listener, main)
+    } catch (err: Exception) {
+      displayListener = null
+      Log.w(TAG, "could not follow display rotation", err)
+    }
+  }
+
+  private fun applyRotation() {
+    val gl = glInterface ?: return
+    val screen = screenSize()
+    val portrait = screen.height > screen.width
+    // compareAndSet also filters the repeat callbacks Android fires for
+    // brightness / refresh-rate changes on the same display.
+    if (!lastPortrait.compareAndSet(!portrait, portrait)) return
+    try {
+      gl.setIsPortrait(portrait)
+      Log.i(TAG, "rotation → portrait=$portrait (${screen.width}x${screen.height})")
+    } catch (err: Exception) {
+      Log.w(TAG, "rotation update failed", err)
+    }
+  }
+
+  private fun stopWatchingRotation() {
+    val listener = displayListener ?: return
+    displayListener = null
+    glInterface = null
+    try {
+      (getSystemService(DISPLAY_SERVICE) as? DisplayManager)
+        ?.unregisterDisplayListener(listener)
+    } catch (err: Exception) {
+      Log.w(TAG, "unregister display listener", err)
+    }
   }
 
   private fun configureCodecs(s: StreamBase) {
@@ -508,6 +736,7 @@ class LiveStreamService : Service() {
 
   private fun stopLive(reason: String) {
     if (!stopping.compareAndSet(false, true)) return
+    stopWatchingRotation()
     try {
       when (val s = stream) {
         is MultiStream -> stopAllClients(s)
@@ -529,6 +758,8 @@ class LiveStreamService : Service() {
     wakeLock = null
     endpoints = emptyList()
     liveEndpoints = emptyList()
+    bannerUri = null
+    brbFilter = null
     LiveBridge.deliverStopped()
     val manager = getSystemService(NotificationManager::class.java)
     manager.cancel(NOTIF_ID)
@@ -565,6 +796,8 @@ class LiveStreamService : Service() {
     wakeLock = null
     endpoints = emptyList()
     liveEndpoints = emptyList()
+    bannerUri = null
+    brbFilter = null
     LiveBridge.deliverFailed(message)
     val manager = getSystemService(NotificationManager::class.java)
     manager.cancel(NOTIF_ID)
@@ -646,9 +879,12 @@ class LiveStreamService : Service() {
     const val ACTION_STOP = "com.teamcoach.livestreamer.STOP"
     const val ACTION_PAUSE = "com.teamcoach.livestreamer.PAUSE"
     const val ACTION_RESUME = "com.teamcoach.livestreamer.RESUME"
+    const val ACTION_MUTE = "com.teamcoach.livestreamer.MUTE"
+    const val EXTRA_MUTED = "muted"
     const val EXTRA_RESULT_CODE = "resultCode"
     const val EXTRA_DATA = "data"
     const val EXTRA_ENDPOINTS = "endpoints"
+    const val EXTRA_BANNER = "banner"
     private const val NOTIF_ID = 4412
     private const val CHANNEL = "sacred-go-live"
     private const val TAG = "LiveStream"

@@ -17,7 +17,16 @@ function fmt(sec: number) {
  * Separate from RecordingWidget (REC).
  */
 export function LiveWidget() {
-  const { live, paused, elapsedSec, stopLive, pauseLive, resumeLive } = useLive();
+  const {
+    live,
+    paused,
+    muted,
+    elapsedSec,
+    stopLive,
+    pauseLive,
+    resumeLive,
+    toggleMute,
+  } = useLive();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const pulse = useRef(new Animated.Value(1)).current;
@@ -85,6 +94,27 @@ export function LiveWidget() {
           />
           <Text style={[styles.actionLabel, { color: colors.text }]}>
             {paused ? 'Resume' : 'Pause'}
+          </Text>
+        </Pressable>
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <Pressable
+          onPress={() => void toggleMute()}
+          hitSlop={10}
+          accessibilityLabel={muted ? 'Unmute stream' : 'Mute stream'}
+          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionPressed]}
+        >
+          <AppIcon
+            name={muted ? 'mic-off' : 'mic'}
+            size={15}
+            color={muted ? '#f59e0b' : colors.text}
+          />
+          <Text
+            style={[
+              styles.actionLabel,
+              { color: muted ? '#f59e0b' : colors.text },
+            ]}
+          >
+            {muted ? 'Unmute' : 'Mute'}
           </Text>
         </Pressable>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />

@@ -14,7 +14,13 @@ import {
   getBiometricEnabled,
   setBiometricEnabled,
 } from '../storage/tokenStorage';
-import { isBiometricAvailable, promptBiometricAuth } from '../auth/biometrics';
+import {
+  BiometricKind,
+  describeBiometricKinds,
+  getBiometricKinds,
+  isBiometricAvailable,
+  promptBiometricAuth,
+} from '../auth/biometrics';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { ButtonLabel } from '../ui/ButtonLabel';
@@ -39,11 +45,17 @@ export function AccountSettingsScreen({ navigation }: Props) {
   const accountTab = tab as Tab;
 
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricKinds, setBiometricKinds] = useState<BiometricKind[]>([]);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
   const [isTogglingBiometric, setIsTogglingBiometric] = useState(false);
 
   useEffect(() => {
     isBiometricAvailable().then(setBiometricAvailable);
+    // Capability, not enrollment — labels the toggle with what this specific
+    // device actually reports (Face Unlock / Fingerprint / both) instead of
+    // a blanket "Face ID / Touch ID" that may promise a method the device
+    // doesn't really expose to apps.
+    getBiometricKinds().then(setBiometricKinds);
     getBiometricEnabled().then(setBiometricEnabledState);
   }, []);
 
@@ -302,12 +314,20 @@ export function AccountSettingsScreen({ navigation }: Props) {
                   <View style={staticStyles.settingRow}>
                     <View style={staticStyles.settingTextCol}>
                       <Text style={styles.settingLead}>
-                        Unlock with Face ID / Touch ID
+                        Unlock with {describeBiometricKinds(biometricKinds)}
                       </Text>
                       <Text style={styles.hint}>
                         Skip retyping passwords when you reopen the app on this
                         device.
                       </Text>
+                      {Platform.OS === 'android' && !biometricKinds.includes('face') ? (
+                        <Text style={styles.hint}>
+                          No Face Unlock option here because this device
+                          doesn&apos;t expose one to apps — some Android face
+                          unlock features are lock-screen-only and never
+                          register with the system that lets apps use it.
+                        </Text>
+                      ) : null}
                     </View>
                     <Switch
                       disabled={isTogglingBiometric}
@@ -329,18 +349,6 @@ export function AccountSettingsScreen({ navigation }: Props) {
           }
         </BookStage>
 
-        <Text style={styles.sectionLabel}>Permissions</Text>
-        <Text style={styles.lead}>
-          Camera, microphone, photos and more — see what&apos;s on, and turn
-          on anything you said no to.
-        </Text>
-        <SoftPressable
-          style={styles.primaryBtn}
-          onPress={() => navigation.navigate('Permissions')}
-          pressScale={0.98}
-        >
-          <ButtonLabel icon="settings">Manage Permissions</ButtonLabel>
-        </SoftPressable>
       </ScrollView>
     </Screen>
   );

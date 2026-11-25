@@ -401,8 +401,8 @@ export function RootNavigator() {
                     ? 'Ludo'
                     : route.params?.game === 'rps'
                       ? 'Stone Paper Scissors'
-                      : route.params?.game === 'uno'
-                        ? 'Uno'
+                      : route.params?.game === 'cut'
+                        ? 'Cut'
                         : route.params?.game === 'boots'
                           ? 'Boots'
                           : 'Game',
@@ -649,8 +649,8 @@ export function RootNavigator() {
                     ? 'Ludo'
                     : route.params?.game === 'rps'
                       ? 'Stone Paper Scissors'
-                      : route.params?.game === 'uno'
-                        ? 'Uno'
+                      : route.params?.game === 'cut'
+                        ? 'Cut'
                         : route.params?.game === 'boots'
                           ? 'Boots'
                           : 'Game',

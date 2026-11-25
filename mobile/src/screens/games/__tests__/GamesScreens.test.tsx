@@ -56,12 +56,7 @@ function api(overrides: Partial<ReturnType<typeof useGamesSocket>> = {}) {
     bootsClear: jest.fn(),
     bootsReady: jest.fn(),
     bootsFire: jest.fn(),
-    unoPlay: jest.fn(),
-    unoChooseColor: jest.fn(),
-    unoDraw: jest.fn(),
-    unoPass: jest.fn(),
-    unoCall: jest.fn(),
-    unoCatch: jest.fn(),
+    cutDraw: jest.fn(),
     ...overrides,
   };
 }
@@ -83,7 +78,7 @@ function lobbyRoom(overrides: Partial<RoomView> = {}): RoomView {
     rps: null,
     ludo: null,
     boots: null,
-    uno: null,
+    cut: null,
     chess: null,
     bootsFleet: null,
     deadline: null,
@@ -116,7 +111,7 @@ describe('GamesHubScreen', () => {
     render(<GamesHubScreen />);
     expect(screen.getByText('Stone Paper Scissors')).toBeTruthy();
     expect(screen.getByText('Ludo')).toBeTruthy();
-    expect(screen.getByText('Uno')).toBeTruthy();
+    expect(screen.getByText('Cut')).toBeTruthy();
     await screen.findByText(/Riya · 1\/2 players/);
     fireEvent.press(screen.getByLabelText('Join Stone Paper Scissors'));
     await waitFor(() => expect(joinRoom).toHaveBeenCalledWith('open1'));
@@ -160,19 +155,19 @@ describe('GamesHubScreen', () => {
     expect(mockNavigate).toHaveBeenCalledWith('GameRoom', { roomId: 'r1', game: 'rps' });
   });
 
-  it('Uno: asks for 2–6 players then creates the room', async () => {
+  it('Cut: asks for 2–4 players then creates the room', async () => {
     const createRoom = jest
       .fn()
-      .mockResolvedValue(lobbyRoom({ game: 'uno', title: 'Uno', maxPlayers: 5 }));
+      .mockResolvedValue(lobbyRoom({ game: 'cut', title: 'Cut', maxPlayers: 3 }));
     mockedSocket.mockReturnValue(api({ createRoom }));
     render(<GamesHubScreen />);
-    fireEvent.press(screen.getByLabelText('Create Uno room'));
+    fireEvent.press(screen.getByLabelText('Create Cut room'));
     await screen.findByText('How many players?');
     expect(screen.getByLabelText('2 players')).toBeTruthy();
-    expect(screen.getByLabelText('6 players')).toBeTruthy();
-    expect(screen.queryByLabelText('7 players')).toBeNull();
-    fireEvent.press(screen.getByLabelText('5 players'));
-    await waitFor(() => expect(createRoom).toHaveBeenCalledWith('uno', 5));
+    expect(screen.getByLabelText('4 players')).toBeTruthy();
+    expect(screen.queryByLabelText('5 players')).toBeNull();
+    fireEvent.press(screen.getByLabelText('3 players'));
+    await waitFor(() => expect(createRoom).toHaveBeenCalledWith('cut', 3));
   });
 
   it('Live now: lists a watchable Chess match and starts watching it on tap', async () => {

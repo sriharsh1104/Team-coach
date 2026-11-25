@@ -7,7 +7,6 @@ import {
   GameReaction,
   RoomView,
   RpsChoice,
-  UnoColor,
 } from '../../api/games';
 import { useAuth } from '../../auth/AuthContext';
 import { useGamesSocket, tryGames, GameCandidate } from '../../games/useGamesSocket';
@@ -33,7 +32,7 @@ import {
 import { LudoBoard, ludoColorHex } from './LudoBoard';
 import { prefer3DByDefault, supports3D } from '../../games/three/GameCanvas';
 import { RpsBoard } from './RpsBoard';
-import { UnoBoard } from './UnoBoard';
+import { CutBoard } from './CutBoard';
 
 const NOTIFY_COOLDOWN_MS = 5 * 60 * 1000;
 
@@ -61,10 +60,10 @@ export function GameRoomScreen() {
   const [notifiedAt, setNotifiedAt] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
   // 2D is the default everywhere GL is expensive — Android mid-range included.
-  // Uno used to force 3D here regardless of platform, which contradicted
-  // prefer3DByDefault()'s whole reason for existing and left the Uno board
-  // blank or stuttering on exactly the phones that policy protects. The
-  // in-room 2D/3D toggle is still there for anyone who wants it.
+  // Forcing 3D regardless of platform contradicted prefer3DByDefault()'s
+  // whole reason for existing and left boards blank or stuttering on exactly
+  // the phones that policy protects. The in-room 2D/3D toggle is still there
+  // for anyone who wants it.
   const [mode, setMode] = useState<'2d' | '3d'>(() =>
     prefer3DByDefault() ? '3d' : '2d',
   );
@@ -223,7 +222,7 @@ export function GameRoomScreen() {
       (room.rps?.winnerId ??
         room.ludo?.winnerId ??
         room.boots?.winnerId ??
-        room.uno?.winnerId),
+        room.cut?.winnerId),
   );
 
   const header = (
@@ -246,7 +245,10 @@ export function GameRoomScreen() {
           {!games.connected ? ' · reconnecting…' : ''}
         </Text>
       </View>
-      {room.status === 'playing' && room.game !== 'boots' && supports3D() ? (
+      {room.status === 'playing' &&
+      room.game !== 'boots' &&
+      room.game !== 'cut' &&
+      supports3D() ? (
         <Pressable
           onPress={() => setMode((m) => (m === '3d' ? '2d' : '3d'))}
           style={styles.modeBtn}
@@ -339,7 +341,7 @@ export function GameRoomScreen() {
     return (
       <Screen>
         {header}
-        <ScrollView contentContainerStyle={staticStyles.lobby}>
+        <ScrollView contentContainerStyle={staticStyles.boardStage}>
           <ChessBoard
             room={room}
             meId={meId}
@@ -354,27 +356,24 @@ export function GameRoomScreen() {
       </Screen>
     );
   }
-  if (room.status === 'playing' && room.uno) {
+  if (room.status === 'playing' && room.cut) {
     return (
       <Screen>
         {header}
-        <UnoBoard
-          room={room}
-          meId={meId}
-          busy={busy}
-          mode={mode}
-          onFallback={() => setMode('2d')}
-          onPlay={(cardId) => void act(() => games.unoPlay(room.id, cardId))}
-          onChooseColor={(color: UnoColor) =>
-            void act(() => games.unoChooseColor(room.id, color))
-          }
-          onDraw={() => void act(() => games.unoDraw(room.id))}
-          onPass={() => void act(() => games.unoPass(room.id))}
-          onCall={() => void act(() => games.unoCall(room.id))}
-          onCatch={(targetId) =>
-            void act(() => games.unoCatch(room.id, targetId))
-          }
-        />
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+          <CutBoard
+            room={room}
+            meId={meId}
+            busy={busy || isSpectating}
+            onDraw={() => void act(() => games.cutDraw(room.id))}
+          />
+          <ReactionBar
+            onSend={(reaction) =>
+              void games.react(room.id, reaction).catch(() => undefined)
+            }
+          />
+        </ScrollView>
+        <ReactionOverlay floaters={floaters} />
       </Screen>
     );
   }
@@ -590,6 +589,14 @@ export function GameRoomScreen() {
 const staticStyles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   lobby: { padding: 16, paddingBottom: 32 },
+  // The board sizes itself to the screen, so any height left over should sit
+  // above and below it rather than piling up underneath as dead space.
+  boardStage: {
+    padding: 12,
+    paddingBottom: 24,
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
   trophy: { fontSize: 40 },
   emptySeat: { opacity: 0.6 },
   dim: { opacity: 0.5 },

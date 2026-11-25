@@ -157,7 +157,7 @@ export function GamesHubScreen() {
 
   const openRooms = rooms.filter((r) => r.status === 'lobby' && !r.players.some((p) => p.userId === user?.id));
   // Chess / Ludo matches anyone not already in them can drop by and watch —
-  // Boots/Uno stay off this list since their board/hand would leak to a
+  // Boots stays off this list since its board would leak to a
   // "spectator" via the same per-player view everyone else gets.
   const liveToWatch = rooms.filter(
     (r) =>

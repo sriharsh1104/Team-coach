@@ -209,8 +209,9 @@ describe('ChatScreen', () => {
     await screen.findByText('gg');
     expect(screen.getByText('Teammate')).toBeTruthy();
     expect(screen.getByText('nice game')).toBeTruthy();
-    // My own message bubble doesn't show a sender label.
-    expect(screen.queryByText('Me')).toBeNull();
+    // A sent bubble has no coloured plate, so it keeps its name label too —
+    // what it must not carry is the role badge (see the next test).
+    expect(screen.getByText('Me')).toBeTruthy();
   });
 
   it("shows the sender's role next to their name for other members' messages, never for my own", async () => {

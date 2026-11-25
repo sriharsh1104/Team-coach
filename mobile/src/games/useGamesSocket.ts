@@ -12,7 +12,6 @@ import {
   RpsChoice,
   ChessPromotion,
   GameReaction,
-  UnoColor,
 } from '../api/games';
 import { emitToast } from '../ui/toastBus';
 
@@ -174,15 +173,8 @@ export function useGamesSocket(listener: Listener) {
       to: string,
       promotion?: ChessPromotion,
     ) => call<RoomView>('chess:move', { roomId, from, to, promotion }),
-    unoPlay: (roomId: string, cardId: string, color?: UnoColor) =>
-      call<RoomView>('uno:play', { roomId, cardId, color }),
-    unoChooseColor: (roomId: string, color: UnoColor) =>
-      call<RoomView>('uno:color', { roomId, color }),
-    unoDraw: (roomId: string) => call<RoomView>('uno:draw', { roomId }),
-    unoPass: (roomId: string) => call<RoomView>('uno:pass', { roomId }),
-    unoCall: (roomId: string) => call<RoomView>('uno:call', { roomId }),
-    unoCatch: (roomId: string, targetId: string) =>
-      call<RoomView>('uno:catch', { roomId, targetId }),
+    /** Draw the shared card — the only move in Cut. */
+    cutDraw: (roomId: string) => call<RoomView>('cut:draw', { roomId }),
   };
 }
 
