@@ -209,6 +209,17 @@ export interface Device {
   model: string;
 }
 
+export type GameId = 'FREE_FIRE' | 'BGMI' | 'MOBILE_LEGENDS' | 'LOL';
+
+export interface GameProfile {
+  game: GameId | string;
+  inGameName: string | null;
+  inGameUid: string | null;
+  role: string | null;
+  showNameToMembers?: boolean;
+  showUidToMembers?: boolean;
+}
+
 export interface Profile {
   id: string;
   name: string;
@@ -224,6 +235,14 @@ export interface Profile {
   discordUrl: string | null;
   youtubeUrl: string | null;
   kickUrl: string | null;
+  /** Present on /users/me — what teammates can see. Omitted on peer profiles. */
+  showPhoneToMembers?: boolean;
+  showWhatsappToMembers?: boolean;
+  showInstagramToMembers?: boolean;
+  showDiscordToMembers?: boolean;
+  showYoutubeToMembers?: boolean;
+  showKickToMembers?: boolean;
+  gameProfiles?: GameProfile[];
   devices: Device[];
   role: MembershipRole | null;
   isOwner: boolean;
@@ -240,6 +259,12 @@ export interface UpdateProfileInput {
   discordUrl?: string;
   youtubeUrl?: string;
   kickUrl?: string;
+  showPhoneToMembers?: boolean;
+  showWhatsappToMembers?: boolean;
+  showInstagramToMembers?: boolean;
+  showDiscordToMembers?: boolean;
+  showYoutubeToMembers?: boolean;
+  showKickToMembers?: boolean;
 }
 
 export type ScrimEventType = 'SCRIM' | 'TOURNAMENT';

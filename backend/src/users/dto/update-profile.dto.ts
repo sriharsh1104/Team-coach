@@ -1,6 +1,7 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsOptional,
   IsString,
@@ -90,4 +91,28 @@ export class UpdateProfileDto {
   @MaxLength(200)
   @Matches(KICK_URL_REGEX, { message: SOCIAL_URL_MESSAGES.kickUrl })
   kickUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  showPhoneToMembers?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showWhatsappToMembers?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showInstagramToMembers?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showDiscordToMembers?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showYoutubeToMembers?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showKickToMembers?: boolean;
 }

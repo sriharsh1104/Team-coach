@@ -127,8 +127,15 @@ export const apiClient = axios.create({
   // Lets the backend mint a longer-lived access token for this app (see
   // MOBILE_ACCESS_TOKEN_EXPIRES_IN in auth.service.ts) — the web app has no
   // equivalent header, so it keeps whatever JWT_EXPIRES_IN is configured.
+  // X-Device-Name labels the AuthSession row shown in Account Settings.
   headers: {
     'X-Client-Platform': 'mobile',
+    'X-Device-Name':
+      Platform.OS === 'ios'
+        ? 'iPhone'
+        : Platform.OS === 'android'
+          ? 'Android'
+          : 'Mobile Web',
   },
 });
 

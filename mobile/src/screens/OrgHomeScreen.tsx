@@ -209,27 +209,6 @@ export function OrgHomeScreen({ navigation }: Props) {
 
     sections.push(trackerDrawerSection(navigation, 'OrgHome'));
 
-    sections.push({
-      key: 'account',
-      label: 'Account',
-      split: true,
-      items: [
-        {
-          key: 'profile',
-          label: 'Profile',
-          icon: 'person-outline' as const,
-          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Profile' }),
-        },
-        {
-          key: 'socialHandles',
-          label: 'Social Handles',
-          icon: 'share-social-outline' as const,
-          onPress: () =>
-            goToSection(navigation, 'OrgHome', { screen: 'SocialHandles' }),
-        },
-      ],
-    });
-
     return withActiveDrawerItem(sections, 'teamChat');
   }, [
     navigation,

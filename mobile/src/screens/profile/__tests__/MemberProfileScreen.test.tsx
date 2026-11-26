@@ -62,7 +62,7 @@ describe('MemberProfileScreen', () => {
 
     await screen.findByText('EagleEye');
     expect(screen.getByText('Player 2')).toBeTruthy();
-    expect(screen.getByText('Sniper')).toBeTruthy();
+    expect(screen.getAllByText('Sniper').length).toBeGreaterThan(0);
     expect(screen.getByText('9000000009')).toBeTruthy();
     expect(screen.getByText('Discord: https://discord.gg/team')).toBeTruthy();
     expect(screen.getByText('Main rig — ROG Phone 8')).toBeTruthy();

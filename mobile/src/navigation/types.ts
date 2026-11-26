@@ -21,7 +21,8 @@ export type ProfileSetupStackParamList = {
 
 export type MainStackParamList = {
   OrgHome: undefined;
-  Profile: undefined;
+  /** `edit: true` opens sections ready to save (Settings → Edit). */
+  Profile: { edit?: boolean } | undefined;
   Members: undefined;
   GuildHome: undefined;
   Guild: undefined;
@@ -29,6 +30,10 @@ export type MainStackParamList = {
   /** Unified settings hub (gear) — profile, security, theme, logout. */
   Settings: undefined;
   AccountSettings: undefined;
+  /** Self-service deactivate / permanent delete. */
+  AccountLifecycle: undefined;
+  /** In-app FAQ for Sacred Team Coach. */
+  HelpSupport: undefined;
   /** Guild announcements — read by everyone, posted by the owner. */
   Announcements: undefined;
   /** Guild trophy shelf — grand finals; owner adds, everyone reads. */

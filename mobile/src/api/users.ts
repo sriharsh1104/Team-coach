@@ -1,5 +1,11 @@
 import { ApiRequestConfig, apiClient } from './client';
-import { Device, Profile, UpdateProfileInput } from './types';
+import {
+  Device,
+  GameProfileVisibilityInput,
+  Profile,
+  UpdateProfileInput,
+  UpsertGameProfileInput,
+} from './types';
 import { appendFileToFormData } from './uploadFile';
 import { compressForUpload } from '../media/compressForUpload';
 
@@ -9,6 +15,42 @@ export function getMyProfile() {
 
 export function updateMyProfile(input: UpdateProfileInput) {
   return apiClient.patch<Profile>('/users/me', input).then((res) => res.data);
+}
+
+export function upsertGameProfile(input: UpsertGameProfileInput) {
+  return apiClient
+    .put<Profile>('/users/me/game-profiles', input)
+    .then((res) => res.data);
+}
+
+export function setGameProfileVisibility(input: GameProfileVisibilityInput) {
+  return apiClient
+    .patch<Profile>('/users/me/game-profiles/visibility', input)
+    .then((res) => res.data);
+}
+
+export function removeGameProfile(game: string) {
+  return apiClient
+    .delete<Profile>(`/users/me/game-profiles/${encodeURIComponent(game)}`)
+    .then((res) => res.data);
+}
+
+export function deactivateMyAccount(input: {
+  confirmEmail: string;
+  password?: string;
+}) {
+  return apiClient
+    .post<{ ok: true }>('/users/me/deactivate', input)
+    .then((res) => res.data);
+}
+
+export function deleteMyAccount(input: {
+  confirmEmail: string;
+  password?: string;
+}) {
+  return apiClient
+    .post<{ ok: true }>('/users/me/delete', input)
+    .then((res) => res.data);
 }
 
 /**

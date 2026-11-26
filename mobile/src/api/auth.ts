@@ -121,3 +121,74 @@ export function disableTwoFactor(password: string) {
     .post('/auth/2fa/disable', { password })
     .then(() => undefined);
 }
+
+export type AuthSessionRow = {
+  id: string;
+  deviceName: string | null;
+  platform: string | null;
+  ip: string | null;
+  trusted: boolean;
+  current: boolean;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+};
+
+export function listSessions() {
+  return apiClient
+    .get<{ sessions: AuthSessionRow[] }>('/auth/sessions')
+    .then((res) => res.data.sessions);
+}
+
+export function revokeSession(sessionId: string) {
+  return apiClient
+    .delete<{ success: boolean }>(`/auth/sessions/${sessionId}`)
+    .then((res) => res.data);
+}
+
+export function revokeOtherSessions() {
+  return apiClient
+    .delete<{ success: boolean; revoked: number }>('/auth/sessions')
+    .then((res) => res.data);
+}
+
+export function setSessionTrust(sessionId: string, trusted: boolean) {
+  return apiClient
+    .patch<{ id: string; trusted: boolean }>(
+      `/auth/sessions/${sessionId}/trust`,
+      { trusted },
+    )
+    .then((res) => res.data);
+}
+
+export type RecoveryEmailState = {
+  recoveryEmail: string | null;
+  verified: boolean;
+  verifiedAt: string | null;
+};
+
+export function getRecoveryEmail() {
+  return apiClient
+    .get<RecoveryEmailState>('/auth/recovery-email')
+    .then((res) => res.data);
+}
+
+export function requestRecoveryEmail(email: string) {
+  return apiClient
+    .post<{ success: boolean; email: string }>('/auth/recovery-email', {
+      email,
+    })
+    .then((res) => res.data);
+}
+
+export function verifyRecoveryEmail(code: string) {
+  return apiClient
+    .post<RecoveryEmailState>('/auth/recovery-email/verify', { code })
+    .then((res) => res.data);
+}
+
+export function clearRecoveryEmail() {
+  return apiClient
+    .delete<{ success: boolean }>('/auth/recovery-email')
+    .then((res) => res.data);
+}

@@ -452,7 +452,7 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
       expect(JSON.stringify(res.body)).not.toMatch(/SecretIGN/);
     });
 
-    it('never leaks passwordHash/email/phone on a teammate profile', async () => {
+    it('never leaks passwordHash/email, and hides phone until the owner opts in', async () => {
       const coach = await signup(server, { name: 'Coach' });
       const org = await createOrgAs(server, coach.accessToken, 'COACH');
       const player = await signup(server, { name: 'Player' });
@@ -467,15 +467,27 @@ describe('Phase 1B — Profile, roles, devices (e2e)', () => {
         .expect(200);
       await setVerifiedPhone(prisma, player.user.id, '9988776655');
 
-      const res = await request(server)
+      const hidden = await request(server)
         .get(`/users/${player.user.id}/profile`)
         .set('Authorization', `Bearer ${coach.accessToken}`)
         .expect(200);
-      const keys = Object.keys(res.body);
+      const keys = Object.keys(hidden.body);
       expect(keys).not.toContain('passwordHash');
       expect(keys).not.toContain('email');
-      expect(res.body.phone).toBeNull();
-      expect(JSON.stringify(res.body)).not.toMatch(/9988776655/);
+      expect(hidden.body.phone).toBeNull();
+      expect(JSON.stringify(hidden.body)).not.toMatch(/9988776655/);
+
+      await request(server)
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${player.accessToken}`)
+        .send({ showPhoneToMembers: true })
+        .expect(200);
+
+      const visible = await request(server)
+        .get(`/users/${player.user.id}/profile`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(200);
+      expect(visible.body.phone).toBe('9988776655');
     });
 
     it('lets a roster player view a guild-only peer in the same org', async () => {

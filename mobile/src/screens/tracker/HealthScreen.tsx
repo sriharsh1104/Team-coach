@@ -74,12 +74,11 @@ export function HealthScreen() {
 
     let sample = null;
     if (status === 'ready') {
+      // Never auto-prompt Health Connect here — requestPermission needs the
+      // native permission delegate and popping the dialog on every focus was
+      // crashing when that delegate was missing. Grant is user-driven below.
       sample = await readTodayHealth();
-      if (sample == null) {
-        const granted = await requestHealthPermissions();
-        if (granted) sample = await readTodayHealth();
-        else setHcStatus('needs_permission');
-      }
+      if (sample == null) setHcStatus('needs_permission');
     }
 
     try {

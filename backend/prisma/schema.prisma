@@ -52,6 +52,16 @@ model User {
   youtubeUrl   String?
   kickUrl      String?
 
+  // What teammates see on GET /users/:id/profile. Phone stays off by default
+  // (matches the old hard-hide); each social link stays on until the owner
+  // flips it off. Own profile (/users/me) always returns the real values.
+  showPhoneToMembers     Boolean @default(false)
+  showWhatsappToMembers  Boolean @default(true)
+  showInstagramToMembers Boolean @default(true)
+  showDiscordToMembers   Boolean @default(true)
+  showYoutubeToMembers   Boolean @default(true)
+  showKickToMembers      Boolean @default(true)
+
   // Expo push token for the device currently signed in. One per user is enough
   // for Phase 1 testing; move to a per-device table if multi-device push matters later.
   expoPushToken String?
@@ -72,6 +82,10 @@ model User {
   // "blocked" with no date is an argument waiting to happen.
   blockedAt     DateTime?
   blockedReason String?
+
+  // Soft pause — set by the user from Account Settings. Login clears it
+  // (reactivate). Distinct from blockedAt, which only an admin can lift.
+  deactivatedAt DateTime?
 
   // Opt-in, admin-granted: 1-on-1 voice outside any org. Both people need
   // it before a call between them is possible (VoiceService.resolveRoom), so
@@ -102,14 +116,21 @@ model User {
   // email before AuthService.googleLogin will even create the user.
   emailVerified Boolean @default(false)
 
+  // Optional second inbox for account recovery (password reset / lockout).
+  // Must be verified via OTP before it is treated as usable.
+  recoveryEmail           String?
+  recoveryEmailVerifiedAt DateTime?
+
   // Last time this user had a live chat socket connection (ChatGateway).
   // Null until their first connect. Drives "last seen" in chat; "online"
   // itself is live-only (in-memory socket set), never persisted.
   lastSeenAt DateTime?
 
   emailVerificationCode EmailVerificationCode?
+  recoveryEmailCode     RecoveryEmailCode?
   telegramPhoneLinks    TelegramPhoneLink[]
   passwordResetCode     PasswordResetCode?
+  authSessions          AuthSession[]
 
   memberships        Membership[]
   guildMemberships   GuildMembership[]
@@ -117,6 +138,7 @@ model User {
   guildJoinRequests  GuildJoinRequest[]  @relation("GuildJoinRequests")
   guildJoinDecisions GuildJoinRequest[]  @relation("GuildJoinDecisions")
   devices            Device[]
+  gameProfiles       UserGameProfile[]
   mediaPosts         MediaPost[]
   chatMessages       ChatMessage[]
   chatReadStates     ChatReadState[]
@@ -156,6 +178,41 @@ model RevokedToken {
   expiresAt DateTime
 
   @@index([expiresAt])
+}
+
+/// One row per minted access token. Lets Account Settings list active
+/// sessions, mark trusted devices, and revoke a single login without
+/// bumping tokenVersion (which would kill every device).
+model AuthSession {
+  id         String    @id @default(cuid())
+  userId     String
+  jti        String    @unique
+  deviceName String?
+  platform   String?
+  userAgent  String?
+  ip         String?
+  trusted    Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+/// OTP gate for setting / changing User.recoveryEmail.
+model RecoveryEmailCode {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 /// One-time link from the app to the Telegram bot. The token travels in the
@@ -218,6 +275,31 @@ model Device {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Per-game IGN / UID / role. Free Fire stays the org identity for chat
+/// mentions, stats OCR, and the post-login gate — writing FREE_FIRE also
+/// mirrors onto User.inGameName / inGameUid / roles. Other games are optional.
+model UserGameProfile {
+  id         String   @id @default(cuid())
+  userId     String
+  /// FREE_FIRE | BGMI | MOBILE_LEGENDS | LOL
+  game       String
+  inGameName String?
+  inGameUid  String?
+  /// One role tag for this game (game-specific vocabulary).
+  role       String?
+  /// Peer visibility — own /users/me always returns the real values.
+  showNameToMembers Boolean @default(true)
+  showUidToMembers  Boolean @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, game])
+  @@index([game, inGameUid])
+  @@index([game, inGameName])
 }
 
 model Org {

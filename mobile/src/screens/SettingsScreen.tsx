@@ -14,11 +14,22 @@ import { useAuth } from '../auth/AuthContext';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { ChannelAvatar } from './chat/ChannelAvatar';
-import { THEME_OPTIONS, ThemeColors, ThemeId } from '../theme';
+import {
+  THEME_PREFERENCE_OPTIONS,
+  ThemeColors,
+  ThemePreference,
+} from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { AppIcon, AppIconName } from '../ui/AppIcon';
 import { SoftPressable } from '../ui/SoftPressable';
+import {
+  DATE_FORMAT_OPTIONS,
+  TIME_FORMAT_OPTIONS,
+  DateFormatId,
+  TimeFormatId,
+} from '../datetime/formats';
+import { useDateTimeFormat } from '../datetime/DateTimeFormatContext';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Settings'>;
 
@@ -74,12 +85,25 @@ function appVersion(): string {
  */
 export function SettingsScreen({ navigation }: Props) {
   const { user, logout } = useAuth();
-  const { colors, themeId, setTheme } = useTheme();
+  const { colors, preference, setTheme } = useTheme();
+  const {
+    dateFormat,
+    timeFormat,
+    setDateFormat,
+    setTimeFormat,
+    formatDateTime,
+  } = useDateTimeFormat();
   const styles = useThemedStyles(makeStyles);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [dateTimePickerOpen, setDateTimePickerOpen] = useState(false);
 
   const themeLabel =
-    THEME_OPTIONS.find((o) => o.id === themeId)?.label ?? 'Black';
+    THEME_PREFERENCE_OPTIONS.find((o) => o.id === preference)?.label ??
+    'Black';
+  const dateLabel =
+    DATE_FORMAT_OPTIONS.find((o) => o.id === dateFormat)?.label ?? 'DD/MM/YYYY';
+  const timeLabel =
+    TIME_FORMAT_OPTIONS.find((o) => o.id === timeFormat)?.label ?? '12-Hour';
 
   return (
     <Screen>
@@ -104,7 +128,7 @@ export function SettingsScreen({ navigation }: Props) {
           </View>
           <SoftPressable
             style={styles.editBtn}
-            onPress={() => navigation.navigate('Profile')}
+            onPress={() => navigation.navigate('Profile', { edit: true })}
             pressScale={0.97}
             accessibilityLabel="Edit Profile"
           >
@@ -134,6 +158,11 @@ export function SettingsScreen({ navigation }: Props) {
             icon="share-social-outline"
             label="Social Handles"
             onPress={() => navigation.navigate('SocialHandles')}
+          />
+          <SettingsRow
+            icon="trash-outline"
+            label="Delete Or Deactivate"
+            onPress={() => navigation.navigate('AccountLifecycle')}
             last
           />
         </View>
@@ -145,12 +174,24 @@ export function SettingsScreen({ navigation }: Props) {
             label="Theme"
             value={themeLabel}
             onPress={() => setThemePickerOpen(true)}
+          />
+          <SettingsRow
+            icon="alarm-outline"
+            label="Date & Time Format"
+            value={`${dateLabel} · ${timeLabel}`}
+            subtitle={`Preview: ${formatDateTime(new Date())}`}
+            onPress={() => setDateTimePickerOpen(true)}
             last
           />
         </View>
 
         <Text style={styles.sectionLabel}>Support</Text>
         <View style={styles.group}>
+          <SettingsRow
+            icon="book-outline"
+            label="Help & Support"
+            onPress={() => navigation.navigate('HelpSupport')}
+          />
           <SettingsRow
             icon="information-circle-outline"
             label="About"
@@ -185,14 +226,14 @@ export function SettingsScreen({ navigation }: Props) {
           />
           <View style={styles.modalPanel}>
             <Text style={styles.modalHeading}>Theme</Text>
-            {THEME_OPTIONS.map((opt) => {
-              const active = themeId === opt.id;
+            {THEME_PREFERENCE_OPTIONS.map((opt) => {
+              const active = preference === opt.id;
               return (
                 <SoftPressable
                   key={opt.id}
                   style={styles.themeRow}
                   onPress={() => {
-                    setTheme(opt.id as ThemeId);
+                    setTheme(opt.id as ThemePreference);
                     setThemePickerOpen(false);
                   }}
                   pressScale={0.97}
@@ -215,6 +256,78 @@ export function SettingsScreen({ navigation }: Props) {
                 </SoftPressable>
               );
             })}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={dateTimePickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDateTimePickerOpen(false)}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setDateTimePickerOpen(false)}
+            accessibilityLabel="Close Date Time Picker"
+          />
+          <View style={styles.modalPanel}>
+            <Text style={styles.modalHeading}>Date Format</Text>
+            {DATE_FORMAT_OPTIONS.map((opt) => {
+              const active = dateFormat === opt.id;
+              return (
+                <SoftPressable
+                  key={opt.id}
+                  style={styles.themeRow}
+                  onPress={() => setDateFormat(opt.id as DateFormatId)}
+                  pressScale={0.97}
+                >
+                  <View style={styles.formatBody}>
+                    <Text style={styles.themeLabel}>{opt.label}</Text>
+                    <Text style={styles.formatExample}>{opt.example}</Text>
+                  </View>
+                  {active ? (
+                    <Text style={[styles.themeCheck, { color: colors.link }]}>
+                      ✓
+                    </Text>
+                  ) : null}
+                </SoftPressable>
+              );
+            })}
+            <Text style={[styles.modalHeading, { marginTop: 8 }]}>
+              Time Format
+            </Text>
+            {TIME_FORMAT_OPTIONS.map((opt) => {
+              const active = timeFormat === opt.id;
+              return (
+                <SoftPressable
+                  key={opt.id}
+                  style={styles.themeRow}
+                  onPress={() => setTimeFormat(opt.id as TimeFormatId)}
+                  pressScale={0.97}
+                >
+                  <View style={styles.formatBody}>
+                    <Text style={styles.themeLabel}>{opt.label}</Text>
+                    <Text style={styles.formatExample}>{opt.example}</Text>
+                  </View>
+                  {active ? (
+                    <Text style={[styles.themeCheck, { color: colors.link }]}>
+                      ✓
+                    </Text>
+                  ) : null}
+                </SoftPressable>
+              );
+            })}
+            <SoftPressable
+              style={styles.doneRow}
+              onPress={() => setDateTimePickerOpen(false)}
+              pressScale={0.97}
+            >
+              <Text style={[styles.themeLabel, { color: colors.link }]}>
+                Done
+              </Text>
+            </SoftPressable>
           </View>
         </View>
       </Modal>
@@ -391,6 +504,13 @@ function makeStyles(c: ThemeColors) {
     themeCheck: {
       fontSize: 15,
       fontWeight: '800' as const,
+    },
+    formatBody: { flex: 1, gap: 2 },
+    formatExample: { color: c.textMuted, fontSize: 12 },
+    doneRow: {
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      alignItems: 'center' as const,
     },
   };
 }

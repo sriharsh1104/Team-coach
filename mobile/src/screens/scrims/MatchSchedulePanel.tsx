@@ -35,6 +35,7 @@ import { IconActionButton } from '../../ui/IconActionButton';
 import { SegmentedTabs } from '../../ui/SegmentedTabs';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
+import { useDateTimeFormat } from '../../datetime/DateTimeFormatContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { resolveMediaUrl } from '../../api/client';
 import {
@@ -68,6 +69,7 @@ export function MatchSchedulePanel({
   const navigation =
     useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { colors } = useTheme();
+  const { formatDateTime } = useDateTimeFormat();
   const styles = useThemedStyles(matchScheduleStyles);
   const insets = useSafeAreaInsets();
   const { user, org } = useAuth();
@@ -238,7 +240,7 @@ export function MatchSchedulePanel({
       <View style={staticStyles.card}>
         <Text style={styles.cardTitle}>{item.title}</Text>
         <Text style={styles.meta}>
-          {new Date(item.scheduledAt).toLocaleString()} · by{' '}
+          {formatDateTime(item.scheduledAt)} · by{' '}
           {item.createdByName}
           {item.rounds?.length ? ` · ${item.rounds.length} Round(s)` : ''}
         </Text>

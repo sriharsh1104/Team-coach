@@ -4,15 +4,35 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { MediaStorageService } from '../media/media-storage.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpsertGameProfileDto } from './dto/upsert-game-profile.dto';
+import { GameProfileVisibilityDto } from './dto/game-profile-visibility.dto';
+import { ConfirmAccountActionDto } from './dto/confirm-account-action.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { SetPushTokenDto } from './dto/set-push-token.dto';
 import { mergePushToken, removePushToken } from '../common/push-tokens';
+import {
+  GameId,
+  isGameId,
+  isRoleForGame,
+  uidLooksValid,
+} from './game-profiles';
+
+const GAME_PROFILE_SELECT = {
+  game: true,
+  inGameName: true,
+  inGameUid: true,
+  role: true,
+  showNameToMembers: true,
+  showUidToMembers: true,
+} as const;
 
 const PROFILE_SELECT = {
   id: true,
@@ -28,12 +48,25 @@ const PROFILE_SELECT = {
   discordUrl: true,
   youtubeUrl: true,
   kickUrl: true,
+  showPhoneToMembers: true,
+  showWhatsappToMembers: true,
+  showInstagramToMembers: true,
+  showDiscordToMembers: true,
+  showYoutubeToMembers: true,
+  showKickToMembers: true,
   devices: {
     select: { id: true, name: true, model: true },
   },
+  gameProfiles: {
+    select: GAME_PROFILE_SELECT,
+    orderBy: { game: 'asc' as const },
+  },
 } as const;
 
-/** Peer profiles: game + devices + social — never phone or email. */
+/**
+ * Peer profiles: game + devices + social/phone gated by the owner's
+ * show*ToMembers flags. Email / passwordHash are never selected.
+ */
 const PEER_PROFILE_SELECT = {
   id: true,
   name: true,
@@ -41,13 +74,25 @@ const PEER_PROFILE_SELECT = {
   roles: true,
   inGameName: true,
   inGameUid: true,
+  phone: true,
+  phoneVerifiedAt: true,
   whatsappUrl: true,
   instagramUrl: true,
   discordUrl: true,
   youtubeUrl: true,
   kickUrl: true,
+  showPhoneToMembers: true,
+  showWhatsappToMembers: true,
+  showInstagramToMembers: true,
+  showDiscordToMembers: true,
+  showYoutubeToMembers: true,
+  showKickToMembers: true,
   devices: {
     select: { id: true, name: true, model: true },
+  },
+  gameProfiles: {
+    select: GAME_PROFILE_SELECT,
+    orderBy: { game: 'asc' as const },
   },
 } as const;
 
@@ -177,8 +222,27 @@ export class UsersService {
         }),
         this.prisma.membership.findFirst({ where: { userId } }),
       ]);
+
+      // Keep the FREE_FIRE game-profile row aligned with the legacy columns
+      // that chat / stats / the completion gate still read.
+      if (
+        data.roles !== undefined ||
+        data.inGameName !== undefined ||
+        data.inGameUid !== undefined
+      ) {
+        await this.mirrorFreeFireGameProfile(userId, {
+          inGameName: updated.inGameName,
+          inGameUid: updated.inGameUid,
+          role: updated.roles[0] ?? null,
+        });
+      }
+
+      const refreshed = await this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: PROFILE_SELECT,
+      });
       return {
-        ...updated,
+        ...refreshed,
         role: membership?.role ?? null,
         isOwner: membership?.isOwner ?? false,
       };
@@ -190,6 +254,351 @@ export class UsersService {
         throw new ConflictException(this.uniqueConflictMessage(err));
       }
       throw err;
+    }
+  }
+
+  /**
+   * Upsert one title's IGN / UID / role. FREE_FIRE also writes the legacy
+   * User columns so existing chat/stats/completion code keeps working.
+   * Clearing every field deletes that game's row (optional titles only —
+   * Free Fire still needs IGN+UID for a complete profile).
+   */
+  async upsertGameProfile(userId: string, dto: UpsertGameProfileDto) {
+    if (!isGameId(dto.game)) {
+      throw new BadRequestException('Unsupported game');
+    }
+    const game = dto.game as GameId;
+    const inGameName =
+      typeof dto.inGameName === 'string' ? dto.inGameName.trim() || null : null;
+    const inGameUid =
+      typeof dto.inGameUid === 'string' ? dto.inGameUid.trim() || null : null;
+    const role =
+      typeof dto.role === 'string' ? dto.role.trim() || null : null;
+
+    if (!isRoleForGame(game, role)) {
+      throw new BadRequestException(`Invalid role for ${game}`);
+    }
+    if (inGameUid && !uidLooksValid(game, inGameUid)) {
+      throw new BadRequestException(
+        game === 'LOL'
+          ? 'Riot ID is too long'
+          : 'UID must contain only numbers',
+      );
+    }
+
+    const empty = !inGameName && !inGameUid && !role;
+    if (empty) {
+      if (game === 'FREE_FIRE') {
+        throw new BadRequestException(
+          'Free Fire needs at least an in-game name or UID',
+        );
+      }
+      await this.prisma.userGameProfile.deleteMany({
+        where: { userId, game },
+      });
+      return this.getMyProfile(userId);
+    }
+
+    if (game === 'FREE_FIRE') {
+      // Write the legacy User columns chat / stats / completion still read,
+      // then mirror into UserGameProfile.
+      await this.assertUniqueProfileFields(userId, {
+        inGameName: inGameName ?? undefined,
+        inGameUid: inGameUid ?? undefined,
+      });
+      try {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: {
+            inGameName,
+            inGameUid,
+            roles: role ? [role] : [],
+          },
+        });
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002'
+        ) {
+          throw new ConflictException(this.uniqueConflictMessage(err));
+        }
+        throw err;
+      }
+      await this.mirrorFreeFireGameProfile(userId, {
+        inGameName,
+        inGameUid,
+        role,
+      });
+      return this.getMyProfile(userId);
+    }
+
+    await this.assertGameProfileUnique(userId, game, inGameName, inGameUid);
+
+    try {
+      await this.prisma.userGameProfile.upsert({
+        where: { userId_game: { userId, game } },
+        create: { userId, game, inGameName, inGameUid, role },
+        update: { inGameName, inGameUid, role },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException('That in-game name or UID is already in use');
+      }
+      throw err;
+    }
+
+    return this.getMyProfile(userId);
+  }
+
+  async removeGameProfile(userId: string, gameRaw: string) {
+    if (!isGameId(gameRaw)) {
+      throw new BadRequestException('Unsupported game');
+    }
+    if (gameRaw === 'FREE_FIRE') {
+      throw new BadRequestException(
+        'Free Fire is your primary game identity — clear it from the Game tab instead of deleting it',
+      );
+    }
+    await this.prisma.userGameProfile.deleteMany({
+      where: { userId, game: gameRaw },
+    });
+    return this.getMyProfile(userId);
+  }
+
+  /**
+   * Toggle whether teammates see this game's IGN and/or UID. Creates a
+   * game-profile row if needed so the preference sticks even before the
+   * owner fills in IGN/UID (except Free Fire, which copies from User).
+   */
+  async setGameProfileVisibility(
+    userId: string,
+    dto: GameProfileVisibilityDto,
+  ) {
+    if (!isGameId(dto.game)) {
+      throw new BadRequestException('Unsupported game');
+    }
+    if (
+      dto.showNameToMembers === undefined &&
+      dto.showUidToMembers === undefined
+    ) {
+      throw new BadRequestException('Nothing to update');
+    }
+
+    const game = dto.game as GameId;
+    const existing = await this.prisma.userGameProfile.findUnique({
+      where: { userId_game: { userId, game } },
+    });
+
+    let seedName: string | null = existing?.inGameName ?? null;
+    let seedUid: string | null = existing?.inGameUid ?? null;
+    let seedRole: string | null = existing?.role ?? null;
+    if (!existing && game === 'FREE_FIRE') {
+      const user = await this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { inGameName: true, inGameUid: true, roles: true },
+      });
+      seedName = user.inGameName;
+      seedUid = user.inGameUid;
+      seedRole = user.roles[0] ?? null;
+    }
+
+    await this.prisma.userGameProfile.upsert({
+      where: { userId_game: { userId, game } },
+      create: {
+        userId,
+        game,
+        inGameName: seedName,
+        inGameUid: seedUid,
+        role: seedRole,
+        showNameToMembers: dto.showNameToMembers ?? true,
+        showUidToMembers: dto.showUidToMembers ?? true,
+      },
+      update: {
+        ...(dto.showNameToMembers !== undefined
+          ? { showNameToMembers: dto.showNameToMembers }
+          : {}),
+        ...(dto.showUidToMembers !== undefined
+          ? { showUidToMembers: dto.showUidToMembers }
+          : {}),
+      },
+    });
+
+    return this.getMyProfile(userId);
+  }
+
+  private async mirrorFreeFireGameProfile(
+    userId: string,
+    data: {
+      inGameName: string | null;
+      inGameUid: string | null;
+      role: string | null;
+    },
+  ) {
+    if (!data.inGameName && !data.inGameUid && !data.role) {
+      // Keep a row if the owner already flipped privacy off — otherwise the
+      // hide preference would be lost the next time they clear IGN/UID.
+      const existing = await this.prisma.userGameProfile.findUnique({
+        where: { userId_game: { userId, game: 'FREE_FIRE' } },
+        select: { showNameToMembers: true, showUidToMembers: true },
+      });
+      if (
+        existing &&
+        (existing.showNameToMembers === false ||
+          existing.showUidToMembers === false)
+      ) {
+        await this.prisma.userGameProfile.update({
+          where: { userId_game: { userId, game: 'FREE_FIRE' } },
+          data: { inGameName: null, inGameUid: null, role: null },
+        });
+        return;
+      }
+      await this.prisma.userGameProfile.deleteMany({
+        where: { userId, game: 'FREE_FIRE' },
+      });
+      return;
+    }
+    await this.prisma.userGameProfile.upsert({
+      where: { userId_game: { userId, game: 'FREE_FIRE' } },
+      create: {
+        userId,
+        game: 'FREE_FIRE',
+        inGameName: data.inGameName,
+        inGameUid: data.inGameUid,
+        role: data.role,
+      },
+      update: {
+        inGameName: data.inGameName,
+        inGameUid: data.inGameUid,
+        role: data.role,
+      },
+    });
+  }
+
+  /**
+   * Soft-pause the account. Sessions die via tokenVersion bump; the next
+   * successful login clears deactivatedAt (reactivate).
+   */
+  async deactivateMyAccount(userId: string, dto: ConfirmAccountActionDto) {
+    const user = await this.requireAccountConfirmation(userId, dto);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        deactivatedAt: new Date(),
+        tokenVersion: { increment: 1 },
+      },
+    });
+    return { ok: true as const };
+  }
+
+  /**
+   * Permanent delete. Owners must transfer/delete their team first — wiping
+   * an org out from under teammates is not recoverable from the app.
+   */
+  async deleteMyAccount(userId: string, dto: ConfirmAccountActionDto) {
+    const user = await this.requireAccountConfirmation(userId, dto);
+    const owned = await this.prisma.membership.findFirst({
+      where: { userId: user.id, isOwner: true },
+      select: { orgId: true },
+    });
+    if (owned) {
+      throw new BadRequestException(
+        'You own a team — transfer ownership or delete the team before deleting your account',
+      );
+    }
+    await this.prisma.user.delete({ where: { id: user.id } });
+    return { ok: true as const };
+  }
+
+  private async requireAccountConfirmation(
+    userId: string,
+    dto: ConfirmAccountActionDto,
+  ) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+      },
+    });
+    if (dto.confirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+      throw new BadRequestException(
+        'Type your account email exactly to confirm',
+      );
+    }
+    if (user.passwordHash) {
+      if (!dto.password) {
+        throw new BadRequestException('Password is required');
+      }
+      const ok = await bcrypt.compare(dto.password, user.passwordHash);
+      if (!ok) {
+        throw new UnauthorizedException('Incorrect password');
+      }
+    }
+    return user;
+  }
+
+  /** Apply showName/showUid flags for teammate views; strip the flags themselves. */
+  private redactGameProfilesForPeer(
+    gameProfiles: Array<{
+      game: string;
+      inGameName: string | null;
+      inGameUid: string | null;
+      role: string | null;
+      showNameToMembers: boolean;
+      showUidToMembers: boolean;
+    }>,
+  ) {
+    return gameProfiles
+      .map((row) => {
+        const inGameName = row.showNameToMembers ? row.inGameName : null;
+        const inGameUid = row.showUidToMembers ? row.inGameUid : null;
+        const role =
+          row.showNameToMembers || row.showUidToMembers ? row.role : null;
+        return {
+          game: row.game,
+          inGameName,
+          inGameUid,
+          role,
+        };
+      })
+      .filter((row) => row.inGameName || row.inGameUid || row.role);
+  }
+
+  private async assertGameProfileUnique(
+    userId: string,
+    game: GameId,
+    inGameName: string | null,
+    inGameUid: string | null,
+  ) {
+    if (inGameName) {
+      const taken = await this.prisma.userGameProfile.findFirst({
+        where: {
+          game,
+          userId: { not: userId },
+          inGameName: { equals: inGameName, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new ConflictException('That in-game name is already in use');
+      }
+    }
+    if (inGameUid) {
+      const taken = await this.prisma.userGameProfile.findFirst({
+        where: {
+          game,
+          userId: { not: userId },
+          inGameUid: { equals: inGameUid, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new ConflictException('That UID is already in use');
+      }
     }
   }
 
@@ -377,9 +786,49 @@ export class UsersService {
       select: PEER_PROFILE_SELECT,
     });
 
+    const {
+      showPhoneToMembers,
+      showWhatsappToMembers,
+      showInstagramToMembers,
+      showDiscordToMembers,
+      showYoutubeToMembers,
+      showKickToMembers,
+      phone,
+      phoneVerifiedAt,
+      whatsappUrl,
+      instagramUrl,
+      discordUrl,
+      youtubeUrl,
+      kickUrl,
+      gameProfiles,
+      inGameName,
+      inGameUid,
+      roles,
+      ...publicFields
+    } = profile;
+
+    const visibleGames = this.redactGameProfilesForPeer(gameProfiles);
+    const freeFire = gameProfiles.find((g) => g.game === 'FREE_FIRE');
+    const showFfName = freeFire?.showNameToMembers !== false;
+    const showFfUid = freeFire?.showUidToMembers !== false;
+
     return {
-      ...profile,
-      phone: null,
+      ...publicFields,
+      // Strip the preference flags themselves — peers only need the filtered
+      // values, not a map of what the owner chose to hide.
+      phone: showPhoneToMembers ? phone : null,
+      phoneVerifiedAt: showPhoneToMembers ? phoneVerifiedAt : null,
+      whatsappUrl: showWhatsappToMembers ? whatsappUrl : null,
+      instagramUrl: showInstagramToMembers ? instagramUrl : null,
+      discordUrl: showDiscordToMembers ? discordUrl : null,
+      youtubeUrl: showYoutubeToMembers ? youtubeUrl : null,
+      kickUrl: showKickToMembers ? kickUrl : null,
+      // Legacy Free Fire columns stay in sync with the FREE_FIRE visibility
+      // flags so older clients that only read inGameName/Uid still respect hide.
+      inGameName: showFfName ? inGameName : null,
+      inGameUid: showFfUid ? inGameUid : null,
+      roles: showFfName || showFfUid ? roles : [],
+      gameProfiles: visibleGames,
       role: targetMembership?.role ?? null,
       isOwner: targetMembership?.isOwner ?? false,
     };

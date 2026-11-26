@@ -19,6 +19,7 @@ import { Image } from 'expo-image';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
+import { useDateTimeFormat } from '../../datetime/DateTimeFormatContext';
 import {
   CacheKeys,
   cacheInvalidate,
@@ -33,6 +34,7 @@ type Props = NativeStackScreenProps<MainStackParamList, 'MediaFeed'>;
 export function MediaFeedScreen({ navigation }: Props) {
   const realtime = useOrgRealtimeOptional();
   const { colors } = useTheme();
+  const { formatDateTime } = useDateTimeFormat();
   const styles = useThemedStyles(mediaFeedStyles);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [selectedUploaderId, setSelectedUploaderId] = useState<string | null>(
@@ -201,7 +203,7 @@ export function MediaFeedScreen({ navigation }: Props) {
                     </Text>
                   ) : null}
                   <Text style={styles.time}>
-                    {new Date(item.createdAt).toLocaleString()}
+                    {formatDateTime(item.createdAt)}
                   </Text>
                 </View>
               </SoftPressable>

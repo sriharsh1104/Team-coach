@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -17,8 +18,11 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { mediaFileInterceptorOptions } from '../media/multer-options';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpsertGameProfileDto } from './dto/upsert-game-profile.dto';
+import { GameProfileVisibilityDto } from './dto/game-profile-visibility.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { SetPushTokenDto } from './dto/set-push-token.dto';
+import { ConfirmAccountActionDto } from './dto/confirm-account-action.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('users')
@@ -30,12 +34,52 @@ export class UsersController {
     return this.usersService.getMyProfile(user.userId);
   }
 
+  @Post('me/deactivate')
+  deactivateMyAccount(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: ConfirmAccountActionDto,
+  ) {
+    return this.usersService.deactivateMyAccount(user.userId, dto);
+  }
+
+  @Post('me/delete')
+  deleteMyAccount(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: ConfirmAccountActionDto,
+  ) {
+    return this.usersService.deleteMyAccount(user.userId, dto);
+  }
+
   @Patch('me')
   updateMyProfile(
     @CurrentUser() user: { userId: string },
     @Body() dto: UpdateProfileDto,
   ) {
     return this.usersService.updateMyProfile(user.userId, dto);
+  }
+
+  @Put('me/game-profiles')
+  upsertGameProfile(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: UpsertGameProfileDto,
+  ) {
+    return this.usersService.upsertGameProfile(user.userId, dto);
+  }
+
+  @Patch('me/game-profiles/visibility')
+  setGameProfileVisibility(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: GameProfileVisibilityDto,
+  ) {
+    return this.usersService.setGameProfileVisibility(user.userId, dto);
+  }
+
+  @Delete('me/game-profiles/:game')
+  removeGameProfile(
+    @CurrentUser() user: { userId: string },
+    @Param('game') game: string,
+  ) {
+    return this.usersService.removeGameProfile(user.userId, game);
   }
 
   @Post('me/avatar')

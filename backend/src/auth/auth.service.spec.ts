@@ -27,6 +27,8 @@ describe('AuthService (unit)', () => {
     const prisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(null),
         create: jest
           .fn()
           .mockImplementation(
@@ -74,12 +76,37 @@ describe('AuthService (unit)', () => {
       revokedToken: {
         upsert: jest.fn().mockResolvedValue({}),
       },
+      authSession: {
+        create: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      recoveryEmailCode: {
+        upsert: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      $transaction: jest
+        .fn()
+        .mockImplementation(async (ops: unknown) => {
+          if (Array.isArray(ops)) {
+            return Promise.all(ops);
+          }
+          return undefined;
+        }),
       ...prismaOverrides,
     } as unknown as PrismaService;
 
     const jwtService = {
       signAsync: jest.fn().mockResolvedValue('signed-jwt'),
       verifyAsync: jest.fn(),
+      decode: jest.fn().mockReturnValue({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
     } as unknown as JwtService;
 
     const configService = {
@@ -90,6 +117,7 @@ describe('AuthService (unit)', () => {
       sendSignupOtp: jest.fn().mockResolvedValue(undefined),
       sendGeneratedPassword: jest.fn().mockResolvedValue(undefined),
       sendPasswordReset: jest.fn().mockResolvedValue(undefined),
+      sendRecoveryEmailOtp: jest.fn().mockResolvedValue(undefined),
     } as unknown as MailerService;
 
     const service = new AuthService(
@@ -447,7 +475,7 @@ describe('AuthService (unit)', () => {
     it('issues and emails a reset code when the account exists', async () => {
       const { service, prisma, mailerService } = buildService({
         user: {
-          findUnique: jest.fn().mockResolvedValue({
+          findFirst: jest.fn().mockResolvedValue({
             id: 'u1',
             email: 'a@b.com',
             passwordHash: 'hashed',
@@ -467,7 +495,7 @@ describe('AuthService (unit)', () => {
 
     it('SECURITY: returns the same generic success for an unknown email, without emailing anyone', async () => {
       const { service, mailerService } = buildService({
-        user: { findUnique: jest.fn().mockResolvedValue(null) },
+        user: { findFirst: jest.fn().mockResolvedValue(null) },
       });
 
       const result = await service.forgotPassword({ email: 'nobody@b.com' });
@@ -492,7 +520,7 @@ describe('AuthService (unit)', () => {
       const codeHash = await bcrypt.hash(storedCode, 4);
       const { service, prisma } = buildService({
         user: {
-          findUnique: jest.fn().mockResolvedValue({
+          findFirst: jest.fn().mockResolvedValue({
             id: 'u1',
             email: 'a@b.com',
             tokenVersion: 3,
@@ -584,7 +612,7 @@ describe('AuthService (unit)', () => {
 
     it('rejects an unknown email rather than revealing whether the account exists', async () => {
       const { service } = buildService({
-        user: { findUnique: jest.fn().mockResolvedValue(null) },
+        user: { findFirst: jest.fn().mockResolvedValue(null) },
       });
 
       await expect(
@@ -652,10 +680,15 @@ describe('AuthService (unit)', () => {
 
       await service.logout('token-jti-1', exp);
 
+      expect(prisma.$transaction).toHaveBeenCalled();
       expect(prisma.revokedToken.upsert).toHaveBeenCalledWith({
         where: { jti: 'token-jti-1' },
         create: { jti: 'token-jti-1', expiresAt: new Date(exp * 1000) },
         update: {},
+      });
+      expect(prisma.authSession.updateMany).toHaveBeenCalledWith({
+        where: { jti: 'token-jti-1', revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
       });
       expect(prisma.user.update).not.toHaveBeenCalled();
     });

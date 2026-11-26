@@ -3,11 +3,13 @@ import { Alert, Switch } from 'react-native';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { AccountSettingsScreen } from '../AccountSettingsScreen';
 import * as authApi from '../../api/auth';
+import * as usersApi from '../../api/users';
 import { useAuth } from '../../auth/AuthContext';
 import * as biometrics from '../../auth/biometrics';
 import * as tokenStorage from '../../storage/tokenStorage';
 
 jest.mock('../../api/auth');
+jest.mock('../../api/users');
 jest.mock('../../auth/AuthContext');
 jest.mock('../../auth/biometrics', () => ({
   // describeBiometricKinds is a pure formatter — keep the real one so the
@@ -24,6 +26,7 @@ jest.mock('../../storage/tokenStorage', () => ({
 }));
 
 const mockedAuthApi = authApi as jest.Mocked<typeof authApi>;
+const mockedUsersApi = usersApi as jest.Mocked<typeof usersApi>;
 const mockedUseAuth = useAuth as jest.Mock;
 const mockedBiometrics = biometrics as jest.Mocked<typeof biometrics>;
 const mockedTokenStorage = tokenStorage as jest.Mocked<typeof tokenStorage>;
@@ -31,6 +34,10 @@ const navigation = { navigate: jest.fn() } as any;
 
 function openBiometricTab() {
   fireEvent.press(screen.getByLabelText('Biometric Login'));
+}
+
+function openPrivacyTab() {
+  fireEvent.press(screen.getByLabelText('Profile Privacy'));
 }
 
 const applyAuthResponse = jest.fn();
@@ -285,6 +292,145 @@ describe('AccountSettingsScreen', () => {
 
       expect(mockedTokenStorage.setBiometricEnabled).not.toHaveBeenCalled();
       expect(screen.UNSAFE_getByType(Switch).props.value).toBe(true);
+    });
+  });
+
+  describe('Privacy tab', () => {
+    beforeEach(() => {
+      mockedUsersApi.getMyProfile.mockResolvedValue({
+        id: 'user-1',
+        name: 'Me',
+        avatarUrl: null,
+        roles: [],
+        inGameName: null,
+        inGameUid: null,
+        phone: '9988776655',
+        whatsappUrl: 'https://wa.me/9988776655',
+        instagramUrl: null,
+        discordUrl: null,
+        youtubeUrl: null,
+        kickUrl: null,
+        showPhoneToMembers: false,
+        showWhatsappToMembers: true,
+        showInstagramToMembers: true,
+        showDiscordToMembers: true,
+        showYoutubeToMembers: true,
+        showKickToMembers: true,
+        devices: [],
+        role: null,
+        isOwner: false,
+      });
+      mockedUsersApi.updateMyProfile.mockImplementation(async (input) => ({
+        id: 'user-1',
+        name: 'Me',
+        avatarUrl: null,
+        roles: [],
+        inGameName: null,
+        inGameUid: null,
+        phone: '9988776655',
+        whatsappUrl: 'https://wa.me/9988776655',
+        instagramUrl: null,
+        discordUrl: null,
+        youtubeUrl: null,
+        kickUrl: null,
+        showPhoneToMembers: false,
+        showWhatsappToMembers: true,
+        showInstagramToMembers: true,
+        showDiscordToMembers: true,
+        showYoutubeToMembers: true,
+        showKickToMembers: true,
+        ...input,
+        devices: [],
+        role: null,
+        isOwner: false,
+      }));
+    });
+
+    it('loads visibility toggles and saves when phone is turned on', async () => {
+      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+      openPrivacyTab();
+
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('Show Phone Number to teammates'),
+        ).toBeTruthy(),
+      );
+      expect(mockedUsersApi.getMyProfile).toHaveBeenCalled();
+
+      const phoneSwitch = screen.getByLabelText('Show Phone Number to teammates');
+      expect(phoneSwitch.props.value).toBe(false);
+
+      await act(async () => {
+        fireEvent(phoneSwitch, 'valueChange', true);
+      });
+
+      await waitFor(() =>
+        expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
+          showPhoneToMembers: true,
+        }),
+      );
+      expect(phoneSwitch.props.value).toBe(true);
+    });
+
+    it('toggles Free Fire IGN visibility via game-profile privacy', async () => {
+      mockedUsersApi.setGameProfileVisibility.mockResolvedValue({
+        id: 'user-1',
+        name: 'Me',
+        avatarUrl: null,
+        roles: [],
+        inGameName: null,
+        inGameUid: null,
+        phone: null,
+        whatsappUrl: null,
+        instagramUrl: null,
+        discordUrl: null,
+        youtubeUrl: null,
+        kickUrl: null,
+        showPhoneToMembers: false,
+        showWhatsappToMembers: true,
+        showInstagramToMembers: true,
+        showDiscordToMembers: true,
+        showYoutubeToMembers: true,
+        showKickToMembers: true,
+        gameProfiles: [
+          {
+            game: 'FREE_FIRE',
+            inGameName: 'Shadow',
+            inGameUid: '123',
+            role: 'IGL',
+            showNameToMembers: false,
+            showUidToMembers: true,
+          },
+        ],
+        devices: [],
+        role: null,
+        isOwner: false,
+      });
+
+      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+      openPrivacyTab();
+
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('Show Free Fire IGN to teammates'),
+        ).toBeTruthy(),
+      );
+
+      const ignSwitch = screen.getByLabelText(
+        'Show Free Fire IGN to teammates',
+      );
+      expect(ignSwitch.props.value).toBe(true);
+
+      await act(async () => {
+        fireEvent(ignSwitch, 'valueChange', false);
+      });
+
+      await waitFor(() =>
+        expect(mockedUsersApi.setGameProfileVisibility).toHaveBeenCalledWith({
+          game: 'FREE_FIRE',
+          showNameToMembers: false,
+        }),
+      );
     });
   });
 });

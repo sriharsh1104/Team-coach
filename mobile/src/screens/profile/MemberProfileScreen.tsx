@@ -5,6 +5,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as usersApi from '../../api/users';
 import { Profile } from '../../api/types';
 import { roleLabel } from '../../api/roles';
+import { gameLabel, gameRoleLabel } from '../../api/profileGames';
 import { CopyableField } from './CopyableField';
 import { CopyButton } from './CopyButton';
 import { Screen } from '../../brand/Screen';
@@ -19,6 +20,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { usePullToRefresh } from '../../ui/usePullToRefresh';
 import { ChannelAvatar } from '../chat/ChannelAvatar';
+import { GameProfile } from '../../api/types';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'MemberProfile'>;
 
@@ -88,10 +90,22 @@ export function MemberProfileScreen({ route }: Props) {
 
   const displayName = profile.name?.trim() || name;
   const roleBadge = formatRoleBadge(profile.role, profile.isOwner);
-  const inGameRole =
-    profile.roles.length > 0
-      ? profile.roles.map((r) => roleLabel(r)).join(', ')
-      : null;
+  const games: GameProfile[] =
+    profile.gameProfiles && profile.gameProfiles.length > 0
+      ? profile.gameProfiles
+      : profile.inGameName || profile.inGameUid || profile.roles[0]
+        ? [
+            {
+              game: 'FREE_FIRE',
+              inGameName: profile.inGameName,
+              inGameUid: profile.inGameUid,
+              role: profile.roles[0] ?? null,
+            },
+          ]
+        : [];
+  const primaryRole =
+    games[0]?.role ??
+    (profile.roles.length > 0 ? profile.roles.map(roleLabel).join(', ') : null);
   const socials = SOCIAL_LINKS.filter(
     ({ key }) => !!(profile[key] as string | null),
   );
@@ -117,20 +131,43 @@ export function MemberProfileScreen({ route }: Props) {
             {roleBadge ? (
               <Text style={styles.subtitle}>{roleBadge}</Text>
             ) : null}
-            {inGameRole ? (
-              <Text style={styles.inGameRole}>{inGameRole}</Text>
+            {primaryRole ? (
+              <Text style={styles.inGameRole}>
+                {typeof primaryRole === 'string' && games[0]?.role
+                  ? gameRoleLabel(games[0].role)
+                  : primaryRole}
+              </Text>
             ) : (
               <Text style={styles.muted}>No in-game role set yet</Text>
             )}
           </View>
         </View>
 
-        {profile.inGameName && (
-          <CopyableField label="In-Game Name (IGN)" value={profile.inGameName} />
-        )}
-        {profile.inGameUid && (
-          <CopyableField label="UID" value={profile.inGameUid} />
-        )}
+        {games.map((row) => (
+          <View key={row.game} style={{ marginBottom: 8 }}>
+            <Text style={styles.section}>{gameLabel(row.game)}</Text>
+            {row.role ? (
+              <Text style={styles.inGameRole}>{gameRoleLabel(row.role)}</Text>
+            ) : null}
+            {row.inGameName ? (
+              <CopyableField label="In-Game Name (IGN)" value={row.inGameName} />
+            ) : null}
+            {row.inGameUid ? (
+              <CopyableField
+                label={row.game === 'LOL' ? 'Riot ID / UID' : 'UID'}
+                value={row.inGameUid}
+              />
+            ) : null}
+          </View>
+        ))}
+        {profile.phone ? (
+          <CopyableField
+            label={
+              profile.phoneVerifiedAt ? 'Phone (verified)' : 'Phone'
+            }
+            value={profile.phone}
+          />
+        ) : null}
 
         <Text style={styles.section}>Social Links</Text>
         {socials.length === 0 ? (

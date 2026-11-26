@@ -132,27 +132,6 @@ export function GuildHomeScreen({ navigation }: Props) {
           ],
         },
         trackerDrawerSection(navigation, 'GuildHome'),
-        {
-          key: 'account',
-          label: 'Account',
-          split: true,
-          items: [
-            {
-              key: 'profile',
-              label: 'Profile',
-              icon: 'person-outline' as const,
-              onPress: () =>
-                goToSection(navigation, 'GuildHome', { screen: 'Profile' }),
-            },
-            {
-              key: 'socialHandles',
-              label: 'Social Handles',
-              icon: 'share-social-outline' as const,
-              onPress: () =>
-                goToSection(navigation, 'GuildHome', { screen: 'SocialHandles' }),
-            },
-          ],
-        },
       ],
       'guildChat',
     );

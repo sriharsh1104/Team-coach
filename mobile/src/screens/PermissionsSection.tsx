@@ -8,7 +8,9 @@ import {
   usePermissionStates,
 } from '../hooks/useAppPermissions';
 import { ThemeColors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { AppIcon } from '../ui/AppIcon';
 import { SoftPressable } from '../ui/SoftPressable';
 import { emitToast } from '../ui/toastBus';
 
@@ -23,12 +25,16 @@ const GRANTED = '#22c55e';
  * stops showing its dialog, so tapping "turn on camera" inside a feature does
  * nothing at all. This is the way back — ask again where the OS still allows
  * it, and hand over to system settings where it does not.
+ *
+ * Revoke also goes through system settings: apps cannot clear a grant
+ * themselves.
  */
 export function PermissionsSection() {
+  const { colors } = useTheme();
   const styles = useThemedStyles(permissionStyles);
   const { states, request, refresh } = usePermissionStates();
 
-  const onPress = async (permission: AppPermission) => {
+  const onGrant = async (permission: AppPermission) => {
     const next = await request(permission);
     if (next === 'granted') {
       emitToast(`${PERMISSION_LABELS[permission].title} enabled`);
@@ -42,12 +48,19 @@ export function PermissionsSection() {
     openAppSettings();
   };
 
+  const onRevoke = (permission: AppPermission) => {
+    emitToast(
+      `Turn off ${PERMISSION_LABELS[permission].title} in system settings`,
+    );
+    openAppSettings();
+  };
+
   return (
     <View>
       <Text style={styles.sectionLabel}>Permissions</Text>
       <Text style={styles.lead}>
-        Asked once when you install. Anything you said no to can be turned on
-        here.
+        Asked once when you install. Turn anything on here, or open system
+        settings to turn it off.
       </Text>
 
       {APP_PERMISSIONS.map((permission) => {
@@ -68,11 +81,18 @@ export function PermissionsSection() {
               <Text style={styles.rowWhy}>{label.why}</Text>
             </View>
             {granted ? (
-              <Text style={styles.onText}>On</Text>
+              <SoftPressable
+                style={styles.revokeBtn}
+                onPress={() => onRevoke(permission)}
+                accessibilityRole="button"
+                accessibilityLabel={`Turn off ${label.title}`}
+              >
+                <Text style={styles.revokeText}>Turn off</Text>
+              </SoftPressable>
             ) : (
               <SoftPressable
                 style={styles.grantBtn}
-                onPress={() => void onPress(permission)}
+                onPress={() => void onGrant(permission)}
                 accessibilityRole="button"
                 accessibilityLabel={`Turn on ${label.title}`}
               >
@@ -91,6 +111,7 @@ export function PermissionsSection() {
         accessibilityRole="button"
         accessibilityLabel="Re-check permissions"
       >
+        <AppIcon name="refresh" size={16} color={colors.link} />
         <Text style={styles.refreshText}>Re-check</Text>
       </SoftPressable>
     </View>
@@ -129,7 +150,6 @@ function permissionStyles(c: ThemeColors) {
     rowMain: { flex: 1, minWidth: 0 },
     rowTitle: { color: c.text, fontSize: 14, fontWeight: '700' as const },
     rowWhy: { color: c.textMuted, fontSize: 12, marginTop: 2 },
-    onText: { color: GRANTED, fontSize: 12, fontWeight: '700' as const },
     grantBtn: {
       paddingVertical: 6,
       paddingHorizontal: 12,
@@ -138,7 +158,21 @@ function permissionStyles(c: ThemeColors) {
       borderColor: c.chrome,
     },
     grantText: { color: c.chrome, fontSize: 12, fontWeight: '700' as const },
-    refresh: { alignSelf: 'flex-start' as const, paddingVertical: 8 },
+    revokeBtn: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: c.danger,
+    },
+    revokeText: { color: c.danger, fontSize: 12, fontWeight: '700' as const },
+    refresh: {
+      alignSelf: 'flex-start' as const,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 6,
+      paddingVertical: 8,
+    },
     refreshText: { color: c.link, fontSize: 13, fontWeight: '600' as const },
   };
 }

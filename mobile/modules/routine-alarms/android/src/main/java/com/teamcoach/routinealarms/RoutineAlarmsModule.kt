@@ -13,8 +13,9 @@ class RoutineAlarmsModule : Module() {
     }
 
     Function("openExactAlarmSettings") {
-      val context = appContext.reactContext ?: return@Function
+      val context = appContext.reactContext ?: return@Function false
       AlarmScheduler.openExactAlarmSettings(context)
+      true
     }
 
     AsyncFunction("scheduleAll") { items: List<Map<String, Any?>> ->

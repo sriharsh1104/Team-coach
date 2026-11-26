@@ -74,6 +74,14 @@ describe('ProfileScreen', () => {
       expect(screen.queryByText('Name *')).toBeNull();
     });
 
+    it('Settings → Edit opens the form directly (no second Edit tap)', async () => {
+      render(<ProfileScreen route={{ params: { edit: true } }} />);
+
+      await screen.findByText('Name *');
+      expect(screen.getByDisplayValue('Player 1')).toBeTruthy();
+      expect(screen.queryByText('Edit')).toBeNull();
+    });
+
     it('pressing Edit shows the name input, the signup email, and the Telegram phone verify button', async () => {
       render(<ProfileScreen />);
       await enterEditMode();
@@ -300,8 +308,8 @@ describe('ProfileScreen', () => {
       expect(Clipboard.setStringAsync).toHaveBeenCalledWith('ShadowStrike');
     });
 
-    it('saves with roles toggled and empty fields sent as undefined, then returns to the view', async () => {
-      mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
+    it('saves with roles toggled via upsertGameProfile, then returns to the view', async () => {
+      mockedUsersApi.upsertGameProfile.mockResolvedValue(baseProfile);
       render(<ProfileScreen />);
       await enterGameEditMode();
 
@@ -310,8 +318,9 @@ describe('ProfileScreen', () => {
         fireEvent.press(screen.getByText('Save'));
       });
 
-      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalledWith({
-        roles: ['SNIPER'],
+      expect(mockedUsersApi.upsertGameProfile).toHaveBeenCalledWith({
+        game: 'FREE_FIRE',
+        role: 'SNIPER',
         inGameName: 'ShadowStrike',
         inGameUid: '5123456789',
       });
@@ -320,7 +329,7 @@ describe('ProfileScreen', () => {
     });
 
     it('shows an error alert when save fails', async () => {
-      mockedUsersApi.updateMyProfile.mockRejectedValue({
+      mockedUsersApi.upsertGameProfile.mockRejectedValue({
         response: { data: { message: 'Invalid role' } },
       });
       render(<ProfileScreen />);
@@ -338,15 +347,59 @@ describe('ProfileScreen', () => {
         ...baseProfile,
         inGameName: null,
         inGameUid: null,
+        roles: [],
       });
-      mockedUsersApi.updateMyProfile.mockResolvedValue(baseProfile);
+      mockedUsersApi.upsertGameProfile.mockResolvedValue(baseProfile);
       render(<ProfileScreen />);
       await enterGameEditMode();
 
       await act(async () => {
         fireEvent.press(screen.getByText('Save'));
       });
-      expect(mockedUsersApi.updateMyProfile).toHaveBeenCalled();
+      expect(mockedUsersApi.upsertGameProfile).toHaveBeenCalled();
+    });
+
+    it('lets you switch to BGMI and save an optional profile', async () => {
+      mockedUsersApi.upsertGameProfile.mockResolvedValue({
+        ...baseProfile,
+        gameProfiles: [
+          {
+            game: 'FREE_FIRE',
+            inGameName: 'ShadowStrike',
+            inGameUid: '5123456789',
+            role: 'IGL',
+          },
+          {
+            game: 'BGMI',
+            inGameName: 'BG-Shadow',
+            inGameUid: '111222333',
+            role: 'ASSAULTER',
+          },
+        ],
+      });
+      render(<ProfileScreen />);
+      await enterGameEditMode();
+
+      fireEvent.press(screen.getByText('BGMI'));
+      fireEvent.changeText(
+        screen.getByPlaceholderText('Your in-game name'),
+        'BG-Shadow',
+      );
+      fireEvent.changeText(
+        screen.getByPlaceholderText('Your in-game UID'),
+        '111222333',
+      );
+      fireEvent.press(screen.getByText('Assaulter'));
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save'));
+      });
+
+      expect(mockedUsersApi.upsertGameProfile).toHaveBeenCalledWith({
+        game: 'BGMI',
+        role: 'ASSAULTER',
+        inGameName: 'BG-Shadow',
+        inGameUid: '111222333',
+      });
     });
   });
 
@@ -560,9 +613,9 @@ describe('ProfileScreen', () => {
       // Auto-advance to Game profile after User Continue.
       await screen.findByText('Role');
 
-      // Completing the Game tab (IGN + UID) satisfies isProfileComplete and
+      // Completing Free Fire (IGN + UID) satisfies isProfileComplete and
       // triggers refreshUser — no phone needed.
-      mockedUsersApi.updateMyProfile.mockResolvedValue({
+      mockedUsersApi.upsertGameProfile.mockResolvedValue({
         ...baseProfile,
         phone: null,
       });
@@ -572,6 +625,12 @@ describe('ProfileScreen', () => {
         fireEvent.press(screen.getByText('Continue'));
       });
 
+      expect(mockedUsersApi.upsertGameProfile).toHaveBeenCalledWith({
+        game: 'FREE_FIRE',
+        role: 'IGL',
+        inGameName: 'ShadowStrike',
+        inGameUid: '5123456789',
+      });
       expect(mockRefreshUser).toHaveBeenCalledTimes(1);
       expect(screen.queryByText(/^Saved/)).toBeNull();
     });

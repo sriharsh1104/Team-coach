@@ -25,6 +25,8 @@ import { GuildHomeScreen } from '../screens/GuildHomeScreen';
 import { GuildScreen } from '../screens/GuildScreen';
 import { OrgSettingsScreen } from '../screens/OrgSettingsScreen';
 import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
+import { AccountLifecycleScreen } from '../screens/AccountLifecycleScreen';
+import { HelpSupportScreen } from '../screens/HelpSupportScreen';
 import { TwoFactorSetupScreen } from '../screens/TwoFactorSetupScreen';
 import { PermissionsScreen } from '../screens/PermissionsScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
@@ -291,6 +293,18 @@ export function RootNavigator() {
               }))}
             />
             <MainStack.Screen
+              name="AccountLifecycle"
+              component={AccountLifecycleScreen}
+              options={detailOptions(() => ({
+                title: 'Delete Or Deactivate',
+              }))}
+            />
+            <MainStack.Screen
+              name="HelpSupport"
+              component={HelpSupportScreen}
+              options={detailOptions(() => ({ title: 'Help & Support' }))}
+            />
+            <MainStack.Screen
               name="TwoFactorSetup"
               component={TwoFactorSetupScreen}
               options={detailOptions(() => ({
@@ -366,6 +380,18 @@ export function RootNavigator() {
               options={sectionOptions(guildDrawer.openWith, () => ({
                 title: 'Account Settings',
               }))}
+            />
+            <MainStack.Screen
+              name="AccountLifecycle"
+              component={AccountLifecycleScreen}
+              options={detailOptions(() => ({
+                title: 'Delete Or Deactivate',
+              }))}
+            />
+            <MainStack.Screen
+              name="HelpSupport"
+              component={HelpSupportScreen}
+              options={detailOptions(() => ({ title: 'Help & Support' }))}
             />
             <MainStack.Screen
               name="TwoFactorSetup"
@@ -555,6 +581,18 @@ export function RootNavigator() {
               options={sectionOptions(orgDrawer.openWith, () => ({
                 title: 'Account Settings',
               }))}
+            />
+            <MainStack.Screen
+              name="AccountLifecycle"
+              component={AccountLifecycleScreen}
+              options={detailOptions(() => ({
+                title: 'Delete Or Deactivate',
+              }))}
+            />
+            <MainStack.Screen
+              name="HelpSupport"
+              component={HelpSupportScreen}
+              options={detailOptions(() => ({ title: 'Help & Support' }))}
             />
             <MainStack.Screen
               name="TwoFactorSetup"

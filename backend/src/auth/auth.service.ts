@@ -36,6 +36,14 @@ import {
 import { generateEmailOtp } from './email-verification.util';
 import { PASSWORD_REGEX, generateRandomPassword } from './password.util';
 
+/** Optional client hints captured when minting a session (mobile headers + IP). */
+export type AuthSessionClientMeta = {
+  deviceName?: string;
+  platform?: string;
+  userAgent?: string;
+  ip?: string;
+};
+
 const BCRYPT_SALT_ROUNDS = 12;
 // Mobile app sessions stay logged in much longer than the configured
 // JWT_EXPIRES_IN default (which is tuned for the web app) — nobody wants to
@@ -236,7 +244,11 @@ export class AuthService {
     return user;
   }
 
-  async verifyEmailSignup(dto: VerifyEmailDto, mobile = false) {
+  async verifyEmailSignup(
+    dto: VerifyEmailDto,
+    mobile = false,
+    meta: AuthSessionClientMeta = {},
+  ) {
     const user = await this.resolveEmailVerificationChallenge(
       dto.challengeToken,
     );
@@ -286,7 +298,7 @@ export class AuthService {
       where: { id: user.id },
       data: { emailVerified: true },
     });
-    return this.buildAuthResponse(updated, mobile);
+    return this.buildAuthResponse(updated, mobile, meta);
   }
 
   async resendEmailVerification(dto: ResendEmailVerificationDto) {
@@ -306,10 +318,23 @@ export class AuthService {
   // registered addresses one request at a time.
   async forgotPassword(dto: ForgotPasswordDto) {
     const email = dto.email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    // Primary inbox or a verified recovery address both work — the OTP is
+    // always delivered to whichever address the caller typed so they can
+    // finish the reset without needing the locked-out primary mailbox.
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          {
+            recoveryEmail: email,
+            recoveryEmailVerifiedAt: { not: null },
+          },
+        ],
+      },
+    });
     if (user && user.passwordHash) {
       try {
-        await this.issuePasswordResetCode(user.id, user.email);
+        await this.issuePasswordResetCode(user.id, email);
       } catch (err) {
         // Don't let a mail/DB failure turn into a 500 for existing accounts
         // only — that would reveal which emails are registered. Log it so
@@ -358,7 +383,17 @@ export class AuthService {
 
   async resetPassword(dto: ResetPasswordDto) {
     const email = dto.email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          {
+            recoveryEmail: email,
+            recoveryEmailVerifiedAt: { not: null },
+          },
+        ],
+      },
+    });
     if (!user) {
       throw new UnauthorizedException('Invalid or expired code');
     }
@@ -398,6 +433,7 @@ export class AuthService {
       where: { id: user.id },
       data: { passwordHash, tokenVersion: { increment: 1 } },
     });
+    await this.markAllSessionsRevoked(user.id);
 
     return { success: true as const };
   }
@@ -416,7 +452,11 @@ export class AuthService {
     );
   }
 
-  async login(dto: LoginDto, mobile = false) {
+  async login(
+    dto: LoginDto,
+    mobile = false,
+    meta: AuthSessionClientMeta = {},
+  ) {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -446,10 +486,14 @@ export class AuthService {
       return { requiresEmailVerification: true as const, challengeToken };
     }
 
-    return this.completeLoginOrChallenge(user, mobile);
+    return this.completeLoginOrChallenge(user, mobile, meta);
   }
 
-  async googleLogin(dto: GoogleLoginDto, mobile = false) {
+  async googleLogin(
+    dto: GoogleLoginDto,
+    mobile = false,
+    meta: AuthSessionClientMeta = {},
+  ) {
     // Anything that goes wrong here — a malformed/garbage token, an expired
     // one, or even a transient failure fetching Google's verification certs —
     // is something the caller should see as "couldn't verify your Google
@@ -586,7 +630,7 @@ export class AuthService {
       }
     }
 
-    const auth = await this.completeLoginOrChallenge(user, mobile);
+    const auth = await this.completeLoginOrChallenge(user, mobile, meta);
     if (passwordEmailSent && 'accessToken' in auth) {
       return { ...auth, passwordEmailSent: true as const };
     }
@@ -628,16 +672,29 @@ export class AuthService {
 
   // 2FA is a property of the account, not the login method — applies the
   // same way whether credentials came from a password or Google.
-  private async completeLoginOrChallenge(user: User, mobile = false) {
+  private async completeLoginOrChallenge(
+    user: User,
+    mobile = false,
+    meta: AuthSessionClientMeta = {},
+  ) {
     // Every sign-in funnels through here — password, Google, and the second
     // leg of 2FA — so this is the one place that cannot be bypassed by
     // reaching the app through a different door.
     this.assertNotBlocked(user);
-    if (!user.twoFactorEnabled) {
-      return this.buildAuthResponse(user, mobile);
+    // Self-service deactivate is cleared on the next successful sign-in —
+    // that is the reactivate path (no separate "reactivate" button).
+    let active = user;
+    if (user.deactivatedAt) {
+      active = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { deactivatedAt: null },
+      });
+    }
+    if (!active.twoFactorEnabled) {
+      return this.buildAuthResponse(active, mobile, meta);
     }
     const payload: TwoFactorChallengePayload = {
-      sub: user.id,
+      sub: active.id,
       purpose: '2fa-challenge',
     };
     const challengeToken = await this.jwtService.signAsync(payload, {
@@ -646,7 +703,11 @@ export class AuthService {
     return { requiresTwoFactor: true as const, challengeToken };
   }
 
-  async verifyTwoFactorLogin(dto: TwoFactorVerifyDto, mobile = false) {
+  async verifyTwoFactorLogin(
+    dto: TwoFactorVerifyDto,
+    mobile = false,
+    meta: AuthSessionClientMeta = {},
+  ) {
     let payload: TwoFactorChallengePayload;
     try {
       payload = await this.jwtService.verifyAsync<TwoFactorChallengePayload>(
@@ -677,7 +738,7 @@ export class AuthService {
         where: { id: user.id },
         data: { lastTotpStep: result.step },
       });
-      return this.buildAuthResponse(updated, mobile);
+      return this.buildAuthResponse(updated, mobile, meta);
     }
 
     if (dto.backupCode) {
@@ -695,7 +756,7 @@ export class AuthService {
         where: { id: user.id },
         data: { twoFactorBackupCodeHashes: remaining },
       });
-      return this.buildAuthResponse(updated, mobile);
+      return this.buildAuthResponse(updated, mobile, meta);
     }
 
     throw new BadRequestException('A code or backup code is required');
@@ -808,7 +869,12 @@ export class AuthService {
     return { success: true };
   }
 
-  async changePassword(userId: string, dto: ChangePasswordDto, mobile = false) {
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+    mobile = false,
+    meta: AuthSessionClientMeta = {},
+  ) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
@@ -833,8 +899,9 @@ export class AuthService {
       where: { id: userId },
       data: { passwordHash, tokenVersion: { increment: 1 } },
     });
+    await this.markAllSessionsRevoked(userId);
 
-    return this.buildAuthResponse(updated, mobile);
+    return this.buildAuthResponse(updated, mobile, meta);
   }
 
   // `exp` is always present in practice — it comes from the verified JWT
@@ -850,10 +917,304 @@ export class AuthService {
     const expiresAt = exp
       ? new Date(exp * 1000)
       : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    await this.prisma.revokedToken.upsert({
-      where: { jti },
-      create: { jti, expiresAt },
-      update: {},
+    await this.prisma.$transaction([
+      this.prisma.revokedToken.upsert({
+        where: { jti },
+        create: { jti, expiresAt },
+        update: {},
+      }),
+      this.prisma.authSession.updateMany({
+        where: { jti, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+  }
+
+  async listSessions(
+    userId: string,
+    currentJti: string,
+    currentExp?: number,
+    meta: AuthSessionClientMeta = {},
+  ) {
+    const now = new Date();
+    let rows = await this.prisma.authSession.findMany({
+      where: {
+        userId,
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
+      orderBy: [{ trusted: 'desc' }, { lastSeenAt: 'desc' }],
+    });
+
+    // Tokens minted before AuthSession existed still need a row so "This
+    // device" shows up the first time Account Settings opens Sessions.
+    let current = rows.find((row) => row.jti === currentJti);
+    if (!current && currentJti) {
+      const expiresAt = currentExp
+        ? new Date(currentExp * 1000)
+        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      current = await this.prisma.authSession.create({
+        data: {
+          userId,
+          jti: currentJti,
+          deviceName: meta.deviceName?.trim().slice(0, 120) || null,
+          platform: meta.platform?.trim().slice(0, 40) || null,
+          userAgent: meta.userAgent?.trim().slice(0, 400) || null,
+          ip: meta.ip?.trim().slice(0, 64) || null,
+          expiresAt,
+          lastSeenAt: now,
+        },
+      });
+      rows = [current, ...rows];
+    } else if (current) {
+      // Touch current session so "last active" stays meaningful without a
+      // per-request write on every API call.
+      await this.prisma.authSession.update({
+        where: { id: current.id },
+        data: { lastSeenAt: now },
+      });
+      current.lastSeenAt = now;
+    }
+
+    return {
+      sessions: rows.map((row) => ({
+        id: row.id,
+        deviceName: row.deviceName,
+        platform: row.platform,
+        ip: row.ip,
+        trusted: row.trusted,
+        current: row.jti === currentJti,
+        createdAt: row.createdAt.toISOString(),
+        lastSeenAt: row.lastSeenAt.toISOString(),
+        expiresAt: row.expiresAt.toISOString(),
+      })),
+    };
+  }
+
+  async revokeSession(userId: string, sessionId: string, currentJti: string) {
+    const session = await this.prisma.authSession.findFirst({
+      where: { id: sessionId, userId, revokedAt: null },
+    });
+    if (!session) {
+      throw new BadRequestException('Session not found');
+    }
+    if (session.jti === currentJti) {
+      throw new BadRequestException(
+        'Use Log out to end the session on this device',
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.revokedToken.upsert({
+        where: { jti: session.jti },
+        create: { jti: session.jti, expiresAt: session.expiresAt },
+        update: {},
+      }),
+      this.prisma.authSession.update({
+        where: { id: session.id },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    return { success: true as const };
+  }
+
+  async revokeOtherSessions(userId: string, currentJti: string) {
+    const others = await this.prisma.authSession.findMany({
+      where: {
+        userId,
+        revokedAt: null,
+        NOT: { jti: currentJti },
+      },
+    });
+    if (others.length === 0) {
+      return { success: true as const, revoked: 0 };
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction([
+      ...others.map((session) =>
+        this.prisma.revokedToken.upsert({
+          where: { jti: session.jti },
+          create: { jti: session.jti, expiresAt: session.expiresAt },
+          update: {},
+        }),
+      ),
+      this.prisma.authSession.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+          NOT: { jti: currentJti },
+        },
+        data: { revokedAt: now },
+      }),
+    ]);
+
+    return { success: true as const, revoked: others.length };
+  }
+
+  async setSessionTrust(userId: string, sessionId: string, trusted: boolean) {
+    const session = await this.prisma.authSession.findFirst({
+      where: {
+        id: sessionId,
+        userId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+    if (!session) {
+      throw new BadRequestException('Session not found');
+    }
+
+    const updated = await this.prisma.authSession.update({
+      where: { id: session.id },
+      data: { trusted },
+    });
+
+    return {
+      id: updated.id,
+      trusted: updated.trusted,
+    };
+  }
+
+  async getRecoveryEmail(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        recoveryEmail: true,
+        recoveryEmailVerifiedAt: true,
+      },
+    });
+    return {
+      recoveryEmail: user.recoveryEmail,
+      verified: !!user.recoveryEmailVerifiedAt,
+      verifiedAt: user.recoveryEmailVerifiedAt?.toISOString() ?? null,
+    };
+  }
+
+  async requestRecoveryEmail(userId: string, rawEmail: string) {
+    const email = rawEmail.trim().toLowerCase();
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (email === user.email) {
+      throw new BadRequestException(
+        'Recovery email must be different from your sign-in email',
+      );
+    }
+
+    const taken = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          {
+            recoveryEmail: email,
+            recoveryEmailVerifiedAt: { not: null },
+            NOT: { id: userId },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    if (taken) {
+      throw new ConflictException('That email is already in use');
+    }
+
+    await this.issueRecoveryEmailCode(userId, email);
+    return { success: true as const, email };
+  }
+
+  async verifyRecoveryEmail(userId: string, code: string) {
+    const record = await this.prisma.recoveryEmailCode.findUnique({
+      where: { userId },
+    });
+    if (!record || record.expiresAt < new Date()) {
+      throw new UnauthorizedException(
+        'That code has expired — request a new one',
+      );
+    }
+    if (record.attempts >= MAX_EMAIL_OTP_ATTEMPTS) {
+      await this.prisma.recoveryEmailCode.delete({ where: { userId } });
+      throw new UnauthorizedException(
+        'Too many incorrect attempts — request a new code',
+      );
+    }
+
+    const matches = await bcrypt.compare(code, record.codeHash);
+    if (!matches) {
+      await this.prisma.recoveryEmailCode.update({
+        where: { userId },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('Invalid code');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          recoveryEmail: record.email,
+          recoveryEmailVerifiedAt: new Date(),
+        },
+      }),
+      this.prisma.recoveryEmailCode.delete({ where: { userId } }),
+    ]);
+
+    return {
+      recoveryEmail: record.email,
+      verified: true as const,
+      verifiedAt: new Date().toISOString(),
+    };
+  }
+
+  async clearRecoveryEmail(userId: string) {
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          recoveryEmail: null,
+          recoveryEmailVerifiedAt: null,
+        },
+      }),
+      this.prisma.recoveryEmailCode.deleteMany({ where: { userId } }),
+    ]);
+    return { success: true as const };
+  }
+
+  private async issueRecoveryEmailCode(userId: string, email: string) {
+    const existing = await this.prisma.recoveryEmailCode.findUnique({
+      where: { userId },
+      select: { expiresAt: true },
+    });
+    if (existing) {
+      const lastSentAt =
+        existing.expiresAt.getTime() - EMAIL_OTP_TTL_MINUTES * 60 * 1000;
+      const sinceLastSend = Date.now() - lastSentAt;
+      if (sinceLastSend < EMAIL_OTP_RESEND_COOLDOWN_SECONDS * 1000) {
+        throw new ConflictException(
+          'A code was just sent to this email — please wait before requesting another.',
+        );
+      }
+    }
+
+    const code = generateEmailOtp();
+    const codeHash = await bcrypt.hash(code, EMAIL_OTP_BCRYPT_SALT_ROUNDS);
+    const expiresAt = new Date(Date.now() + EMAIL_OTP_TTL_MINUTES * 60 * 1000);
+
+    await this.prisma.recoveryEmailCode.upsert({
+      where: { userId },
+      create: { userId, email, codeHash, expiresAt },
+      update: { email, codeHash, expiresAt, attempts: 0 },
+    });
+
+    await this.mailerService.sendRecoveryEmailOtp(email, code);
+  }
+
+  private async markAllSessionsRevoked(userId: string) {
+    await this.prisma.authSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
     });
   }
 
@@ -894,7 +1255,11 @@ export class AuthService {
     };
   }
 
-  private async buildAuthResponse(user: User, mobile = false) {
+  private async buildAuthResponse(
+    user: User,
+    mobile = false,
+    meta: AuthSessionClientMeta = {},
+  ) {
     const session = await this.currentSession(user.id);
 
     const payload = {
@@ -915,6 +1280,25 @@ export class AuthService {
           expiresIn: MOBILE_ACCESS_TOKEN_EXPIRES_IN,
         })
       : await this.jwtService.signAsync(payload);
+
+    const decoded = this.jwtService.decode(accessToken) as {
+      exp?: number;
+    } | null;
+    const expiresAt = decoded?.exp
+      ? new Date(decoded.exp * 1000)
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    await this.prisma.authSession.create({
+      data: {
+        userId: user.id,
+        jti: payload.jti,
+        deviceName: meta.deviceName?.trim().slice(0, 120) || null,
+        platform: meta.platform?.trim().slice(0, 40) || null,
+        userAgent: meta.userAgent?.trim().slice(0, 400) || null,
+        ip: meta.ip?.trim().slice(0, 64) || null,
+        expiresAt,
+      },
+    });
 
     return {
       accessToken,

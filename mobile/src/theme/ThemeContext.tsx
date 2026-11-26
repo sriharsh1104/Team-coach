@@ -6,24 +6,30 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import { Platform } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 import {
   ThemeColors,
   ThemeId,
+  ThemePreference,
   getThemeColors,
+  resolveThemeId,
   setThemeId as setGlobalThemeId,
 } from '../theme';
 
 const THEME_STORAGE_KEY = 'team-coach.themeId';
 
 type ThemeContextValue = {
+  /** User's stored choice (may be Automatic). */
+  preference: ThemePreference;
+  /** Resolved palette — never `system`. */
   themeId: ThemeId;
   colors: ThemeColors;
-  setTheme: (id: ThemeId) => void;
+  setTheme: (id: ThemePreference) => void;
   ready: boolean;
 };
 
 const ThemeContext = createContext<ThemeContextValue>({
+  preference: 'black',
   themeId: 'black',
   colors: getThemeColors('black'),
   setTheme: () => undefined,
@@ -35,20 +41,32 @@ function readNativeStore() {
   return require('expo-secure-store') as typeof import('expo-secure-store');
 }
 
-async function loadThemeId(): Promise<ThemeId> {
+function parsePreference(raw: string | null): ThemePreference | null {
+  if (
+    raw === 'white' ||
+    raw === 'lavender' ||
+    raw === 'black' ||
+    raw === 'system'
+  ) {
+    return raw;
+  }
+  return null;
+}
+
+async function loadThemePreference(): Promise<ThemePreference> {
   try {
     const raw =
       Platform.OS === 'web'
         ? localStorage.getItem(THEME_STORAGE_KEY)
         : await readNativeStore().getItemAsync(THEME_STORAGE_KEY);
-    if (raw === 'white' || raw === 'lavender' || raw === 'black') return raw;
+    return parsePreference(raw) ?? 'black';
   } catch {
     /* ignore */
   }
   return 'black';
 }
 
-async function persistThemeId(id: ThemeId) {
+async function persistThemePreference(id: ThemePreference) {
   try {
     if (Platform.OS === 'web') {
       localStorage.setItem(THEME_STORAGE_KEY, id);
@@ -64,15 +82,16 @@ async function persistThemeId(id: ThemeId) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeIdState] = useState<ThemeId>('black');
+  const colorScheme = useColorScheme();
+  const [preference, setPreferenceState] =
+    useState<ThemePreference>('black');
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    void loadThemeId().then((id) => {
+    void loadThemePreference().then((id) => {
       if (cancelled) return;
-      setGlobalThemeId(id);
-      setThemeIdState(id);
+      setPreferenceState(id);
       setReady(true);
     });
     return () => {
@@ -80,20 +99,26 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const setTheme = useCallback((id: ThemeId) => {
-    setGlobalThemeId(id);
-    setThemeIdState(id);
-    void persistThemeId(id);
+  const themeId = resolveThemeId(preference, colorScheme);
+
+  useEffect(() => {
+    setGlobalThemeId(themeId);
+  }, [themeId]);
+
+  const setTheme = useCallback((id: ThemePreference) => {
+    setPreferenceState(id);
+    void persistThemePreference(id);
   }, []);
 
   const value = useMemo(
     () => ({
+      preference,
       themeId,
       colors: getThemeColors(themeId),
       setTheme,
       ready,
     }),
-    [themeId, setTheme, ready],
+    [preference, themeId, setTheme, ready],
   );
 
   return (

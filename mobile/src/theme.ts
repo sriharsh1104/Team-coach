@@ -2,6 +2,9 @@
 
 export type ThemeId = 'black' | 'white' | 'lavender';
 
+/** Stored user choice — `system` follows the OS light/dark setting. */
+export type ThemePreference = ThemeId | 'system';
+
 export type ThemeColors = {
   bg: string;
   surface: string;
@@ -23,6 +26,7 @@ export type ThemeColors = {
   statusBar: 'light' | 'dark';
 };
 
+/** Fixed palettes only — used by style tests that need a real color map. */
 export const THEME_OPTIONS: Array<{
   id: ThemeId;
   label: string;
@@ -32,6 +36,25 @@ export const THEME_OPTIONS: Array<{
   { id: 'white', label: 'White', swatch: '#f4f4f7' },
   { id: 'lavender', label: 'Lavender', swatch: '#ebe4f5' },
 ];
+
+/** Picker rows in Settings — Automatic first, then the fixed palettes. */
+export const THEME_PREFERENCE_OPTIONS: Array<{
+  id: ThemePreference;
+  label: string;
+  swatch: string;
+}> = [
+  { id: 'system', label: 'Automatic', swatch: '#6b7280' },
+  ...THEME_OPTIONS,
+];
+
+/** Map a stored preference + OS scheme onto a concrete palette. */
+export function resolveThemeId(
+  preference: ThemePreference,
+  colorScheme: 'light' | 'dark' | null | undefined,
+): ThemeId {
+  if (preference !== 'system') return preference;
+  return colorScheme === 'light' ? 'white' : 'black';
+}
 
 const PALETTES: Record<ThemeId, ThemeColors> = {
   black: {

@@ -24,6 +24,8 @@ export interface AuthUser {
    * BOTH people server-side, so a faked flag here reaches nobody.
    */
   canDirectVoice?: boolean;
+  recoveryEmail?: string | null;
+  recoveryEmailVerified?: boolean;
 }
 
 export interface OrgSummary {
@@ -197,6 +199,18 @@ export interface Device {
   model: string;
 }
 
+export type GameId = 'FREE_FIRE' | 'BGMI' | 'MOBILE_LEGENDS' | 'LOL';
+
+export interface GameProfile {
+  game: GameId | string;
+  inGameName: string | null;
+  inGameUid: string | null;
+  role: string | null;
+  /** Own profile only — peers get redacted values instead. */
+  showNameToMembers?: boolean;
+  showUidToMembers?: boolean;
+}
+
 export interface Profile {
   id: string;
   name: string;
@@ -212,10 +226,32 @@ export interface Profile {
   discordUrl: string | null;
   youtubeUrl: string | null;
   kickUrl: string | null;
+  /** Present on /users/me — what teammates can see. Omitted on peer profiles. */
+  showPhoneToMembers?: boolean;
+  showWhatsappToMembers?: boolean;
+  showInstagramToMembers?: boolean;
+  showDiscordToMembers?: boolean;
+  showYoutubeToMembers?: boolean;
+  showKickToMembers?: boolean;
+  /** Per-title IGN / UID / role. Free Fire is also mirrored on the fields above. */
+  gameProfiles?: GameProfile[];
   devices: Device[];
   // Org role/ownership — null when viewed somewhere with no org context.
   role: MembershipRole | null;
   isOwner: boolean;
+}
+
+export interface UpsertGameProfileInput {
+  game: GameId;
+  inGameName?: string | null;
+  inGameUid?: string | null;
+  role?: string | null;
+}
+
+export interface GameProfileVisibilityInput {
+  game: GameId;
+  showNameToMembers?: boolean;
+  showUidToMembers?: boolean;
 }
 
 export interface UpdateProfileInput {
@@ -230,6 +266,12 @@ export interface UpdateProfileInput {
   discordUrl?: string;
   youtubeUrl?: string;
   kickUrl?: string;
+  showPhoneToMembers?: boolean;
+  showWhatsappToMembers?: boolean;
+  showInstagramToMembers?: boolean;
+  showDiscordToMembers?: boolean;
+  showYoutubeToMembers?: boolean;
+  showKickToMembers?: boolean;
 }
 
 export interface OrgCreateJoinResponse {

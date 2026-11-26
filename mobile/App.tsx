@@ -12,6 +12,7 @@ import { LoaderProvider } from './src/ui/SesLoader';
 import { ToastProvider } from './src/ui/Toast';
 import { ConfirmModalHost } from './src/ui/ConfirmModal';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { DateTimeFormatProvider } from './src/datetime/DateTimeFormatContext';
 import { RecordingProvider } from './src/recording/RecordingContext';
 import { RecordingWidget } from './src/recording/RecordingWidget';
 import { LiveProvider } from './src/live/LiveContext';
@@ -109,7 +110,9 @@ export default function App() {
     <SafeAreaProvider>
       <AppErrorBoundary>
         <ThemeProvider>
-          <AppShell />
+          <DateTimeFormatProvider>
+            <AppShell />
+          </DateTimeFormatProvider>
         </ThemeProvider>
       </AppErrorBoundary>
     </SafeAreaProvider>

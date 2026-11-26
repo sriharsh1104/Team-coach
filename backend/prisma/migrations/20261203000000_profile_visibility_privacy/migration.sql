@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "showPhoneToMembers" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN "showWhatsappToMembers" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "User" ADD COLUMN "showInstagramToMembers" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "User" ADD COLUMN "showDiscordToMembers" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "User" ADD COLUMN "showYoutubeToMembers" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "User" ADD COLUMN "showKickToMembers" BOOLEAN NOT NULL DEFAULT true;

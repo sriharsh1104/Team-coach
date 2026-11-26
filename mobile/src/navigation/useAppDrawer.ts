@@ -169,27 +169,6 @@ export function useOrgDrawer() {
 
     sections.push(trackerDrawerSection(navigation, 'OrgHome'));
 
-    sections.push({
-      key: 'account',
-      label: 'Account',
-      split: true,
-      items: [
-        {
-          key: 'profile',
-          label: 'Profile',
-          icon: 'person-outline' as const,
-          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Profile' }),
-        },
-        {
-          key: 'socialHandles',
-          label: 'Social Handles',
-          icon: 'share-social-outline' as const,
-          onPress: () =>
-            goToSection(navigation, 'OrgHome', { screen: 'SocialHandles' }),
-        },
-      ],
-    });
-
     if (isAdmin) {
       sections.push({
         key: 'platform',
@@ -279,26 +258,6 @@ export function useGuildDrawer() {
         ],
       },
       trackerDrawerSection(navigation, 'GuildHome'),
-      {
-        key: 'account',
-        label: 'Account',
-        split: true,
-        items: [
-          {
-            key: 'profile',
-            label: 'Profile',
-            icon: 'person-outline' as const,
-            onPress: () => goToSection(navigation, 'GuildHome', { screen: 'Profile' }),
-          },
-          {
-            key: 'socialHandles',
-            label: 'Social Handles',
-            icon: 'share-social-outline' as const,
-            onPress: () =>
-              goToSection(navigation, 'GuildHome', { screen: 'SocialHandles' }),
-          },
-        ],
-      },
     ];
     if (isAdmin) {
       base.push({
@@ -360,12 +319,6 @@ export function useAdminDrawer() {
           label: 'Account',
           split: true,
           items: [
-            {
-              key: 'profile',
-              label: 'Profile',
-              icon: 'person-outline' as const,
-              onPress: () => navigation.navigate('Profile'),
-            },
             {
               key: 'settings',
               label: 'Settings',

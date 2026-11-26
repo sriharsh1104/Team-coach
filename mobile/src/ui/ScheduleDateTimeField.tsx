@@ -10,17 +10,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ThemeColors } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
-
-function formatSchedule(date: Date) {
-  return date.toLocaleString(undefined, {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
+import { useDateTimeFormat } from '../datetime/DateTimeFormatContext';
 
 function toLocalDateInputValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -61,6 +51,7 @@ export function ScheduleDateTimeField({
   onChange: (next: Date) => void;
 }) {
   const styles = useThemedStyles(scheduleFieldStyles);
+  const { formatDateTime } = useDateTimeFormat();
   const [showDate, setShowDate] = useState(false);
   const [hourText, setHourText] = useState(String(hour12Of(value)));
   const [minuteText, setMinuteText] = useState(String(value.getMinutes()).padStart(2, '0'));
@@ -196,7 +187,7 @@ export function ScheduleDateTimeField({
         </View>
       </View>
 
-      <Text style={styles.hint}>{formatSchedule(value)}</Text>
+      <Text style={styles.hint}>{formatDateTime(value)}</Text>
     </View>
   );
 }

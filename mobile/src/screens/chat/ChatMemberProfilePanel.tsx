@@ -7,8 +7,9 @@ import {
   View,
 } from 'react-native';
 import * as usersApi from '../../api/users';
-import { Profile } from '../../api/types';
+import { GameProfile, Profile } from '../../api/types';
 import { roleLabel } from '../../api/roles';
+import { gameLabel, gameRoleLabel } from '../../api/profileGames';
 import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { CopyableField } from '../profile/CopyableField';
@@ -65,8 +66,23 @@ export function ChatMemberProfilePanel({
   const roleBadge = profile
     ? formatRoleBadge(profile.role, profile.isOwner)
     : null;
-  const inGameRole =
-    profile && profile.roles.length > 0
+  const games: GameProfile[] = !profile
+    ? []
+    : profile.gameProfiles && profile.gameProfiles.length > 0
+      ? profile.gameProfiles
+      : profile.inGameName || profile.inGameUid || profile.roles[0]
+        ? [
+            {
+              game: 'FREE_FIRE',
+              inGameName: profile.inGameName,
+              inGameUid: profile.inGameUid,
+              role: profile.roles[0] ?? null,
+            },
+          ]
+        : [];
+  const headerRole = games[0]?.role
+    ? gameRoleLabel(games[0].role)
+    : profile && profile.roles.length > 0
       ? profile.roles.map((r) => roleLabel(r)).join(', ')
       : null;
   const socials = profile
@@ -104,19 +120,38 @@ export function ChatMemberProfilePanel({
                 {displayName}
               </Text>
               {roleBadge ? <Text style={styles.badge}>{roleBadge}</Text> : null}
-              {inGameRole ? (
-                <Text style={styles.inGameRole}>{inGameRole}</Text>
+              {headerRole ? (
+                <Text style={styles.inGameRole}>{headerRole}</Text>
               ) : (
                 <Text style={styles.muted}>No in-game role set yet</Text>
               )}
             </View>
           </View>
 
-          {profile.inGameName ? (
-            <CopyableField label="In-Game Name (IGN)" value={profile.inGameName} />
-          ) : null}
-          {profile.inGameUid ? (
-            <CopyableField label="UID" value={profile.inGameUid} />
+          {games.map((row) => (
+            <View key={row.game} style={{ marginBottom: 8 }}>
+              <Text style={styles.section}>{gameLabel(row.game)}</Text>
+              {row.role ? (
+                <Text style={styles.inGameRole}>{gameRoleLabel(row.role)}</Text>
+              ) : null}
+              {row.inGameName ? (
+                <CopyableField label="In-Game Name (IGN)" value={row.inGameName} />
+              ) : null}
+              {row.inGameUid ? (
+                <CopyableField
+                  label={row.game === 'LOL' ? 'Riot ID / UID' : 'UID'}
+                  value={row.inGameUid}
+                />
+              ) : null}
+            </View>
+          ))}
+          {profile.phone ? (
+            <CopyableField
+              label={
+                profile.phoneVerifiedAt ? 'Phone (verified)' : 'Phone'
+              }
+              value={profile.phone}
+            />
           ) : null}
 
           <Text style={styles.section}>Social Links</Text>

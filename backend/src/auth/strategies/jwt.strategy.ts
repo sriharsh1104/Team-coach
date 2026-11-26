@@ -50,7 +50,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         // from the JWT. A token minted before the grant (or after it was
         // revoked) therefore carries no authority of its own — forging the
         // claim achieves nothing because nothing reads it.
-        select: { tokenVersion: true, isPlatformAdmin: true, blockedAt: true },
+        select: {
+          tokenVersion: true,
+          isPlatformAdmin: true,
+          blockedAt: true,
+          deactivatedAt: true,
+        },
       }),
       payload.jti
         ? this.prisma.revokedToken.findUnique({ where: { jti: payload.jti } })
@@ -66,6 +71,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (user.blockedAt) {
       throw new UnauthorizedException(
         'This account has been blocked by an administrator',
+      );
+    }
+    if (user.deactivatedAt) {
+      throw new UnauthorizedException(
+        'This account is deactivated — sign in again to reactivate',
       );
     }
     return {

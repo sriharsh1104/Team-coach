@@ -130,17 +130,22 @@ describe('PermissionsSection', () => {
     );
 
     // Every row starts "unknown" and settles once the checks come back; four
-    // of the five are granted here, so four rows end up reading "On".
-    await waitFor(() => expect(screen.getAllByText('On')).toHaveLength(4));
+    // of the five are granted here, so four rows offer Turn off (settings).
+    await waitFor(() =>
+      expect(screen.getAllByText('Turn off')).toHaveLength(4),
+    );
 
-    // Camera is the denied one, so it is the only row left with an action.
+    // Camera is the denied one, so it is the only row left with a grant action.
     const grant = screen.getByLabelText('Turn on Camera');
     expect(screen.queryByLabelText('Turn on Microphone')).toBeNull();
+    expect(screen.getByLabelText('Turn off Microphone')).toBeTruthy();
 
     await act(async () => fireEvent.press(grant));
 
     expect(ImagePicker.requestCameraPermissionsAsync).toHaveBeenCalled();
-    // Granting flips that row over to "On" too, without a reload.
-    await waitFor(() => expect(screen.getAllByText('On')).toHaveLength(5));
+    // Granting flips that row over to Turn off too, without a reload.
+    await waitFor(() =>
+      expect(screen.getAllByText('Turn off')).toHaveLength(5),
+    );
   });
 });

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { ROLE_OPTIONS, ROLE_LABELS, RoleOption } from '../../api/roles';
+import { ROLE_OPTIONS, ROLE_LABELS } from '../../api/roles';
+import { gameRoleLabel } from '../../api/profileGames';
 import { ThemeColors } from '../../theme';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SoftPressable } from '../../ui/SoftPressable';
@@ -9,15 +10,21 @@ export function RoleChips({
   selected,
   onToggle,
   editable = true,
+  options = ROLE_OPTIONS as readonly string[],
 }: {
   selected: string[];
-  onToggle?: (role: RoleOption) => void;
+  onToggle?: (role: string) => void;
   editable?: boolean;
+  /** Defaults to Free Fire roles; pass GAME_ROLE_OPTIONS[game] for other titles. */
+  options?: readonly string[];
 }) {
   const styles = useThemedStyles(roleChipStyles);
   const roles = editable
-    ? ROLE_OPTIONS
-    : ROLE_OPTIONS.filter((role) => selected.includes(role));
+    ? options
+    : options.filter((role) => selected.includes(role));
+
+  const labelFor = (role: string) =>
+    (ROLE_LABELS as Record<string, string>)[role] ?? gameRoleLabel(role);
 
   return (
     <View style={staticStyles.wrap}>
@@ -32,7 +39,7 @@ export function RoleChips({
             pressScale={0.96}
           >
             <Text style={isActive ? styles.pillTextActive : styles.pillText}>
-              {ROLE_LABELS[role]}
+              {labelFor(role)}
             </Text>
           </SoftPressable>
         );

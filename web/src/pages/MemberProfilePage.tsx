@@ -55,7 +55,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Read-only teammate profile: game, devices, social — never phone/email. */
+/** Read-only teammate profile: game, devices, social — phone only if they opted in. */
 export function MemberProfilePage() {
   const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
@@ -147,6 +147,12 @@ export function MemberProfilePage() {
           {profile.inGameUid ? (
             <CopyRow label="UID" value={profile.inGameUid} />
           ) : null}
+          {profile.phone ? (
+            <CopyRow
+              label={profile.phoneVerifiedAt ? 'Phone (verified)' : 'Phone'}
+              value={profile.phone}
+            />
+          ) : null}
           {!profile.inGameName && !profile.inGameUid ? (
             <p className="muted">No IGN / UID yet</p>
           ) : null}
@@ -196,7 +202,8 @@ export function MemberProfilePage() {
         </section>
 
         <p className="muted">
-          Phone and email stay private.{' '}
+          Email stays private. Phone and social links follow each member&apos;s
+          privacy settings.{' '}
           <Link to="/profile">Edit your own profile</Link>
         </p>
       </div>

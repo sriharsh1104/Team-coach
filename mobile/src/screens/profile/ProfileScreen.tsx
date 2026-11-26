@@ -9,8 +9,15 @@ import {
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as usersApi from '../../api/users';
-import { Profile } from '../../api/types';
-import { ROLE_OPTIONS, RoleOption } from '../../api/roles';
+import { GameProfile, Profile } from '../../api/types';
+import {
+  GAME_OPTIONS,
+  GAME_ROLE_OPTIONS,
+  GameId,
+  gameLabel,
+  gameRoleLabel,
+  sanitizeGameUid,
+} from '../../api/profileGames';
 import { RoleChips } from './RoleChips';
 import { TelegramPhoneVerify } from './TelegramPhoneVerify';
 import { CopyableInput } from './CopyableInput';
@@ -49,7 +56,14 @@ function isFormComplete(inGameName: string, inGameUid: string) {
   return !!(inGameName.trim() && inGameUid.trim());
 }
 
-export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean } = {}) {
+export function ProfileScreen({
+  mustComplete = false,
+  route,
+}: {
+  mustComplete?: boolean;
+  /** Passed by the stack navigator; Settings → Edit sets `edit: true`. */
+  route?: { params?: { edit?: boolean } };
+} = {}) {
   const shared = useSharedStyles();
   const { refreshUser } = useAuth();
   const { colors } = useTheme();
@@ -59,6 +73,8 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
   const [isLoading, setIsLoading] = useState(true);
   const { tab, openTab } = useBookTabs(PROFILE_TAB_IDS, 'user');
   const profileTab = tab as ProfileTab;
+  // Settings hub Edit should land in the form, not a second Edit tap.
+  const startEditing = mustComplete || !!route?.params?.edit;
 
   const load = useCallback(async () => {
     const data = await usersApi.getMyProfile();
@@ -227,6 +243,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
             <UserProfileSection
               profile={profile}
               mustComplete={mustComplete}
+              startEditing={startEditing}
               onUpdated={onProfileUpdated}
               onAdvance={() => openTab('game')}
               showToast={showToast}
@@ -235,6 +252,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
             <GameProfileSection
               profile={profile}
               mustComplete={mustComplete}
+              startEditing={startEditing}
               onUpdated={onProfileUpdated}
               onAdvance={() => openTab('devices')}
               showToast={showToast}
@@ -251,6 +269,7 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
             <SocialProfileSection
               profile={profile}
               mustComplete={mustComplete}
+              startEditing={startEditing}
               onUpdated={onProfileUpdated}
               onAdvance={async () => {
                 await refreshUser();
@@ -268,12 +287,14 @@ export function ProfileScreen({ mustComplete = false }: { mustComplete?: boolean
 function UserProfileSection({
   profile,
   mustComplete,
+  startEditing,
   onUpdated,
   onAdvance,
   showToast,
 }: {
   profile: Profile;
   mustComplete: boolean;
+  startEditing: boolean;
   onUpdated: (updated: Profile) => void | Promise<void>;
   onAdvance?: () => void;
   showToast: (message: string) => void;
@@ -282,7 +303,7 @@ function UserProfileSection({
   const { user } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(profileStyles);
-  const [isEditing, setIsEditing] = useState(mustComplete);
+  const [isEditing, setIsEditing] = useState(startEditing);
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState(profile.name);
   // The phone is not part of this form: it is optional and set only through
@@ -373,20 +394,57 @@ function UserProfileSection({
   );
 }
 
-function knownRolesOnly(roles: string[]): string[] {
-  const allowed = new Set<string>(ROLE_OPTIONS);
-  return roles.filter((r) => allowed.has(r));
+function profileForGame(
+  profile: Profile,
+  game: GameId,
+): { inGameName: string; inGameUid: string; role: string | null } {
+  const row = (profile.gameProfiles ?? []).find((g) => g.game === game);
+  if (row) {
+    return {
+      inGameName: row.inGameName ?? '',
+      inGameUid: row.inGameUid ?? '',
+      role: row.role,
+    };
+  }
+  // Legacy Free Fire columns still win when the game-profiles list is empty
+  // (pre-migration clients / incomplete backfill).
+  if (game === 'FREE_FIRE') {
+    return {
+      inGameName: profile.inGameName ?? '',
+      inGameUid: profile.inGameUid ?? '',
+      role: profile.roles[0] ?? null,
+    };
+  }
+  return { inGameName: '', inGameUid: '', role: null };
+}
+
+function filledGameProfiles(profile: Profile): GameProfile[] {
+  const fromApi = profile.gameProfiles ?? [];
+  if (fromApi.length > 0) return fromApi;
+  if (profile.inGameName || profile.inGameUid || profile.roles[0]) {
+    return [
+      {
+        game: 'FREE_FIRE',
+        inGameName: profile.inGameName,
+        inGameUid: profile.inGameUid,
+        role: profile.roles[0] ?? null,
+      },
+    ];
+  }
+  return [];
 }
 
 function GameProfileSection({
   profile,
   mustComplete,
+  startEditing,
   onUpdated,
   onAdvance,
   showToast,
 }: {
   profile: Profile;
   mustComplete: boolean;
+  startEditing: boolean;
   onUpdated: (updated: Profile) => void | Promise<void>;
   onAdvance?: () => void;
   showToast: (message: string) => void;
@@ -394,41 +452,73 @@ function GameProfileSection({
   const shared = useSharedStyles();
   const { colors } = useTheme();
   const styles = useThemedStyles(profileStyles);
-  const [isEditing, setIsEditing] = useState(mustComplete);
+  const [isEditing, setIsEditing] = useState(startEditing);
   const [isSaving, setIsSaving] = useState(false);
-  const [roles, setRoles] = useState<string[]>(() =>
-    knownRolesOnly(profile.roles).slice(0, 1),
-  );
-  const [inGameName, setInGameName] = useState(profile.inGameName ?? '');
-  const [inGameUid, setInGameUid] = useState(profile.inGameUid ?? '');
+  const [game, setGame] = useState<GameId>('FREE_FIRE');
+  const initial = profileForGame(profile, 'FREE_FIRE');
+  const [role, setRole] = useState<string | null>(initial.role);
+  const [inGameName, setInGameName] = useState(initial.inGameName);
+  const [inGameUid, setInGameUid] = useState(initial.inGameUid);
 
-  const toggleRole = (role: RoleOption) => {
-    // One game role at a time: IGL, primary, secondary, or any other option.
-    setRoles((prev) => (prev.length === 1 && prev[0] === role ? [] : [role]));
+  const loadGame = (next: GameId) => {
+    const data = profileForGame(profile, next);
+    setGame(next);
+    setRole(data.role);
+    setInGameName(data.inGameName);
+    setInGameUid(data.inGameUid);
   };
 
-  const canSave = !mustComplete || !!(inGameName.trim() && inGameUid.trim());
+  const toggleRole = (next: string) => {
+    setRole((prev) => (prev === next ? null : next));
+  };
+
+  const ffRequired = mustComplete && game === 'FREE_FIRE';
+  const canSave = !ffRequired || !!(inGameName.trim() && inGameUid.trim());
+  const roleOptions = GAME_ROLE_OPTIONS[game];
+  const saved = filledGameProfiles(profile);
 
   const onSave = async () => {
     if (!canSave) return;
     setIsSaving(true);
     try {
-      const updated = await usersApi.updateMyProfile({
-        roles: knownRolesOnly(roles).slice(0, 1),
-        inGameName: inGameName || undefined,
-        inGameUid: inGameUid || undefined,
+      const updated = await usersApi.upsertGameProfile({
+        game,
+        inGameName: inGameName.trim() || null,
+        inGameUid: inGameUid.trim() || null,
+        role,
       });
       await onUpdated(updated);
-      if (mustComplete) {
-        // Required fields done — optional Devices next (web parity).
+      if (mustComplete && game === 'FREE_FIRE') {
         onAdvance?.();
       } else {
         setIsEditing(false);
-        showToast('Saved — your profile was updated.');
+        showToast('Saved — your game profile was updated.');
       }
     } catch (err: any) {
       showToast(
-        err?.response?.data?.message?.toString() ?? 'Could not save. Please try again.',
+        err?.response?.data?.message?.toString() ??
+          'Could not save. Please try again.',
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const onClearOptional = async () => {
+    if (game === 'FREE_FIRE') return;
+    setIsSaving(true);
+    try {
+      const updated = await usersApi.removeGameProfile(game);
+      await onUpdated(updated);
+      setRole(null);
+      setInGameName('');
+      setInGameUid('');
+      setIsEditing(false);
+      showToast(`${gameLabel(game)} cleared`);
+    } catch (err: any) {
+      showToast(
+        err?.response?.data?.message?.toString() ??
+          'Could not clear. Please try again.',
       );
     } finally {
       setIsSaving(false);
@@ -438,25 +528,36 @@ function GameProfileSection({
   if (!isEditing) {
     return (
       <View>
-        {knownRolesOnly(profile.roles).length > 0 ? (
-          <RoleChips
-            selected={knownRolesOnly(profile.roles).slice(0, 1)}
-            editable={false}
-          />
-        ) : (
+        {saved.length === 0 ? (
           <Text style={{ color: colors.textMuted, marginTop: 12, marginBottom: 12 }}>
-            No role set yet
+            No games set yet
           </Text>
+        ) : (
+          saved.map((row) => (
+            <View key={row.game} style={styles.gameBlock}>
+              <Text style={styles.gameTitle}>{gameLabel(row.game)}</Text>
+              {row.role ? (
+                <Text style={styles.gameMeta}>{gameRoleLabel(row.role)}</Text>
+              ) : null}
+              {row.inGameName ? (
+                <CopyableField label="In-Game Name (IGN)" value={row.inGameName} />
+              ) : null}
+              {row.inGameUid ? (
+                <CopyableField
+                  label={row.game === 'LOL' ? 'Riot ID / UID' : 'UID'}
+                  value={row.inGameUid}
+                />
+              ) : null}
+            </View>
+          ))
         )}
-
-        {profile.inGameName && (
-          <CopyableField label="In-Game Name (IGN)" value={profile.inGameName} />
-        )}
-        {profile.inGameUid && <CopyableField label="UID" value={profile.inGameUid} />}
 
         <SoftPressable
           style={styles.editButton}
-          onPress={() => setIsEditing(true)}
+          onPress={() => {
+            loadGame('FREE_FIRE');
+            setIsEditing(true);
+          }}
           pressScale={0.97}
         >
           <ButtonLabel icon="edit" color={colors.link}>
@@ -469,25 +570,61 @@ function GameProfileSection({
 
   return (
     <View>
-      <Text style={staticStyles.sectionLabel}>Role</Text>
-      <RoleChips selected={roles} onToggle={toggleRole} />
+      <Text style={staticStyles.sectionLabel}>Game</Text>
+      <View style={staticStyles.gamePicker}>
+        {GAME_OPTIONS.map((opt) => {
+          const active = game === opt.id;
+          return (
+            <SoftPressable
+              key={opt.id}
+              style={[styles.gameChip, active && styles.gameChipActive]}
+              onPress={() => loadGame(opt.id)}
+              pressScale={0.96}
+            >
+              <Text style={active ? styles.gameChipTextActive : styles.gameChipText}>
+                {opt.label}
+              </Text>
+            </SoftPressable>
+          );
+        })}
+      </View>
+      {game !== 'FREE_FIRE' ? (
+        <Text style={styles.optionalHint}>Optional — add only if you play this title.</Text>
+      ) : mustComplete ? (
+        <Text style={styles.optionalHint}>
+          Free Fire IGN and UID are required to continue.
+        </Text>
+      ) : null}
 
-      <Text style={staticStyles.sectionLabel}>In-Game Name (IGN) {mustComplete ? '*' : ''}</Text>
+      <Text style={staticStyles.sectionLabel}>Role</Text>
+      <RoleChips
+        selected={role ? [role] : []}
+        onToggle={toggleRole}
+        options={roleOptions}
+      />
+
+      <Text style={staticStyles.sectionLabel}>
+        In-Game Name (IGN) {ffRequired ? '*' : ''}
+      </Text>
       <CopyableInput
-        placeholder="Your in-game name"
+        placeholder={
+          game === 'LOL' ? 'Summoner name' : 'Your in-game name'
+        }
         value={inGameName}
         onChangeText={setInGameName}
       />
 
-      <Text style={staticStyles.sectionLabel}>UID {mustComplete ? '*' : ''}</Text>
+      <Text style={staticStyles.sectionLabel}>
+        {game === 'LOL' ? 'Riot ID / UID' : 'UID'} {ffRequired ? '*' : ''}
+      </Text>
       <CopyableInput
-        placeholder="Your in-game UID"
+        placeholder={game === 'LOL' ? 'Name#TAG or account id' : 'Your in-game UID'}
         value={inGameUid}
-        onChangeText={(t) => setInGameUid(t.replace(/\D/g, ''))}
-        keyboardType="number-pad"
-        inputMode="numeric"
+        onChangeText={(t) => setInGameUid(sanitizeGameUid(game, t))}
+        keyboardType={game === 'LOL' ? 'default' : 'number-pad'}
+        inputMode={game === 'LOL' ? 'text' : 'numeric'}
       />
-      {mustComplete && <Text style={styles.requiredHint}>* Required</Text>}
+      {ffRequired ? <Text style={styles.requiredHint}>* Required</Text> : null}
 
       <SoftPressable
         style={[
@@ -498,10 +635,28 @@ function GameProfileSection({
         onPress={onSave}
         pressScale={0.98}
       >
-        <ButtonLabel icon={mustComplete ? 'arrow-forward' : 'save'}>
-          {isSaving ? 'Saving…' : mustComplete ? 'Continue' : 'Save'}
+        <ButtonLabel icon={mustComplete && game === 'FREE_FIRE' ? 'arrow-forward' : 'save'}>
+          {isSaving
+            ? 'Saving…'
+            : mustComplete && game === 'FREE_FIRE'
+              ? 'Continue'
+              : 'Save'}
         </ButtonLabel>
       </SoftPressable>
+
+      {game !== 'FREE_FIRE' &&
+      (role || inGameName.trim() || inGameUid.trim()) ? (
+        <SoftPressable
+          style={[styles.clearGameBtn, isSaving && shared.buttonDisabled]}
+          disabled={isSaving}
+          onPress={() => void onClearOptional()}
+          pressScale={0.98}
+        >
+          <ButtonLabel icon="trash" color={colors.danger}>
+            Clear {gameLabel(game)}
+          </ButtonLabel>
+        </SoftPressable>
+      ) : null}
     </View>
   );
 }
@@ -618,12 +773,14 @@ function DevicesProfileSection({
 function SocialProfileSection({
   profile,
   mustComplete = false,
+  startEditing = false,
   onUpdated,
   onAdvance,
   showToast,
 }: {
   profile: Profile;
   mustComplete?: boolean;
+  startEditing?: boolean;
   onUpdated: (updated: Profile) => void | Promise<void>;
   onAdvance?: () => void | Promise<void>;
   showToast: (message: string) => void;
@@ -631,7 +788,7 @@ function SocialProfileSection({
   const shared = useSharedStyles();
   const { colors } = useTheme();
   const styles = useThemedStyles(profileStyles);
-  const [isEditing, setIsEditing] = useState(mustComplete);
+  const [isEditing, setIsEditing] = useState(startEditing);
   const [isSaving, setIsSaving] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState(profile.whatsappUrl ?? '');
   const [instagramUrl, setInstagramUrl] = useState(profile.instagramUrl ?? '');
@@ -819,6 +976,12 @@ const staticStyles = StyleSheet.create({
     color: '#e8eaed',
     textTransform: 'capitalize',
   },
+  gamePicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
 });
 
 /** Theme-dependent — rebuilt live by useThemedStyles() on every theme change. */
@@ -885,6 +1048,58 @@ function profileStyles(c: ThemeColors) {
       backgroundColor: 'rgba(168,176,255,0.12)',
       paddingVertical: 12,
       marginTop: 20,
+    },
+    gameBlock: {
+      marginBottom: 14,
+      paddingBottom: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    gameTitle: {
+      color: c.text,
+      fontWeight: '700' as const,
+      fontSize: 15,
+      marginBottom: 4,
+    },
+    gameMeta: {
+      color: c.link,
+      fontWeight: '600' as const,
+      fontSize: 13,
+      marginBottom: 6,
+    },
+    gameChip: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      backgroundColor: c.surface,
+    },
+    gameChipActive: {
+      backgroundColor: c.chrome,
+      borderColor: c.chrome,
+    },
+    gameChipText: { color: c.textMuted, fontWeight: '600' as const, fontSize: 13 },
+    gameChipTextActive: {
+      color: c.chromeInk,
+      fontWeight: '700' as const,
+      fontSize: 13,
+    },
+    optionalHint: {
+      color: c.textMuted,
+      fontSize: 12,
+      marginTop: 4,
+      marginBottom: 4,
+      lineHeight: 17,
+    },
+    clearGameBtn: {
+      marginTop: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.danger,
+      paddingVertical: 12,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
     },
   };
 }
