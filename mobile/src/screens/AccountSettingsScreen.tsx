@@ -30,13 +30,14 @@ import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
-import { BookStage, useBookTabs } from '../ui/BookTabs';
+import { AppIcon, AppIconName } from '../ui/AppIcon';
 import { PasswordField } from '../ui/PasswordField';
 import { confirmAsync } from '../ui/confirmAsync';
 import { emitToast } from '../ui/toastBus';
 import { ThemeColors } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { AccountLifecyclePanel } from './AccountLifecycleScreen';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'AccountSettings'>;
 type Tab =
@@ -45,16 +46,70 @@ type Tab =
   | 'biometric'
   | 'privacy'
   | 'sessions'
-  | 'recovery';
+  | 'recovery'
+  | 'danger';
 
-const ACCOUNT_TAB_IDS: Tab[] = [
-  'password',
-  'twoFactor',
-  'biometric',
-  'privacy',
-  'sessions',
-  'recovery',
+const HUB_ITEMS: Array<{
+  id: Tab;
+  label: string;
+  a11y: string;
+  hint: string;
+  icon: AppIconName;
+}> = [
+  {
+    id: 'password',
+    label: 'Password',
+    a11y: 'Change Password',
+    hint: 'Update your sign-in password',
+    icon: 'settings-outline',
+  },
+  {
+    id: 'twoFactor',
+    label: 'Two-Factor Auth',
+    a11y: 'Two-Factor Authentication',
+    hint: 'Authenticator app codes at login',
+    icon: 'shield-outline',
+  },
+  {
+    id: 'biometric',
+    label: 'Biometric Login',
+    a11y: 'Biometric Login',
+    hint: 'Unlock with Face ID or fingerprint',
+    icon: 'person-outline',
+  },
+  {
+    id: 'privacy',
+    label: 'Privacy',
+    a11y: 'Profile Privacy',
+    hint: 'What teammates can see on your profile',
+    icon: 'eye-outline',
+  },
+  {
+    id: 'sessions',
+    label: 'Active Sessions',
+    a11y: 'Active Sessions',
+    hint: 'Devices signed into your account',
+    icon: 'phone-portrait-outline',
+  },
+  {
+    id: 'recovery',
+    label: 'Recovery Email',
+    a11y: 'Recovery Email',
+    hint: 'Backup inbox for password resets',
+    icon: 'share-social-outline',
+  },
+  {
+    id: 'danger',
+    label: 'Delete Or Deactivate',
+    a11y: 'Delete Or Deactivate',
+    hint: 'Pause or permanently remove your account',
+    icon: 'trash-outline',
+  },
 ];
+
+function sectionTitle(id: Tab): string {
+  return HUB_ITEMS.find((item) => item.id === id)?.label ?? 'Account';
+}
 
 type PrivacyFlag = keyof Pick<
   UpdateProfileInput,
@@ -154,8 +209,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useThemedStyles(accountStyles);
   const { formatDateTime } = useDateTimeFormat();
-  const { tab, openTab, turn } = useBookTabs(ACCOUNT_TAB_IDS, 'password');
-  const accountTab = tab as Tab;
+  const [section, setSection] = useState<Tab | null>(null);
 
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricKinds, setBiometricKinds] = useState<BiometricKind[]>([]);
@@ -258,17 +312,17 @@ export function AccountSettingsScreen({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    if (accountTab === 'privacy' && !privacyLoaded) {
+    if (section === 'privacy' && !privacyLoaded) {
       void loadPrivacy();
     }
-    if (accountTab === 'sessions') {
+    if (section === 'sessions') {
       void loadSessions();
     }
-    if (accountTab === 'recovery' && !recoveryLoaded) {
+    if (section === 'recovery' && !recoveryLoaded) {
       void loadRecovery();
     }
   }, [
-    accountTab,
+    section,
     privacyLoaded,
     loadPrivacy,
     loadSessions,
@@ -521,54 +575,122 @@ export function AccountSettingsScreen({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.eyebrow}>Account</Text>
-        <Text style={styles.sectionLabel}>Privacy & Security</Text>
-        <Text style={styles.lead}>
-          Lock down your account, and choose what teammates can see on your
-          profile.
-        </Text>
+        {section == null ? (
+          <>
+            <Text style={styles.eyebrow}>Account</Text>
+            <Text style={styles.sectionLabel}>Account Settings</Text>
+            <Text style={styles.lead}>
+              Password, privacy, sessions, recovery email, and deactivate or
+              delete your account.
+            </Text>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={staticStyles.tabTrack}
-          style={staticStyles.tabTrackScroll}
-        >
-          {(
-            [
-              ['password', 'Password', 'Change Password'],
-              ['twoFactor', '2FA', 'Two-Factor Authentication'],
-              ['biometric', 'Biometric', 'Biometric Login'],
-              ['privacy', 'Privacy', 'Profile Privacy'],
-              ['sessions', 'Sessions', 'Active Sessions'],
-              ['recovery', 'Recovery', 'Recovery Email'],
-            ] as const
-          ).map(([value, label, a11y]) => {
-            const active = accountTab === value;
-            return (
-              <SoftPressable
-                key={value}
-                style={[staticStyles.tab, active && styles.tabActive]}
-                onPress={() => openTab(value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={a11y}
-                pressScale={0.96}
-              >
-                <Text
-                  style={active ? styles.tabTextActive : styles.tabText}
-                  numberOfLines={1}
+            <Text style={styles.hubGroupLabel}>Security</Text>
+            <View style={staticStyles.hubGroup}>
+              {HUB_ITEMS.slice(0, 3).map((item, index, arr) => (
+                <SoftPressable
+                  key={item.id}
+                  style={[
+                    staticStyles.hubRow,
+                    index < arr.length - 1 && styles.hubRowBorder,
+                  ]}
+                  onPress={() => setSection(item.id)}
+                  pressScale={0.98}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.a11y}
                 >
-                  {label}
-                </Text>
-              </SoftPressable>
-            );
-          })}
-        </ScrollView>
+                  <View
+                    style={[
+                      staticStyles.hubIconWrap,
+                      { backgroundColor: colors.surface },
+                    ]}
+                  >
+                    <AppIcon name={item.icon} size={20} color={colors.icon} />
+                  </View>
+                  <View style={staticStyles.hubRowBody}>
+                    <Text style={styles.hubRowLabel}>{item.label}</Text>
+                    <Text style={styles.hubRowHint}>{item.hint}</Text>
+                  </View>
+                  <Text style={styles.hubChevron}>›</Text>
+                </SoftPressable>
+              ))}
+            </View>
 
-        <BookStage tab={tab} turn={turn}>
-          {(active) =>
-            active === 'password' ? (
+            <Text style={styles.hubGroupLabel}>Privacy & Sessions</Text>
+            <View style={staticStyles.hubGroup}>
+              {HUB_ITEMS.slice(3, 6).map((item, index, arr) => (
+                <SoftPressable
+                  key={item.id}
+                  style={[
+                    staticStyles.hubRow,
+                    index < arr.length - 1 && styles.hubRowBorder,
+                  ]}
+                  onPress={() => setSection(item.id)}
+                  pressScale={0.98}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.a11y}
+                >
+                  <View
+                    style={[
+                      staticStyles.hubIconWrap,
+                      { backgroundColor: colors.surface },
+                    ]}
+                  >
+                    <AppIcon name={item.icon} size={20} color={colors.icon} />
+                  </View>
+                  <View style={staticStyles.hubRowBody}>
+                    <Text style={styles.hubRowLabel}>{item.label}</Text>
+                    <Text style={styles.hubRowHint}>{item.hint}</Text>
+                  </View>
+                  <Text style={styles.hubChevron}>›</Text>
+                </SoftPressable>
+              ))}
+            </View>
+
+            <Text style={styles.hubGroupLabel}>Account</Text>
+            <View style={staticStyles.hubGroup}>
+              {HUB_ITEMS.slice(6).map((item, index, arr) => (
+                <SoftPressable
+                  key={item.id}
+                  style={[
+                    staticStyles.hubRow,
+                    index < arr.length - 1 && styles.hubRowBorder,
+                  ]}
+                  onPress={() => setSection(item.id)}
+                  pressScale={0.98}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.a11y}
+                >
+                  <View
+                    style={[
+                      staticStyles.hubIconWrap,
+                      { backgroundColor: colors.surface },
+                    ]}
+                  >
+                    <AppIcon name={item.icon} size={20} color={colors.icon} />
+                  </View>
+                  <View style={staticStyles.hubRowBody}>
+                    <Text style={styles.hubRowLabel}>{item.label}</Text>
+                    <Text style={styles.hubRowHint}>{item.hint}</Text>
+                  </View>
+                  <Text style={styles.hubChevron}>›</Text>
+                </SoftPressable>
+              ))}
+            </View>
+          </>
+        ) : (
+          <>
+            <SoftPressable
+              style={staticStyles.backRow}
+              onPress={() => setSection(null)}
+              pressScale={0.98}
+              accessibilityRole="button"
+              accessibilityLabel="Back to Account Settings"
+            >
+              <AppIcon name="chevron-back" size={18} color={colors.link} />
+              <Text style={styles.backText}>Account Settings</Text>
+            </SoftPressable>
+            <Text style={styles.sectionLabel}>{sectionTitle(section)}</Text>
+            {section === 'password' ? (
               <View style={staticStyles.card}>
                 <Text style={styles.cardTitle}>Change Password</Text>
                 {!user.hasPassword ? (
@@ -614,7 +736,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
                   </>
                 )}
               </View>
-            ) : active === 'twoFactor' ? (
+            ) : section === 'twoFactor' ? (
               <View style={staticStyles.card}>
                 <Text style={styles.cardTitle}>Two-Factor Authentication</Text>
                 <Text style={styles.hint}>
@@ -689,7 +811,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
                   </SoftPressable>
                 )}
               </View>
-            ) : active === 'biometric' ? (
+            ) : section === 'biometric' ? (
               <View style={staticStyles.card}>
                 <Text style={styles.cardTitle}>Biometric Login</Text>
                 {!biometricAvailable ? (
@@ -733,7 +855,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
                   </View>
                 )}
               </View>
-            ) : active === 'sessions' ? (
+            ) : section === 'sessions' ? (
               <View style={staticStyles.card}>
                 <Text style={styles.cardTitle}>Active Sessions</Text>
                 <Text style={styles.hint}>
@@ -822,7 +944,9 @@ export function AccountSettingsScreen({ navigation }: Props) {
                   </>
                 )}
               </View>
-            ) : active === 'recovery' ? (
+            ) : section === 'danger' ? (
+              <AccountLifecyclePanel embedded />
+            ) : section === 'recovery' ? (
               <View style={staticStyles.card}>
                 <Text style={styles.cardTitle}>Recovery Email</Text>
                 <Text style={styles.hint}>
@@ -1060,9 +1184,9 @@ export function AccountSettingsScreen({ navigation }: Props) {
                   </>
                 )}
               </View>
-            )
-          }
-        </BookStage>
+            )}
+          </>
+        )}
 
       </ScrollView>
     </Screen>
@@ -1072,24 +1196,38 @@ export function AccountSettingsScreen({ navigation }: Props) {
 /** Layout-only — identical across every theme, safe as a static StyleSheet. */
 const staticStyles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
-  tabTrackScroll: {
-    marginBottom: 18,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+  hubGroup: {
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 4,
   },
-  tabTrack: {
+  hubRow: {
     flexDirection: 'row',
-    gap: 6,
-    padding: 4,
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
   },
-  tab: {
+  hubIconWrap: {
+    width: 36,
+    height: 36,
     borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  hubRowBody: { flex: 1, gap: 2, minWidth: 0 },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+    paddingVertical: 4,
   },
   card: {
     borderRadius: 16,
@@ -1171,14 +1309,40 @@ function accountStyles(c: ThemeColors) {
       marginTop: 8,
       marginBottom: 20,
     },
-    tabActive: {
-      backgroundColor: c.chrome,
-    },
-    tabText: { color: c.textMuted, fontWeight: '600' as const, fontSize: 13 },
-    tabTextActive: {
-      color: c.chromeInk,
+    hubGroupLabel: {
+      color: c.textMuted,
+      fontSize: 12,
       fontWeight: '700' as const,
-      fontSize: 13,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase' as const,
+      marginTop: 18,
+      marginBottom: 8,
+      marginLeft: 4,
+    },
+    hubRowLabel: {
+      color: c.text,
+      fontSize: 15,
+      fontWeight: '600' as const,
+    },
+    hubRowHint: {
+      color: c.textDim,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    hubRowBorder: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    hubChevron: {
+      color: c.textDim,
+      fontSize: 22,
+      fontWeight: '300' as const,
+      lineHeight: 24,
+    },
+    backText: {
+      color: c.link,
+      fontSize: 14,
+      fontWeight: '600' as const,
     },
     cardTitle: {
       color: c.text,

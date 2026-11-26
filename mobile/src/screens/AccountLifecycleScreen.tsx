@@ -14,7 +14,8 @@ import { apiErrorMessage } from '../api/apiErrorMessage';
 
 type Mode = 'idle' | 'deactivate' | 'delete';
 
-export function AccountLifecycleScreen() {
+/** Deactivate / delete forms — used as Account Settings tab and standalone. */
+export function AccountLifecyclePanel({ embedded = false }: { embedded?: boolean }) {
   const { user, logout } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(lifecycleStyles);
@@ -61,86 +62,104 @@ export function AccountLifecycleScreen() {
   if (!user) return null;
 
   return (
+    <View>
+      {!embedded ? (
+        <>
+          <Text style={styles.title}>Delete Or Deactivate</Text>
+          <Text style={styles.lead}>
+            Deactivate pauses your account — sign in again anytime to reactivate.
+            Delete removes your account permanently.
+          </Text>
+        </>
+      ) : (
+        <Text style={styles.lead}>
+          Deactivate pauses your account — sign in again anytime to reactivate.
+          Delete removes your account permanently.
+        </Text>
+      )}
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Deactivate Account</Text>
+        <Text style={styles.hint}>
+          Teammates will not reach you until you sign in again. Your profile
+          data stays on the server.
+        </Text>
+        {mode === 'deactivate' ? (
+          <ConfirmForm
+            hasPassword={hasPassword}
+            confirmEmail={confirmEmail}
+            password={password}
+            setConfirmEmail={setConfirmEmail}
+            setPassword={setPassword}
+            busy={busy}
+            canSubmit={canSubmit}
+            confirmLabel={busy ? 'Deactivating…' : 'Confirm Deactivate'}
+            onCancel={resetForm}
+            onConfirm={() => void onConfirm()}
+            styles={styles}
+            colors={colors}
+          />
+        ) : (
+          <SoftPressable
+            style={styles.secondaryBtn}
+            onPress={() => setMode('deactivate')}
+            pressScale={0.98}
+          >
+            <ButtonLabel icon="logout" color={colors.text}>
+              Deactivate Account
+            </ButtonLabel>
+          </SoftPressable>
+        )}
+      </View>
+
+      <View style={[styles.card, styles.dangerCard]}>
+        <Text style={styles.cardTitle}>Delete Account</Text>
+        <Text style={styles.hint}>
+          Permanent. If you own a team, transfer ownership or delete the team
+          first. This cannot be undone from the app.
+        </Text>
+        {mode === 'delete' ? (
+          <ConfirmForm
+            hasPassword={hasPassword}
+            confirmEmail={confirmEmail}
+            password={password}
+            setConfirmEmail={setConfirmEmail}
+            setPassword={setPassword}
+            busy={busy}
+            canSubmit={canSubmit}
+            confirmLabel={busy ? 'Deleting…' : 'Confirm Delete'}
+            danger
+            onCancel={resetForm}
+            onConfirm={() => void onConfirm()}
+            styles={styles}
+            colors={colors}
+          />
+        ) : (
+          <SoftPressable
+            style={styles.dangerBtn}
+            onPress={() => setMode('delete')}
+            pressScale={0.98}
+          >
+            <ButtonLabel icon="trash" color={colors.danger}>
+              Delete Account
+            </ButtonLabel>
+          </SoftPressable>
+        )}
+      </View>
+    </View>
+  );
+}
+
+export function AccountLifecycleScreen() {
+  const styles = useThemedStyles(lifecycleStyles);
+  return (
     <Screen>
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Delete Or Deactivate</Text>
-        <Text style={styles.lead}>
-          Deactivate pauses your account — sign in again anytime to reactivate.
-          Delete removes your account permanently.
-        </Text>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Deactivate Account</Text>
-          <Text style={styles.hint}>
-            Teammates will not reach you until you sign in again. Your profile
-            data stays on the server.
-          </Text>
-          {mode === 'deactivate' ? (
-            <ConfirmForm
-              hasPassword={hasPassword}
-              confirmEmail={confirmEmail}
-              password={password}
-              setConfirmEmail={setConfirmEmail}
-              setPassword={setPassword}
-              busy={busy}
-              canSubmit={canSubmit}
-              confirmLabel={busy ? 'Deactivating…' : 'Confirm Deactivate'}
-              onCancel={resetForm}
-              onConfirm={() => void onConfirm()}
-              styles={styles}
-              colors={colors}
-            />
-          ) : (
-            <SoftPressable
-              style={styles.secondaryBtn}
-              onPress={() => setMode('deactivate')}
-              pressScale={0.98}
-            >
-              <ButtonLabel icon="logout" color={colors.text}>
-                Deactivate Account
-              </ButtonLabel>
-            </SoftPressable>
-          )}
-        </View>
-
-        <View style={[styles.card, styles.dangerCard]}>
-          <Text style={styles.cardTitle}>Delete Account</Text>
-          <Text style={styles.hint}>
-            Permanent. If you own a team, transfer ownership or delete the team
-            first. This cannot be undone from the app.
-          </Text>
-          {mode === 'delete' ? (
-            <ConfirmForm
-              hasPassword={hasPassword}
-              confirmEmail={confirmEmail}
-              password={password}
-              setConfirmEmail={setConfirmEmail}
-              setPassword={setPassword}
-              busy={busy}
-              canSubmit={canSubmit}
-              confirmLabel={busy ? 'Deleting…' : 'Confirm Delete'}
-              danger
-              onCancel={resetForm}
-              onConfirm={() => void onConfirm()}
-              styles={styles}
-              colors={colors}
-            />
-          ) : (
-            <SoftPressable
-              style={styles.dangerBtn}
-              onPress={() => setMode('delete')}
-              pressScale={0.98}
-            >
-              <ButtonLabel icon="trash" color={colors.danger}>
-                Delete Account
-              </ButtonLabel>
-            </SoftPressable>
-          )}
-        </View>
+        <AccountLifecyclePanel />
       </ScrollView>
     </Screen>
   );

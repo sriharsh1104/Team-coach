@@ -86,13 +86,8 @@ function appVersion(): string {
 export function SettingsScreen({ navigation }: Props) {
   const { user, logout } = useAuth();
   const { colors, preference, setTheme } = useTheme();
-  const {
-    dateFormat,
-    timeFormat,
-    setDateFormat,
-    setTimeFormat,
-    formatDateTime,
-  } = useDateTimeFormat();
+  const { dateFormat, timeFormat, setDateFormat, setTimeFormat } =
+    useDateTimeFormat();
   const styles = useThemedStyles(makeStyles);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [dateTimePickerOpen, setDateTimePickerOpen] = useState(false);
@@ -140,13 +135,8 @@ export function SettingsScreen({ navigation }: Props) {
         <Text style={styles.sectionLabel}>Account</Text>
         <View style={styles.group}>
           <SettingsRow
-            icon="person-outline"
-            label="Account Settings"
-            onPress={() => navigation.navigate('Profile')}
-          />
-          <SettingsRow
             icon="shield-outline"
-            label="Privacy & Security"
+            label="Account Settings"
             onPress={() => navigation.navigate('AccountSettings')}
           />
           <SettingsRow
@@ -158,11 +148,6 @@ export function SettingsScreen({ navigation }: Props) {
             icon="share-social-outline"
             label="Social Handles"
             onPress={() => navigation.navigate('SocialHandles')}
-          />
-          <SettingsRow
-            icon="trash-outline"
-            label="Delete Or Deactivate"
-            onPress={() => navigation.navigate('AccountLifecycle')}
             last
           />
         </View>
@@ -179,7 +164,6 @@ export function SettingsScreen({ navigation }: Props) {
             icon="alarm-outline"
             label="Date & Time Format"
             value={`${dateLabel} · ${timeLabel}`}
-            subtitle={`Preview: ${formatDateTime(new Date())}`}
             onPress={() => setDateTimePickerOpen(true)}
             last
           />
@@ -283,10 +267,7 @@ export function SettingsScreen({ navigation }: Props) {
                   onPress={() => setDateFormat(opt.id as DateFormatId)}
                   pressScale={0.97}
                 >
-                  <View style={styles.formatBody}>
-                    <Text style={styles.themeLabel}>{opt.label}</Text>
-                    <Text style={styles.formatExample}>{opt.example}</Text>
-                  </View>
+                  <Text style={styles.themeLabel}>{opt.label}</Text>
                   {active ? (
                     <Text style={[styles.themeCheck, { color: colors.link }]}>
                       ✓
@@ -307,10 +288,7 @@ export function SettingsScreen({ navigation }: Props) {
                   onPress={() => setTimeFormat(opt.id as TimeFormatId)}
                   pressScale={0.97}
                 >
-                  <View style={styles.formatBody}>
-                    <Text style={styles.themeLabel}>{opt.label}</Text>
-                    <Text style={styles.formatExample}>{opt.example}</Text>
-                  </View>
+                  <Text style={styles.themeLabel}>{opt.label}</Text>
                   {active ? (
                     <Text style={[styles.themeCheck, { color: colors.link }]}>
                       ✓
@@ -505,8 +483,6 @@ function makeStyles(c: ThemeColors) {
       fontSize: 15,
       fontWeight: '800' as const,
     },
-    formatBody: { flex: 1, gap: 2 },
-    formatExample: { color: c.textMuted, fontSize: 12 },
     doneRow: {
       paddingVertical: 14,
       paddingHorizontal: 16,

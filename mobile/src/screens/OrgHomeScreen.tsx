@@ -20,6 +20,7 @@ import {
 } from '../navigation/announcementsDrawerItem';
 import { achievementsItem } from '../navigation/achievementsDrawerItem';
 import { trackerDrawerSection } from '../navigation/trackerDrawerItems';
+import { streamingDrawerSection } from '../navigation/streamingDrawerSection';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ExitConfirmModal } from '../ui/ExitConfirmModal';
@@ -179,33 +180,7 @@ export function OrgHomeScreen({ navigation }: Props) {
       ],
     });
 
-    sections.push({
-      key: 'tools',
-      label: 'Tools',
-      split: true,
-      items: [
-        {
-          key: 'recorder',
-          label: 'Recorder',
-          icon: 'videocam-outline' as const,
-          onPress: () => startRecording(),
-        },
-      ],
-    });
-
-    sections.push({
-      key: 'live',
-      label: 'Live',
-      split: true,
-      items: [
-        {
-          key: 'goLive',
-          label: 'Go Live',
-          icon: 'play' as const,
-          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'GoLive' }),
-        },
-      ],
-    });
+    sections.push(streamingDrawerSection(navigation, 'OrgHome', startRecording));
 
     sections.push(trackerDrawerSection(navigation, 'OrgHome'));
 

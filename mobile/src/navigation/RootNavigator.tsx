@@ -475,6 +475,13 @@ export function RootNavigator() {
               options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Go Live' }))}
             />
             <MainStack.Screen
+              name="ContentEdit"
+              getComponent={() =>
+                require('../screens/live/ContentEditScreen').ContentEditScreen
+              }
+              options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Edit' }))}
+            />
+            <MainStack.Screen
               name="Health"
               getComponent={() =>
                 require('../screens/tracker/HealthScreen').HealthScreen
@@ -770,6 +777,13 @@ export function RootNavigator() {
                 require('../screens/live/GoLiveScreen').GoLiveScreen
               }
               options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Go Live' }))}
+            />
+            <MainStack.Screen
+              name="ContentEdit"
+              getComponent={() =>
+                require('../screens/live/ContentEditScreen').ContentEditScreen
+              }
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Edit' }))}
             />
             <MainStack.Screen
               name="Health"

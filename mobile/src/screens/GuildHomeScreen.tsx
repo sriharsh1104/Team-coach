@@ -18,6 +18,7 @@ import {
 } from '../navigation/announcementsDrawerItem';
 import { achievementsItem } from '../navigation/achievementsDrawerItem';
 import { trackerDrawerSection } from '../navigation/trackerDrawerItems';
+import { streamingDrawerSection } from '../navigation/streamingDrawerSection';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ExitConfirmModal } from '../ui/ExitConfirmModal';
@@ -104,33 +105,7 @@ export function GuildHomeScreen({ navigation }: Props) {
             },
           ],
         },
-        {
-          key: 'tools',
-          label: 'Tools',
-          split: true,
-          items: [
-            {
-              key: 'recorder',
-              label: 'Recorder',
-              icon: 'videocam-outline' as const,
-              onPress: () => startRecording(),
-            },
-          ],
-        },
-        {
-          key: 'live',
-          label: 'Live',
-          split: true,
-          items: [
-            {
-              key: 'goLive',
-              label: 'Go Live',
-              icon: 'play' as const,
-              onPress: () =>
-                goToSection(navigation, 'GuildHome', { screen: 'GoLive' }),
-            },
-          ],
-        },
+        streamingDrawerSection(navigation, 'GuildHome', startRecording),
         trackerDrawerSection(navigation, 'GuildHome'),
       ],
       'guildChat',

@@ -80,6 +80,8 @@ export type MainStackParamList = {
     game?: 'rps' | 'ludo' | 'boots' | 'cut' | 'chess' | 'uno' | 'race';
   };
   GoLive: undefined;
+  /** Placeholder under Streaming & Content Tools — feature TBD. */
+  ContentEdit: undefined;
   /** Personal habit tracker — steps / heart points from Health Connect. */
   Health: undefined;
   /** Timed daily tasks with device alarms + mark-done. */

@@ -32,6 +32,10 @@ const mockedBiometrics = biometrics as jest.Mocked<typeof biometrics>;
 const mockedTokenStorage = tokenStorage as jest.Mocked<typeof tokenStorage>;
 const navigation = { navigate: jest.fn() } as any;
 
+function openPasswordSection() {
+  fireEvent.press(screen.getByLabelText('Change Password'));
+}
+
 function openBiometricTab() {
   fireEvent.press(screen.getByLabelText('Biometric Login'));
 }
@@ -78,6 +82,7 @@ beforeEach(() => {
 describe('AccountSettingsScreen', () => {
   it('blocks the Change Password button until current+new+matching-confirm are filled', async () => {
     render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+    openPasswordSection();
 
     await pressAndSettle('Update Password');
     expect(mockedAuthApi.changePassword).not.toHaveBeenCalled();
@@ -97,6 +102,7 @@ describe('AccountSettingsScreen', () => {
       guild: null,
     });
     render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+    openPasswordSection();
 
     fireEvent.changeText(screen.getByPlaceholderText('Current password'), 'oldpass123');
     fireEvent.changeText(screen.getByPlaceholderText('New password'), 'newpass123');
@@ -120,6 +126,7 @@ describe('AccountSettingsScreen', () => {
       refreshUser,
     });
     render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+    openPasswordSection();
 
     expect(
       screen.getByText('This account signs in with Google and has no password to change.'),
@@ -127,14 +134,18 @@ describe('AccountSettingsScreen', () => {
     expect(screen.queryByPlaceholderText('Current password')).toBeNull();
   });
 
-  it('defaults to the Password tab, with 2FA content hidden until its tab is pressed', () => {
+  it('opens hub rows into detail panels, with password hidden until selected', () => {
     render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
 
     expect(screen.getByLabelText('Change Password')).toBeTruthy();
     expect(screen.getByLabelText('Biometric Login')).toBeTruthy();
-    expect(screen.getByPlaceholderText('Current password')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('Current password')).toBeNull();
     expect(screen.queryByText('Enable 2FA')).toBeNull();
 
+    openPasswordSection();
+    expect(screen.getByPlaceholderText('Current password')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Back to Account Settings'));
     openTwoFactorTab();
 
     expect(screen.getByText('Enable 2FA')).toBeTruthy();

@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { ScrollView, Text, View, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  LayoutAnimation,
+  Platform,
+  ScrollView,
+  Text,
+  UIManager,
+  View,
+  StyleSheet,
+} from 'react-native';
 import { Screen } from '../brand/Screen';
 import { ThemeColors } from '../theme';
 import { useThemedStyles } from '../theme/useThemedStyles';
@@ -20,7 +30,7 @@ const FAQS: FaqItem[] = [
   },
   {
     q: 'Who Can See My Phone And Social Links?',
-    a: 'Only what you allow. Go to Privacy & Security → Privacy and toggle Phone, WhatsApp, Instagram, Discord, YouTube, Kick, plus each game’s IGN and UID.',
+    a: 'Only what you allow. Go to Account Settings → Privacy and toggle Phone, WhatsApp, Instagram, Discord, YouTube, Kick, plus each game’s IGN and UID.',
   },
   {
     q: 'How Do Team Voice Channels Work?',
@@ -36,11 +46,11 @@ const FAQS: FaqItem[] = [
   },
   {
     q: 'What Is The Difference Between Deactivate And Delete?',
-    a: 'Deactivate pauses your account; signing in again reactivates it. Delete permanently removes your account and cannot be undone from the app.',
+    a: 'Deactivate pauses your account; signing in again reactivates it. Delete permanently removes your account and cannot be undone from the app. Both live under Account Settings → Delete.',
   },
   {
     q: 'I Own A Team — Can I Delete My Account?',
-    a: 'Not while you are still the org owner. Transfer ownership or delete the team first, then delete your account from Privacy & Security.',
+    a: 'Not while you are still the org owner. Transfer ownership or delete the team first, then delete your account from Account Settings → Delete.',
   },
   {
     q: 'How Do Scrims And Stats Work?',
@@ -52,10 +62,79 @@ const FAQS: FaqItem[] = [
   },
 ];
 
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const EXPAND_MS = 260;
+
+function FaqAnswer({
+  open,
+  text,
+  styles,
+}: {
+  open: boolean;
+  text: string;
+  styles: ReturnType<typeof helpStyles>;
+}) {
+  const [mounted, setMounted] = useState(open);
+  const opacity = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const translateY = useRef(new Animated.Value(open ? 0 : -6)).current;
+
+  useEffect(() => {
+    if (open) setMounted(true);
+    const anim = Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: open ? 1 : 0,
+        duration: EXPAND_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: open ? 0 : -6,
+        duration: EXPAND_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]);
+    anim.start(({ finished }) => {
+      if (finished && !open) setMounted(false);
+    });
+    return () => anim.stop();
+  }, [open, opacity, translateY]);
+
+  if (!mounted) return null;
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      <Text style={styles.aText}>{text}</Text>
+    </Animated.View>
+  );
+}
+
 export function HelpSupportScreen() {
   const { colors } = useTheme();
   const styles = useThemedStyles(helpStyles);
   const [openIndex, setOpenIndex] = useState<number | null>(0);
+
+  const toggle = (index: number) => {
+    LayoutAnimation.configureNext({
+      duration: EXPAND_MS,
+      create: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+      update: { type: LayoutAnimation.Types.easeInEaseOut },
+      delete: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+    });
+    setOpenIndex((prev) => (prev === index ? null : index));
+  };
 
   return (
     <Screen>
@@ -74,7 +153,7 @@ export function HelpSupportScreen() {
             <View key={item.q} style={styles.card}>
               <SoftPressable
                 style={styles.qRow}
-                onPress={() => setOpenIndex(open ? null : index)}
+                onPress={() => toggle(index)}
                 pressScale={0.98}
                 accessibilityRole="button"
                 accessibilityState={{ expanded: open }}
@@ -87,7 +166,7 @@ export function HelpSupportScreen() {
                   color={colors.link}
                 />
               </SoftPressable>
-              {open ? <Text style={styles.aText}>{item.a}</Text> : null}
+              <FaqAnswer open={open} text={item.a} styles={styles} />
             </View>
           );
         })}

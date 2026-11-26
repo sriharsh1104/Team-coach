@@ -10,7 +10,9 @@ import {
 } from './announcementsDrawerItem';
 import { achievementsItem } from './achievementsDrawerItem';
 import { trackerDrawerSection } from './trackerDrawerItems';
+import { streamingDrawerSection } from './streamingDrawerSection';
 import { drawerItemKeyForRoute, withActiveDrawerItem } from './drawerActive';
+import { useRecording } from '../recording/RecordingContext';
 
 type MainNav = NativeStackNavigationProp<MainStackParamList, keyof MainStackParamList>;
 
@@ -45,6 +47,7 @@ export function useOrgDrawer() {
   const isOwner = !!org?.isOwner;
   // Display only — /admin is authorised server-side on every request.
   const isAdmin = !!user?.isPlatformAdmin;
+  const { startRecording } = useRecording();
   const { open, navigation, openWith, close, routeName, setRouteName } =
     useDrawerHeader();
   const unreadAnnouncements = useUnreadAnnouncements(open, routeName);
@@ -153,19 +156,9 @@ export function useOrgDrawer() {
       ],
     });
 
-    sections.push({
-      key: 'live',
-      label: 'Live',
-      split: true,
-      items: [
-        {
-          key: 'goLive',
-          label: 'Go Live',
-          icon: 'play' as const,
-          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'GoLive' }),
-        },
-      ],
-    });
+    sections.push(
+      streamingDrawerSection(navigation, 'OrgHome', startRecording),
+    );
 
     sections.push(trackerDrawerSection(navigation, 'OrgHome'));
 
@@ -195,6 +188,7 @@ export function useOrgDrawer() {
     isAdmin,
     routeName,
     unreadAnnouncements,
+    startRecording,
   ]);
 
   return { open, sections, openWith, close, setRouteName };
@@ -204,6 +198,7 @@ export function useOrgDrawer() {
 export function useGuildDrawer() {
   const { user } = useAuth();
   const isAdmin = !!user?.isPlatformAdmin;
+  const { startRecording } = useRecording();
   const { open, navigation, openWith, close, routeName, setRouteName } =
     useDrawerHeader();
   const unreadAnnouncements = useUnreadAnnouncements(open, routeName);
@@ -244,19 +239,7 @@ export function useGuildDrawer() {
           },
         ],
       },
-      {
-        key: 'live',
-        label: 'Live',
-        split: true,
-        items: [
-          {
-            key: 'goLive',
-            label: 'Go Live',
-            icon: 'play' as const,
-            onPress: () => goToSection(navigation, 'GuildHome', { screen: 'GoLive' }),
-          },
-        ],
-      },
+      streamingDrawerSection(navigation, 'GuildHome', startRecording),
       trackerDrawerSection(navigation, 'GuildHome'),
     ];
     if (isAdmin) {
@@ -278,7 +261,7 @@ export function useGuildDrawer() {
       base,
       drawerItemKeyForRoute(routeName ?? undefined),
     );
-  }, [navigation, isAdmin, routeName, unreadAnnouncements]);
+  }, [navigation, isAdmin, routeName, unreadAnnouncements, startRecording]);
 
   return { open, sections, openWith, close, setRouteName };
 }
