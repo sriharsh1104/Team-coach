@@ -24,6 +24,10 @@ export function drawerItemKeyForRoute(routeName: string | undefined): string | n
       return 'games';
     case 'GoLive':
       return 'goLive';
+    case 'Health':
+      return 'health';
+    case 'DailyRoutine':
+      return 'dailyRoutine';
     case 'Maps':
       return 'maps';
     case 'RuleBook':
@@ -44,6 +48,8 @@ export function drawerItemKeyForRoute(routeName: string | undefined): string | n
       return 'achievements';
     case 'Admin':
       return 'admin';
+    case 'Settings':
+      return 'settings';
     case 'AccountSettings':
       return 'accountSettings';
     case 'Chat':

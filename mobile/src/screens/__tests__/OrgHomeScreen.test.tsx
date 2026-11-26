@@ -104,7 +104,7 @@ describe('OrgHomeScreen', () => {
     expect(screen.getByText('Org Settings')).toBeTruthy();
   });
 
-  it('hides Guild Roster and Org Settings from non-owners but keeps Games under Guild', async () => {
+  it('gives non-owners the Guild Roster too, but not Org Settings', async () => {
     mockedUseAuth.mockReturnValue({
       logout,
       refreshOrg,
@@ -123,9 +123,14 @@ describe('OrgHomeScreen', () => {
     fireEvent.press(screen.getByLabelText('Open Menu'));
     expect(screen.getByText(/^Roster$/)).toBeTruthy();
     expect(screen.queryByText('Org Settings')).toBeNull();
-    expect(screen.queryByText('Guild Roster')).toBeNull();
+    // Every member can see the Guild roster and request queue — GuildScreen
+    // itself is what limits accept/add/remove to owner, coach or leadership.
+    expect(screen.getByText('Guild Roster')).toBeTruthy();
     // Games live in the Guild section so every member can play.
     expect(screen.getByText('Games')).toBeTruthy();
+    // Personal Tracker section — Health + Daily Routine.
+    expect(screen.getByText('Health')).toBeTruthy();
+    expect(screen.getByText('Daily Routine')).toBeTruthy();
   });
 
   it('navigates to Roster from the sidebar', async () => {
@@ -144,7 +149,7 @@ describe('OrgHomeScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('Members', undefined);
   });
 
-  it('hides Guild Roster from coaches — roster add/remove is owner-only', async () => {
+  it('gives non-owner coaches the Guild Roster too, but not Org Settings', async () => {
     mockedUseAuth.mockReturnValue({
       logout,
       refreshOrg,
@@ -162,26 +167,16 @@ describe('OrgHomeScreen', () => {
 
     fireEvent.press(screen.getByLabelText('Open Menu'));
     expect(screen.getByText('Guild')).toBeTruthy();
-    expect(screen.queryByText('Guild Roster')).toBeNull();
+    expect(screen.getByText('Guild Roster')).toBeTruthy();
     expect(screen.queryByText('Org Settings')).toBeNull();
   });
 
-  it('opens Security and Logout from the gear menu', async () => {
+  it('opens the Settings hub from the gear', async () => {
     render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
     await screen.findByText('Alpha Squad');
 
     fireEvent.press(screen.getByLabelText('Account Settings'));
-    expect(screen.getByText('Security')).toBeTruthy();
-    expect(screen.getByText('Logout')).toBeTruthy();
-  });
-
-  it('calls logout when Logout is pressed', async () => {
-    render(<OrgHomeScreen navigation={navigation} route={{} as any} />);
-    await screen.findByText('Alpha Squad');
-
-    fireEvent.press(screen.getByLabelText('Account Settings'));
-    fireEvent.press(screen.getByText('Logout'));
-    expect(logout).toHaveBeenCalled();
+    expect(navigation.navigate).toHaveBeenCalledWith('Settings');
   });
 
   it('shows a toast when the embedded chat hub fails to load', async () => {

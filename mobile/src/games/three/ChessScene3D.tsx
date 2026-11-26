@@ -5,6 +5,7 @@ import {
   ChessColor,
   ChessPiece,
   ChessPieceType,
+  chessIndexToSquare,
   chessSquareToIndex,
 } from '../../api/games';
 
@@ -41,6 +42,12 @@ const BLACK_PIECE = '#33241c';
 const SELECT = '#f5c451';
 const TARGET = '#4ade80';
 const LAST_MOVE = '#60a5fa';
+
+/**
+ * Tall enough to cover the king's cross finial (the tallest point on the
+ * board, ~1.0 unit up — see the KING profile plus its cross detail below).
+ */
+const HIT_COLUMN_HEIGHT = 1.1;
 
 /**
  * Piece silhouettes as lathe profiles — `[radius, height]` pairs revolved
@@ -338,6 +345,7 @@ export function ChessScene3D({
   selected,
   targets,
   lastMove,
+  onSquarePress,
 }: {
   board: (ChessPiece | null)[];
   /** True when the viewer plays Black, so their side faces the camera. */
@@ -346,15 +354,22 @@ export function ChessScene3D({
   /** Squares the selected piece may move to. */
   targets: string[];
   lastMove: { from: string; to: string } | null;
+  /** Tapping a square (or the piece standing on it) resolves to this. */
+  onSquarePress?: (square: string) => void;
 }) {
   const squares = useMemo(() => {
-    const out: { key: string; position: [number, number, number]; light: boolean }[] =
-      [];
+    const out: {
+      key: string;
+      index: number;
+      position: [number, number, number];
+      light: boolean;
+    }[] = [];
     for (let i = 0; i < 64; i++) {
       const file = i % 8;
       const rank = Math.floor(i / 8);
       out.push({
         key: `sq-${i}`,
+        index: i,
         position: squareToWorld(i, flip),
         light: (file + rank) % 2 === 0,
       });
@@ -426,8 +441,12 @@ export function ChessScene3D({
       </mesh>
 
       {/* A real board has thickness and a border the coordinates sit on —
-          flat planes on their own read as a printed mat. */}
-      <mesh position={[0, -0.13, 0]} receiveShadow>
+          flat planes on their own read as a printed mat. The top face sits a
+          hair below y=0 rather than exactly at it: coincident with the
+          square planes above, it z-fought with them — the two surfaces
+          flickered against each other on every frame, which is what read as
+          the board "breaking up". */}
+      <mesh position={[0, -0.132, 0]} receiveShadow>
         <boxGeometry args={[9.1, 0.26, 9.1]} />
         <meshStandardMaterial color={FRAME} roughness={0.55} metalness={0.08} />
       </mesh>
@@ -446,6 +465,36 @@ export function ChessScene3D({
           />
         </mesh>
       ))}
+
+      {/*
+       * Tap targets, one invisible column per square, standing from the
+       * board up past the tallest piece (the king's cross finial). A flat
+       * plane at y=0 only catches a tap that lands on bare felt — a piece is
+       * what you actually see and reach for, and from this camera's angle a
+       * tall piece's silhouette leans across the screen into a *neighbouring*
+       * square. Casting a ray through a flat plane alone would resolve that
+       * tap to whichever square the ray happens to cross y=0 in, which is
+       * not necessarily the piece's own square. A column the piece's own
+       * full height means the ray hits the right square the moment it
+       * touches the piece, before it can drift anywhere else. It has no
+       * geometry rendered (`visible={false}`) — three.js raycasting ignores
+       * `.visible` entirely, so it still catches every tap.
+       */}
+      {onSquarePress
+        ? squares.map((square) => (
+            <mesh
+              key={`hit-${square.key}`}
+              visible={false}
+              position={[square.position[0], HIT_COLUMN_HEIGHT / 2, square.position[2]]}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSquarePress(chessIndexToSquare(square.index));
+              }}
+            >
+              <boxGeometry args={[SQ, HIT_COLUMN_HEIGHT, SQ]} />
+            </mesh>
+          ))
+        : null}
 
       {lastMove ? (
         <>

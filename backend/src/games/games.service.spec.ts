@@ -116,9 +116,13 @@ describe('GamesService — several rooms at once', () => {
     // exercised that path, so this only shows up by capturing what the
     // broadcast listener itself receives.
     const seen: { target?: string; yourColor: 'w' | 'b' | null }[] = [];
-    games.setListeners((room, _event, targetUserId) => {
-      if (room.chess) seen.push({ target: targetUserId, yourColor: room.chess.yourColor });
-    }, () => {});
+    games.setListeners(
+      (room, _event, targetUserId) => {
+        if (room.chess)
+          seen.push({ target: targetUserId, yourColor: room.chess.yourColor });
+      },
+      () => {},
+    );
 
     const room = games.createRoom('org', p('a'), 'chess');
     games.joinRoom(room.id, 'org', p('b'));
@@ -190,9 +194,12 @@ describe('GamesService — several rooms at once', () => {
 
   it('broadcasts a spectator their own scoped view alongside the players', () => {
     const seen: string[] = [];
-    games.setListeners((_room, _event, targetUserId) => {
-      if (targetUserId) seen.push(targetUserId);
-    }, () => {});
+    games.setListeners(
+      (_room, _event, targetUserId) => {
+        if (targetUserId) seen.push(targetUserId);
+      },
+      () => {},
+    );
 
     const room = games.createRoom('org', p('a'), 'chess');
     games.joinRoom(room.id, 'org', p('b'));
@@ -211,7 +218,9 @@ describe('GamesService — several rooms at once', () => {
 
     const otherLobby = games.createRoom('org', p('c'), 'rps');
     // c is just sitting in an unstarted lobby elsewhere — nothing to forfeit.
-    expect(games.spectateRoom(chess.id, 'org', p('c')).spectators).toHaveLength(1);
+    expect(games.spectateRoom(chess.id, 'org', p('c')).spectators).toHaveLength(
+      1,
+    );
 
     const otherGame = games.createRoom('org', p('d'), 'rps');
     games.joinRoom(otherGame.id, 'org', p('e'));
@@ -229,7 +238,6 @@ describe('GamesService — several rooms at once', () => {
     expect(() => games.spectateRoom(boots.id, 'org', p('c'))).toThrow(
       /cannot be watched/,
     );
-
   });
 
   it('lets a non-player watch Cut, which hides nothing', () => {
@@ -240,5 +248,221 @@ describe('GamesService — several rooms at once', () => {
     expect(view.spectators.map((s) => s.userId)).toEqual(['c']);
     expect(view.cut?.cut.a).toEqual([]);
     expect(() => games.cutDraw(room.id, 'c')).toThrow(/Not your turn/);
+  });
+});
+
+/**
+ * Road Rash is the only game here that runs on a clock rather than on turns,
+ * so its wiring — a seat per player, a loop, inputs with no ack, a separate
+ * tick channel — is worth exercising end to end rather than trusting.
+ */
+describe('GamesService — Road Rash', () => {
+  let games: GamesService;
+  let ticks: { roomId: string; tick: unknown }[];
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    ticks = [];
+    games = new GamesService();
+    games.setListeners(
+      () => {},
+      () => {},
+      (roomId, tick) => ticks.push({ roomId, tick }),
+    );
+  });
+  afterEach(() => {
+    for (const id of ['a', 'b']) games.leaveRoom(id);
+    jest.useRealTimers();
+  });
+
+  it('seats one rider against three CPUs and starts the clock', () => {
+    const room = games.createRoom('org', p('a'), 'race');
+    const live = games.startGame(room.id, 'a');
+
+    expect(live.race?.seats).toHaveLength(4);
+    expect(live.race?.seats[0]).toMatchObject({
+      seat: 0,
+      userId: 'a',
+      tag: 'P1',
+    });
+    expect(live.race?.seats[1].userId).toBeNull();
+
+    // Nothing has been broadcast yet; the first tick is 50ms away.
+    expect(ticks).toHaveLength(0);
+    jest.advanceTimersByTime(160);
+    expect(ticks.length).toBeGreaterThanOrEqual(3);
+    expect(ticks[0].roomId).toBe(room.id);
+  });
+
+  it('acts on every button the pad can send', () => {
+    const room = games.createRoom('org', p('a'), 'race');
+    games.joinRoom(room.id, 'org', p('b'));
+    games.startGame(room.id, 'a');
+
+    const laneOf = (userId: string) =>
+      // The tick is the only place a client ever reads a lane from.
+      games.roomViewById(room.id) && seatLane(games, room.id, userId);
+
+    expect(laneOf('a')).toBe(0);
+    games.raceInput(room.id, 'a', 'right');
+    expect(laneOf('a')).toBe(1);
+    games.raceInput(room.id, 'a', 'left');
+    expect(laneOf('a')).toBe(0);
+    // Already against the kerb.
+    games.raceInput(room.id, 'a', 'left');
+    expect(laneOf('a')).toBe(0);
+
+    // Nitro spends the tank; an unknown action is simply ignored.
+    games.raceInput(room.id, 'a', 'nitro');
+    expect(nitroOf(games, room.id, 'a')).toBe(70);
+    games.raceInput(room.id, 'a', 'teleport');
+    expect(nitroOf(games, room.id, 'a')).toBe(70);
+
+    // Rider b is alongside, so a kick puts them down.
+    games.raceInput(room.id, 'b', 'left');
+    games.raceInput(room.id, 'a', 'kick');
+    jest.advanceTimersByTime(60);
+    expect(downOf(games, room.id, 'b')).toBe(true);
+  });
+
+  it('ignores inputs from someone who is not in the race', () => {
+    const room = games.createRoom('org', p('a'), 'race');
+    games.startGame(room.id, 'a');
+    games.raceInput(room.id, 'stranger', 'right');
+    expect(seatLane(games, room.id, 'a')).toBe(0);
+  });
+
+  it('stops the clock when the room is torn down', () => {
+    const room = games.createRoom('org', p('a'), 'race');
+    games.startGame(room.id, 'a');
+    jest.advanceTimersByTime(100);
+    const before = ticks.length;
+    games.leaveRoom('a');
+    jest.advanceTimersByTime(300);
+    expect(ticks.length).toBe(before);
+  });
+});
+
+/** Read one rider's lane out of the room, the way a tick would carry it. */
+function seatLane(games: GamesService, roomId: string, userId: string): number {
+  const seat = games
+    .roomViewById(roomId)
+    ?.race?.seats.find((s) => s.userId === userId);
+  return seat ? lastTickRow(games, roomId, seat.seat)[0] : -1;
+}
+function nitroOf(games: GamesService, roomId: string, userId: string): number {
+  const seat = games
+    .roomViewById(roomId)
+    ?.race?.seats.find((s) => s.userId === userId);
+  return seat ? lastTickRow(games, roomId, seat.seat)[3] : -1;
+}
+function downOf(games: GamesService, roomId: string, userId: string): boolean {
+  const seat = games
+    .roomViewById(roomId)
+    ?.race?.seats.find((s) => s.userId === userId);
+  return seat ? (lastTickRow(games, roomId, seat.seat)[5] & 2) !== 0 : false;
+}
+/** Pull a seat's row straight out of the service's own tick packer. */
+function lastTickRow(
+  games: GamesService,
+  roomId: string,
+  seat: number,
+): number[] {
+  const state = (
+    games as unknown as { rooms: Map<string, { race: unknown }> }
+  ).rooms.get(roomId)?.race as {
+    bikers: { lane: number; nitro: number; wipeoutTimer: number }[];
+  };
+  const b = state.bikers[seat];
+  return [b.lane, 0, 0, b.nitro, 0, b.wipeoutTimer > 0 ? 2 : 0];
+}
+
+/**
+ * Match history (GameMatch / GameMatchPlayer) is written from GamesService
+ * itself, fire-and-forget, so the live game is never held up by a database
+ * round trip. These exercise that write directly against a mocked Prisma,
+ * through the exact same public actions the socket gateway calls.
+ */
+describe('GamesService — match history persistence', () => {
+  let prisma: { gameMatch: { create: jest.Mock } };
+  let games: GamesService;
+
+  beforeEach(() => {
+    prisma = { gameMatch: { create: jest.fn().mockResolvedValue(undefined) } };
+    games = new GamesService(prisma as any);
+  });
+  afterEach(() => {
+    for (const id of ['a', 'b']) games.leaveRoom(id);
+  });
+
+  it('records a forfeited match as a loss for the player who left, using the roster the match actually started with', () => {
+    const room = games.createRoom('org', p('a'), 'chess');
+    games.joinRoom(room.id, 'org', p('b'));
+    games.startGame(room.id, 'a');
+
+    // Leaving splices 'b' out of room.players (and out of the chess
+    // engine's own playerIds) before the match-history write happens —
+    // this is the exact scenario matchPlayers exists to survive.
+    games.leaveRoom('b');
+
+    expect(prisma.gameMatch.create).toHaveBeenCalledTimes(1);
+    const { data } = prisma.gameMatch.create.mock.calls[0][0];
+    expect(data).toMatchObject({
+      orgId: 'org',
+      game: 'CHESS',
+      winnerId: 'a',
+      endReason: 'forfeit',
+    });
+    expect(data.players.create).toHaveLength(2);
+    expect(data.players.create).toEqual(
+      expect.arrayContaining([
+        { userId: 'a', orgId: 'org', game: 'CHESS', won: true },
+        { userId: 'b', orgId: 'org', game: 'CHESS', won: false },
+      ]),
+    );
+  });
+
+  it('falls back to a generic end reason for a game with no end-reason concept of its own', () => {
+    const room = games.createRoom('org', p('a'), 'cut');
+    games.joinRoom(room.id, 'org', p('b'));
+    games.startGame(room.id, 'a');
+
+    // Cut's engine has no `endReason` field at all — drive it to 'done'
+    // directly rather than fighting its own internal randomness.
+    const live = (games as unknown as { rooms: Map<string, any> }).rooms.get(
+      room.id,
+    )!;
+    live.cut.phase = 'done';
+    live.cut.winnerId = 'b';
+    (games as unknown as { finish: (room: unknown) => void }).finish(live);
+
+    const { data } = prisma.gameMatch.create.mock.calls[0][0];
+    expect(data).toMatchObject({
+      game: 'CUT',
+      winnerId: 'b',
+      endReason: 'complete',
+    });
+    expect(data.players.create).toEqual(
+      expect.arrayContaining([
+        { userId: 'a', orgId: 'org', game: 'CUT', won: false },
+        { userId: 'b', orgId: 'org', game: 'CUT', won: true },
+      ]),
+    );
+  });
+
+  it('never writes history for a room that never started a match', () => {
+    const room = games.createRoom('org', p('a'), 'chess');
+    games.joinRoom(room.id, 'org', p('b'));
+    // Leaving the lobby (never started) must not touch GameMatch at all.
+    games.leaveRoom('b');
+    expect(prisma.gameMatch.create).not.toHaveBeenCalled();
+  });
+
+  it('skips persistence entirely when constructed with no Prisma — plain unit tests elsewhere in this file rely on exactly this', () => {
+    const bare = new GamesService();
+    const room = bare.createRoom('org', p('a'), 'chess');
+    bare.joinRoom(room.id, 'org', p('b'));
+    bare.startGame(room.id, 'a');
+    expect(() => bare.leaveRoom('b')).not.toThrow();
   });
 });

@@ -37,6 +37,7 @@ import { GameInviteBridge } from '../games/GameInviteBridge';
 import { AnnouncementNotificationBridge } from '../notifications/AnnouncementNotificationBridge';
 import { ChatNotificationBridge } from '../notifications/ChatNotificationBridge';
 import { VoiceNotificationBridge } from '../notifications/VoiceNotificationBridge';
+import { RoutineAlarmBridge } from '../tracker/RoutineAlarmBridge';
 import { InviteLinkBridge } from '../invite/InviteLinkBridge';
 import { SideDrawer } from '../ui/SideDrawer';
 import { SectionStackHeader } from '../ui/SectionStackHeader';
@@ -276,6 +277,13 @@ export function RootNavigator() {
               }))}
             />
             <MainStack.Screen
+              name="Settings"
+              getComponent={() =>
+                require('../screens/SettingsScreen').SettingsScreen
+              }
+              options={detailOptions(() => ({ title: 'Settings' }))}
+            />
+            <MainStack.Screen
               name="AccountSettings"
               component={AccountSettingsScreen}
               options={sectionOptions(adminDrawer.openWith, () => ({
@@ -293,6 +301,11 @@ export function RootNavigator() {
               name="Permissions"
               component={PermissionsScreen}
               options={detailOptions(() => ({ title: 'Permissions' }))}
+            />
+            <MainStack.Screen
+              name="SocialHandles"
+              component={SocialHandlesScreen}
+              options={detailOptions(() => ({ title: 'Social Handles' }))}
             />
             <MainStack.Screen
               name="MemberProfile"
@@ -339,6 +352,13 @@ export function RootNavigator() {
               name="Profile"
               component={ProfileScreen}
               options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Profile' }))}
+            />
+            <MainStack.Screen
+              name="Settings"
+              getComponent={() =>
+                require('../screens/SettingsScreen').SettingsScreen
+              }
+              options={detailOptions(() => ({ title: 'Settings' }))}
             />
             <MainStack.Screen
               name="AccountSettings"
@@ -391,6 +411,13 @@ export function RootNavigator() {
               options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Games' }))}
             />
             <MainStack.Screen
+              name="GamesLeaderboard"
+              getComponent={() =>
+                require('../screens/games/GamesLeaderboardScreen').GamesLeaderboardScreen
+              }
+              options={detailOptions(() => ({ title: 'Leaderboard' }))}
+            />
+            <MainStack.Screen
               name="GameRoom"
               getComponent={() =>
                 require('../screens/games/GameRoomScreen').GameRoomScreen
@@ -420,6 +447,22 @@ export function RootNavigator() {
                 require('../screens/live/GoLiveScreen').GoLiveScreen
               }
               options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Go Live' }))}
+            />
+            <MainStack.Screen
+              name="Health"
+              getComponent={() =>
+                require('../screens/tracker/HealthScreen').HealthScreen
+              }
+              options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Health' }))}
+            />
+            <MainStack.Screen
+              name="DailyRoutine"
+              getComponent={() =>
+                require('../screens/tracker/DailyRoutineScreen').DailyRoutineScreen
+              }
+              options={sectionOptions(guildDrawer.openWith, () => ({
+                title: 'Daily Routine',
+              }))}
             />
             <MainStack.Screen
               name="MemberProfile"
@@ -466,6 +509,7 @@ export function RootNavigator() {
           <ChatNotificationBridge />
           <AnnouncementNotificationBridge />
           <VoiceNotificationBridge />
+          <RoutineAlarmBridge />
           <InviteLinkBridge />
         </>
       ) : (
@@ -497,6 +541,13 @@ export function RootNavigator() {
               options={sectionOptions(orgDrawer.openWith, () => ({
                 title: 'Org Settings',
               }))}
+            />
+            <MainStack.Screen
+              name="Settings"
+              getComponent={() =>
+                require('../screens/SettingsScreen').SettingsScreen
+              }
+              options={detailOptions(() => ({ title: 'Settings' }))}
             />
             <MainStack.Screen
               name="AccountSettings"
@@ -645,6 +696,13 @@ export function RootNavigator() {
               options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Games' }))}
             />
             <MainStack.Screen
+              name="GamesLeaderboard"
+              getComponent={() =>
+                require('../screens/games/GamesLeaderboardScreen').GamesLeaderboardScreen
+              }
+              options={detailOptions(() => ({ title: 'Leaderboard' }))}
+            />
+            <MainStack.Screen
               name="GameRoom"
               getComponent={() =>
                 require('../screens/games/GameRoomScreen').GameRoomScreen
@@ -674,6 +732,22 @@ export function RootNavigator() {
                 require('../screens/live/GoLiveScreen').GoLiveScreen
               }
               options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Go Live' }))}
+            />
+            <MainStack.Screen
+              name="Health"
+              getComponent={() =>
+                require('../screens/tracker/HealthScreen').HealthScreen
+              }
+              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Health' }))}
+            />
+            <MainStack.Screen
+              name="DailyRoutine"
+              getComponent={() =>
+                require('../screens/tracker/DailyRoutineScreen').DailyRoutineScreen
+              }
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Daily Routine',
+              }))}
             />
             <MainStack.Screen
               name="Announcements"
@@ -713,6 +787,7 @@ export function RootNavigator() {
           <ChatNotificationBridge />
           <AnnouncementNotificationBridge />
           <VoiceNotificationBridge />
+          <RoutineAlarmBridge />
           <InviteLinkBridge />
         </>
       )}

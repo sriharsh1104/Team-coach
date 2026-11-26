@@ -203,12 +203,23 @@ export function RaceScene3D({
       return mesh;
     });
 
+    // Everything here is moved or rewritten every frame, so the bounding
+    // volumes three measured once — at the origin, before anything had moved
+    // — go stale immediately, and culling against them can blank the road or
+    // a bike for no reason. There are only a hundred-odd meshes: drawing
+    // them all is cheaper than keeping those volumes honest.
+    root.traverse((object) => {
+      object.frustumCulled = false;
+    });
     return { root, backdrop, asphalt, curbs, dashes, finishLine, pads, cars, sparkMeshes };
   }, []);
 
   const bikes = useMemo(() => {
     const built = seats.map((seat) => {
       const parts = buildBike(seat);
+      parts.group.traverse((object) => {
+        object.frustumCulled = false;
+      });
       setOrder(parts.group, 8);
       kit.root.add(parts.group);
       return parts;

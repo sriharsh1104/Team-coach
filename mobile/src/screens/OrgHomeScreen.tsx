@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Text, View, StyleSheet, Pressable, Modal } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View, StyleSheet } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
@@ -20,30 +19,25 @@ import {
   useUnreadAnnouncements,
 } from '../navigation/announcementsDrawerItem';
 import { achievementsItem } from '../navigation/achievementsDrawerItem';
+import { trackerDrawerSection } from '../navigation/trackerDrawerItems';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ExitConfirmModal } from '../ui/ExitConfirmModal';
 import { useRecording } from '../recording/RecordingContext';
 import { ChatHubScreen } from './chat/ChatHubScreen';
 import { useTheme } from '../theme/ThemeContext';
-import { THEME_OPTIONS, ThemeId } from '../theme';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'OrgHome'>;
 
 export function OrgHomeScreen({ navigation }: Props) {
-  const { logout, org, user } = useAuth();
-  const { themeId, setTheme, colors: theme } = useTheme();
+  const { org, user } = useAuth();
+  const { colors: theme } = useTheme();
   const [detail, setDetail] = useState<OrgDetail | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
   const realtime = useOrgRealtimeOptional();
-  const insets = useSafeAreaInsets();
   const isOwner = !!org?.isOwner;
   const { exitModalVisible, confirmExit, cancelExit } = useBlockExitOnRoot(navigation);
   const { startRecording } = useRecording();
-  // Roster add/remove from Guild is owner-only (join via code/invite still works).
-  const canManageGuild = isOwner;
 
   const copyOrgCode = async () => {
     if (!detail?.orgCode) return;
@@ -75,8 +69,10 @@ export function OrgHomeScreen({ navigation }: Props) {
     });
   }, [realtime, load]);
 
-  // Mirrors web AppShell: Esports Arena for roster, Guild for owners/coaches,
-  // Account for everyone. Plain players do not see Guild.
+  // Mirrors web AppShell: Esports Arena for roster, Guild for everyone in it,
+  // Account for everyone. GuildScreen itself limits the accept/add/remove
+  // controls to owner, coach, or guild leadership — every member still sees
+  // the roster and the join-request queue.
   const unreadAnnouncements = useUnreadAnnouncements(menuOpen, 'OrgHome');
 
   const drawerSections = useMemo((): SideDrawerSection[] => {
@@ -158,8 +154,9 @@ export function OrgHomeScreen({ navigation }: Props) {
       },
     ];
 
-    // Games live under Guild so every guild member can play; only the
-    // roster screen is limited to people who can manage the guild.
+    // Games live under Guild so every guild member can play, and every
+    // member can open the Guild Roster too — GuildScreen gates the
+    // accept/add/remove controls on its own (owner, coach, or leadership).
     sections.push({
       key: 'guild',
       label: 'Guild',
@@ -167,16 +164,12 @@ export function OrgHomeScreen({ navigation }: Props) {
       items: [
         announcementsItem(navigation, 'OrgHome', unreadAnnouncements),
         achievementsItem(navigation, 'OrgHome'),
-        ...(canManageGuild
-          ? [
-              {
-                key: 'guildHome',
-                label: 'Guild Roster',
-                icon: 'people-outline' as const,
-                onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
-              },
-            ]
-          : []),
+        {
+          key: 'guildHome',
+          label: 'Guild Roster',
+          icon: 'people-outline' as const,
+          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
+        },
         {
           key: 'games',
           label: 'Games',
@@ -214,6 +207,8 @@ export function OrgHomeScreen({ navigation }: Props) {
       ],
     });
 
+    sections.push(trackerDrawerSection(navigation, 'OrgHome'));
+
     sections.push({
       key: 'account',
       label: 'Account',
@@ -239,7 +234,6 @@ export function OrgHomeScreen({ navigation }: Props) {
   }, [
     navigation,
     isOwner,
-    canManageGuild,
     startRecording,
     unreadAnnouncements,
   ]);
@@ -250,7 +244,7 @@ export function OrgHomeScreen({ navigation }: Props) {
         title={org?.name ?? detail?.name ?? 'Team Chat'}
         showPing
         onMenu={() => setMenuOpen(true)}
-        onSettings={() => setSettingsMenuOpen(true)}
+        onSettings={() => navigation.navigate('Settings')}
         subtitle={
           detail ? (
             <View style={styles.subtitleRow}>
@@ -286,144 +280,6 @@ export function OrgHomeScreen({ navigation }: Props) {
         sections={drawerSections}
       />
 
-      <Modal
-        visible={settingsMenuOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSettingsMenuOpen(false)}
-      >
-        <View style={styles.dropdownRoot}>
-          <Pressable
-            style={styles.dropdownBackdrop}
-            onPress={() => setSettingsMenuOpen(false)}
-            accessibilityLabel="Close Account Settings Menu"
-          />
-          <View
-            style={[
-              styles.dropdownPanel,
-              {
-                top: insets.top + 56,
-                backgroundColor: theme.bg,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <SoftPressable
-              style={styles.dropdownItem}
-              onPress={() => {
-                setSettingsMenuOpen(false);
-                navigation.navigate('AccountSettings');
-              }}
-              pressScale={0.97}
-            >
-              <Text style={[styles.dropdownItemText, { color: theme.text }]}>
-                Security
-              </Text>
-            </SoftPressable>
-            <SoftPressable
-              style={styles.dropdownItem}
-              onPress={() => {
-                setSettingsMenuOpen(false);
-                navigation.navigate('Permissions');
-              }}
-              pressScale={0.97}
-            >
-              <Text style={[styles.dropdownItemText, { color: theme.text }]}>
-                Permissions
-              </Text>
-            </SoftPressable>
-            <SoftPressable
-              style={styles.dropdownItem}
-              onPress={() => {
-                setSettingsMenuOpen(false);
-                setThemePickerOpen(true);
-              }}
-              pressScale={0.97}
-            >
-              <Text style={[styles.dropdownItemText, { color: theme.text }]}>
-                Theme
-              </Text>
-            </SoftPressable>
-            <View
-              style={[styles.dropdownDivider, { backgroundColor: theme.border }]}
-            />
-            <SoftPressable
-              style={styles.dropdownItem}
-              onPress={() => {
-                setSettingsMenuOpen(false);
-                logout();
-              }}
-              pressScale={0.97}
-            >
-              <Text style={[styles.dropdownItemText, { color: theme.danger }]}>
-                Logout
-              </Text>
-            </SoftPressable>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={themePickerOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setThemePickerOpen(false)}
-      >
-        <View style={styles.dropdownRoot}>
-          <Pressable
-            style={styles.dropdownBackdrop}
-            onPress={() => setThemePickerOpen(false)}
-            accessibilityLabel="Close Theme Picker"
-          />
-          <View
-            style={[
-              styles.dropdownPanel,
-              {
-                top: insets.top + 56,
-                backgroundColor: theme.bg,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <Text style={[styles.themeHeading, { color: theme.textMuted }]}>
-              Theme
-            </Text>
-            {THEME_OPTIONS.map((opt) => {
-              const active = themeId === opt.id;
-              return (
-                <SoftPressable
-                  key={opt.id}
-                  style={styles.themeRow}
-                  onPress={() => {
-                    setTheme(opt.id as ThemeId);
-                    setThemePickerOpen(false);
-                  }}
-                  pressScale={0.97}
-                >
-                  <View
-                    style={[
-                      styles.themeSwatch,
-                      {
-                        backgroundColor: opt.swatch,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                  />
-                  <Text style={[styles.dropdownItemText, { color: theme.text }]}>
-                    {opt.label}
-                  </Text>
-                  {active ? (
-                    <Text style={[styles.themeCheck, { color: theme.link }]}>
-                      ✓
-                    </Text>
-                  ) : null}
-                </SoftPressable>
-              );
-            })}
-          </View>
-        </View>
-      </Modal>
-
       <ExitConfirmModal
         visible={exitModalVisible}
         onStay={cancelExit}
@@ -445,54 +301,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   subtitle: { fontSize: 12 },
-  dropdownRoot: { flex: 1 },
-  dropdownBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  dropdownPanel: {
-    position: 'absolute',
-    right: 16,
-    minWidth: 180,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 6,
-    overflow: 'hidden',
-  },
-  dropdownItem: {
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-  },
-  dropdownItemText: {
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  dropdownDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: 2,
-  },
-  themeHeading: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 4,
-  },
-  themeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  themeSwatch: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1,
-  },
-  themeCheck: { marginLeft: 'auto', fontWeight: '800' },
   chat: { flex: 1 },
 });

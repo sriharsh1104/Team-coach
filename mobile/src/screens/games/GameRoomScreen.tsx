@@ -375,7 +375,9 @@ export function GameRoomScreen() {
       </Screen>
     );
   }
-  if (room.status === 'playing' && room.race) {
+  // Kept on screen after the flag too, so the winner is announced over the
+  // track the way the arcade does it, with the rematch right there.
+  if ((room.status === 'playing' || room.status === 'finished') && room.race) {
     return (
       // The racer owns the whole screen like Chess and UNO, and like them it
       // brings its own chrome. Its world arrives on a separate 20Hz channel
@@ -390,6 +392,7 @@ export function GameRoomScreen() {
             !games.connected ? ' · reconnecting…' : ''
           }`}
           onLeave={leave}
+          onRematch={() => void act(() => games.rematch(room.id))}
           onInput={(action) => games.raceInput(room.id, action)}
           onRaceTick={games.onRaceTick}
         />

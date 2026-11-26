@@ -10,6 +10,7 @@ import {
 } from '../../api/games';
 import { useAuth } from '../../auth/AuthContext';
 import { useGamesSocket, tryGames } from '../../games/useGamesSocket';
+import { IconActionButton } from '../../ui/IconActionButton';
 import { ThemeColors } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useThemedStyles } from '../../theme/useThemedStyles';
@@ -175,8 +176,17 @@ export function GamesHubScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void refresh()} tintColor={colors.chrome} />}
         ListHeaderComponent={
           <View>
-            <Text style={styles.eyebrow}>Play with your team</Text>
-            <Text style={styles.title}>Games</Text>
+            <View style={staticStyles.titleRow}>
+              <View style={staticStyles.flex}>
+                <Text style={styles.eyebrow}>Play with your team</Text>
+                <Text style={styles.title}>Games</Text>
+              </View>
+              <IconActionButton
+                icon="trophy-outline"
+                label="Leaderboard"
+                onPress={() => navigation.navigate('GamesLeaderboard')}
+              />
+            </View>
 
             {mine ? (
               <Pressable style={styles.mineCard} onPress={() => openRoom(mine)} accessibilityRole="button">
@@ -388,6 +398,8 @@ export function GamesHubScreen() {
 
 const staticStyles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 32 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  flex: { flex: 1 },
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 14 },
   cardEmoji: { fontSize: 34 },
   roomEmoji: { fontSize: 26, marginRight: 12 },

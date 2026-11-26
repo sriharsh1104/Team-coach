@@ -134,6 +134,11 @@ model User {
   playerStats        PlayerStat[]
   announcements      Announcement[]
   announcementReads  AnnouncementRead[]
+  gameMatchResults   GameMatchPlayer[]
+  healthGoal         HealthGoal?
+  dailyHealthSamples DailyHealthSample[]
+  routineItems       RoutineItem[]
+  routineCompletions RoutineCompletion[]
 }
 
 // One outstanding signup-verification code per user — a resend overwrites
@@ -261,6 +266,7 @@ model Org {
   guildJoinRequests  GuildJoinRequest[]
   announcements      Announcement[]
   achievements       OrgAchievement[]
+  gameMatches        GameMatch[]
 }
 
 // Guild trophy shelf — tournaments where the org reached grand finals.
@@ -817,4 +823,128 @@ model AnnouncementRead {
 
   @@unique([announcementId, userId])
   @@index([userId])
+}
+
+// The seven in-app mini-games (GamesService / GamesGateway, Socket.IO
+// /games namespace) — see backend/src/games. `playedAt` is when the match
+// actually ended, not when the row was written, so a backfill or retry never
+// shifts a match's place on the leaderboard.
+enum MiniGameKind {
+  RPS
+  LUDO
+  BOOTS
+  CUT
+  CHESS
+  UNO
+  RACE
+}
+
+// One finished mini-game match. Written once, from GamesService.finish(),
+// for every game that reaches 'done' — including a forfeit, so leaving a
+// losing game still counts as a loss rather than quietly vanishing from
+// history. `players` is the roster GamesService captured when the match
+// *started* (startGame), not whoever is still in the room at the end — a
+// player who forfeits is spliced out of the live room immediately, and
+// would otherwise disappear from their own loss.
+model GameMatch {
+  id        String       @id @default(cuid())
+  orgId     String
+  game      MiniGameKind
+  // Null for a draw/stalemate — not every game can end without a winner
+  // (Chess, Cut), but the ones that can (Boots forfeit-to-nobody, Rps draw
+  // ending in a forfeit with one player) need this nullable.
+  winnerId  String?
+  // Free text from the engine's own end-reason union (e.g. Chess's
+  // 'checkmate' | 'stalemate' | 'forfeit', Cut's 'done', Race's
+  // 'finish' | 'forfeit') — never matched on in a query, only shown.
+  endReason String?
+  playedAt  DateTime     @default(now())
+
+  org     Org               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  players GameMatchPlayer[]
+
+  @@index([orgId, game, playedAt])
+  @@index([orgId, playedAt])
+}
+
+// One player's result in one match. `game` is denormalised off GameMatch
+// (not just reachable via the relation) so the leaderboard's per-game
+// breakdown is a single `groupBy` on this table alone, no join required.
+model GameMatchPlayer {
+  id      String       @id @default(cuid())
+  matchId String
+  userId  String
+  orgId   String
+  game    MiniGameKind
+  won     Boolean      @default(false)
+
+  match GameMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, userId])
+  @@index([orgId, userId])
+  @@index([orgId, game, userId])
+  @@index([orgId, userId, won])
+}
+
+// Personal habit tracker — steps / heart-points goals (one row per user).
+model HealthGoal {
+  userId    String   @id
+  stepGoal  Int      @default(10000)
+  heartGoal Int      @default(30)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// One synced health sample per local calendar day.
+model DailyHealthSample {
+  id          String   @id @default(cuid())
+  userId      String
+  /// Local calendar day "YYYY-MM-DD" (device timezone).
+  day         String
+  steps       Int
+  heartPoints Int      @default(0)
+  source      String?
+  syncedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@index([userId, day])
+}
+
+// Recurring daily timed habit (alarm time is local HH:mm).
+model RoutineItem {
+  id           String   @id @default(cuid())
+  userId       String
+  title        String
+  /// Local wall-clock time "HH:mm" (24h).
+  timeLocal    String
+  alarmEnabled Boolean  @default(true)
+  active       Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completions RoutineCompletion[]
+
+  @@index([userId, active])
+}
+
+model RoutineCompletion {
+  id            String   @id @default(cuid())
+  routineItemId String
+  userId        String
+  /// Local calendar day "YYYY-MM-DD".
+  day           String
+  completedAt   DateTime @default(now())
+
+  routineItem RoutineItem @relation(fields: [routineItemId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([routineItemId, day])
+  @@index([userId, day])
 }

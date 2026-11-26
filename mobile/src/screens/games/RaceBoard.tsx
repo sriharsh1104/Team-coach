@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { RaceAction, RaceEvent, RaceTick, RoomView } from '../../api/games';
 import { GameCanvas } from '../../games/three/GameCanvas';
 import { RaceScene3D } from '../../games/arcade/RaceScene3D';
@@ -66,6 +67,7 @@ export function RaceBoard({
   busy,
   subtitle,
   onLeave,
+  onRematch,
   onInput,
   onRaceTick,
 }: {
@@ -74,6 +76,7 @@ export function RaceBoard({
   busy: boolean;
   subtitle?: string;
   onLeave?: () => void;
+  onRematch?: () => void;
   onInput: (action: RaceAction) => void;
   /** Subscribes to the 20Hz world; returns the unsubscribe. */
   onRaceTick: (handler: (tick: RaceTick) => void) => () => void;
@@ -86,6 +89,17 @@ export function RaceBoard({
   const spectating = mySeat < 0;
 
   const world = useMemo(() => new RaceWorld(mySeat), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The grid only really changes between races, but a fresh array arrives
+  // with every room update. Pin the scene to what the seats *say*, not to
+  // which array object said it.
+  const seatsKey = race.seats.map((s) => `${s.seat}:${s.tag}:${s.color}`).join('|');
+  const seatsRef = useRef(race.seats);
+  const seatsKeyRef = useRef(seatsKey);
+  if (seatsKeyRef.current !== seatsKey) {
+    seatsKeyRef.current = seatsKey;
+    seatsRef.current = race.seats;
+  }
   useEffect(() => {
     world.setSeat(mySeat);
   }, [world, mySeat]);
@@ -137,7 +151,17 @@ export function RaceBoard({
     [mySeat],
   );
 
-  useEffect(() => onRaceTick((tick) => react(world.push(tick))), [onRaceTick, react, world]);
+  // Subscribe once. Both of these change identity whenever the room screen
+  // re-renders, and tearing the socket listener down and back up mid-race
+  // drops ticks — which looks exactly like the game freezing.
+  const reactRef = useRef(react);
+  reactRef.current = react;
+  const subscribeRef = useRef(onRaceTick);
+  subscribeRef.current = onRaceTick;
+  useEffect(
+    () => subscribeRef.current((tick) => reactRef.current(world.push(tick))),
+    [world],
+  );
 
   // The HUD reads the same interpolated world the scene draws, just far less
   // often — React has no business running at sixty frames a second.
@@ -166,8 +190,9 @@ export function RaceBoard({
     return () => clearInterval(id);
   }, [world, mySeat, race.finishDist, race.seats]);
 
+  const racing = race.phase === 'play';
   const fire = (action: RaceAction) => {
-    if (busy || spectating) return;
+    if (busy || spectating || !racing) return;
     // Move our own bike now; the next tick confirms or quietly corrects it.
     world.predict(action);
     onInput(action);
@@ -202,13 +227,14 @@ export function RaceBoard({
       >
         <RaceScene3D
           world={world}
-          seats={race.seats}
+          seats={seatsRef.current}
           seed={race.seed}
           finishDist={race.finishDist}
         />
       </GameCanvas>
     ),
-    [world, race.seats, race.seed, race.finishDist],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [world, seatsKey, race.seed, race.finishDist],
   );
 
   return (
@@ -216,8 +242,21 @@ export function RaceBoard({
       {/* ── BRAND BAR ───────────────────────────────────────────────── */}
       <View style={styles.header}>
         <View style={styles.logoOuter}>
+          {/* The arcade's rose→amber→sky tile. RN has no CSS gradient, and
+              this is the one place the app needs one, so it is a 32px SVG
+              rather than a whole gradient dependency. */}
+          <Svg style={StyleSheet.absoluteFill} viewBox="0 0 32 32">
+            <Defs>
+              <LinearGradient id="rrLogo" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor="#e11d48" />
+                <Stop offset="0.5" stopColor="#f59e0b" />
+                <Stop offset="1" stopColor="#0ea5e9" />
+              </LinearGradient>
+            </Defs>
+            <Rect width={32} height={32} rx={12} fill="url(#rrLogo)" />
+          </Svg>
           <View style={styles.logoInner}>
-            <Text style={styles.logoText}>RR</Text>
+            <Text style={styles.logoText}>KO</Text>
           </View>
         </View>
         <View style={staticStyles.flex}>
@@ -254,7 +293,7 @@ export function RaceBoard({
         {arena}
 
         <View style={staticStyles.hud} pointerEvents="none">
-          <View style={styles.trackBar}>
+          <View style={styles.trackPanel}>
             <View style={staticStyles.trackLine} />
             {hud.dots.map((dot) => (
               <View
@@ -272,37 +311,31 @@ export function RaceBoard({
               />
             ))}
           </View>
-          <View style={staticStyles.statRow}>
-            {!spectating ? (
-              <>
-                <View style={styles.placeChip}>
-                  <Text style={styles.placeText}>{ordinal(hud.place)}</Text>
-                </View>
-                <View style={styles.statChip}>
-                  <Text style={styles.statText}>
-                    HP {hud.hp} · {hud.kmh} KM/H · N {hud.nitro}
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <View style={styles.statChip}>
-                <Text style={styles.statText}>Watching the race</Text>
-              </View>
-            )}
-            {hud.stalled ? (
-              <View style={styles.warnChip}>
-                <Text style={styles.warnText}>reconnecting…</Text>
-              </View>
-            ) : null}
+          <View style={styles.readoutRow}>
+            <Text style={styles.readout}>
+              {spectating
+                ? `WATCHING · ${ordinal(hud.place)} PLACE LEADER`
+                : `HP: ${hud.hp}%  |  ${hud.kmh} KM/H`}
+            </Text>
+            <Text style={styles.readout}>
+              {spectating ? '' : `NITRO: ${hud.nitro}%`}
+            </Text>
           </View>
+          {hud.stalled ? (
+            <View style={styles.warnChip}>
+              <Text style={styles.warnText}>reconnecting…</Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
       {/* ── YOUR PAD ────────────────────────────────────────────────── */}
       <View style={styles.controls}>
-        {spectating ? (
+        {spectating || !racing ? (
           <Text style={styles.spectateNote}>
-            You are watching — join the next race to ride.
+            {spectating
+              ? 'You are watching — join the next race to ride.'
+              : 'Race over — rematch to line up again.'}
           </Text>
         ) : (
           <View style={staticStyles.pad}>
@@ -341,13 +374,23 @@ export function RaceBoard({
                   ? 'Conquered the Curvy Road Rash Highway!'
                   : `${winner?.tag ?? 'They'} took the flag — run it back.`}
             </Text>
+            {onRematch ? (
+              <Pressable
+                onPress={onRematch}
+                style={styles.primaryBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Race again"
+              >
+                <Text style={styles.primaryBtnText}>REMATCH</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => setResultSeen(true)}
-              style={styles.primaryBtn}
+              style={styles.ghostBtn}
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel="Look at the track"
             >
-              <Text style={styles.primaryBtnText}>CLOSE</Text>
+              <Text style={styles.ghostBtnText}>INSPECT TRACK</Text>
             </Pressable>
           </View>
         </View>
@@ -429,7 +472,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.line,
   },
-  logoOuter: { width: 32, height: 32, borderRadius: 12, padding: 2, backgroundColor: '#f43f5e' },
+  logoOuter: { width: 32, height: 32, borderRadius: 12, padding: 2 },
   logoInner: {
     flex: 1,
     borderRadius: 10,
@@ -467,37 +510,30 @@ const styles = StyleSheet.create({
   },
   leaveText: { fontSize: 11, fontWeight: '800', color: '#fda4af' },
 
-  trackBar: {
+  // The original's HUD: one slate panel holding the progress track, with the
+  // readout printed underneath it, left and right aligned to the same width.
+  trackPanel: {
     width: '74%',
     maxWidth: 300,
     height: 30,
-    borderRadius: 10,
+    borderRadius: 8,
     backgroundColor: C.panel,
     justifyContent: 'center',
   },
   trackDot: { position: 'absolute', marginLeft: 4, borderWidth: 1, borderColor: '#0f172a' },
-  placeChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: 'rgba(245,158,11,0.9)',
+  readoutRow: {
+    width: '74%',
+    maxWidth: 300,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  placeText: {
+  readout: {
     fontFamily: ARCADE_FONT,
     fontSize: 11,
     fontWeight: '900',
-    color: '#020617',
-    letterSpacing: 0.5,
+    color: '#facc15',
+    letterSpacing: 0.4,
   },
-  statChip: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: 'rgba(2,6,23,0.75)',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  statText: { fontSize: 10, fontWeight: '700', color: '#e2e8f0' },
   warnChip: {
     paddingHorizontal: 9,
     paddingVertical: 3,
@@ -564,4 +600,12 @@ const styles = StyleSheet.create({
     color: '#020617',
     letterSpacing: 1,
   },
+  ghostBtn: {
+    width: '100%',
+    paddingVertical: 11,
+    borderRadius: 14,
+    alignItems: 'center',
+    backgroundColor: 'rgba(30,41,59,0.9)',
+  },
+  ghostBtnText: { fontSize: 11, fontWeight: '800', color: '#cbd5e1', letterSpacing: 0.6 },
 });

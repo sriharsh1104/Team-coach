@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as orgApi from '../api/org';
 import { GuildDetail } from '../api/types';
@@ -18,13 +17,13 @@ import {
   useUnreadAnnouncements,
 } from '../navigation/announcementsDrawerItem';
 import { achievementsItem } from '../navigation/achievementsDrawerItem';
+import { trackerDrawerSection } from '../navigation/trackerDrawerItems';
 import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ExitConfirmModal } from '../ui/ExitConfirmModal';
 import { useRecording } from '../recording/RecordingContext';
 import { ChatHubScreen } from './chat/ChatHubScreen';
 import { useTheme } from '../theme/ThemeContext';
-import { THEME_OPTIONS, ThemeId } from '../theme';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'GuildHome'>;
 
@@ -33,13 +32,10 @@ type Props = NativeStackScreenProps<MainStackParamList, 'GuildHome'>;
  * Mirrors OrgHome's sidebar so they are not stuck on a bare Guild stack screen.
  */
 export function GuildHomeScreen({ navigation }: Props) {
-  const { logout, guild, user } = useAuth();
-  const { themeId, setTheme, colors: theme } = useTheme();
+  const { guild, user } = useAuth();
+  const { colors: theme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [detail, setDetail] = useState<GuildDetail | null>(null);
-  const insets = useSafeAreaInsets();
   const { message: toastMessage, showToast } = useToast();
   const { exitModalVisible, confirmExit, cancelExit } = useBlockExitOnRoot(navigation);
   const { startRecording } = useRecording();
@@ -135,6 +131,7 @@ export function GuildHomeScreen({ navigation }: Props) {
             },
           ],
         },
+        trackerDrawerSection(navigation, 'GuildHome'),
         {
           key: 'account',
           label: 'Account',
@@ -167,7 +164,7 @@ export function GuildHomeScreen({ navigation }: Props) {
         title={guild?.name ?? detail?.name ?? 'Guild Chat'}
         showPing
         onMenu={() => setMenuOpen(true)}
-        onSettings={() => setSettingsMenuOpen(true)}
+        onSettings={() => navigation.navigate('Settings')}
         subtitle={
           detail ? (
             <View style={styles.subtitleRow}>
@@ -209,144 +206,6 @@ export function GuildHomeScreen({ navigation }: Props) {
         sections={drawerSections}
       />
 
-      <Modal
-        visible={settingsMenuOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSettingsMenuOpen(false)}
-      >
-        <View style={styles.dropdownRoot}>
-          <Pressable
-            style={styles.dropdownBackdrop}
-            onPress={() => setSettingsMenuOpen(false)}
-            accessibilityLabel="Close Account Settings Menu"
-          />
-          <View
-            style={[
-              styles.dropdownPanel,
-              {
-                top: insets.top + 56,
-                backgroundColor: theme.bg,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <SoftPressable
-              style={styles.dropdownItem}
-              onPress={() => {
-                setSettingsMenuOpen(false);
-                navigation.navigate('AccountSettings');
-              }}
-              pressScale={0.97}
-            >
-              <Text style={[styles.dropdownItemText, { color: theme.text }]}>
-                Security
-              </Text>
-            </SoftPressable>
-            <SoftPressable
-              style={styles.dropdownItem}
-              onPress={() => {
-                setSettingsMenuOpen(false);
-                navigation.navigate('Permissions');
-              }}
-              pressScale={0.97}
-            >
-              <Text style={[styles.dropdownItemText, { color: theme.text }]}>
-                Permissions
-              </Text>
-            </SoftPressable>
-            <SoftPressable
-              style={styles.dropdownItem}
-              onPress={() => {
-                setSettingsMenuOpen(false);
-                setThemePickerOpen(true);
-              }}
-              pressScale={0.97}
-            >
-              <Text style={[styles.dropdownItemText, { color: theme.text }]}>
-                Theme
-              </Text>
-            </SoftPressable>
-            <View
-              style={[styles.dropdownDivider, { backgroundColor: theme.border }]}
-            />
-            <SoftPressable
-              style={styles.dropdownItem}
-              onPress={() => {
-                setSettingsMenuOpen(false);
-                logout();
-              }}
-              pressScale={0.97}
-            >
-              <Text style={[styles.dropdownItemText, { color: theme.danger }]}>
-                Logout
-              </Text>
-            </SoftPressable>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={themePickerOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setThemePickerOpen(false)}
-      >
-        <View style={styles.dropdownRoot}>
-          <Pressable
-            style={styles.dropdownBackdrop}
-            onPress={() => setThemePickerOpen(false)}
-            accessibilityLabel="Close Theme Picker"
-          />
-          <View
-            style={[
-              styles.dropdownPanel,
-              {
-                top: insets.top + 56,
-                backgroundColor: theme.bg,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <Text style={[styles.themeHeading, { color: theme.textMuted }]}>
-              Theme
-            </Text>
-            {THEME_OPTIONS.map((opt) => {
-              const active = themeId === opt.id;
-              return (
-                <SoftPressable
-                  key={opt.id}
-                  style={styles.themeRow}
-                  onPress={() => {
-                    setTheme(opt.id as ThemeId);
-                    setThemePickerOpen(false);
-                  }}
-                  pressScale={0.97}
-                >
-                  <View
-                    style={[
-                      styles.themeSwatch,
-                      {
-                        backgroundColor: opt.swatch,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                  />
-                  <Text style={[styles.dropdownItemText, { color: theme.text }]}>
-                    {opt.label}
-                  </Text>
-                  {active ? (
-                    <Text style={[styles.themeCheck, { color: theme.link }]}>
-                      ✓
-                    </Text>
-                  ) : null}
-                </SoftPressable>
-              );
-            })}
-          </View>
-        </View>
-      </Modal>
-
       <Toast message={toastMessage} />
 
       <ExitConfirmModal
@@ -362,54 +221,5 @@ const styles = StyleSheet.create({
   subtitleRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
   guildCode: { fontSize: 11, fontWeight: '700' },
   subtitle: { fontSize: 11 },
-  dropdownRoot: { flex: 1 },
-  dropdownBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  dropdownPanel: {
-    position: 'absolute',
-    right: 16,
-    minWidth: 180,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 6,
-    overflow: 'hidden',
-  },
-  dropdownItem: {
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-  },
-  dropdownItemText: {
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  dropdownDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: 2,
-  },
-  themeHeading: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 4,
-  },
-  themeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  themeSwatch: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1,
-  },
-  themeCheck: { marginLeft: 'auto', fontWeight: '800' },
   chat: { flex: 1, minWidth: 0 },
 });

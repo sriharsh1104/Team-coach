@@ -334,15 +334,11 @@ export function ChessBoard({
     return () => loop.stop();
   }, [chess.inCheck, checkPulse]);
 
-  // 2D: the board is the screen's main event. 3D: the same grid is only the
-  // tap surface under the scene (hit-testing a GL scene on a phone is far
-  // less reliable than tapping a plain 8×8 of Views), so it shrinks.
+  // Only the 2D board uses these — in 3D the whole arena is the GL canvas,
+  // which the scene taps directly via raycasting instead.
   const { cell: cellPx, board: boardPx } = useMemo(
-    () =>
-      mode === '3d'
-        ? fitBoard(winW - BOARD_PAD * 4, winH * 0.26)
-        : fitBoard(winW - BOARD_PAD * 2, winH * 0.52),
-    [mode, winW, winH],
+    () => fitBoard(winW - BOARD_PAD * 2, winH * 0.52),
+    [winW, winH],
   );
   const cellSize = useMemo(() => ({ width: cellPx, height: cellPx }), [cellPx]);
   const boardSize = useMemo(() => ({ width: boardPx, height: boardPx }), [boardPx]);
@@ -529,102 +525,103 @@ export function ChessBoard({
               selected={selected}
               targets={targets}
               lastMove={chess.lastMove}
+              onSquarePress={tap}
             />
           </GameCanvas>
-        ) : null}
+        ) : (
+          <View style={styles.boardFrame}>
+            <View style={[styles.grid, boardSize]}>
+              {order.map((index, slot) => {
+                const square = chessIndexToSquare(index);
+                const piece = chess.board[index];
+                const file = index % 8;
+                const rank = Math.floor(index / 8);
+                const light = (file + rank) % 2 === 0;
+                const isTarget = targets.includes(square);
+                const isSelected = selected === square;
+                const isLast =
+                  chess.lastMove?.from === square || chess.lastMove?.to === square;
+                // The destination piece is suppressed while the ghost below is
+                // still sliding into it, so it doesn't appear twice.
+                const hideForSlide = !!slide && slide.toIdx === index;
+                // Coordinates only on the edges the eye actually reads from —
+                // rank down the left column, file along the bottom row, tucked
+                // into the corner so they cost no layout space.
+                const showRank = slot % 8 === 0;
+                const showFile = slot >= 56;
+                return (
+                  <Pressable
+                    key={square}
+                    style={[
+                      styles.cell,
+                      cellSize,
+                      light ? styles.cellLight : styles.cellDark,
+                    ]}
+                    onPress={() => tap(square)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${square}${piece ? `, ${piece.color === 'w' ? 'white' : 'black'} ${piece.type}` : ', empty'}`}
+                  >
+                    {/* Translucent washes rather than flat replacement colours —
+                        the squares keep reading as a board underneath them. */}
+                    {isLast ? <View style={styles.washLast} /> : null}
+                    {isSelected ? <View style={styles.washSelected} /> : null}
+                    {index === checkIndex ? (
+                      <Animated.View
+                        style={[
+                          styles.washCheck,
+                          { opacity: checkPulse.interpolate({ inputRange: [0, 1], outputRange: [0.75, 1] }) },
+                        ]}
+                      />
+                    ) : null}
+                    {showRank ? (
+                      <Text
+                        style={[
+                          styles.coord,
+                          styles.coordRank,
+                          light ? styles.coordOnLight : styles.coordOnDark,
+                        ]}
+                      >
+                        {square[1]}
+                      </Text>
+                    ) : null}
+                    {showFile ? (
+                      <Text
+                        style={[
+                          styles.coord,
+                          styles.coordFile,
+                          light ? styles.coordOnLight : styles.coordOnDark,
+                        ]}
+                      >
+                        {square[0]}
+                      </Text>
+                    ) : null}
+                    {piece && !hideForSlide ? (
+                      <ChessPieceSvg type={piece.type} color={piece.color} size={pieceSize} />
+                    ) : null}
+                    {isTarget ? (
+                      piece ? (
+                        <View style={styles.captureRing} />
+                      ) : (
+                        <View style={styles.moveDot} />
+                      )
+                    ) : null}
+                  </Pressable>
+                );
+              })}
 
-        <View style={[styles.boardFrame, mode === '3d' && styles.boardFrameCompact]}>
-          <View style={[styles.grid, boardSize]}>
-            {order.map((index, slot) => {
-              const square = chessIndexToSquare(index);
-              const piece = chess.board[index];
-              const file = index % 8;
-              const rank = Math.floor(index / 8);
-              const light = (file + rank) % 2 === 0;
-              const isTarget = targets.includes(square);
-              const isSelected = selected === square;
-              const isLast =
-                chess.lastMove?.from === square || chess.lastMove?.to === square;
-              // The destination piece is suppressed while the ghost below is
-              // still sliding into it, so it doesn't appear twice.
-              const hideForSlide = !!slide && slide.toIdx === index;
-              // Coordinates only on the edges the eye actually reads from —
-              // rank down the left column, file along the bottom row, tucked
-              // into the corner so they cost no layout space.
-              const showRank = slot % 8 === 0;
-              const showFile = slot >= 56;
-              return (
-                <Pressable
-                  key={square}
-                  style={[
-                    styles.cell,
-                    cellSize,
-                    light ? styles.cellLight : styles.cellDark,
-                  ]}
-                  onPress={() => tap(square)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${square}${piece ? `, ${piece.color === 'w' ? 'white' : 'black'} ${piece.type}` : ', empty'}`}
-                >
-                  {/* Translucent washes rather than flat replacement colours —
-                      the squares keep reading as a board underneath them. */}
-                  {isLast ? <View style={styles.washLast} /> : null}
-                  {isSelected ? <View style={styles.washSelected} /> : null}
-                  {index === checkIndex ? (
-                    <Animated.View
-                      style={[
-                        styles.washCheck,
-                        { opacity: checkPulse.interpolate({ inputRange: [0, 1], outputRange: [0.75, 1] }) },
-                      ]}
-                    />
-                  ) : null}
-                  {showRank ? (
-                    <Text
-                      style={[
-                        styles.coord,
-                        styles.coordRank,
-                        light ? styles.coordOnLight : styles.coordOnDark,
-                      ]}
-                    >
-                      {square[1]}
-                    </Text>
-                  ) : null}
-                  {showFile ? (
-                    <Text
-                      style={[
-                        styles.coord,
-                        styles.coordFile,
-                        light ? styles.coordOnLight : styles.coordOnDark,
-                      ]}
-                    >
-                      {square[0]}
-                    </Text>
-                  ) : null}
-                  {mode === '2d' && piece && !hideForSlide ? (
-                    <ChessPieceSvg type={piece.type} color={piece.color} size={pieceSize} />
-                  ) : null}
-                  {isTarget ? (
-                    piece ? (
-                      <View style={styles.captureRing} />
-                    ) : (
-                      <View style={styles.moveDot} />
-                    )
-                  ) : null}
-                </Pressable>
-              );
-            })}
-
-            {mode === '2d' && slide ? (
-              <SlidingPiece
-                piece={slide.piece}
-                from={visualPos(slide.fromIdx, flip)}
-                to={visualPos(slide.toIdx, flip)}
-                cellPx={cellPx}
-                pieceSize={pieceSize}
-                progress={slideAnim}
-              />
-            ) : null}
+              {slide ? (
+                <SlidingPiece
+                  piece={slide.piece}
+                  from={visualPos(slide.fromIdx, flip)}
+                  to={visualPos(slide.toIdx, flip)}
+                  cellPx={cellPx}
+                  pieceSize={pieceSize}
+                  progress={slideAnim}
+                />
+              ) : null}
+            </View>
           </View>
-        </View>
+        )}
       </View>
 
       {/* ── YOUR STRIP ──────────────────────────────────────────────── */}
@@ -986,9 +983,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 14 },
     elevation: 12,
   },
-  // In 3D the scene is the thing you look at; the grid below it is a control
-  // strip and should not compete for attention.
-  boardFrameCompact: { borderWidth: 3, marginBottom: 8, opacity: 0.94 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { alignItems: 'center', justifyContent: 'center' },
   cellLight: { backgroundColor: C.squareLight },

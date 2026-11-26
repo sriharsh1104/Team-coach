@@ -1,5 +1,5 @@
 import React, { Component, ReactNode } from 'react';
-import { Platform, StyleSheet, View, ViewStyle } from 'react-native';
+import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { Canvas, CanvasProps } from '@react-three/fiber/native';
 
 /**
@@ -39,7 +39,7 @@ class SceneErrorBoundary extends Component<BoundaryProps, { failed: boolean }> {
 }
 
 type Props = {
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   /** Rendered instead of the scene when GL is unavailable or the scene throws. */
   fallback: ReactNode;
   onFallback?: () => void;

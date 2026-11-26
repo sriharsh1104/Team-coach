@@ -40,7 +40,7 @@ export type RaceView = {
   riders: RaceRider[];
   cars: RaceObject[];
   pads: RaceObject[];
-  /** The rider in front — every client's camera rides with them. */
+  /** Whose eyes we are looking through: your own bike, or the leader's. */
   cameraDist: number;
   done: boolean;
   /** True until the first tick lands. */
@@ -166,7 +166,7 @@ export class RaceWorld {
     const span = Math.max(1, this.nextAt - this.prevAt);
     const alpha = Math.max(0, Math.min(1, (now - DELAY_MS - this.prevAt) / span));
 
-    let camera = -Infinity;
+    let leader = -Infinity;
     for (let i = 0; i < next.b.length; i++) {
       const rider = view.riders[i] ?? (view.riders[i] = blankRider());
       const a = prev.b[i] ?? next.b[i];
@@ -190,10 +190,15 @@ export class RaceWorld {
           : (flags & RACE_FLAG_PUNCH) !== 0
             ? 'punch'
             : null;
-      if (rider.dist > camera) camera = rider.dist;
+      if (rider.dist > leader) leader = rider.dist;
     }
     view.riders.length = next.b.length;
-    view.cameraDist = camera === -Infinity ? 0 : camera;
+    // The camera rides with YOU, not with whoever is winning. Following the
+    // leader meant a CPU that started ahead dragged the view off your own
+    // bike — which looked exactly like the controls had stopped working.
+    // A spectator has no bike, so they get the leader's view.
+    const mine = this.seat >= 0 ? view.riders[this.seat] : undefined;
+    view.cameraDist = mine ? mine.dist : leader === -Infinity ? 0 : leader;
 
     lerpObjects(view.cars, prev.c, next.c, alpha);
     lerpObjects(view.pads, prev.p, next.p, alpha);

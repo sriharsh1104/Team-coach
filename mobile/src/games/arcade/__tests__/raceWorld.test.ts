@@ -47,8 +47,21 @@ describe('RaceWorld', () => {
     expect(world.sample(900).riders[0].dist).toBe(100);
   });
 
-  it('rides the camera with whoever is in front', () => {
-    const world = new RaceWorld(0);
+  it('rides the camera with your own bike, not with whoever is winning', () => {
+    // Regression: following the leader meant a CPU that starts ahead dragged
+    // the view off the player's own bike, straight off the bottom of the
+    // screen — which read as the controls having stopped working.
+    const mine = new RaceWorld(0);
+    mine.push(tick({ b: [rider(0, 100), rider(1, 900)] }), 1000);
+    expect(mine.sample(1200).cameraDist).toBe(100);
+
+    const theirs = new RaceWorld(1);
+    theirs.push(tick({ b: [rider(0, 100), rider(1, 900)] }), 1000);
+    expect(theirs.sample(1200).cameraDist).toBe(900);
+  });
+
+  it('gives a spectator the leader to watch', () => {
+    const world = new RaceWorld(-1);
     world.push(tick({ b: [rider(0, 100), rider(1, 900)] }), 1000);
     expect(world.sample(1200).cameraDist).toBe(900);
   });

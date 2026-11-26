@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'crypto';
+import { MiniGameKind } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   createLudoState,
   currentPlayer,
@@ -122,6 +124,17 @@ export const GAME_CATALOG: Record<
   },
 };
 
+/** This GameKind, as the GameMatch/GameMatchPlayer `MiniGameKind` enum spells it. */
+const GAME_KIND_DB: Record<GameKind, MiniGameKind> = {
+  rps: MiniGameKind.RPS,
+  ludo: MiniGameKind.LUDO,
+  boots: MiniGameKind.BOOTS,
+  cut: MiniGameKind.CUT,
+  chess: MiniGameKind.CHESS,
+  uno: MiniGameKind.UNO,
+  race: MiniGameKind.RACE,
+};
+
 export interface RoomPlayer {
   userId: string;
   name: string;
@@ -159,6 +172,15 @@ interface Room {
   /** Host-chosen boot lengths for Boots (e.g. [5,3,2]). */
   bootsFleet: number[] | null;
   timer: ReturnType<typeof setTimeout> | null;
+  /**
+   * Who was in the room when startGame() ran — captured once and never
+   * mutated again. A player who forfeits is spliced out of `players` (and
+   * out of the engine's own `playerIds`) the moment they leave, so by the
+   * time a match finishes that is no longer the full roster. This is what
+   * GameMatch history is written from instead, so a loss-by-forfeit still
+   * shows up as a loss for the person who left.
+   */
+  matchPlayers: string[];
 }
 
 /** What every client in the room receives on each change. */
@@ -250,6 +272,8 @@ export class GamesService {
     ReturnType<typeof setInterval>
   >();
 
+  constructor(private readonly prisma?: PrismaService) {}
+
   setListeners(
     onRoom: RoomListener,
     onOrg: OrgListener,
@@ -330,6 +354,7 @@ export class GamesService {
       race: null,
       bootsFleet: game === 'boots' ? normalizeFleet(bootsFleet) : null,
       timer: null,
+      matchPlayers: [],
     };
     this.rooms.set(room.id, room);
     this.userRoom.set(host.userId, room.id);
@@ -397,7 +422,7 @@ export class GamesService {
         room.uno?.phase === 'done' ||
         room.race?.phase === 'done'
       ) {
-        this.finish(room);
+        this.finish(room, 'forfeit');
         return;
       }
       if (room.ludo) this.armLudoTimer(room);
@@ -507,6 +532,7 @@ export class GamesService {
       throw new Error(`Need at least ${spec.minPlayers} players`);
     }
     const ids = room.players.map((p) => p.userId);
+    room.matchPlayers = [...ids];
     if (room.game === 'rps') room.rps = createRpsState([ids[0], ids[1]]);
     if (room.game === 'ludo') {
       room.ludo = createLudoState(ids);
@@ -988,13 +1014,81 @@ export class GamesService {
 
   // ─── internals ────────────────────────────────────────────────────────
 
-  private finish(room: Room) {
+  private finish(room: Room, cause: 'complete' | 'forfeit' = 'complete') {
     this.clearTimer(room);
     this.stopRaceLoop(room.id);
     this.deadlines.delete(room.id);
     room.status = 'finished';
     this.emit(room, { type: 'finished' });
     this.onOrg(room.orgId);
+    // Fire-and-forget: a database hiccup must never interrupt the game that
+    // just finished for the people in it. The room has already moved on by
+    // the time this settles either way.
+    void this.persistMatch(room, cause).catch((err) =>
+      this.logger.warn(`Could not record ${room.game} match: ${err?.message}`),
+    );
+  }
+
+  /**
+   * Writes one finished match to history. `cause` is the fallback end
+   * reason for the games whose own engine has no end-reason concept (RPS,
+   * Ludo, Boots, Cut all just reach `phase: 'done'`); Chess, UNO and Race
+   * carry a real one from their own state, which takes precedence.
+   */
+  private async persistMatch(
+    room: Room,
+    cause: 'complete' | 'forfeit',
+  ): Promise<void> {
+    if (!this.prisma) return; // unit tests construct GamesService with no DI
+    if (room.matchPlayers.length === 0) return; // never actually started
+
+    let winnerId: string | null = null;
+    let endReason: string | null = null;
+    switch (room.game) {
+      case 'rps':
+        winnerId = room.rps?.winnerId ?? null;
+        break;
+      case 'ludo':
+        winnerId = room.ludo?.winnerId ?? null;
+        break;
+      case 'boots':
+        winnerId = room.boots?.winnerId ?? null;
+        break;
+      case 'cut':
+        winnerId = room.cut?.winnerId ?? null;
+        break;
+      case 'chess':
+        winnerId = room.chess?.winnerId ?? null;
+        endReason = room.chess?.endReason ?? null;
+        break;
+      case 'uno':
+        winnerId = room.uno?.winnerId ?? null;
+        endReason = room.uno?.endReason ?? null;
+        break;
+      case 'race':
+        winnerId = room.race?.winnerId ?? null;
+        endReason = room.race?.endReason ?? null;
+        break;
+    }
+    endReason ??= cause;
+
+    const game = GAME_KIND_DB[room.game];
+    await this.prisma.gameMatch.create({
+      data: {
+        orgId: room.orgId,
+        game,
+        winnerId,
+        endReason,
+        players: {
+          create: room.matchPlayers.map((userId) => ({
+            userId,
+            orgId: room.orgId,
+            game,
+            won: userId === winnerId,
+          })),
+        },
+      },
+    });
   }
 
   private destroy(room: Room) {

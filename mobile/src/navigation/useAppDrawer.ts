@@ -9,6 +9,7 @@ import {
   useUnreadAnnouncements,
 } from './announcementsDrawerItem';
 import { achievementsItem } from './achievementsDrawerItem';
+import { trackerDrawerSection } from './trackerDrawerItems';
 import { drawerItemKeyForRoute, withActiveDrawerItem } from './drawerActive';
 
 type MainNav = NativeStackNavigationProp<MainStackParamList, keyof MainStackParamList>;
@@ -126,8 +127,10 @@ export function useOrgDrawer() {
       },
     ];
 
-    // Everyone gets the Guild section (Games live here so any guild member
-    // can play); the roster screen itself stays owner-only.
+    // Everyone gets the Guild section: every member can see the roster and
+    // the join-request queue, and play Games from here. GuildScreen itself
+    // decides who additionally gets the accept/add/remove controls (owner,
+    // coach, or guild leadership) — this link just gets everyone *in*.
     sections.push({
       key: 'guild',
       label: 'Guild',
@@ -135,16 +138,12 @@ export function useOrgDrawer() {
       items: [
         announcementsItem(navigation, 'OrgHome', unreadAnnouncements),
         achievementsItem(navigation, 'OrgHome'),
-        ...(isOwner
-          ? [
-              {
-                key: 'guildHome',
-                label: 'Guild Roster',
-                icon: 'people-outline' as const,
-                onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
-              },
-            ]
-          : []),
+        {
+          key: 'guildHome',
+          label: 'Guild Roster',
+          icon: 'people-outline' as const,
+          onPress: () => goToSection(navigation, 'OrgHome', { screen: 'Guild' }),
+        },
         {
           key: 'games',
           label: 'Games',
@@ -167,6 +166,8 @@ export function useOrgDrawer() {
         },
       ],
     });
+
+    sections.push(trackerDrawerSection(navigation, 'OrgHome'));
 
     sections.push({
       key: 'account',
@@ -277,6 +278,7 @@ export function useGuildDrawer() {
           },
         ],
       },
+      trackerDrawerSection(navigation, 'GuildHome'),
       {
         key: 'account',
         label: 'Account',
@@ -365,10 +367,10 @@ export function useAdminDrawer() {
               onPress: () => navigation.navigate('Profile'),
             },
             {
-              key: 'accountSettings',
-              label: 'Security',
-              icon: 'shield-outline' as const,
-              onPress: () => navigation.navigate('AccountSettings'),
+              key: 'settings',
+              label: 'Settings',
+              icon: 'settings-outline' as const,
+              onPress: () => navigation.navigate('Settings'),
             },
           ],
         },

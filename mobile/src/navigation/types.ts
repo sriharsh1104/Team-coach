@@ -26,6 +26,8 @@ export type MainStackParamList = {
   GuildHome: undefined;
   Guild: undefined;
   OrgSettings: undefined;
+  /** Unified settings hub (gear) — profile, security, theme, logout. */
+  Settings: undefined;
   AccountSettings: undefined;
   /** Guild announcements — read by everyone, posted by the owner. */
   Announcements: undefined;
@@ -67,9 +69,14 @@ export type MainStackParamList = {
   PointsTable: undefined;
   SocialHandles: undefined;
   Games: undefined;
+  GamesLeaderboard: undefined;
   GameRoom: {
     roomId: string;
     game?: 'rps' | 'ludo' | 'boots' | 'cut' | 'chess' | 'uno' | 'race';
   };
   GoLive: undefined;
+  /** Personal habit tracker — steps / heart points from Health Connect. */
+  Health: undefined;
+  /** Timed daily tasks with device alarms + mark-done. */
+  DailyRoutine: undefined;
 };

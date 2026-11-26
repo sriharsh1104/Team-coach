@@ -98,6 +98,12 @@ const expoConfig: ExpoConfig = {
       // audio files, so without this the music picker's permission request
       // can never be granted on Android 13+ — it just comes back denied.
       'READ_MEDIA_AUDIO',
+      'ACTIVITY_RECOGNITION',
+      'SCHEDULE_EXACT_ALARM',
+      'USE_EXACT_ALARM',
+      'RECEIVE_BOOT_COMPLETED',
+      'VIBRATE',
+      'USE_FULL_SCREEN_INTENT',
     ],
     // Lets the OS shrink the window when the keyboard opens (this is
     // actually Expo's own default when unset — set explicitly so it's not
@@ -177,6 +183,10 @@ const expoConfig: ExpoConfig = {
     // "Could not get unknown property 'release' for SoftwareComponent container"
     // with Gradle 8.x + expo-modules-core <=2.2.3 (Expo SDK 52).
     './plugins/withPatchExpoModulesCore',
+    // Health Connect permissions / rationale (Tracker Health). The RN package
+    // itself is a normal dependency; this local plugin avoids requiring its
+    // config-plugin entry at `expo config` time.
+    './plugins/withHealthConnect',
   ],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
