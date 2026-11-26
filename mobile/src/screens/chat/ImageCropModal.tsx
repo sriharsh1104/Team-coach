@@ -49,6 +49,7 @@ export function ImageCropModal({
   height,
   onCancel,
   onDone,
+  doneLabel = 'Send',
 }: {
   /** Local image URI; null hides the modal. */
   uri: string | null;
@@ -57,6 +58,8 @@ export function ImageCropModal({
   height?: number | null;
   onCancel: () => void;
   onDone: (result: CroppedImage) => void;
+  /** Primary action label — "Send" in chat, "Save" in Editing. */
+  doneLabel?: string;
 }) {
   const { colors } = useTheme();
   const [box, setBox] = useState({ width: 0, height: 0 });
@@ -359,12 +362,14 @@ export function ImageCropModal({
               onPress={() => void apply()}
               disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel="Send photo"
+              accessibilityLabel={doneLabel}
             >
               {busy ? (
                 <ActivityIndicator color={colors.chromeInk} />
               ) : (
-                <Text style={[styles.sendText, { color: colors.chromeInk }]}>Send</Text>
+                <Text style={[styles.sendText, { color: colors.chromeInk }]}>
+                  {doneLabel}
+                </Text>
               )}
             </Pressable>
           </View>

@@ -67,15 +67,6 @@ export const GAME_CATALOG: Array<{
     emoji: '🃏',
   },
   {
-    id: 'race',
-    title: 'Road Rash Rush',
-    tagline: 'Four lanes, real time — kick rivals off their bikes',
-    players: '1–4 players',
-    minPlayers: 1,
-    maxPlayers: 4,
-    emoji: '🏍️',
-  },
-  {
     id: 'boots',
     title: 'Boots',
     tagline: '6×6 fleet hunt — place boots, then fire',
@@ -85,6 +76,9 @@ export const GAME_CATALOG: Array<{
     emoji: '🚢',
   },
 ];
+
+/** Removed from the hub / leaderboard chips — engine kept for old rooms only. */
+export const HIDDEN_GAMES = new Set<GameKind>(['race']);
 
 /* ---------------- Road Rash Rush ---------------- */
 

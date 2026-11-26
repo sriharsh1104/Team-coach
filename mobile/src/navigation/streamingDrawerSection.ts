@@ -10,7 +10,7 @@ type MainNav = NativeStackNavigationProp<
 >;
 
 /**
- * Sidebar group for Go Live, screen Recorder, and (soon) content Edit.
+ * Sidebar group for Go Live, screen Recorder, and content Editing.
  * Replaces the old separate Live + Tools sections.
  */
 export function streamingDrawerSection(
@@ -37,7 +37,7 @@ export function streamingDrawerSection(
       },
       {
         key: 'contentEdit',
-        label: 'Edit',
+        label: 'Editing',
         icon: 'pencil-outline',
         onPress: () =>
           goToSection(navigation, home, { screen: 'ContentEdit' }),

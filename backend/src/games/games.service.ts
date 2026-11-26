@@ -114,8 +114,8 @@ export const GAME_CATALOG: Record<
   // Hands are secret, so a "spectator" would be looking at cards nobody
   // at the table can see — UNO stays players-only, like Boots.
   uno: { title: 'UNO', minPlayers: 2, maxPlayers: 4, spectatable: false },
-  // One rider can start alone — the CPU fills the other three bikes — and
-  // nothing on the road is hidden, so anyone may watch.
+  // Road Rash is retired from the hub — keep the catalog entry so in-flight
+  // / reconnect rooms still resolve, but createRoom rejects new ones.
   race: {
     title: 'Road Rash Rush',
     minPlayers: 1,
@@ -123,6 +123,9 @@ export const GAME_CATALOG: Record<
     spectatable: true,
   },
 };
+
+/** Games that can no longer be started from the hub. */
+export const HIDDEN_GAMES = new Set<GameKind>(['race']);
 
 /** This GameKind, as the GameMatch/GameMatchPlayer `MiniGameKind` enum spells it. */
 const GAME_KIND_DB: Record<GameKind, MiniGameKind> = {
@@ -322,6 +325,7 @@ export class GamesService {
   ): RoomView {
     const spec = GAME_CATALOG[game];
     if (!spec) throw new Error('Unknown game');
+    if (HIDDEN_GAMES.has(game)) throw new Error('That game is no longer available');
     this.leaveRoom(host.userId); // one room at a time
     this.unspectateRoom(host.userId);
     // Socket payloads are untyped at runtime — a non-numeric/garbage
@@ -575,6 +579,7 @@ export class GamesService {
     this.stopRaceLoop(room.id);
     room.uno = null;
     room.race = null;
+    room.matchPlayers = [];
     room.status = 'lobby';
     this.deadlines.delete(room.id);
     this.emit(room, { type: 'rematch' });
@@ -1015,6 +1020,9 @@ export class GamesService {
   // ─── internals ────────────────────────────────────────────────────────
 
   private finish(room: Room, cause: 'complete' | 'forfeit' = 'complete') {
+    // Idempotent: a second leave / late engine tick must not write another
+    // GameMatch (and another win) for the same finished room.
+    if (room.status === 'finished') return;
     this.clearTimer(room);
     this.stopRaceLoop(room.id);
     this.deadlines.delete(room.id);
@@ -1040,7 +1048,11 @@ export class GamesService {
     cause: 'complete' | 'forfeit',
   ): Promise<void> {
     if (!this.prisma) return; // unit tests construct GamesService with no DI
-    if (room.matchPlayers.length === 0) return; // never actually started
+    if (room.matchPlayers.length === 0) return; // never actually started / already written
+    // Snapshot + clear up front so a second finish/leave cannot double-write
+    // the same roster as another win.
+    const roster = [...room.matchPlayers];
+    room.matchPlayers = [];
 
     let winnerId: string | null = null;
     let endReason: string | null = null;
@@ -1066,8 +1078,9 @@ export class GamesService {
         endReason = room.uno?.endReason ?? null;
         break;
       case 'race':
-        winnerId = room.race?.winnerId ?? null;
-        endReason = room.race?.endReason ?? null;
+        // Retired — do not inflate leaderboards with Road Rash results.
+        return;
+      default:
         break;
     }
     endReason ??= cause;
@@ -1080,7 +1093,7 @@ export class GamesService {
         winnerId,
         endReason,
         players: {
-          create: room.matchPlayers.map((userId) => ({
+          create: roster.map((userId) => ({
             userId,
             orgId: room.orgId,
             game,

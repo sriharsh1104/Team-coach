@@ -28,7 +28,6 @@ import {
 } from '../../api/queryCache';
 import { useOrgRealtimeOptional } from '../../realtime/OrgRealtimeProvider';
 import { MediaViewerModal } from '../chat/MediaViewerModal';
-
 type Props = NativeStackScreenProps<MainStackParamList, 'MediaFeed'>;
 
 export function MediaFeedScreen({ navigation }: Props) {

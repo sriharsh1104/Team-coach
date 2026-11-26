@@ -43,6 +43,7 @@ import { RoutineAlarmBridge } from '../tracker/RoutineAlarmBridge';
 import { InviteLinkBridge } from '../invite/InviteLinkBridge';
 import { SideDrawer } from '../ui/SideDrawer';
 import { SectionStackHeader } from '../ui/SectionStackHeader';
+import { EdgeSwipe } from '../ui/edgeSwipe';
 import { useAdminDrawer, useGuildDrawer, useOrgDrawer } from './useAppDrawer';
 import {
   AuthStackParamList,
@@ -53,6 +54,28 @@ import {
 import { titleCase } from '../utils/titleCase';
 import { colors } from '../theme';
 import { navigationRef, notifyFocusedRouteChanged } from './navigationRef';
+
+/** Left-edge → back; right-edge → open the matching sidebar. */
+function withEdgeGestures(
+  openWith: (nav: any) => void,
+  children: React.ReactNode,
+) {
+  return (
+    <EdgeSwipe
+      onSwipeRight={() => {
+        if (navigationRef.isReady() && navigationRef.canGoBack()) {
+          navigationRef.goBack();
+        }
+      }}
+      onSwipeLeft={() => {
+        if (!navigationRef.isReady()) return;
+        openWith(navigationRef);
+      }}
+    >
+      {children}
+    </EdgeSwipe>
+  );
+}
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const OrgSetupStack = createNativeStackNavigator<OrgSetupStackParamList>();
@@ -263,7 +286,9 @@ export function RootNavigator() {
         // on the right — because otherwise this account has no route to any
         // of those at all: they all live behind an org or guild it lacks.
         <>
-          <MainStack.Navigator screenOptions={mainScreenOptions}>
+          {withEdgeGestures(
+            adminDrawer.openWith,
+            <MainStack.Navigator screenOptions={mainScreenOptions}>
             <MainStack.Screen
               name="Admin"
               component={AdminScreen}
@@ -328,7 +353,8 @@ export function RootNavigator() {
                 title: titleCase(route.params.name),
               }))}
             />
-          </MainStack.Navigator>
+          </MainStack.Navigator>,
+          )}
           <SideDrawer
             open={adminDrawer.open}
             onClose={adminDrawer.close}
@@ -351,7 +377,9 @@ export function RootNavigator() {
         </OrgSetupStack.Navigator>
       ) : !org && guild ? (
         <>
-          <MainStack.Navigator screenOptions={mainScreenOptions}>
+          {withEdgeGestures(
+            guildDrawer.openWith,
+            <MainStack.Navigator screenOptions={mainScreenOptions}>
             <MainStack.Screen
               name="GuildHome"
               component={GuildHomeScreen}
@@ -479,7 +507,9 @@ export function RootNavigator() {
               getComponent={() =>
                 require('../screens/live/ContentEditScreen').ContentEditScreen
               }
-              options={sectionOptions(guildDrawer.openWith, () => ({ title: 'Edit' }))}
+              options={sectionOptions(guildDrawer.openWith, () => ({
+                title: 'Editing',
+              }))}
             />
             <MainStack.Screen
               name="Health"
@@ -530,7 +560,8 @@ export function RootNavigator() {
               }
               options={detailOptions(() => ({ title: '1-on-1 Voice' }))}
             />
-          </MainStack.Navigator>
+          </MainStack.Navigator>,
+          )}
           <SideDrawer
             open={guildDrawer.open}
             onClose={guildDrawer.close}
@@ -547,7 +578,9 @@ export function RootNavigator() {
         </>
       ) : (
         <>
-          <MainStack.Navigator screenOptions={mainScreenOptions}>
+          {withEdgeGestures(
+            orgDrawer.openWith,
+            <MainStack.Navigator screenOptions={mainScreenOptions}>
             <MainStack.Screen
               name="OrgHome"
               component={OrgHomeScreen}
@@ -783,7 +816,9 @@ export function RootNavigator() {
               getComponent={() =>
                 require('../screens/live/ContentEditScreen').ContentEditScreen
               }
-              options={sectionOptions(orgDrawer.openWith, () => ({ title: 'Edit' }))}
+              options={sectionOptions(orgDrawer.openWith, () => ({
+                title: 'Editing',
+              }))}
             />
             <MainStack.Screen
               name="Health"
@@ -827,7 +862,8 @@ export function RootNavigator() {
               }
               options={detailOptions(() => ({ title: '1-on-1 Voice' }))}
             />
-          </MainStack.Navigator>
+          </MainStack.Navigator>,
+          )}
           <SideDrawer
             open={orgDrawer.open}
             onClose={orgDrawer.close}

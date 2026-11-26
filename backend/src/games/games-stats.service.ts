@@ -53,6 +53,9 @@ function winRate(wins: number, played: number): number {
   return Math.round((wins / played) * 1000) / 1000;
 }
 
+/** Road Rash is retired — keep historical rows in DB but out of boards/stats. */
+const HIDDEN_STATS_GAMES: MiniGameKind[] = [MiniGameKind.RACE];
+
 /**
  * Leaderboard and per-player stats for the seven in-app mini-games
  * (GamesService writes one GameMatch + GameMatchPlayer row per finished
@@ -86,7 +89,13 @@ export class GamesStatsService {
     game?: MiniGameKind,
   ): Promise<LeaderboardRow[]> {
     const { orgId } = await this.chat.getChatContext(userId);
-    const where = { orgId, ...(game ? { game } : {}) };
+    if (game && HIDDEN_STATS_GAMES.includes(game)) return [];
+    const where = {
+      orgId,
+      ...(game
+        ? { game }
+        : { game: { notIn: HIDDEN_STATS_GAMES } }),
+    };
 
     const [played, wins] = await Promise.all([
       this.prisma.gameMatchPlayer.groupBy({
@@ -164,7 +173,11 @@ export class GamesStatsService {
       }
     }
 
-    const where = { orgId, userId: target };
+    const where = {
+      orgId,
+      userId: target,
+      game: { notIn: HIDDEN_STATS_GAMES },
+    };
     const [playedByGame, winsByGame, recentMatches] = await Promise.all([
       this.prisma.gameMatchPlayer.groupBy({
         by: ['game'],
@@ -177,7 +190,11 @@ export class GamesStatsService {
         _count: { _all: true },
       }),
       this.prisma.gameMatch.findMany({
-        where: { orgId, players: { some: { userId: target } } },
+        where: {
+          orgId,
+          game: { notIn: HIDDEN_STATS_GAMES },
+          players: { some: { userId: target } },
+        },
         orderBy: { playedAt: 'desc' },
         take: 10,
         select: {

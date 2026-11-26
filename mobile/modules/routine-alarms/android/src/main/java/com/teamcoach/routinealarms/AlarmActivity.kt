@@ -2,9 +2,13 @@ package com.teamcoach.routinealarms
 
 import android.app.Activity
 import android.app.KeyguardManager
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
@@ -24,21 +28,26 @@ import android.widget.TextView
  */
 class AlarmActivity : Activity() {
   private var player: MediaPlayer? = null
+  private var ringtone: Ringtone? = null
   private var vibrator: Vibrator? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    volumeControlStream = AudioManager.STREAM_ALARM
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(true)
       setTurnScreenOn(true)
-    } else {
-      @Suppress("DEPRECATION")
-      window.addFlags(
-        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-          WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-          WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-      )
     }
+    @Suppress("DEPRECATION")
+    window.addFlags(
+      WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+        WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON,
+    )
+
     val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       km.requestDismissKeyguard(this, null)
@@ -46,6 +55,14 @@ class AlarmActivity : Activity() {
 
     val id = intent.getStringExtra(AlarmScheduler.EXTRA_ID).orEmpty()
     val title = intent.getStringExtra(AlarmScheduler.EXTRA_TITLE) ?: "Routine"
+
+    // Clear the full-screen notification once UI is visible.
+    try {
+      val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      nm.cancel(AlarmScheduler.notificationId(id))
+    } catch (_: Exception) {
+      // ignore
+    }
 
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
@@ -93,13 +110,33 @@ class AlarmActivity : Activity() {
     root.addView(dismiss)
     setContentView(root)
 
+    ensureAlarmVolume()
     startAlarm()
   }
 
-  private fun startAlarm() {
+  private fun ensureAlarmVolume() {
     try {
-      val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+      val am = getSystemService(AUDIO_SERVICE) as AudioManager
+      val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+      if (max <= 0) return
+      val current = am.getStreamVolume(AudioManager.STREAM_ALARM)
+      if (current == 0) {
+        am.setStreamVolume(AudioManager.STREAM_ALARM, (max * 0.7f).toInt().coerceAtLeast(1), 0)
+      }
+    } catch (_: Exception) {
+      // ignore
+    }
+  }
+
+  private fun alarmUri(): Uri {
+    return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+      ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+      ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+  }
+
+  private fun startAlarm() {
+    val uri = alarmUri()
+    try {
       player = MediaPlayer().apply {
         setDataSource(this@AlarmActivity, uri)
         setAudioAttributes(
@@ -109,11 +146,29 @@ class AlarmActivity : Activity() {
             .build(),
         )
         isLooping = true
+        setVolume(1f, 1f)
         prepare()
         start()
       }
     } catch (_: Exception) {
       player = null
+      try {
+        ringtone = RingtoneManager.getRingtone(this, uri)?.also { tone ->
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            tone.isLooping = true
+          }
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            tone.audioAttributes =
+              AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+          }
+          tone.play()
+        }
+      } catch (_: Exception) {
+        ringtone = null
+      }
     }
 
     vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -145,6 +200,12 @@ class AlarmActivity : Activity() {
       // ignore
     }
     player = null
+    try {
+      ringtone?.stop()
+    } catch (_: Exception) {
+      // ignore
+    }
+    ringtone = null
     try {
       vibrator?.cancel()
     } catch (_: Exception) {

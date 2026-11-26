@@ -22,8 +22,10 @@ import {
   Modal,
   StatusBar,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FloatingMainTabBar } from '../../ui/FloatingMainTabBar';
+import { useFloatingTabHome } from '../../navigation/useFloatingTabHome';
 import { getToken } from '../../storage/tokenStorage';
 import * as voiceApi from '../../api/voice';
 import type { VoiceRoomKind } from '../../api/voice';
@@ -1597,7 +1599,18 @@ export function VoiceChannelScreen() {
 
 /** Guild-wide voice: up to 50 people, host mute-all / per-person mute. */
 export function GuildVoiceScreen() {
-  return <VoiceScreenRoot room="guild" />;
+  const navigation = useNavigation<any>();
+  const home = useFloatingTabHome();
+  return (
+    <View style={{ flex: 1 }}>
+      <VoiceScreenRoot room="guild" />
+      <FloatingMainTabBar
+        navigation={navigation}
+        home={home}
+        active="call"
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

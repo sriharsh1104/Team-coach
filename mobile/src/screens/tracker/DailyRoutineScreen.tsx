@@ -31,6 +31,7 @@ import { AppIcon } from '../../ui/AppIcon';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { confirmAsync } from '../../ui/confirmAsync';
 import { emitToast } from '../../ui/toastBus';
+import { useDateTimeFormat } from '../../datetime/DateTimeFormatContext';
 import {
   canUseExactAlarms,
   formatTimeLocal,
@@ -53,6 +54,8 @@ function timeToDate(timeLocal: string): Date {
 export function DailyRoutineScreen() {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const { timeFormat, formatTime } = useDateTimeFormat();
+  const use24Hour = timeFormat === 'h24';
   const [rows, setRows] = useState<RoutineRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -147,8 +150,19 @@ export function DailyRoutineScreen() {
           alarmEnabled: editor.alarmEnabled,
         });
       }
+      const enabledAlarm = editor.alarmEnabled;
       setEditor(null);
+      setShowPicker(false);
       await refresh();
+      if (enabledAlarm) {
+        if (canUseExactAlarms()) {
+          emitToast('Alarm set — phone will ring at that time');
+        } else {
+          emitToast(
+            'Reminder saved as notification. Enable Exact Alarms for a loud wake ring.',
+          );
+        }
+      }
     } catch {
       emitToast('Could not save routine');
     } finally {
@@ -249,7 +263,7 @@ export function DailyRoutineScreen() {
                 {item.title}
               </Text>
               <Text style={styles.rowMeta}>
-                {item.timeLocal}
+                {formatTime(timeToDate(item.timeLocal))}
                 {item.alarmEnabled ? ' · Alarm on' : ' · Alarm off'}
               </Text>
             </Pressable>
@@ -290,13 +304,17 @@ export function DailyRoutineScreen() {
               onPress={() => setShowPicker(true)}
             >
               <AppIcon name="alarm-outline" size={18} color={colors.icon} />
-              <Text style={styles.timeBtnText}>{editor?.timeLocal ?? '08:00'}</Text>
+              <Text style={styles.timeBtnText}>
+                {editor
+                  ? formatTime(timeToDate(editor.timeLocal))
+                  : formatTime(timeToDate('08:00'))}
+              </Text>
             </SoftPressable>
             {showPicker && editor ? (
               <DateTimePicker
                 value={timeToDate(editor.timeLocal)}
                 mode="time"
-                is24Hour
+                is24Hour={use24Hour}
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 onChange={(_e, date) => {
                   if (Platform.OS === 'android') setShowPicker(false);

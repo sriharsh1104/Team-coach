@@ -13,14 +13,13 @@ const THRESHOLD = 56;
 const WINDOW_W = Dimensions.get('window').width;
 
 type Props = {
-  /** Finger moves left → right (classic back / open-from-left). */
+  /** Finger moves left → right from an edge (Android-style back). */
   onSwipeRight?: () => void;
-  /** Finger moves right → left (opens the left sidebar). */
+  /** Finger moves right → left from an edge (open the side drawer). */
   onSwipeLeft?: () => void;
   /**
-   * When true, only start a gesture from the left screen edge so vertical
-   * scrolls / list pans don't steal opens. Swipe-left (open drawer) still
-   * uses the left edge start so it doesn't fight chat horizontal pans.
+   * When true, only start a gesture from the left or right screen edge so
+   * vertical scrolls / list pans don't steal opens.
    */
   edgeOnly?: boolean;
   children: React.ReactNode;
@@ -28,7 +27,7 @@ type Props = {
 
 /**
  * Horizontal edge swipes without react-native-gesture-handler.
- * Right swipe → typically "back"; left swipe → open the side drawer.
+ * Left-edge swipe right → back; right-edge swipe left → open sidebar.
  */
 export function EdgeSwipe({
   onSwipeRight,

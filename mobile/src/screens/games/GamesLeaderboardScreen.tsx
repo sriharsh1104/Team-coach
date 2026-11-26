@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Screen } from '../../brand/Screen';
-import { GAME_CATALOG, GameKind } from '../../api/games';
+import { GAME_CATALOG, GameKind, HIDDEN_GAMES } from '../../api/games';
 import {
   GamePlayerStats,
   getGameLeaderboard,
@@ -27,8 +27,7 @@ import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SkeletonList } from '../../ui/Skeleton';
 import { emitToast } from '../../ui/toastBus';
 
-/** Short chip labels — GAME_CATALOG's own titles ("Stone Paper Scissors",
- * "Road Rash Rush") are the right length for a card, too long for a chip. */
+/** Short chip labels — GAME_CATALOG titles are too long for a chip. */
 const SHORT_LABEL: Record<GameKind, string> = {
   rps: 'RPS',
   ludo: 'Ludo',
@@ -124,7 +123,7 @@ export function GamesLeaderboardScreen() {
 
   const filters: { value: Filter; label: string; emoji: string }[] = [
     { value: 'all', label: 'All', emoji: '🏆' },
-    ...GAME_CATALOG.map((g) => ({
+    ...GAME_CATALOG.filter((g) => !HIDDEN_GAMES.has(g.id)).map((g) => ({
       value: g.id,
       label: SHORT_LABEL[g.id],
       emoji: g.emoji,
@@ -270,10 +269,12 @@ export function GamesLeaderboardScreen() {
                   </View>
                 </View>
 
-                {detail.byGame.length > 0 ? (
+                {detail.byGame.filter((g) => !HIDDEN_GAMES.has(g.game.toLowerCase() as GameKind)).length > 0 ? (
                   <>
                     <Text style={styles.sheetSection}>By game</Text>
-                    {detail.byGame.map((g) => {
+                    {detail.byGame
+                      .filter((g) => !HIDDEN_GAMES.has(g.game.toLowerCase() as GameKind))
+                      .map((g) => {
                       const spec = GAME_CATALOG.find((c) => c.id === g.game.toLowerCase());
                       return (
                         <View key={g.game} style={styles.breakdownRow}>
@@ -291,10 +292,12 @@ export function GamesLeaderboardScreen() {
                   </>
                 ) : null}
 
-                {detail.recent.length > 0 ? (
+                {detail.recent.filter((m) => !HIDDEN_GAMES.has(m.game.toLowerCase() as GameKind)).length > 0 ? (
                   <>
                     <Text style={styles.sheetSection}>Recent matches</Text>
-                    {detail.recent.map((m) => {
+                    {detail.recent
+                      .filter((m) => !HIDDEN_GAMES.has(m.game.toLowerCase() as GameKind))
+                      .map((m) => {
                       const spec = GAME_CATALOG.find((c) => c.id === m.game.toLowerCase());
                       const names = m.opponents.map((o) => o.name).join(', ');
                       return (
@@ -348,7 +351,12 @@ export function GamesLeaderboardScreen() {
 const staticStyles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
-  chipRow: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
+  chipRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+    alignItems: 'center',
+  },
   chipEmoji: { fontSize: 16 },
   content: { padding: 16, paddingTop: 4, paddingBottom: 32, gap: 2 },
   backdrop: {
@@ -361,10 +369,16 @@ const staticStyles = StyleSheet.create({
 
 function leaderboardStyles(c: ThemeColors) {
   return {
-    chipScroll: { borderBottomWidth: 1, borderBottomColor: c.border },
+    chipScroll: {
+      flexGrow: 0,
+      flexShrink: 0,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
     chip: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
+      alignSelf: 'center' as const,
       gap: 6,
       paddingHorizontal: 14,
       paddingVertical: 8,

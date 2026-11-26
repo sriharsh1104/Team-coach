@@ -74,7 +74,9 @@ export type AppIconName =
   | 'pause'
   | 'chatbubble-outline'
   | 'game-controller-outline'
-  | 'shield-outline';
+  | 'shield-outline'
+  | 'home-outline'
+  | 'heart-outline';
 
 type Props = {
   name: AppIconName;
@@ -245,6 +247,28 @@ const ICONS: Record<AppIconName, Renderer> = {
     <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
       <Path d="M12 3l7 3v5.5c0 4.3-2.9 8.1-7 9.5-4.1-1.4-7-5.2-7-9.5V6l7-3z" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Path d="M9 12l2 2 4-4" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+  'home-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1v-9.5z"
+        stroke={c}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  ),
+  'heart-outline': (c, s) => (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M20.8 5.6a5 5 0 00-7.1 0L12 7.3l-1.7-1.7a5 5 0 00-7.1 7.1l1.7 1.7L12 21.2l7.1-7.1 1.7-1.7a5 5 0 000-7.1z"
+        stroke={c}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </Svg>
   ),
   'crown-outline': (c, s) => (

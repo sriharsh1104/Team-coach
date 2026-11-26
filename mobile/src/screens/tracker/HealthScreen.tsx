@@ -66,6 +66,7 @@ export function HealthScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
   const refresh = useCallback(async () => {
     const day = localDay();
@@ -74,10 +75,8 @@ export function HealthScreen() {
 
     let sample = null;
     if (status === 'ready') {
-      // Never auto-prompt Health Connect here — requestPermission needs the
-      // native permission delegate and popping the dialog on every focus was
-      // crashing when that delegate was missing. Grant is user-driven below.
       sample = await readTodayHealth();
+      // Permission can be revoked in system settings between checks.
       if (sample == null) setHcStatus('needs_permission');
     }
 
@@ -121,14 +120,20 @@ export function HealthScreen() {
       openHealthConnectInstallOrSettings();
       return;
     }
-    const ok = await requestHealthPermissions();
-    if (!ok) {
-      emitToast('Health permission was not granted');
-      openHealthConnectInstallOrSettings();
-      return;
+    setConnecting(true);
+    try {
+      const ok = await requestHealthPermissions();
+      if (!ok) {
+        emitToast('Allow Steps in Health Connect to sync');
+        openHealthConnectInstallOrSettings();
+        return;
+      }
+      emitToast('Health Connect connected');
+      setLoading(true);
+      await refresh();
+    } finally {
+      setConnecting(false);
     }
-    setLoading(true);
-    await refresh();
   };
 
   if (loading && !data) {
@@ -147,6 +152,7 @@ export function HealthScreen() {
   const heartGoal = data?.heartGoal ?? 30;
   const stepsLeft = data?.stepsRemaining ?? Math.max(0, stepGoal - steps);
   const heartLeft = data?.heartRemaining ?? Math.max(0, heartGoal - heart);
+  const syncedFromPhone = data?.source === 'health_connect';
 
   return (
     <Screen>
@@ -167,11 +173,15 @@ export function HealthScreen() {
               {hcStatus === 'unsupported'
                 ? 'Step tracking is available on Android with Health Connect.'
                 : hcStatus === 'needs_install'
-                  ? 'Install Health Connect to sync steps and heart points from your phone.'
+                  ? 'Install Health Connect, then come back and grant Steps access so Sacred can update your daily count.'
                   : 'Health Connect is not available on this device.'}
             </Text>
             {hcStatus !== 'unsupported' ? (
-              <SoftPressable style={styles.bannerBtn} onPress={connect}>
+              <SoftPressable
+                style={styles.bannerBtn}
+                onPress={connect}
+                disabled={connecting}
+              >
                 <Text style={styles.bannerBtnText}>
                   {hcStatus === 'needs_install' ? 'Open Install' : 'Open Settings'}
                 </Text>
@@ -184,12 +194,29 @@ export function HealthScreen() {
           <View style={styles.banner}>
             <Text style={styles.bannerTitle}>Allow Step Access</Text>
             <Text style={styles.bannerBody}>
-              Grant Health Connect permission so Sacred can read today&apos;s
-              steps and activity.
+              Grant Health Connect permission for Steps (and exercise, for Heart
+              Points). Sacred will read today&apos;s totals and sync them to your
+              account.
             </Text>
-            <SoftPressable style={styles.bannerBtn} onPress={connect}>
-              <Text style={styles.bannerBtnText}>Grant Access</Text>
+            <SoftPressable
+              style={[styles.bannerBtn, connecting && styles.btnDisabled]}
+              onPress={connect}
+              disabled={connecting}
+            >
+              <Text style={styles.bannerBtnText}>
+                {connecting ? 'Connecting…' : 'Grant Access'}
+              </Text>
             </SoftPressable>
+          </View>
+        ) : null}
+
+        {hcStatus === 'ready' ? (
+          <View style={styles.readyPill}>
+            <Text style={styles.readyText}>
+              {syncedFromPhone
+                ? 'Synced from Health Connect'
+                : 'Health Connect connected · pull to refresh'}
+            </Text>
           </View>
         ) : null}
 
@@ -210,7 +237,7 @@ export function HealthScreen() {
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Heart Points</Text>
           <Text style={styles.cardValue}>
-            {data?.source ? heart.toLocaleString() : '—'}
+            {syncedFromPhone || heart > 0 ? heart.toLocaleString() : '—'}
           </Text>
           <Text style={styles.cardMeta}>
             Goal {heartGoal.toLocaleString()} · {heartLeft.toLocaleString()} left
@@ -222,14 +249,16 @@ export function HealthScreen() {
             track={colors.border}
           />
           <Text style={styles.hint}>
-            Heart Points are estimated from active exercise minutes (moderate ≈
-            1 / vigorous ≈ 2 per minute).
+            Estimated from Health Connect exercise sessions (moderate ≈ 1 /
+            vigorous ≈ 2 points per minute).
           </Text>
         </View>
 
         <Pressable onPress={onRefresh} disabled={syncing}>
           <Text style={styles.syncLine}>
-            {syncing ? 'Syncing…' : 'Pull to refresh · synced to your account'}
+            {syncing
+              ? 'Syncing…'
+              : 'Pull to refresh · reads phone steps & updates your account'}
           </Text>
         </Pressable>
       </ScrollView>
@@ -293,6 +322,21 @@ function makeStyles(c: ThemeColors) {
       color: c.chromeInk,
       fontWeight: '700' as const,
       fontSize: 14,
+    },
+    btnDisabled: { opacity: 0.55 },
+    readyPill: {
+      alignSelf: 'flex-start' as const,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderWidth: 1,
+      borderColor: 'rgba(134,239,172,0.28)',
+      backgroundColor: 'rgba(134,239,172,0.08)',
+    },
+    readyText: {
+      color: c.text,
+      fontSize: 12,
+      fontWeight: '600' as const,
     },
     card: {
       borderWidth: 1,

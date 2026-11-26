@@ -69,6 +69,18 @@ function toScheduleItems(routines: RoutineRow[]): AlarmScheduleItem[] {
   return out;
 }
 
+async function ensureNotificationPermission(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  try {
+    const current = await Notifications.getPermissionsAsync();
+    if (current.granted || current.status === 'granted') return true;
+    const next = await Notifications.requestPermissionsAsync();
+    return next.granted || next.status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Schedule Android AlarmManager alarms for enabled, not-yet-done routines.
  * Falls back to Expo local daily notifications when exact alarms are denied
@@ -78,6 +90,9 @@ export async function syncRoutineAlarms(routines: RoutineRow[]): Promise<{
   mode: 'exact' | 'notification' | 'none';
 }> {
   const items = toScheduleItems(routines);
+
+  // Full-screen alarm notifications need POST_NOTIFICATIONS on Android 13+.
+  await ensureNotificationPermission();
 
   if (Platform.OS !== 'android') {
     await syncFallbackNotifications(items);
@@ -107,6 +122,7 @@ export async function syncRoutineAlarms(routines: RoutineRow[]): Promise<{
 }
 
 const FALLBACK_PREFIX = 'routine-fallback-';
+const FALLBACK_CHANNEL = 'routine-alarms-fallback';
 
 async function clearFallbackNotifications() {
   try {
@@ -121,14 +137,30 @@ async function clearFallbackNotifications() {
   }
 }
 
+async function ensureFallbackChannel() {
+  if (Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync(FALLBACK_CHANNEL, {
+      name: 'Routine Reminders',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'default',
+      vibrationPattern: [0, 600, 400, 600],
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      enableVibrate: true,
+    });
+  } catch {
+    // ignore
+  }
+}
+
 async function syncFallbackNotifications(items: AlarmScheduleItem[]) {
   await clearFallbackNotifications();
   if (Platform.OS === 'web') return;
+  const allowed = await ensureNotificationPermission();
+  if (!allowed) return;
+  await ensureFallbackChannel();
   try {
-    const { status } = await Notifications.getPermissionsAsync();
-    if (status !== 'granted') {
-      await Notifications.requestPermissionsAsync();
-    }
     for (const item of items) {
       await Notifications.scheduleNotificationAsync({
         identifier: `${FALLBACK_PREFIX}${item.id}`,
@@ -136,6 +168,12 @@ async function syncFallbackNotifications(items: AlarmScheduleItem[]) {
           title: item.title,
           body: 'Daily routine reminder',
           sound: true,
+          ...(Platform.OS === 'android'
+            ? {
+                channelId: FALLBACK_CHANNEL,
+                priority: Notifications.AndroidNotificationPriority.MAX,
+              }
+            : null),
           data: { type: 'routine_alarm', routineId: item.id },
         },
         trigger: {

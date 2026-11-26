@@ -10,9 +10,15 @@ declare module 'react-native-health-connect' {
     SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED: number;
   };
 
+  export type Permission = {
+    accessType: 'read' | 'write';
+    recordType: string;
+  };
+
   export function getSdkStatus(): Promise<number>;
   export function initialize(): Promise<boolean>;
   export function openHealthConnectSettings(): void;
+  export function getGrantedPermissions(): Promise<Permission[]>;
   export function requestPermission(
     permissions: Array<{ accessType: 'read' | 'write'; recordType: string }>,
   ): Promise<Array<{ accessType: string; recordType: string }>>;
@@ -33,4 +39,12 @@ declare module 'react-native-health-connect' {
       exerciseType?: string | number;
     }>;
   }>;
+  export function aggregateRecord(request: {
+    recordType: string;
+    timeRangeFilter: {
+      operator: 'between';
+      startTime: string;
+      endTime: string;
+    };
+  }): Promise<Record<string, unknown>>;
 }
