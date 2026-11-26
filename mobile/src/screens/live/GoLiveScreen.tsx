@@ -36,11 +36,6 @@ import { SecretField } from '../../ui/SecretField';
 import { emitToast } from '../../ui/toastBus';
 import { confirmAsync } from '../../ui/confirmAsync';
 import { useSharedStyles } from '../shared';
-import {
-  FLOATING_TAB_BAR_CLEARANCE,
-  FloatingMainTabBar,
-} from '../../ui/FloatingMainTabBar';
-import { useFloatingTabHome } from '../../navigation/useFloatingTabHome';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'GoLive'>;
 
@@ -59,9 +54,8 @@ function presetHasIngest(p: { rtmpUrl?: string; streamKey?: string } | null | un
  * Go Live: save YouTube / Twitch / Kick title, banner, stream URL + key.
  * Tick 1–3 platforms to stream the same screen to all of them together.
  */
-export function GoLiveScreen({ navigation }: Props) {
+export function GoLiveScreen(_props: Props) {
   const shared = useSharedStyles();
-  const home = useFloatingTabHome();
   const { colors } = useTheme();
   const styles = useThemedStyles(screenStyles);
   const { live, starting, elapsedSec, startLive, stopLive } = useLive();
@@ -302,7 +296,7 @@ export function GoLiveScreen({ navigation }: Props) {
 
   if (Platform.OS !== 'android') {
     return (
-      <Screen>
+      <Screen padBottom={false}>
         <View style={styles.body}>
           <Text style={[shared.title, { textAlign: 'left' }]}>Go Live</Text>
           <Text style={styles.help}>
@@ -310,11 +304,6 @@ export function GoLiveScreen({ navigation }: Props) {
             to stream to YouTube, Twitch, or Kick.
           </Text>
         </View>
-        <FloatingMainTabBar
-          navigation={navigation}
-          home={home}
-          active="goLive"
-        />
       </Screen>
     );
   }
@@ -329,7 +318,7 @@ export function GoLiveScreen({ navigation }: Props) {
       : true);
 
   return (
-    <Screen>
+    <Screen padBottom={false}>
       <ScrollView
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
@@ -707,11 +696,6 @@ export function GoLiveScreen({ navigation }: Props) {
           </Pressable>
         </Pressable>
       </Modal>
-      <FloatingMainTabBar
-        navigation={navigation}
-        home={home}
-        active="goLive"
-      />
     </Screen>
   );
 }
@@ -727,7 +711,7 @@ function screenStyles(c: ThemeColors) {
   return StyleSheet.create({
     body: {
       padding: 24,
-      paddingBottom: FLOATING_TAB_BAR_CLEARANCE + 24,
+      paddingBottom: 32,
       gap: 4,
     },
     lead: {

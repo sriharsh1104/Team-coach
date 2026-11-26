@@ -191,7 +191,7 @@ export function useOrgDrawer() {
     startRecording,
   ]);
 
-  return { open, sections, openWith, close, setRouteName };
+  return { open, sections, openWith, close, routeName, setRouteName };
 }
 
 // Same sections GuildHomeScreen shows (guild-only members have no org).
@@ -263,7 +263,7 @@ export function useGuildDrawer() {
     );
   }, [navigation, isAdmin, routeName, unreadAnnouncements, startRecording]);
 
-  return { open, sections, openWith, close, setRouteName };
+  return { open, sections, openWith, close, routeName, setRouteName };
 }
 
 /**
@@ -315,5 +315,5 @@ export function useAdminDrawer() {
     );
   }, [navigation, routeName]);
 
-  return { open, sections, openWith, close, setRouteName };
+  return { open, sections, openWith, close, routeName, setRouteName };
 }

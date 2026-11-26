@@ -44,6 +44,7 @@ import { InviteLinkBridge } from '../invite/InviteLinkBridge';
 import { SideDrawer } from '../ui/SideDrawer';
 import { SectionStackHeader } from '../ui/SectionStackHeader';
 import { EdgeSwipe } from '../ui/edgeSwipe';
+import { FloatingTabBarHost } from './FloatingTabBarHost';
 import { useAdminDrawer, useGuildDrawer, useOrgDrawer } from './useAppDrawer';
 import {
   AuthStackParamList,
@@ -377,6 +378,7 @@ export function RootNavigator() {
         </OrgSetupStack.Navigator>
       ) : !org && guild ? (
         <>
+          <FloatingTabBarHost home="GuildHome" routeName={guildDrawer.routeName}>
           {withEdgeGestures(
             guildDrawer.openWith,
             <MainStack.Navigator screenOptions={mainScreenOptions}>
@@ -562,6 +564,7 @@ export function RootNavigator() {
             />
           </MainStack.Navigator>,
           )}
+          </FloatingTabBarHost>
           <SideDrawer
             open={guildDrawer.open}
             onClose={guildDrawer.close}
@@ -578,6 +581,7 @@ export function RootNavigator() {
         </>
       ) : (
         <>
+          <FloatingTabBarHost home="OrgHome" routeName={orgDrawer.routeName}>
           {withEdgeGestures(
             orgDrawer.openWith,
             <MainStack.Navigator screenOptions={mainScreenOptions}>
@@ -864,6 +868,7 @@ export function RootNavigator() {
             />
           </MainStack.Navigator>,
           )}
+          </FloatingTabBarHost>
           <SideDrawer
             open={orgDrawer.open}
             onClose={orgDrawer.close}

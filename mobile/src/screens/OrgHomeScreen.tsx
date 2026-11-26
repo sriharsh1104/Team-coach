@@ -25,7 +25,6 @@ import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ExitConfirmModal } from '../ui/ExitConfirmModal';
 import { useRecording } from '../recording/RecordingContext';
-import { FloatingMainTabBar } from '../ui/FloatingMainTabBar';
 import { ChatHubScreen } from './chat/ChatHubScreen';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -226,12 +225,6 @@ export function OrgHomeScreen({ navigation }: Props) {
       <View style={styles.chat}>
         <ChatHubScreen onLoadError={() => emitToast('Could not load chats')} />
       </View>
-
-      <FloatingMainTabBar
-        navigation={navigation}
-        home="OrgHome"
-        active="chat"
-      />
 
       <SideDrawer
         open={menuOpen}

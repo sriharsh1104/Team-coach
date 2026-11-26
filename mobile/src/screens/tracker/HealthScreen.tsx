@@ -1,6 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -109,6 +110,14 @@ export function HealthScreen() {
     }, [refresh]),
   );
 
+  // Returning from Health Connect's setup / permission UI — re-check grants.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refresh();
@@ -123,14 +132,16 @@ export function HealthScreen() {
     setConnecting(true);
     try {
       const ok = await requestHealthPermissions();
-      if (!ok) {
-        emitToast('Allow Steps in Health Connect to sync');
-        openHealthConnectInstallOrSettings();
+      // Always re-read — the system may have granted while we were backgrounded.
+      await refresh();
+      const status = await getHealthConnectStatus();
+      if (status === 'ready' || ok) {
+        emitToast('Health Connect connected');
         return;
       }
-      emitToast('Health Connect connected');
-      setLoading(true);
-      await refresh();
+      emitToast(
+        'Steps abhi allow nahi hua. Agar “Connect a second app” dikha tha to Set up later dabao, phir Grant Access dobara — Sacred ko Steps tick karo.',
+      );
     } finally {
       setConnecting(false);
     }
@@ -138,7 +149,7 @@ export function HealthScreen() {
 
   if (loading && !data) {
     return (
-      <Screen>
+      <Screen padBottom={false}>
         <View style={styles.center}>
           <ActivityIndicator color={colors.chrome} />
         </View>
@@ -155,7 +166,7 @@ export function HealthScreen() {
   const syncedFromPhone = data?.source === 'health_connect';
 
   return (
-    <Screen>
+    <Screen padBottom={false}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
@@ -194,9 +205,10 @@ export function HealthScreen() {
           <View style={styles.banner}>
             <Text style={styles.bannerTitle}>Allow Step Access</Text>
             <Text style={styles.bannerBody}>
-              Grant Health Connect permission for Steps (and exercise, for Heart
-              Points). Sacred will read today&apos;s totals and sync them to your
-              account.
+              Grant Access dabane ke baad agar “Connect a second app” (Fit /
+              ChatGPT list) aaye to woh HC setup hai — Set up later dabao. Phir
+              wapas yahan Grant Access — Sacred ke liye Steps (aur Exercise)
+              allow karo. Fit list mein hona zaroori nahi.
             </Text>
             <SoftPressable
               style={[styles.bannerBtn, connecting && styles.btnDisabled]}
@@ -206,6 +218,13 @@ export function HealthScreen() {
               <Text style={styles.bannerBtnText}>
                 {connecting ? 'Connecting…' : 'Grant Access'}
               </Text>
+            </SoftPressable>
+            <SoftPressable
+              style={styles.secondaryBtn}
+              onPress={openHealthConnectInstallOrSettings}
+              disabled={connecting}
+            >
+              <Text style={styles.secondaryBtnText}>Open Health Connect</Text>
             </SoftPressable>
           </View>
         ) : null}
@@ -269,13 +288,13 @@ export function HealthScreen() {
 const barStyles = StyleSheet.create({
   barTrack: {
     height: 8,
-    borderRadius: 4,
+    borderRadius: 999,
     overflow: 'hidden',
-    marginTop: 12,
+    marginTop: 10,
   },
   barFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 999,
   },
 });
 
@@ -288,22 +307,21 @@ function makeStyles(c: ThemeColors) {
     },
     content: {
       padding: 16,
-      paddingBottom: 40,
-      gap: 14,
+      paddingBottom: 32,
+      gap: 12,
     },
     banner: {
       borderWidth: 1,
       borderColor: c.border,
       backgroundColor: c.surface,
-      borderRadius: 12,
+      borderRadius: 14,
       padding: 14,
-      gap: 8,
+      gap: 10,
     },
     bannerTitle: {
       color: c.text,
       fontSize: 16,
       fontWeight: '700' as const,
-      textTransform: 'capitalize' as const,
     },
     bannerBody: {
       color: c.textMuted,
@@ -316,25 +334,34 @@ function makeStyles(c: ThemeColors) {
       paddingHorizontal: 14,
       paddingVertical: 10,
       borderRadius: 10,
-      marginTop: 4,
     },
     bannerBtnText: {
       color: c.chromeInk,
       fontWeight: '700' as const,
       fontSize: 14,
     },
-    btnDisabled: { opacity: 0.55 },
+    secondaryBtn: {
+      alignSelf: 'flex-start' as const,
+      paddingHorizontal: 4,
+      paddingVertical: 4,
+    },
+    secondaryBtnText: {
+      color: c.link,
+      fontWeight: '600' as const,
+      fontSize: 14,
+    },
+    btnDisabled: { opacity: 0.6 },
     readyPill: {
       alignSelf: 'flex-start' as const,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
       borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
+      backgroundColor: c.surface,
       borderWidth: 1,
-      borderColor: 'rgba(134,239,172,0.28)',
-      backgroundColor: 'rgba(134,239,172,0.08)',
+      borderColor: c.border,
     },
     readyText: {
-      color: c.text,
+      color: c.textMuted,
       fontSize: 12,
       fontWeight: '600' as const,
     },
@@ -342,38 +369,39 @@ function makeStyles(c: ThemeColors) {
       borderWidth: 1,
       borderColor: c.border,
       backgroundColor: c.surface,
-      borderRadius: 12,
+      borderRadius: 14,
       padding: 16,
     },
     cardLabel: {
-      color: c.textMuted,
-      fontSize: 13,
-      fontWeight: '600' as const,
-      textTransform: 'capitalize' as const,
-      marginBottom: 4,
+      color: c.textDim,
+      fontSize: 12,
+      fontWeight: '700' as const,
+      letterSpacing: 0.4,
+      textTransform: 'uppercase' as const,
     },
     cardValue: {
       color: c.text,
       fontSize: 36,
       fontWeight: '800' as const,
-      letterSpacing: -0.5,
+      marginTop: 4,
+      letterSpacing: -0.8,
     },
     cardMeta: {
-      color: c.textDim,
-      fontSize: 14,
-      marginTop: 4,
+      color: c.textMuted,
+      fontSize: 13,
+      marginTop: 2,
     },
     hint: {
       color: c.textDim,
       fontSize: 12,
-      marginTop: 10,
       lineHeight: 17,
+      marginTop: 10,
     },
     syncLine: {
       color: c.textDim,
       fontSize: 12,
       textAlign: 'center' as const,
-      marginTop: 8,
+      marginTop: 4,
     },
   };
 }

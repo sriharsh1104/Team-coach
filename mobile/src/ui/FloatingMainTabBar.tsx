@@ -28,6 +28,9 @@ const TABS: TabDef[] = [
   { key: 'call', label: 'Guild Call', icon: 'headset' },
 ];
 
+/** Pill row height excluding safe-area (used by overlay clearance helpers). */
+const PILL_BLOCK = 64;
+
 function navigateTab(navigation: Nav, home: Home, key: MainTabKey) {
   switch (key) {
     case 'chat':
@@ -45,29 +48,47 @@ function navigateTab(navigation: Nav, home: Home, key: MainTabKey) {
   }
 }
 
+export function floatingTabBarInset(safeBottom: number): number {
+  return Math.max(safeBottom, 10);
+}
+
+/** @deprecated Overlay clearance — prefer the docked RootNavigator bar. */
+export function useFloatingTabBarClearance(): number {
+  const insets = useSafeAreaInsets();
+  return PILL_BLOCK + floatingTabBarInset(insets.bottom);
+}
+
+/** @deprecated Prefer the docked RootNavigator bar. */
+export const FLOATING_TAB_BAR_CLEARANCE = PILL_BLOCK + 14;
+
 /**
- * Floating pill tab bar for primary Sacred destinations.
- * Chat · Games · Go Live · Guild Call
+ * Floating pill: Chat · Games · Go Live · Guild Call.
+ *
+ * `docked` (default for the global host) sits in normal layout and shrinks
+ * the screen above it. `overlay` is absolute — only for rare local hosts.
  */
 export function FloatingMainTabBar({
   navigation,
   home,
   active,
+  docked = true,
 }: {
   navigation: Nav;
   home: Home;
   active: MainTabKey;
+  docked?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const bottomPad = floatingTabBarInset(insets.bottom);
 
   return (
     <View
       pointerEvents="box-none"
       style={[
-        staticStyles.host,
-        { paddingBottom: Math.max(insets.bottom, 10) },
+        docked ? staticStyles.dock : staticStyles.overlay,
+        { paddingBottom: bottomPad },
       ]}
     >
       <View style={[styles.pill, { borderColor: colors.link }]}>
@@ -110,18 +131,22 @@ export function FloatingMainTabBar({
   );
 }
 
-/** Extra scroll/content padding so lists clear the floating pill. */
-export const FLOATING_TAB_BAR_CLEARANCE = 78;
-
 const staticStyles = StyleSheet.create({
-  host: {
+  dock: {
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingTop: 6,
+    zIndex: 100,
+  },
+  overlay: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     alignItems: 'center',
     paddingHorizontal: 18,
-    zIndex: 30,
+    zIndex: 100,
+    elevation: 24,
   },
   tab: {
     flex: 1,
@@ -158,10 +183,10 @@ function makeStyles(c: ThemeColors) {
       paddingHorizontal: 8,
       paddingVertical: 4,
       shadowColor: '#000',
-      shadowOpacity: 0.18,
-      shadowRadius: 16,
+      shadowOpacity: 0.22,
+      shadowRadius: 18,
       shadowOffset: { width: 0, height: 8 },
-      elevation: 10,
+      elevation: 12,
     },
   };
 }

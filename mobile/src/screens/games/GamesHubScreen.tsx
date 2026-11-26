@@ -17,11 +17,6 @@ import { useThemedStyles } from '../../theme/useThemedStyles';
 import { emitToast } from '../../ui/toastBus';
 import { SkeletonList } from '../../ui/Skeleton';
 import { confirmAsync } from '../../ui/confirmAsync';
-import {
-  FLOATING_TAB_BAR_CLEARANCE,
-  FloatingMainTabBar,
-} from '../../ui/FloatingMainTabBar';
-import { useFloatingTabHome } from '../../navigation/useFloatingTabHome';
 
 /**
  * Games hub: pick a game to host a room, or jump into a teammate's open
@@ -29,7 +24,6 @@ import { useFloatingTabHome } from '../../navigation/useFloatingTabHome';
  */
 export function GamesHubScreen() {
   const navigation = useNavigation<any>();
-  const home = useFloatingTabHome();
   const { user } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(hubStyles);
@@ -174,7 +168,7 @@ export function GamesHubScreen() {
   );
 
   return (
-    <Screen>
+    <Screen padBottom={false}>
       <FlatList
         data={openRooms}
         keyExtractor={(r) => r.id}
@@ -398,17 +392,12 @@ export function GamesHubScreen() {
           </View>
         </View>
       </Modal>
-      <FloatingMainTabBar
-        navigation={navigation}
-        home={home}
-        active="games"
-      />
     </Screen>
   );
 }
 
 const staticStyles = StyleSheet.create({
-  content: { padding: 16, paddingBottom: FLOATING_TAB_BAR_CLEARANCE + 16 },
+  content: { padding: 16, paddingBottom: 32 },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   flex: { flex: 1 },
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 14 },

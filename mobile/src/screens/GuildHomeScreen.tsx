@@ -23,7 +23,6 @@ import { withActiveDrawerItem } from '../navigation/drawerActive';
 import { useBlockExitOnRoot } from '../navigation/useBlockExitOnRoot';
 import { ExitConfirmModal } from '../ui/ExitConfirmModal';
 import { useRecording } from '../recording/RecordingContext';
-import { FloatingMainTabBar } from '../ui/FloatingMainTabBar';
 import { ChatHubScreen } from './chat/ChatHubScreen';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -152,12 +151,6 @@ export function GuildHomeScreen({ navigation }: Props) {
       <View style={styles.chat}>
         <ChatHubScreen onLoadError={() => showToast('Could not load chats')} />
       </View>
-
-      <FloatingMainTabBar
-        navigation={navigation}
-        home="GuildHome"
-        active="chat"
-      />
 
       <SideDrawer
         open={menuOpen}

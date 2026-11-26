@@ -34,6 +34,7 @@ import { ConversationOptionsSheet } from './ConversationOptionsSheet';
 import { ChatFlowHeader } from './ChatFlowHeader';
 import { ChannelAvatar } from './ChannelAvatar';
 import { VoiceJoinHeaderButton } from './VoiceJoinHeaderButton';
+import { setFloatingTabChatOpen } from '../../navigation/floatingTabVisibility';
 
 interface Props {
   /** Called when loading the channel list fails — e.g. to surface a toast.
@@ -83,6 +84,11 @@ export function ChatHubScreen({ onLoadError }: Props) {
   const [active, setActive] = useState<ActiveChat | null>(null);
   const [overlayStack, setOverlayStack] = useState<ChatOverlay[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    setFloatingTabChatOpen(!!active);
+    return () => setFloatingTabChatOpen(false);
+  }, [active]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [starredOnly, setStarredOnly] = useState(false);
   const [chatEpoch, setChatEpoch] = useState(0);
@@ -780,6 +786,7 @@ export function ChatHubScreen({ onLoadError }: Props) {
       <FlatList
         data={inboxRows}
         keyExtractor={(item) => item.key}
+        contentContainerStyle={{ paddingBottom: 24 }}
         initialNumToRender={12}
         maxToRenderPerBatch={8}
         windowSize={7}
