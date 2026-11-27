@@ -1,4 +1,5 @@
 import React from 'react';
+import { NavigationContext } from '@react-navigation/native';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { ChatHubScreen } from '../ChatHubScreen';
 import * as chatApi from '../../../api/chat';
@@ -437,6 +438,57 @@ describe('ChatHubScreen', () => {
     expect(screen.getByText(/2\. Guild Only/)).toBeTruthy();
     expect(mockedOrgApi.getMyGuild).toHaveBeenCalled();
     expect(mockedOrgApi.getMyOrg).not.toHaveBeenCalled();
+  });
+
+  it('navigates to GuildVoice from the guild chat headset (outside Guild Call tab)', async () => {
+    const navigate = jest.fn();
+    const navigation = {
+      navigate,
+      addListener: () => () => undefined,
+      isFocused: () => true,
+      getParent: () => undefined,
+      getState: () => ({ routes: [], index: 0, key: 'hub', routeNames: [], type: 'stack', stale: false }),
+      dispatch: jest.fn(),
+      reset: jest.fn(),
+      goBack: jest.fn(),
+      canGoBack: () => false,
+      getId: () => 'hub',
+      setParams: jest.fn(),
+      setOptions: jest.fn(),
+      removeListener: jest.fn(),
+    } as any;
+
+    mockedChatApi.getChatChannels.mockResolvedValue({
+      ...channelsResponse,
+      channels: [
+        {
+          channelKey: 'guild',
+          type: 'ORG' as const,
+          title: 'Guild Chat',
+          peerUserId: null,
+          peerAvatarUrl: null,
+          memberCount: 2,
+          unreadCount: 0,
+          lastMessageAt: null,
+          lastPreview: null,
+        },
+      ],
+    } as any);
+
+    render(
+      <NavigationContext.Provider value={navigation}>
+        <ChatHubScreen />
+      </NavigationContext.Provider>,
+    );
+    await screen.findByText('Guild Chat');
+    fireEvent.press(screen.getByText('Guild Chat'));
+    await screen.findByLabelText('Join guild voice');
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Join guild voice'));
+    });
+
+    expect(navigate).toHaveBeenCalledWith('GuildVoice');
   });
 
   it('opens a member profile from the members list, and Back returns step-by-step', async () => {

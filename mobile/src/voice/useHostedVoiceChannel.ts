@@ -17,7 +17,7 @@ import {
   Track,
   type VideoTrack,
 } from 'livekit-client';
-import { logVoiceJoin, moderateVoice } from '../api/voice';
+import { getVoiceConfig, logVoiceJoin, moderateVoice } from '../api/voice';
 import { isLiveStreaming } from '../media/liveStreamer';
 import { isScreenRecording } from '../media/screenRecorder';
 import { emitToast } from '../ui/toastBus';
@@ -116,6 +116,8 @@ export type HostedVoiceOptions = {
   /** From the server's token response — never derived on the client. */
   canModerate?: boolean;
   max?: number;
+  /** 1-on-1 only — needed to mint a fresh token on Join. */
+  peerId?: string;
 };
 
 export function useHostedVoiceChannel(
@@ -124,6 +126,7 @@ export function useHostedVoiceChannel(
   options: HostedVoiceOptions = {},
 ): VoiceChannelController {
   const voiceRoom = options.room ?? 'team';
+  const peerId = options.peerId;
   const isGuild = voiceRoom === 'guild';
   const isDirect = voiceRoom === 'direct';
   const [status, setStatus] = useState<VoiceChannelStatus>('idle');
@@ -460,6 +463,9 @@ export function useHostedVoiceChannel(
     // A double tap used to open two Rooms that fought over the mic.
     if (joiningRef.current) return;
     joiningRef.current = true;
+    // Stage tags show in adb logcat (ReactNativeJS) when a silent native kill
+    // leaves no ErrorBoundary UI — correlate with POST /voice/join-log phases.
+    console.log(`[voice-join] click room=${voiceRoom}`);
     void logVoiceJoin(voiceRoom, 'click');
     // Rejoin (after an error / kick): close the old Room before opening a new one.
     if (roomRef.current) {
@@ -709,19 +715,51 @@ export function useHostedVoiceChannel(
         },
       );
 
+      // Fresh createRoom + token right before connect. Opening the voice
+      // screen mints a room that LiveKit deletes after emptyTimeout if nobody
+      // has connected yet — without this re-fetch (and roomCreate on the
+      // token), Join fails while chat occupancy logs "room does not exist".
+      let connectUrl = url;
+      let connectToken = token;
+      try {
+        console.log(`[voice-join] refresh-config room=${voiceRoom}`);
+        const cfg = await getVoiceConfig(voiceRoom, peerId);
+        if (cfg.mode === 'hosted' && cfg.url && cfg.token) {
+          connectUrl = cfg.url;
+          connectToken = cfg.token;
+        }
+      } catch (err) {
+        console.warn(
+          '[voice-join] refresh-config failed (using screen token):',
+          err,
+        );
+      }
+
       // Call-style audio routing (speaker/earpiece/bluetooth, Android
       // VOICE_COMMUNICATION mode). LiveKit RN needs this started explicitly.
+      // Explicit preferredOutputList — without it some OEM builds treat
+      // LiveKit's stock "voiceCall" stream type as an actual phone call and
+      // pop their own call UI on top of the app the instant this applies,
+      // which reads as "the app went to background" right on Join. Same fix
+      // already applied to the self-hosted (mediasoup) path's identical
+      // AudioSession.configureAudio call — see useSelfHostedVoiceChannel.
+      console.log(`[voice-join] audio-session room=${voiceRoom}`);
       try {
         await AudioSession.configureAudio({
-          android: { audioTypeOptions: callAudioTypeOptions() },
+          android: {
+            preferredOutputList: ['speaker', 'bluetooth', 'headset', 'earpiece'],
+            audioTypeOptions: callAudioTypeOptions(),
+          },
         });
         await AudioSession.startAudioSession();
       } catch (err) {
         console.warn('AudioSession setup failed (continuing):', err);
       }
-      await room.connect(url, token);
+      console.log(`[voice-join] connect room=${voiceRoom}`);
+      await room.connect(connectUrl, connectToken);
       if (roomRef.current !== room) {
         // Left (or unmounted) while we were still connecting.
+        console.log(`[voice-join] aborted-after-connect room=${voiceRoom}`);
         room.removeAllListeners();
         await room.disconnect().catch(() => undefined);
         return;
@@ -737,12 +775,16 @@ export function useHostedVoiceChannel(
       isHostMutedRef.current = startMuted;
       setIsHostMuted(startMuted);
       if (!startMuted) {
+        console.log(`[voice-join] mic-on room=${voiceRoom}`);
         await room.localParticipant.setMicrophoneEnabled(true);
         attachVoiceChanger();
+      } else {
+        console.log(`[voice-join] mic-skipped-host-muted room=${voiceRoom}`);
       }
       syncParticipants(room);
       setIsMuted(startMuted);
       setStatus('connected');
+      console.log(`[voice-join] connected room=${voiceRoom}`);
       void logVoiceJoin(voiceRoom, 'connected');
       // Decode both clips now so the first arrival isn't silent.
       preloadVoiceCues();
@@ -760,15 +802,14 @@ export function useHostedVoiceChannel(
       const failed = roomRef.current;
       roomRef.current = null;
       failed?.removeAllListeners();
-      failed?.disconnect().catch(() => undefined);
-      AudioSession.stopAudioSession().catch(() => {});
-      setErrorMessage(err?.message ?? 'Could not join voice channel');
+      // disconnect() may not return a Promise on every native stub — never throw here.
+      await Promise.resolve(failed?.disconnect()).catch(() => undefined);
+      await Promise.resolve(AudioSession.stopAudioSession()).catch(() => undefined);
+      const detail = err?.message ?? 'Could not join voice channel';
+      console.log(`[voice-join] error room=${voiceRoom} detail=${detail}`);
+      setErrorMessage(detail);
       setStatus('error');
-      void logVoiceJoin(
-        voiceRoom,
-        'error',
-        err?.message ?? 'Could not join voice channel',
-      );
+      void logVoiceJoin(voiceRoom, 'error', detail);
     } finally {
       joiningRef.current = false;
     }
@@ -777,6 +818,8 @@ export function useHostedVoiceChannel(
   }, [
     url,
     token,
+    voiceRoom,
+    peerId,
     isGuild,
     isDirect,
     syncParticipants,
@@ -1138,17 +1181,32 @@ export function useHostedVoiceChannel(
     };
   }, []);
 
-  // Android: keep the mic + socket alive when the user switches to their
-  // game, and show the ongoing-call notification with Mute/Deafen/Leave
-  // quick actions. Re-runs on every mute/deafen toggle to keep those
-  // buttons' labels in sync with actual state.
+  // Keep-alive FGS only after we are connected AND the user has left the
+  // app. Starting it on Join/connecting (CATEGORY_CALL notif) was sending
+  // the activity to the background mid-connect — when they returned, Join
+  // showed again (connect never finished). Never use AppState "inactive"
+  // (permission / AudioSession flicker).
   useEffect(() => {
-    if (status !== 'connected' && status !== 'connecting') return;
-    startVoiceBackground(
-      isGuild ? 'Guild Voice' : 'Team Voice',
-      'You are in voice. Tap to return to the voice channel.',
-      { muted: isMuted, deafened: isDeafened, room: isGuild ? 'guild' : 'team' },
-    );
+    if (status !== 'connected') {
+      stopVoiceBackground();
+      return;
+    }
+    const connectedAt = Date.now();
+    const title = isGuild ? 'Guild Voice' : 'Team Voice';
+    const text = 'You are in voice. Tap to return to the voice channel.';
+    const state = {
+      muted: isMuted,
+      deafened: isDeafened,
+      room: (isGuild ? 'guild' : 'team') as 'team' | 'guild',
+    };
+    const pushIfBackgrounded = (appState: AppStateStatus) => {
+      if (appState !== 'background') return;
+      if (Date.now() - connectedAt < 2500) return;
+      startVoiceBackground(title, text, state);
+    };
+    pushIfBackgrounded(AppState.currentState);
+    const sub = AppState.addEventListener('change', pushIfBackgrounded);
+    return () => sub.remove();
   }, [status, isMuted, isDeafened, isGuild]);
 
   // Mute / Deafen / Leave tapped on the notification itself (app backgrounded).

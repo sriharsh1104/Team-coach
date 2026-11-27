@@ -12,6 +12,8 @@
     "web": "APP_ENV=development WEB_API_BASE_URL=http://localhost:3000 expo start --web --port 8090",
     "build:apk": "bash scripts/android-gradle.sh assembleDebug",
     "build:apk:release": "bash scripts/android-gradle.sh assembleRelease",
+    "voice:crash-matrix": "bash scripts/voice-crash-matrix.sh",
+    "voice:crash-dump": "bash scripts/voice-crash-matrix.sh --dump",
     "sha1": "bash scripts/android-gradle.sh signingReport",
     "test": "jest",
     "test:watch": "jest --watch",

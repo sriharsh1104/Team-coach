@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   BadRequestException,
   ForbiddenException,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { TokenVerifier } from 'livekit-server-sdk';
@@ -152,11 +153,15 @@ describe('VoiceService (unit)', () => {
     expect(claims.sub).toBe('user-123');
     expect(claims.video).toEqual({
       roomJoin: true,
+      roomCreate: true,
       room: 'org-123',
       canPublish: true,
       canSubscribe: true,
       canPublishSources: ['microphone', 'screen_share', 'screen_share_audio'],
     });
+    expect(lk.createRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ emptyTimeout: 30 * 60 }),
+    );
   });
 
   it('rejects a token signed with the wrong secret — proves verification is real, not rubber-stamped', async () => {
@@ -237,10 +242,16 @@ describe('VoiceService (unit)', () => {
       participants: [{ id: 'u2', name: 'Bob', avatarUrl: 'https://cdn/b.png' }],
     });
 
+    const debugSpy = jest
+      .spyOn(Logger.prototype, 'debug')
+      .mockImplementation(() => undefined);
     lk.listParticipants.mockRejectedValue(new Error('room does not exist'));
     const empty = await service.getOccupancy('user-123', 'team');
     expect(empty.count).toBe(0);
     expect(empty.participants).toEqual([]);
+    // Expected empty lobby — do not spam Nest DEBUG every 10s from chat polls.
+    expect(debugSpy).not.toHaveBeenCalled();
+    debugSpy.mockRestore();
   });
 });
 

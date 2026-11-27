@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { Device, types as mediasoupTypes } from 'mediasoup-client';
 import { Socket } from 'socket.io-client';
 import { mediaDevices } from '@livekit/react-native-webrtc';
@@ -546,17 +547,8 @@ export function useSelfHostedVoiceChannel(
       // WebRTC's audio pipeline exists now — hook the voice changer in.
       attachVoiceChanger();
 
-      // Android: keep the mic + socket alive when the user switches to their
-      // game. Started only after the mic permission is granted.
-      startVoiceBackground(
-        room === 'guild' ? 'Guild Voice' : 'Team Voice',
-        'You are in voice. Tap to return to the voice channel.',
-        {
-          muted: isMutedRef.current,
-          deafened: isDeafenedRef.current,
-          room,
-        },
-      );
+      // Keep-alive FGS starts from the AppState effect after connected —
+      // not here on Join (that was minimizing the app mid-connect).
 
       const socket = connectVoiceSocket(authToken, room);
       socketRef.current = socket;
@@ -789,16 +781,24 @@ export function useSelfHostedVoiceChannel(
     setMicEnabled(false);
   }, [setMicEnabled]);
 
-  // Keep the ongoing-call notification's Mute/Deafen labels in sync with
-  // actual state, including the early call inside join() before the first
-  // render with status === 'connecting' lands.
+  // Same as hosted: FGS only when connected + AppState background.
   useEffect(() => {
-    if (status !== 'connected' && status !== 'connecting') return;
-    startVoiceBackground(
-      room === 'guild' ? 'Guild Voice' : 'Team Voice',
-      'You are in voice. Tap to return to the voice channel.',
-      { muted: isMuted, deafened: isDeafened, room },
-    );
+    if (status !== 'connected') {
+      stopVoiceBackground();
+      return;
+    }
+    const connectedAt = Date.now();
+    const title = room === 'guild' ? 'Guild Voice' : 'Team Voice';
+    const text = 'You are in voice. Tap to return to the voice channel.';
+    const state = { muted: isMuted, deafened: isDeafened, room };
+    const pushIfBackgrounded = (appState: AppStateStatus) => {
+      if (appState !== 'background') return;
+      if (Date.now() - connectedAt < 2500) return;
+      startVoiceBackground(title, text, state);
+    };
+    pushIfBackgrounded(AppState.currentState);
+    const sub = AppState.addEventListener('change', pushIfBackgrounded);
+    return () => sub.remove();
   }, [status, isMuted, isDeafened, room]);
 
   // Mute / Deafen / Leave tapped on the notification itself (app backgrounded).

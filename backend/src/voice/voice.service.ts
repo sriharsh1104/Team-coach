@@ -291,10 +291,16 @@ export class VoiceService {
         };
       });
     } catch (err) {
-      // Room may not exist yet — treat as empty.
-      this.logger.debug(
-        `listParticipants(${ctx.roomName}): ${(err as Error).message}`,
-      );
+      // LiveKit only creates the room on getConfig/join and deletes it after
+      // emptyTimeout. Chat headset polls occupancy every 10s — "room does not
+      // exist" here means nobody is in voice, not a failed Join. Stay quiet
+      // for that expected case so logs don't drown real join errors.
+      const msg = (err as Error).message ?? '';
+      if (!/does not exist|not_found|not found/i.test(msg)) {
+        this.logger.debug(
+          `voice occupancy org=${ctx.roomName}: ${msg}`,
+        );
+      }
     }
     return { room: ctx.kind, max, count: participants.length, participants };
   }
@@ -331,10 +337,15 @@ export class VoiceService {
     let state: HostedRoomState | undefined;
     const client = this.roomClient(creds);
     // Idempotent — returns the live room if it already exists. Enforces the cap.
+    // emptyTimeout used to be 120s: opening Guild Voice (createRoom) then
+    // waiting on the Join button deleted the room before connect, and the
+    // token had no roomCreate — client Join failed while occupancy kept
+    // logging "requested room does not exist". Keep the lobby alive longer
+    // and allow the client to recreate on connect if it still races.
     const lkRoom = await client.createRoom({
       name: ctx.roomName,
       maxParticipants: max,
-      emptyTimeout: 120,
+      emptyTimeout: 30 * 60,
     });
     if (ctx.kind === 'guild') {
       state = parseRoomState(lkRoom.metadata);
@@ -362,6 +373,8 @@ export class VoiceService {
     // screen share. Camera is only for admin-granted 1-on-1 (switch voice→video).
     token.addGrant({
       roomJoin: true,
+      // Recreate if emptyTimeout wiped the room between getConfig and connect.
+      roomCreate: true,
       room: ctx.roomName,
       canPublish,
       canSubscribe: true,

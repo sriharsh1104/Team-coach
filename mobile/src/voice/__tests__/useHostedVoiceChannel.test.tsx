@@ -20,7 +20,7 @@ class FakeRoom {
   };
   metadata = '';
   connect = jest.fn().mockResolvedValue(undefined);
-  disconnect = jest.fn();
+  disconnect = jest.fn().mockResolvedValue(undefined);
   removeAllListeners = jest.fn(() => this.handlers.clear());
 
   on(event: string, cb: (...args: unknown[]) => void) {
@@ -147,7 +147,17 @@ jest.mock('../../ui/toastBus', () => ({
   setToastListener: jest.fn(),
 }));
 
-jest.mock('../../api/voice', () => ({ moderateVoice: jest.fn() }));
+jest.mock('../../api/voice', () => ({
+  moderateVoice: jest.fn(),
+  logVoiceJoin: jest.fn().mockResolvedValue(undefined),
+  getVoiceConfig: jest.fn().mockResolvedValue({
+    mode: 'hosted',
+    url: 'wss://lk-fresh',
+    token: 'fresh-tok',
+    room: 'guild',
+    max: 50,
+  }),
+}));
 
 jest.mock('../voiceCues', () => ({
   playVoiceCue: jest.fn(),
@@ -178,6 +188,51 @@ describe('useHostedVoiceChannel', () => {
     mockCurrentRoom = new FakeRoom();
     (emitToast as jest.Mock).mockClear();
     (playVoiceCue as jest.Mock).mockClear();
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  describe('join breadcrumbs for silent native kills', () => {
+    it('logs [voice-join] stages through connected', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      await joinedHook({ room: 'guild' });
+      const stages = log.mock.calls
+        .map((args) => String(args[0] ?? ''))
+        .filter((line) => line.startsWith('[voice-join]'));
+      expect(stages).toEqual(
+        expect.arrayContaining([
+          '[voice-join] click room=guild',
+          '[voice-join] refresh-config room=guild',
+          '[voice-join] audio-session room=guild',
+          '[voice-join] connect room=guild',
+          '[voice-join] mic-on room=guild',
+          '[voice-join] connected room=guild',
+        ]),
+      );
+      log.mockRestore();
+    });
+
+    it('logs [voice-join] error when connect fails', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      mockCurrentRoom.connect.mockRejectedValueOnce(new Error('boom'));
+      const hook = renderHook(() =>
+        useHostedVoiceChannel('wss://lk', 'tok', { room: 'team' }),
+      );
+      await act(async () => {
+        await hook.result.current.join();
+      });
+      await waitFor(() => expect(hook.result.current.status).toBe('error'));
+      expect(log.mock.calls.map((a) => String(a[0] ?? ''))).toEqual(
+        expect.arrayContaining([
+          '[voice-join] click room=team',
+          '[voice-join] error room=team detail=boom',
+        ]),
+      );
+      log.mockRestore();
+    });
   });
 
   describe('playback state for people who arrive later', () => {

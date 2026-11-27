@@ -76,6 +76,7 @@ const HostedVoiceHolder = React.memo(function HostedVoiceHolder({
   room,
   canModerate,
   max,
+  peerId,
   onController,
 }: {
   url: string;
@@ -83,13 +84,19 @@ const HostedVoiceHolder = React.memo(function HostedVoiceHolder({
   room: VoiceRoomKind;
   canModerate?: boolean;
   max?: number;
+  peerId?: string;
   onController: (c: VoiceChannelController) => void;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { useHostedVoiceChannel } = require('./useHostedVoiceChannel') as {
     useHostedVoiceChannel: typeof import('./useHostedVoiceChannel').useHostedVoiceChannel;
   };
-  const controller = useHostedVoiceChannel(url, token, { room, canModerate, max });
+  const controller = useHostedVoiceChannel(url, token, {
+    room,
+    canModerate,
+    max,
+    peerId,
+  });
 
   // Feed the controller up only when it changes. With no deps this ran after
   // every render → setState in the provider → re-render → infinite loop.
@@ -268,6 +275,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           room={activation.room ?? 'team'}
           canModerate={activation.canModerate}
           max={activation.max}
+          peerId={activation.peerId}
           onController={handleController}
         />
       ) : null}
