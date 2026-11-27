@@ -708,16 +708,21 @@ export function useHostedVoiceChannel(
         },
       );
 
-      // Ask for the mic up front on Android. LiveKit's setMicrophoneEnabled
-      // also prompts, but doing it here means we never reach AudioSession /
-      // connect with a denied mic — and the keep-alive FGS (microphone type)
-      // only starts after status flips to connected below.
+      // Ask for the mic up front on Android (skip the dialog if already
+      // granted — a fresh prompt pauses the activity and looks like the app
+      // "went to background" on Join). LiveKit also prompts via
+      // setMicrophoneEnabled; this fails fast before we open the Room.
       if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(
+        const already = await PermissionsAndroid.check(
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         );
-        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-          throw new Error('Microphone permission is required to join voice');
+        if (!already) {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            throw new Error('Microphone permission is required to join voice');
+          }
         }
       }
 
@@ -1119,18 +1124,6 @@ export function useHostedVoiceChannel(
     setIsMuted(true);
   }, []);
 
-  // Keep voice alive in background — WebRTC audio runs natively, we just
-  // prevent any JS-side auto-disconnect logic from firing.
-  useEffect(() => {
-    const handleAppState = (_nextState: AppStateStatus) => {
-      // Intentionally no-op: do not disconnect when backgrounded.
-      // On iOS, UIBackgroundModes audio+voip (in app.config.ts) keeps the
-      // process alive. On Android, the native WebRTC module keeps audio running.
-    };
-    const sub = AppState.addEventListener('change', handleAppState);
-    return () => sub.remove();
-  }, []);
-
   // The hook lives in VoiceContext; unmount == deactivate (or switching
   // team <-> guild). Never leave the mic / room connection behind.
   useEffect(() => {
@@ -1144,20 +1137,30 @@ export function useHostedVoiceChannel(
     };
   }, []);
 
-  // Android: keep the mic + socket alive when the user switches to their
-  // game, and show the ongoing-call notification with Mute/Deafen/Leave
-  // quick actions. Only after we are actually connected (mic granted) —
-  // starting the microphone FGS on "connecting" used to race ahead of the
-  // permission prompt and, with a CALL-category notif, some OEMs minimized
-  // the app the moment Join was tapped. Re-runs on mute/deafen so those
-  // button labels stay in sync.
+  // Android keep-alive FGS + ongoing notification. Start ONLY once the user
+  // has actually left the app (AppState !== active). Starting it on Join /
+  // while still on the voice screen was collapsing the activity into the
+  // background on several OEMs (call-style FGS + mic type). Mute/Deafen
+  // labels refresh on the next background pass.
   useEffect(() => {
-    if (status !== 'connected') return;
-    startVoiceBackground(
-      isGuild ? 'Guild Voice' : 'Team Voice',
-      'You are in voice. Tap to return to the voice channel.',
-      { muted: isMuted, deafened: isDeafened, room: isGuild ? 'guild' : 'team' },
-    );
+    if (status !== 'connected') {
+      stopVoiceBackground();
+      return;
+    }
+    const title = isGuild ? 'Guild Voice' : 'Team Voice';
+    const text = 'You are in voice. Tap to return to the voice channel.';
+    const state = {
+      muted: isMuted,
+      deafened: isDeafened,
+      room: (isGuild ? 'guild' : 'team') as 'team' | 'guild',
+    };
+    const pushIfBackgrounded = (appState: AppStateStatus) => {
+      if (appState === 'active') return;
+      startVoiceBackground(title, text, state);
+    };
+    pushIfBackgrounded(AppState.currentState);
+    const sub = AppState.addEventListener('change', pushIfBackgrounded);
+    return () => sub.remove();
   }, [status, isMuted, isDeafened, isGuild]);
 
   // Mute / Deafen / Leave tapped on the notification itself (app backgrounded).

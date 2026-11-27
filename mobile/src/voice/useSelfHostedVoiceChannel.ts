@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { Device, types as mediasoupTypes } from 'mediasoup-client';
 import { Socket } from 'socket.io-client';
 import { mediaDevices } from '@livekit/react-native-webrtc';
@@ -545,17 +546,9 @@ export function useSelfHostedVoiceChannel(
       // WebRTC's audio pipeline exists now — hook the voice changer in.
       attachVoiceChanger();
 
-      // Android: keep the mic + socket alive when the user switches to their
-      // game. Started only after the mic permission is granted.
-      startVoiceBackground(
-        room === 'guild' ? 'Guild Voice' : 'Team Voice',
-        'You are in voice. Tap to return to the voice channel.',
-        {
-          muted: isMutedRef.current,
-          deafened: isDeafenedRef.current,
-          room,
-        },
-      );
+      // Keep-alive FGS is started from the AppState effect below — only once
+      // the user leaves the app. Starting it here on Join was minimizing the
+      // activity on several OEMs.
 
       const socket = connectVoiceSocket(authToken, room);
       socketRef.current = socket;
@@ -782,18 +775,24 @@ export function useSelfHostedVoiceChannel(
     setMicEnabled(false);
   }, [setMicEnabled]);
 
-  // Keep the ongoing notification's Mute/Deafen labels in sync. Only once
-  // connected — starting the mic FGS on "connecting" raced the permission
-  // prompt and, with a CALL-category notif, some OEMs minimized the app on
-  // Join. join() still starts the service right after getUserMedia so the
-  // window between mic-up and status=connected stays covered.
+  // Android keep-alive FGS: only once the user has left the app. Starting it
+  // on Join (while still on the voice screen) was minimizing the activity on
+  // several OEMs. Mute/Deafen labels refresh on the next background pass.
   useEffect(() => {
-    if (status !== 'connected') return;
-    startVoiceBackground(
-      room === 'guild' ? 'Guild Voice' : 'Team Voice',
-      'You are in voice. Tap to return to the voice channel.',
-      { muted: isMuted, deafened: isDeafened, room },
-    );
+    if (status !== 'connected') {
+      stopVoiceBackground();
+      return;
+    }
+    const title = room === 'guild' ? 'Guild Voice' : 'Team Voice';
+    const text = 'You are in voice. Tap to return to the voice channel.';
+    const state = { muted: isMuted, deafened: isDeafened, room };
+    const pushIfBackgrounded = (appState: AppStateStatus) => {
+      if (appState === 'active') return;
+      startVoiceBackground(title, text, state);
+    };
+    pushIfBackgrounded(AppState.currentState);
+    const sub = AppState.addEventListener('change', pushIfBackgrounded);
+    return () => sub.remove();
   }, [status, isMuted, isDeafened, room]);
 
   // Mute / Deafen / Leave tapped on the notification itself (app backgrounded).

@@ -36,9 +36,9 @@ function loadNative(): NativeVoiceService | null {
  * notification's own Mute/Deafen buttons show the right label — call this
  * again any time either changes.
  *
- * Call only after the mic is granted / status is connected. Starting it on
- * Join (connecting) raced the permission prompt and used to minimize the app
- * on some OEMs when the notification was CATEGORY_CALL.
+ * Call only while connected AND the app is already backgrounded. Starting
+ * the microphone FGS on Join (while the voice screen is still active) was
+ * minimizing the activity on several OEMs.
  *
  * No-op on iOS and on older APKs without the native service.
  */
