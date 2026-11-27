@@ -34,13 +34,8 @@ function loadNative(): NativeVoiceService | null {
  * that stops the OS from muting the mic / freezing the socket when the app
  * goes to the background. Also carries the current mute/deafen state so the
  * notification's own Mute/Deafen buttons show the right label — call this
- * again any time either changes.
- *
- * Call only while connected AND the app is already backgrounded. Starting
- * the microphone FGS on Join (while the voice screen is still active) was
- * minimizing the activity on several OEMs.
- *
- * No-op on iOS and on older APKs without the native service.
+ * again any time either changes. No-op on iOS and on older APKs without the
+ * native service.
  */
 export function startVoiceBackground(
   title: string,

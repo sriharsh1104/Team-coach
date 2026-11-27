@@ -17,7 +17,7 @@ import {
   Track,
   type VideoTrack,
 } from 'livekit-client';
-import { moderateVoice } from '../api/voice';
+import { logVoiceJoin, moderateVoice } from '../api/voice';
 import { isLiveStreaming } from '../media/liveStreamer';
 import { isScreenRecording } from '../media/screenRecorder';
 import { emitToast } from '../ui/toastBus';
@@ -460,6 +460,7 @@ export function useHostedVoiceChannel(
     // A double tap used to open two Rooms that fought over the mic.
     if (joiningRef.current) return;
     joiningRef.current = true;
+    void logVoiceJoin(voiceRoom, 'click');
     // Rejoin (after an error / kick): close the old Room before opening a new one.
     if (roomRef.current) {
       roomRef.current.removeAllListeners();
@@ -708,24 +709,6 @@ export function useHostedVoiceChannel(
         },
       );
 
-      // Ask for the mic up front on Android (skip the dialog if already
-      // granted — a fresh prompt pauses the activity and looks like the app
-      // "went to background" on Join). LiveKit also prompts via
-      // setMicrophoneEnabled; this fails fast before we open the Room.
-      if (Platform.OS === 'android') {
-        const already = await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        );
-        if (!already) {
-          const granted = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-          );
-          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-            throw new Error('Microphone permission is required to join voice');
-          }
-        }
-      }
-
       // Call-style audio routing (speaker/earpiece/bluetooth, Android
       // VOICE_COMMUNICATION mode). LiveKit RN needs this started explicitly.
       try {
@@ -760,6 +743,7 @@ export function useHostedVoiceChannel(
       syncParticipants(room);
       setIsMuted(startMuted);
       setStatus('connected');
+      void logVoiceJoin(voiceRoom, 'connected');
       // Decode both clips now so the first arrival isn't silent.
       preloadVoiceCues();
       cuesArmedRef.current = true;
@@ -780,6 +764,11 @@ export function useHostedVoiceChannel(
       AudioSession.stopAudioSession().catch(() => {});
       setErrorMessage(err?.message ?? 'Could not join voice channel');
       setStatus('error');
+      void logVoiceJoin(
+        voiceRoom,
+        'error',
+        err?.message ?? 'Could not join voice channel',
+      );
     } finally {
       joiningRef.current = false;
     }
@@ -1124,6 +1113,18 @@ export function useHostedVoiceChannel(
     setIsMuted(true);
   }, []);
 
+  // Keep voice alive in background — WebRTC audio runs natively, we just
+  // prevent any JS-side auto-disconnect logic from firing.
+  useEffect(() => {
+    const handleAppState = (_nextState: AppStateStatus) => {
+      // Intentionally no-op: do not disconnect when backgrounded.
+      // On iOS, UIBackgroundModes audio+voip (in app.config.ts) keeps the
+      // process alive. On Android, the native WebRTC module keeps audio running.
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
+  }, []);
+
   // The hook lives in VoiceContext; unmount == deactivate (or switching
   // team <-> guild). Never leave the mic / room connection behind.
   useEffect(() => {
@@ -1137,30 +1138,17 @@ export function useHostedVoiceChannel(
     };
   }, []);
 
-  // Android keep-alive FGS + ongoing notification. Start ONLY once the user
-  // has actually left the app (AppState !== active). Starting it on Join /
-  // while still on the voice screen was collapsing the activity into the
-  // background on several OEMs (call-style FGS + mic type). Mute/Deafen
-  // labels refresh on the next background pass.
+  // Android: keep the mic + socket alive when the user switches to their
+  // game, and show the ongoing-call notification with Mute/Deafen/Leave
+  // quick actions. Re-runs on every mute/deafen toggle to keep those
+  // buttons' labels in sync with actual state.
   useEffect(() => {
-    if (status !== 'connected') {
-      stopVoiceBackground();
-      return;
-    }
-    const title = isGuild ? 'Guild Voice' : 'Team Voice';
-    const text = 'You are in voice. Tap to return to the voice channel.';
-    const state = {
-      muted: isMuted,
-      deafened: isDeafened,
-      room: (isGuild ? 'guild' : 'team') as 'team' | 'guild',
-    };
-    const pushIfBackgrounded = (appState: AppStateStatus) => {
-      if (appState === 'active') return;
-      startVoiceBackground(title, text, state);
-    };
-    pushIfBackgrounded(AppState.currentState);
-    const sub = AppState.addEventListener('change', pushIfBackgrounded);
-    return () => sub.remove();
+    if (status !== 'connected' && status !== 'connecting') return;
+    startVoiceBackground(
+      isGuild ? 'Guild Voice' : 'Team Voice',
+      'You are in voice. Tap to return to the voice channel.',
+      { muted: isMuted, deafened: isDeafened, room: isGuild ? 'guild' : 'team' },
+    );
   }, [status, isMuted, isDeafened, isGuild]);
 
   // Mute / Deafen / Leave tapped on the notification itself (app backgrounded).

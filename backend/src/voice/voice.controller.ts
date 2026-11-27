@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { VoiceService } from './voice.service';
@@ -7,7 +7,30 @@ import { VoiceInviteDto, VoiceModerateDto } from './dto';
 @UseGuards(JwtAuthGuard)
 @Controller('voice')
 export class VoiceController {
+  private readonly logger = new Logger('VoiceJoin');
+
   constructor(private readonly voiceService: VoiceService) {}
+
+  /**
+   * Fired by the mobile Join button (and again on connected / error).
+   * LiveKit itself connects from the phone, so without this the click
+   * never shows up in API logs.
+   */
+  @Post('join-log')
+  joinLog(
+    @CurrentUser() user: { userId: string },
+    @Body()
+    body: { room?: string; phase?: string; detail?: string },
+  ) {
+    const room =
+      body?.room === 'guild' || body?.room === 'direct' ? body.room : 'team';
+    const phase = (body?.phase || 'click').slice(0, 24);
+    const detail = (body?.detail || '').slice(0, 180);
+    this.logger.log(
+      `user=${user.userId} room=${room} phase=${phase}${detail ? ` detail=${detail}` : ''}`,
+    );
+    return { ok: true };
+  }
 
   /**
    * `?room=guild` for the guild-wide room, `?room=direct&peer=<userId>` for a

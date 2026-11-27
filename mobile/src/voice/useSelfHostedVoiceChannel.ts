@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
 import { Device, types as mediasoupTypes } from 'mediasoup-client';
 import { Socket } from 'socket.io-client';
 import { mediaDevices } from '@livekit/react-native-webrtc';
 import { AudioSession } from '@livekit/react-native';
 import { callAudioTypeOptions } from './voiceAudioProfile';
-import { connectVoiceSocket, VoiceRoomKind } from '../api/voice';
+import { connectVoiceSocket, logVoiceJoin, VoiceRoomKind } from '../api/voice';
 import { emitToast } from '../ui/toastBus';
 import {
   addVoiceNotificationActionListener,
@@ -510,6 +509,7 @@ export function useSelfHostedVoiceChannel(
   const join = useCallback(async () => {
     if (joiningRef.current) return;
     joiningRef.current = true;
+    void logVoiceJoin(room, 'click');
     sessionWantedRef.current = true;
     setErrorMessage(undefined);
     setStatus('connecting');
@@ -546,9 +546,17 @@ export function useSelfHostedVoiceChannel(
       // WebRTC's audio pipeline exists now — hook the voice changer in.
       attachVoiceChanger();
 
-      // Keep-alive FGS is started from the AppState effect below — only once
-      // the user leaves the app. Starting it here on Join was minimizing the
-      // activity on several OEMs.
+      // Android: keep the mic + socket alive when the user switches to their
+      // game. Started only after the mic permission is granted.
+      startVoiceBackground(
+        room === 'guild' ? 'Guild Voice' : 'Team Voice',
+        'You are in voice. Tap to return to the voice channel.',
+        {
+          muted: isMutedRef.current,
+          deafened: isDeafenedRef.current,
+          room,
+        },
+      );
 
       const socket = connectVoiceSocket(authToken, room);
       socketRef.current = socket;
@@ -645,6 +653,7 @@ export function useSelfHostedVoiceChannel(
       rejoinAttemptsRef.current = 0;
       reconnectStartedAtRef.current = null;
       setStatus('connected');
+      void logVoiceJoin(room, 'connected');
       preloadVoiceCues();
       cuesArmedRef.current = true;
       if (wasReconnecting) emitToast('Back in the voice call');
@@ -681,6 +690,11 @@ export function useSelfHostedVoiceChannel(
           : (err?.message ?? 'Could not join voice channel'),
       );
       setStatus('error');
+      void logVoiceJoin(
+        room,
+        'error',
+        err?.message ?? 'Could not join voice channel',
+      );
     } finally {
       joiningRef.current = false;
     }
@@ -775,24 +789,16 @@ export function useSelfHostedVoiceChannel(
     setMicEnabled(false);
   }, [setMicEnabled]);
 
-  // Android keep-alive FGS: only once the user has left the app. Starting it
-  // on Join (while still on the voice screen) was minimizing the activity on
-  // several OEMs. Mute/Deafen labels refresh on the next background pass.
+  // Keep the ongoing-call notification's Mute/Deafen labels in sync with
+  // actual state, including the early call inside join() before the first
+  // render with status === 'connecting' lands.
   useEffect(() => {
-    if (status !== 'connected') {
-      stopVoiceBackground();
-      return;
-    }
-    const title = room === 'guild' ? 'Guild Voice' : 'Team Voice';
-    const text = 'You are in voice. Tap to return to the voice channel.';
-    const state = { muted: isMuted, deafened: isDeafened, room };
-    const pushIfBackgrounded = (appState: AppStateStatus) => {
-      if (appState === 'active') return;
-      startVoiceBackground(title, text, state);
-    };
-    pushIfBackgrounded(AppState.currentState);
-    const sub = AppState.addEventListener('change', pushIfBackgrounded);
-    return () => sub.remove();
+    if (status !== 'connected' && status !== 'connecting') return;
+    startVoiceBackground(
+      room === 'guild' ? 'Guild Voice' : 'Team Voice',
+      'You are in voice. Tap to return to the voice channel.',
+      { muted: isMuted, deafened: isDeafened, room },
+    );
   }, [status, isMuted, isDeafened, room]);
 
   // Mute / Deafen / Leave tapped on the notification itself (app backgrounded).

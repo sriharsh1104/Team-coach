@@ -9,6 +9,26 @@ export type VoiceRoomKind = 'team' | 'guild' | 'direct';
  * call — the last needs `peerId`, and the server only mints a token when
  * BOTH people hold the admin-granted permission.
  */
+/**
+ * Tells the API that Join was tapped (or finished / failed). The LiveKit
+ * connection itself never hits our server, so this is how the click shows
+ * up in backend logs. Failures are ignored — logging must not block the call.
+ */
+export function logVoiceJoin(
+  room: VoiceRoomKind,
+  phase: 'click' | 'connected' | 'error',
+  detail?: string,
+) {
+  return apiClient
+    .post('/voice/join-log', {
+      room,
+      phase,
+      ...(detail ? { detail: detail.slice(0, 180) } : {}),
+    })
+    .then(() => undefined)
+    .catch(() => undefined);
+}
+
 export function getVoiceConfig(room: VoiceRoomKind = 'team', peerId?: string) {
   const params =
     room === 'direct'

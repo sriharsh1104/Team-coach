@@ -305,6 +305,9 @@ export class VoiceService {
     peerId?: string,
   ) {
     const max = this.maxFor(room);
+    this.logger.log(
+      `config start user=${userId} room=${room} selfHosted=${this.sfu.isSelfHosted()}`,
+    );
 
     if (this.sfu.isSelfHosted()) {
       if (room === 'direct') {
@@ -374,6 +377,9 @@ export class VoiceService {
         : {}),
     });
 
+    this.logger.log(
+      `config ok user=${userId} room=${ctx.kind} livekitRoom=${ctx.roomName} canPublish=${canPublish}`,
+    );
     return {
       mode: 'hosted' as const,
       url: creds.url,
