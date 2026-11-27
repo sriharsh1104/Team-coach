@@ -52,17 +52,16 @@ SSL: cPanel → **SSL/TLS Status** → AutoSSL / Let’s Encrypt enable → http
 
 ---
 
-## Option B — Free host (Vercel / Cloudflare Pages) + BigRock DNS only
+## Option B — Vercel + BigRock DNS only (current)
 
-Hosting BigRock pe nahi, sirf domain BigRock pe.
+Hosting BigRock pe nahi — static site **Vercel** pe, domain BigRock pe.
 
-**API / Nest server Cloudflare ke peeche:**  
-[`DEPLOY-CLOUDFLARE.md`](../DEPLOY-CLOUDFLARE.md) — Contabo + DNS/proxy/tunnel (Workers pe Nest nahi).
+1. Vercel project → **Root Directory** = `web`
+2. Build = `npm run build`, Output = `dist`
+3. `web/vercel.json` SPA rewrites handle `/privacy`, `/terms`, `/delete-account`, etc.
+4. BigRock DNS: `sacredesports.com` / `www` → Vercel CNAME (dashboard jo bole)
 
-**Sirf static web Pages pe:** Dashboard → Pages, root `web`, build `npm run build`, output `dist`  
-(ya `web/wrangler.toml`). Domain BigRock DNS se CNAME.
-
-Mobile / Nest backend Contabo pe hi (`DEPLOY.md`).
+Mobile / Nest backend Contabo pe hi (`DEPLOY.md`). API ko Vercel pe mat daalo.
 
 ---
 

@@ -51,6 +51,11 @@ Login / signup uses the same `/auth/*` endpoints as mobile. Chat uses the same S
 | `npm run build`| Production build → `dist` |
 | `npm run preview` | Serve the production build |
 
+## Deploy (Vercel)
+
+Root Directory = `web`, Build = `npm run build`, Output = `dist`.  
+`vercel.json` rewrites send `/privacy`, `/terms`, `/delete-account` (and other SPA routes) to `index.html`.
+
 ## What’s included
 
 - **Public home `/`** (no login): Sacred watermark background (same logo as mobile), APK download, tournament participation lanes, social handles + Instagram/Discord QR

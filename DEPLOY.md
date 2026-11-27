@@ -9,13 +9,13 @@ Google Play privacy / Data safety checklist: [`PLAY-CONSOLE.md`](./PLAY-CONSOLE.
 |-------|------------------|
 | Nest API + Socket.IO | Docker `backend` → `:3000` |
 | PostgreSQL | Docker `postgres` (internal network) |
-| Public website (`web/`) | Nginx serves `web/dist` on `yourdomain.com` |
+| Public website (`web/`) | **Vercel** (`web/` → `dist`) *or* Nginx on this VPS |
 | API hostname | Nginx proxies `api.yourdomain.com` → `:3000` |
 | Voice (mediasoup) | Same VPS, UDP `40000–40200` |
 | Mobile app | APK users’ phones; talks to `https://api.yourdomain.com` |
 
-Cloudflare optional hai — sirf DNS/HTTPS shield us **ek** VPS ke aage  
-([`DEPLOY-CLOUDFLARE.md`](./DEPLOY-CLOUDFLARE.md)). Alag Pages / alag host ki zaroorat nahi.
+Marketing site ab **Vercel** pe chal sakti hai (`web/vercel.json` SPA rewrites).  
+Optional Cloudflare DNS/proxy for the **API VPS** only: [`DEPLOY-CLOUDFLARE.md`](./DEPLOY-CLOUDFLARE.md).
 
 This guide: fresh Ubuntu VPS pe Docker backend, phir Nginx pe site + API.
 
