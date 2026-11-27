@@ -5198,76 +5198,165 @@ button.invite-qr-open:hover {
   border-radius: 999px;
 }
 
-/* ——— Public legal docs (Play privacy / deletion) ——— */
-.legal-shell {
-  position: relative;
+/* ——— Public legal docs (Play privacy / deletion) ———
+   Same landing shell + glass card language as Home / auth. */
+.legal-landing {
   min-height: 100%;
+  min-height: 100dvh;
+}
+
+.legal-topnav {
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-block: max(1.25rem, env(safe-area-inset-top, 0px)) 0.75rem;
+  padding-inline: max(1.25rem, env(safe-area-inset-left, 0px))
+    max(1.25rem, env(safe-area-inset-right, 0px));
+}
+
+.legal-brand {
+  font-size: 1.125rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--text);
+  text-decoration: none;
+  min-block-size: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.legal-brand:hover {
+  text-decoration: none;
+  color: var(--text);
+}
+
+.legal-brand span {
+  color: var(--chrome);
+  margin-inline-start: 0.3ch;
+}
+
+/* Links reuse .landing-tab (button styles) — keep hit area + no underline. */
+a.landing-tab {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+a.landing-tab:hover {
+  text-decoration: none;
+}
+
+.legal-main {
+  position: relative;
   z-index: 1;
-  padding: 24px 16px 48px;
+  flex: 1;
+  width: min(44rem, 100%);
+  margin-inline: auto;
+  padding: 1.25rem clamp(1rem, 3vw, 1.75rem) 2.5rem;
+  padding-bottom: max(2.5rem, env(safe-area-inset-bottom, 0px));
 }
 
 .legal-doc {
   position: relative;
+  isolation: isolate;
   z-index: 1;
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: 24px 20px 28px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgba(18, 18, 22, 0.92);
+  padding: clamp(1.35rem, 3vw, 2rem) clamp(1.15rem, 3vw, 1.75rem)
+    clamp(1.5rem, 3vw, 2.1rem);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+  overflow: clip;
 }
 
-.legal-eyebrow {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: var(--text-muted);
+.legal-doc-glow {
+  position: absolute;
+  inset: auto -20% -40% -15%;
+  height: min(55%, 18rem);
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(
+      ellipse at 30% 70%,
+      rgba(201, 204, 209, 0.14),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 30%,
+      rgba(168, 176, 255, 0.08),
+      transparent 55%
+    );
+  filter: blur(2px);
 }
 
-.legal-doc h1 {
-  margin: 0 0 6px;
-  font-size: clamp(1.5rem, 4vw, 1.85rem);
-  letter-spacing: -0.02em;
+.legal-doc > :not(.legal-doc-glow) {
+  position: relative;
+  z-index: 1;
+}
+
+.legal-title {
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.75rem, 1rem + 2.8vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  text-wrap: balance;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .legal-updated {
-  margin: 0 0 20px;
-  font-size: 13px;
+  margin: 0 0 1.35rem;
+  font-size: 0.8125rem;
   color: var(--text-dim);
 }
 
 .legal-body {
   display: grid;
-  gap: 12px;
-  font-size: 15px;
+  gap: 0.85rem;
+  max-width: 60ch;
+  font-size: 0.9375rem;
   line-height: 1.65;
   color: var(--text);
 }
 
 .legal-body h2 {
-  margin: 16px 0 0;
-  font-size: 1.1rem;
+  margin: 1.1rem 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 .legal-body h3 {
-  margin: 8px 0 0;
+  margin: 0.65rem 0 0;
   font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
 .legal-body p,
 .legal-body ul,
 .legal-body ol {
   margin: 0;
+  text-wrap: pretty;
+  overflow-wrap: break-word;
 }
 
 .legal-body ul,
 .legal-body ol {
   padding-inline-start: 1.25rem;
   display: grid;
-  gap: 6px;
+  gap: 0.4rem;
+}
+
+.legal-body a {
+  text-underline-offset: 0.15em;
 }
 
 .legal-body .hint {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-muted);
 }
 
@@ -5278,20 +5367,26 @@ button.invite-qr-open:hover {
 .legal-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 16px;
-  margin-top: 28px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-  font-size: 14px;
+  gap: 0.65rem 1rem;
+  margin-top: 1.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.875rem;
+}
+
+.legal-nav a {
+  min-block-size: 2.5rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 .legal-delete-form {
   display: grid;
-  gap: 12px;
-  margin: 8px 0 4px;
-  padding: 14px;
+  gap: 0.85rem;
+  margin: 0.5rem 0 0.25rem;
+  padding: 1rem 1rem 1.1rem;
   border: 1px solid rgba(248, 113, 113, 0.35);
-  border-radius: 12px;
+  border-radius: 16px;
   background: rgba(248, 113, 113, 0.06);
 }
 
@@ -5315,7 +5410,7 @@ button.invite-qr-open:hover {
 }
 
 .legal-footnote {
-  margin-top: 8px;
+  margin-top: 0.5rem;
 }
 
 button.linkish {
@@ -5325,6 +5420,7 @@ button.linkish {
   color: var(--link);
   cursor: pointer;
   font: inherit;
+  min-block-size: 2.5rem;
 }
 
 button.linkish:hover {
@@ -5335,15 +5431,29 @@ button.linkish:hover {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px 14px;
-  margin-top: 10px;
-  font-size: 12px;
+  gap: 0.5rem 0.9rem;
+  margin-top: 0.65rem;
+  font-size: 0.75rem;
 }
 
 .legal-footer-links a {
   color: var(--text-dim);
+  min-block-size: 2.5rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 .legal-footer-links a:hover {
   color: var(--link);
+}
+
+@media (max-width: 640px) {
+  .legal-topnav {
+    justify-content: center;
+  }
+
+  .legal-topnav .landing-tabs {
+    width: 100%;
+    justify-content: center;
+  }
 }
