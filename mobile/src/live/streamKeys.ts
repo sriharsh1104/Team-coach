@@ -59,6 +59,9 @@ const BANNER_PREFIX = 'sacred.live.banner.';
 const PRESETS_KEY = 'sacred.live.presets.v1';
 const ACTIVE_ID_KEY = 'sacred.live.activePresetId.';
 const SELECTED_PLATFORMS_KEY = 'sacred.live.selectedPlatforms';
+const QUALITY_KEY = 'sacred.live.quality';
+
+export type LiveEncodeQuality = '720' | '1080';
 
 /** Signed-in user — Go Live credentials are stored per account on this device. */
 let ownerUserId: string | null = null;
@@ -315,6 +318,16 @@ export async function saveSelectedPlatforms(
     SELECTED_PLATFORMS_KEY,
     JSON.stringify(unique.length > 0 ? unique : ['youtube']),
   );
+}
+
+/** Last Go Live encode resolution (720p default, 1080p optional). */
+export async function loadLiveQuality(): Promise<LiveEncodeQuality> {
+  const raw = (await loadString(QUALITY_KEY))?.trim();
+  return raw === '1080' ? '1080' : '720';
+}
+
+export async function saveLiveQuality(quality: LiveEncodeQuality): Promise<void> {
+  await saveString(QUALITY_KEY, quality === '1080' ? '1080' : '720');
 }
 
 /**

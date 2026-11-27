@@ -1,12 +1,19 @@
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import { Platform } from 'react-native';
 
+export type LiveQuality = '720' | '1080';
+
 type NativeLiveStreamer = {
   /**
    * JSON array of `{ url, key }` — one shared screen capture to every
    * destination. `bannerUri` is the break card pause paints over the frame.
+   * `quality` is `"720"` (default) or `"1080"`.
    */
-  start: (destinationsJson: string, bannerUri: string) => Promise<void>;
+  start: (
+    destinationsJson: string,
+    bannerUri: string,
+    quality: string,
+  ) => Promise<void>;
   stop: () => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -54,6 +61,8 @@ export function startLiveStream(options: {
   destinations: LiveDestination[];
   /** Shown to viewers while the stream is paused ("be right back"). */
   bannerUri?: string | null;
+  /** Encode resolution — 720p (default) or 1080p. */
+  quality?: LiveQuality | null;
 }): Promise<LiveStartResult> | LiveStartResult {
   if (Platform.OS !== 'android') return 'unsupported';
   if (!native) return 'unavailable';
@@ -74,8 +83,9 @@ export function startLiveStream(options: {
   if (payload.length === 0) {
     return Promise.reject(new Error('Pick at least one platform with URL + stream key'));
   }
+  const quality = options.quality === '1080' ? '1080' : '720';
   return native
-    .start(JSON.stringify(payload), options.bannerUri?.trim() || '')
+    .start(JSON.stringify(payload), options.bannerUri?.trim() || '', quality)
     .then(() => 'started' as const);
 }
 

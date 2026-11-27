@@ -28,6 +28,10 @@ internal object LiveBridge {
   @Volatile
   var pendingBanner: String = ""
 
+  /** Encode quality key from JS: "720" (default) or "1080". */
+  @Volatile
+  var pendingQuality: String = "720"
+
   fun resolveStart() {
     main.post {
       starting.set(false)

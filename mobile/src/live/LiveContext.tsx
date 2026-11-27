@@ -37,6 +37,8 @@ export type LiveStartOpts = {
   bannerUri?: string | null;
   /** YouTube watch/live URL or video id — pulls public Live Chat onto overlay. */
   youtubeLiveUrl?: string | null;
+  /** Encode resolution — 720p (default) or 1080p. */
+  quality?: '720' | '1080' | null;
 };
 
 type LiveCtx = {
@@ -216,6 +218,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
           destinations: opts.destinations,
           // Native keeps it so pause can paint it over the captured game.
           bannerUri: opts.bannerUri ?? null,
+          quality: opts.quality === '1080' ? '1080' : '720',
         });
         if (result === 'unsupported') {
           setStarting(false);

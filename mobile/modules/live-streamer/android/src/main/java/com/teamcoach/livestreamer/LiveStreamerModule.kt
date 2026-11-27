@@ -78,7 +78,7 @@ class LiveStreamerModule : Module() {
      * Same screen capture is published to every destination at once.
      * RTMP(S): url + / + key. SRT (Kick/IVS): streamid in URL, or key → ?streamid=.
      */
-    AsyncFunction("start") { destinationsJson: String, bannerUri: String, promise: Promise ->
+    AsyncFunction("start") { destinationsJson: String, bannerUri: String, quality: String, promise: Promise ->
       if (LiveBridge.live.get()) {
         promise.resolve(null)
         return@AsyncFunction
@@ -135,6 +135,11 @@ class LiveStreamerModule : Module() {
       }
       LiveBridge.pendingEndpoints = endpoints
       LiveBridge.pendingBanner = bannerUri.trim()
+      LiveBridge.pendingQuality =
+        when (quality.trim().lowercase()) {
+          "1080", "1080p" -> "1080"
+          else -> "720"
+        }
       LiveBridge.startPromise = promise
       activity.startActivity(Intent(activity, LiveCapturePermissionActivity::class.java))
     }

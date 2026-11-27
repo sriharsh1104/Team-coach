@@ -135,6 +135,7 @@ class LiveCapturePermissionActivity : Activity() {
       putExtra(LiveStreamService.EXTRA_DATA, data)
       putStringArrayListExtra(LiveStreamService.EXTRA_ENDPOINTS, endpoints)
       putExtra(LiveStreamService.EXTRA_BANNER, LiveBridge.pendingBanner)
+      putExtra(LiveStreamService.EXTRA_QUALITY, LiveBridge.pendingQuality)
     }
     ContextCompat.startForegroundService(this, service)
     finish()

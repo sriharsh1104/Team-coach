@@ -70,7 +70,11 @@ class LiveStreamService : Service() {
   private val stopping = AtomicBoolean(false)
   /** Kept for BRB / pause overlay filters. */
   private var glInterface: GlStreamInterface? = null
-  private val videoBitrateBeforePause = AtomicInteger(2_500_000)
+  private val videoBitrateBeforePause = AtomicInteger(DEFAULT_VIDEO_BITRATE_720)
+  /** Active encode canvas — set from EXTRA_QUALITY at start. */
+  @Volatile private var encodeWidth = DEFAULT_OUTPUT_WIDTH_720
+  @Volatile private var encodeHeight = DEFAULT_OUTPUT_HEIGHT_720
+  @Volatile private var encodeBitrate = DEFAULT_VIDEO_BITRATE_720
   /** "Be right back" image the streamer picked — drawn over the game while paused. */
   private var bannerUri: String? = null
   private var brbFilter: ImageObjectFilterRender? = null
@@ -116,7 +120,7 @@ class LiveStreamService : Service() {
       // in-app overlay can never cover the game, only the encoder can.
       val showingBrb = showBreakScreen()
       try {
-        videoBitrateBeforePause.set(VIDEO_BITRATE)
+        videoBitrateBeforePause.set(encodeBitrate)
         // A still card needs a few hundred kbps to look clean; a blind
         // 50 kbps makes the banner arrive as blocks.
         s.setVideoBitrateOnFly(if (showingBrb) 400_000 else 50_000)
@@ -336,7 +340,7 @@ class LiveStreamService : Service() {
       setAudioMuted(s, LiveBridge.muted.get())
       hideBreakScreen()
       try {
-        val bitrate = videoBitrateBeforePause.get().takeIf { it > 0 } ?: VIDEO_BITRATE
+        val bitrate = videoBitrateBeforePause.get().takeIf { it > 0 } ?: encodeBitrate
         s.setVideoBitrateOnFly(bitrate)
       } catch (_: Exception) {
       }
@@ -600,6 +604,7 @@ class LiveStreamService : Service() {
     }
     endpoints = urls
     bannerUri = intent.getStringExtra(EXTRA_BANNER)?.takeIf { it.isNotBlank() }
+    applyQuality(intent.getStringExtra(EXTRA_QUALITY))
     brbFilter = null
     liveEndpoints = emptyList()
     totalTargets = urls.size
@@ -758,7 +763,7 @@ class LiveStreamService : Service() {
     val prepared = generic.prepareVideo(
       size.width,
       size.height,
-      bitrate = VIDEO_BITRATE,
+      bitrate = encodeBitrate,
       fps = VIDEO_FPS,
       iFrameInterval = KEYFRAME_INTERVAL_SEC,
       rotation = 0,
@@ -813,7 +818,7 @@ class LiveStreamService : Service() {
     val prepared = multi.prepareVideo(
       size.width,
       size.height,
-      bitrate = VIDEO_BITRATE,
+      bitrate = encodeBitrate,
       fps = VIDEO_FPS,
       iFrameInterval = KEYFRAME_INTERVAL_SEC,
       rotation = 0,
@@ -1013,7 +1018,24 @@ class LiveStreamService : Service() {
    * already rotates Free Fire etc. upright into this canvas; portrait app
    * UI is letterboxed (AspectRatioMode.Adjust).
    */
-  private fun outputSize(): Size = Size(OUTPUT_WIDTH, OUTPUT_HEIGHT)
+  private fun outputSize(): Size = Size(encodeWidth, encodeHeight)
+
+  private fun applyQuality(raw: String?) {
+    when (raw?.trim()?.lowercase()) {
+      "1080", "1080p" -> {
+        encodeWidth = DEFAULT_OUTPUT_WIDTH_1080
+        encodeHeight = DEFAULT_OUTPUT_HEIGHT_1080
+        encodeBitrate = DEFAULT_VIDEO_BITRATE_1080
+      }
+      else -> {
+        encodeWidth = DEFAULT_OUTPUT_WIDTH_720
+        encodeHeight = DEFAULT_OUTPUT_HEIGHT_720
+        encodeBitrate = DEFAULT_VIDEO_BITRATE_720
+      }
+    }
+    videoBitrateBeforePause.set(encodeBitrate)
+    Log.i(TAG, "quality=${raw ?: "720"} → ${encodeWidth}x$encodeHeight @ ${encodeBitrate / 1000}kbps")
+  }
 
   companion object {
     const val ACTION_START = "com.teamcoach.livestreamer.START"
@@ -1028,22 +1050,24 @@ class LiveStreamService : Service() {
     const val EXTRA_DATA = "data"
     const val EXTRA_ENDPOINTS = "endpoints"
     const val EXTRA_BANNER = "banner"
+    const val EXTRA_QUALITY = "quality"
     private const val NOTIF_ID = 4412
     private const val CHANNEL = "sacred-go-live"
     private const val TAG = "LiveStream"
     /**
      * Encode quality (shared by YouTube / Twitch / Kick).
      *
-     * Kick max: 1920×1080 @ 60fps, ≤8000 kbps, H.264 CBR, keyframe 2s,
-     * audio stereo ≤48 kHz. Phone-safe defaults below — raise carefully:
-     * - 1080p: OUTPUT_WIDTH=1920, OUTPUT_HEIGHT=1080, VIDEO_BITRATE≈5_500_000
-     * - 60fps: VIDEO_FPS=60, VIDEO_BITRATE≈5_000_000+ (needs strong upload)
-     * Upload rule of thumb: ≥2× video bitrate (4.5 Mbps → ~9 Mbps up).
+     * Kick max: 1920×1080 @ 60fps, ≤8000 kbps, H.264 CBR, keyframe 2s.
+     * Upload rule of thumb: ≥2× video bitrate (5.5 Mbps → ~11 Mbps up for 1080).
      */
-    private const val OUTPUT_WIDTH = 1280
-    private const val OUTPUT_HEIGHT = 720
-    /** ~3 Mbps @ 720p30 — stable on typical Indian mobile upload; raise later. */
-    private const val VIDEO_BITRATE = 3_000_000
+    private const val DEFAULT_OUTPUT_WIDTH_720 = 1280
+    private const val DEFAULT_OUTPUT_HEIGHT_720 = 720
+    /** ~3 Mbps @ 720p30 — stable on typical Indian mobile upload. */
+    private const val DEFAULT_VIDEO_BITRATE_720 = 3_000_000
+    private const val DEFAULT_OUTPUT_WIDTH_1080 = 1920
+    private const val DEFAULT_OUTPUT_HEIGHT_1080 = 1080
+    /** ~5.5 Mbps @ 1080p30 — needs a strong upload. */
+    private const val DEFAULT_VIDEO_BITRATE_1080 = 5_500_000
     private const val VIDEO_FPS = 30
     private const val KEYFRAME_INTERVAL_SEC = 2
     private const val AUDIO_SAMPLE_RATE = 44_100

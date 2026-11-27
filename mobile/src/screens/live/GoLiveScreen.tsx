@@ -16,13 +16,16 @@ import { Screen } from '../../brand/Screen';
 import { useLive } from '../../live/LiveContext';
 import {
   LIVE_PLATFORMS,
+  LiveEncodeQuality,
   LivePlatform,
   StreamPreset,
   createBlankPreset,
   deletePreset,
   getActivePresetId,
+  loadLiveQuality,
   loadPresetsForPlatform,
   loadSelectedPlatforms,
+  saveLiveQuality,
   saveSelectedPlatforms,
   upsertPreset,
 } from '../../live/streamKeys';
@@ -75,6 +78,7 @@ export function GoLiveScreen(_props: Props) {
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [quality, setQuality] = useState<LiveEncodeQuality>('720');
 
   const meta = LIVE_PLATFORMS.find((p) => p.id === editPlatform)!;
   const activePreset = useMemo(
@@ -95,9 +99,13 @@ export function GoLiveScreen(_props: Props) {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const platforms = await loadSelectedPlatforms();
+      const [platforms, savedQuality] = await Promise.all([
+        loadSelectedPlatforms(),
+        loadLiveQuality(),
+      ]);
       if (cancelled) return;
       setSelected(platforms);
+      setQuality(savedQuality);
       setEditPlatform(platforms[0] ?? 'youtube');
     })();
     return () => {
@@ -291,6 +299,7 @@ export function GoLiveScreen(_props: Props) {
       title: overlayTitle,
       bannerUri: overlayBanner,
       youtubeLiveUrl: overlayYoutubeLiveUrl || null,
+      quality,
     });
   };
 
@@ -327,6 +336,54 @@ export function GoLiveScreen(_props: Props) {
           Tick one, two, or all three platforms — the same screen streams to
           every checked destination. Save title, banner, URL and key per
           platform so you don&apos;t re-paste next time.
+        </Text>
+
+        <Text style={styles.label}>Quality</Text>
+        <View style={styles.chips}>
+          {(
+            [
+              { id: '720', label: '720p', hint: '3 Mbps · safer upload' },
+              { id: '1080', label: '1080p', hint: '5.5 Mbps · needs strong net' },
+            ] as const
+          ).map((q) => {
+            const on = quality === q.id;
+            return (
+              <Pressable
+                key={q.id}
+                onPress={() => {
+                  setQuality(q.id);
+                  void saveLiveQuality(q.id);
+                }}
+                disabled={live || starting}
+                style={[
+                  styles.chip,
+                  {
+                    borderColor: on ? colors.chrome : colors.border,
+                    backgroundColor: on
+                      ? 'rgba(201,204,209,0.18)'
+                      : 'transparent',
+                  },
+                ]}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={`${q.label} ${q.hint}`}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: on ? colors.text : colors.textMuted },
+                  ]}
+                >
+                  {q.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={styles.help}>
+          {quality === '1080'
+            ? '1080p needs a strong upload (~11 Mbps). Drop to 720p if the stream buffers.'
+            : '720p is the stable default for most mobile uploads.'}
         </Text>
 
         <Text style={styles.label}>Stream to (select 1–3)</Text>
