@@ -782,11 +782,13 @@ export function useSelfHostedVoiceChannel(
     setMicEnabled(false);
   }, [setMicEnabled]);
 
-  // Keep the ongoing-call notification's Mute/Deafen labels in sync with
-  // actual state, including the early call inside join() before the first
-  // render with status === 'connecting' lands.
+  // Keep the ongoing notification's Mute/Deafen labels in sync. Only once
+  // connected — starting the mic FGS on "connecting" raced the permission
+  // prompt and, with a CALL-category notif, some OEMs minimized the app on
+  // Join. join() still starts the service right after getUserMedia so the
+  // window between mic-up and status=connected stays covered.
   useEffect(() => {
-    if (status !== 'connected' && status !== 'connecting') return;
+    if (status !== 'connected') return;
     startVoiceBackground(
       room === 'guild' ? 'Guild Voice' : 'Team Voice',
       'You are in voice. Tap to return to the voice channel.',

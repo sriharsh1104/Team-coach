@@ -9,14 +9,20 @@ import { SoftPressable } from './SoftPressable';
  * small and low-contrast on some devices. Same icon-button look as the
  * menu/settings buttons elsewhere in the app.
  */
-export function HeaderBackButton({ onPress }: { onPress: () => void }) {
+export function HeaderBackButton({
+  onPress,
+  accessibilityLabel = 'Go back',
+}: {
+  onPress: () => void;
+  accessibilityLabel?: string;
+}) {
   const { colors } = useTheme();
   return (
     <SoftPressable
       onPress={onPress}
       style={styles.btn}
       accessibilityRole="button"
-      accessibilityLabel="Go back"
+      accessibilityLabel={accessibilityLabel}
       hitSlop={8}
       pressScale={0.92}
     >

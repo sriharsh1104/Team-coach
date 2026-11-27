@@ -314,9 +314,7 @@ export function RootNavigator() {
             <MainStack.Screen
               name="AccountSettings"
               component={AccountSettingsScreen}
-              options={sectionOptions(adminDrawer.openWith, () => ({
-                title: 'Account Settings',
-              }))}
+              options={detailOptions(() => ({ title: 'Account Settings' }))}
             />
             <MainStack.Screen
               name="AccountLifecycle"
@@ -407,9 +405,7 @@ export function RootNavigator() {
             <MainStack.Screen
               name="AccountSettings"
               component={AccountSettingsScreen}
-              options={sectionOptions(guildDrawer.openWith, () => ({
-                title: 'Account Settings',
-              }))}
+              options={detailOptions(() => ({ title: 'Account Settings' }))}
             />
             <MainStack.Screen
               name="AccountLifecycle"
@@ -622,9 +618,7 @@ export function RootNavigator() {
             <MainStack.Screen
               name="AccountSettings"
               component={AccountSettingsScreen}
-              options={sectionOptions(orgDrawer.openWith, () => ({
-                title: 'Account Settings',
-              }))}
+              options={detailOptions(() => ({ title: 'Account Settings' }))}
             />
             <MainStack.Screen
               name="AccountLifecycle"

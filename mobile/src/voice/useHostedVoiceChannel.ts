@@ -708,6 +708,19 @@ export function useHostedVoiceChannel(
         },
       );
 
+      // Ask for the mic up front on Android. LiveKit's setMicrophoneEnabled
+      // also prompts, but doing it here means we never reach AudioSession /
+      // connect with a denied mic — and the keep-alive FGS (microphone type)
+      // only starts after status flips to connected below.
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          throw new Error('Microphone permission is required to join voice');
+        }
+      }
+
       // Call-style audio routing (speaker/earpiece/bluetooth, Android
       // VOICE_COMMUNICATION mode). LiveKit RN needs this started explicitly.
       try {
@@ -1133,10 +1146,13 @@ export function useHostedVoiceChannel(
 
   // Android: keep the mic + socket alive when the user switches to their
   // game, and show the ongoing-call notification with Mute/Deafen/Leave
-  // quick actions. Re-runs on every mute/deafen toggle to keep those
-  // buttons' labels in sync with actual state.
+  // quick actions. Only after we are actually connected (mic granted) —
+  // starting the microphone FGS on "connecting" used to race ahead of the
+  // permission prompt and, with a CALL-category notif, some OEMs minimized
+  // the app the moment Join was tapped. Re-runs on mute/deafen so those
+  // button labels stay in sync.
   useEffect(() => {
-    if (status !== 'connected' && status !== 'connecting') return;
+    if (status !== 'connected') return;
     startVoiceBackground(
       isGuild ? 'Guild Voice' : 'Team Voice',
       'You are in voice. Tap to return to the voice channel.',

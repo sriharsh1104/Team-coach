@@ -154,13 +154,17 @@ class VoiceKeepAliveService : Service() {
       openIntent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
+    // CATEGORY_SERVICE (not CALL): on several OEMs a CALL-category ongoing
+    // notification is treated like a real phone call and collapses the app
+    // into the system call UI the moment Join starts the foreground service.
+    // Same for the phone-call status icon — use a neutral mic glyph instead.
     return NotificationCompat.Builder(this, CHANNEL)
       .setContentTitle(title)
       .setContentText(text)
-      .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+      .setSmallIcon(android.R.drawable.ic_btn_speak_now)
       .setOngoing(true)
       .setOnlyAlertOnce(true)
-      .setCategory(NotificationCompat.CATEGORY_CALL)
+      .setCategory(NotificationCompat.CATEGORY_SERVICE)
       .setContentIntent(open)
       .addAction(
         if (muted) android.R.drawable.ic_btn_speak_now else android.R.drawable.ic_lock_silent_mode,

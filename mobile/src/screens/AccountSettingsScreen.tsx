@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
+  Linking,
   Text,
   TextInput,
   View,
@@ -26,7 +27,11 @@ import {
   promptBiometricAuth,
 } from '../auth/biometrics';
 import { useDateTimeFormat } from '../datetime/DateTimeFormatContext';
-import { MainStackParamList } from '../navigation/types';
+import {
+  AccountSettingsSection,
+  MainStackParamList,
+} from '../navigation/types';
+import { LEGAL_URLS } from '../legal/urls';
 import { Screen } from '../brand/Screen';
 import { ButtonLabel } from '../ui/ButtonLabel';
 import { SoftPressable } from '../ui/SoftPressable';
@@ -40,14 +45,7 @@ import { useThemedStyles } from '../theme/useThemedStyles';
 import { AccountLifecyclePanel } from './AccountLifecycleScreen';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'AccountSettings'>;
-type Tab =
-  | 'password'
-  | 'twoFactor'
-  | 'biometric'
-  | 'privacy'
-  | 'sessions'
-  | 'recovery'
-  | 'danger';
+type Tab = AccountSettingsSection;
 
 const HUB_ITEMS: Array<{
   id: Tab;
@@ -204,12 +202,26 @@ function sessionTitle(row: authApi.AuthSessionRow): string {
   return 'Unknown device';
 }
 
-export function AccountSettingsScreen({ navigation }: Props) {
+export function AccountSettingsScreen({ navigation, route }: Props) {
   const { user, applyAuthResponse, refreshUser } = useAuth();
   const { colors } = useTheme();
   const styles = useThemedStyles(accountStyles);
   const { formatDateTime } = useDateTimeFormat();
-  const [section, setSection] = useState<Tab | null>(null);
+  // Real stack entry per section so header/hardware back returns hub → Settings.
+  const section = route.params?.section ?? null;
+
+  const openSection = useCallback(
+    (id: Tab) => {
+      navigation.push('AccountSettings', { section: id });
+    },
+    [navigation],
+  );
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: section ? sectionTitle(section) : 'Account Settings',
+    });
+  }, [navigation, section]);
 
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricKinds, setBiometricKinds] = useState<BiometricKind[]>([]);
@@ -593,7 +605,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
                     staticStyles.hubRow,
                     index < arr.length - 1 && styles.hubRowBorder,
                   ]}
-                  onPress={() => setSection(item.id)}
+                  onPress={() => openSection(item.id)}
                   pressScale={0.98}
                   accessibilityRole="button"
                   accessibilityLabel={item.a11y}
@@ -624,7 +636,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
                     staticStyles.hubRow,
                     index < arr.length - 1 && styles.hubRowBorder,
                   ]}
-                  onPress={() => setSection(item.id)}
+                  onPress={() => openSection(item.id)}
                   pressScale={0.98}
                   accessibilityRole="button"
                   accessibilityLabel={item.a11y}
@@ -648,14 +660,11 @@ export function AccountSettingsScreen({ navigation }: Props) {
 
             <Text style={styles.hubGroupLabel}>Account</Text>
             <View style={staticStyles.hubGroup}>
-              {HUB_ITEMS.slice(6).map((item, index, arr) => (
+              {HUB_ITEMS.slice(6).map((item) => (
                 <SoftPressable
                   key={item.id}
-                  style={[
-                    staticStyles.hubRow,
-                    index < arr.length - 1 && styles.hubRowBorder,
-                  ]}
-                  onPress={() => setSection(item.id)}
+                  style={[staticStyles.hubRow, styles.hubRowBorder]}
+                  onPress={() => openSection(item.id)}
                   pressScale={0.98}
                   accessibilityRole="button"
                   accessibilityLabel={item.a11y}
@@ -675,20 +684,37 @@ export function AccountSettingsScreen({ navigation }: Props) {
                   <Text style={styles.hubChevron}>›</Text>
                 </SoftPressable>
               ))}
+              <SoftPressable
+                style={staticStyles.hubRow}
+                onPress={() => {
+                  void Linking.openURL(LEGAL_URLS.deleteAccount).catch(() =>
+                    emitToast('Could not open Delete Account page'),
+                  );
+                }}
+                pressScale={0.98}
+                accessibilityRole="button"
+                accessibilityLabel="Delete Account on Web"
+              >
+                <View
+                  style={[
+                    staticStyles.hubIconWrap,
+                    { backgroundColor: colors.surface },
+                  ]}
+                >
+                  <AppIcon name="trash-outline" size={20} color={colors.icon} />
+                </View>
+                <View style={staticStyles.hubRowBody}>
+                  <Text style={styles.hubRowLabel}>Delete Account (Web)</Text>
+                  <Text style={styles.hubRowHint}>
+                    Play Store web deletion link — opens in browser
+                  </Text>
+                </View>
+                <Text style={styles.hubChevron}>›</Text>
+              </SoftPressable>
             </View>
           </>
         ) : (
           <>
-            <SoftPressable
-              style={staticStyles.backRow}
-              onPress={() => setSection(null)}
-              pressScale={0.98}
-              accessibilityRole="button"
-              accessibilityLabel="Back to Account Settings"
-            >
-              <AppIcon name="chevron-back" size={18} color={colors.link} />
-              <Text style={styles.backText}>Account Settings</Text>
-            </SoftPressable>
             <Text style={styles.sectionLabel}>{sectionTitle(section)}</Text>
             {section === 'password' ? (
               <View style={staticStyles.card}>

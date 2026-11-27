@@ -198,16 +198,6 @@ export function SettingsScreen({ navigation }: Props) {
             }}
           />
           <SettingsRow
-            icon="trash-outline"
-            label="Delete Account (Web)"
-            subtitle="Play Store web deletion link"
-            onPress={() => {
-              void Linking.openURL(LEGAL_URLS.deleteAccount).catch(() =>
-                emitToast('Could not open Delete Account page'),
-              );
-            }}
-          />
-          <SettingsRow
             icon="information-circle-outline"
             label="About"
             value={`v${appVersion()}`}

@@ -30,18 +30,46 @@ const mockedUsersApi = usersApi as jest.Mocked<typeof usersApi>;
 const mockedUseAuth = useAuth as jest.Mock;
 const mockedBiometrics = biometrics as jest.Mocked<typeof biometrics>;
 const mockedTokenStorage = tokenStorage as jest.Mocked<typeof tokenStorage>;
-const navigation = { navigate: jest.fn() } as any;
+const navigation = {
+  navigate: jest.fn(),
+  push: jest.fn(),
+  goBack: jest.fn(),
+  setOptions: jest.fn(),
+} as any;
+
+type Section =
+  | 'password'
+  | 'twoFactor'
+  | 'biometric'
+  | 'privacy'
+  | 'sessions'
+  | 'recovery'
+  | 'danger';
+
+function routeFor(section?: Section) {
+  return {
+    key: 'AccountSettings',
+    name: 'AccountSettings',
+    params: section ? { section } : undefined,
+  } as any;
+}
+
+function renderAccount(section?: Section) {
+  return render(
+    <AccountSettingsScreen navigation={navigation} route={routeFor(section)} />,
+  );
+}
 
 function openPasswordSection() {
-  fireEvent.press(screen.getByLabelText('Change Password'));
+  renderAccount('password');
 }
 
 function openBiometricTab() {
-  fireEvent.press(screen.getByLabelText('Biometric Login'));
+  renderAccount('biometric');
 }
 
 function openPrivacyTab() {
-  fireEvent.press(screen.getByLabelText('Profile Privacy'));
+  renderAccount('privacy');
 }
 
 const applyAuthResponse = jest.fn();
@@ -65,7 +93,7 @@ async function pressAndSettle(text: string) {
 }
 
 function openTwoFactorTab() {
-  fireEvent.press(screen.getByLabelText('Two-Factor Authentication'));
+  renderAccount('twoFactor');
 }
 
 beforeEach(() => {
@@ -81,7 +109,6 @@ beforeEach(() => {
 
 describe('AccountSettingsScreen', () => {
   it('blocks the Change Password button until current+new+matching-confirm are filled', async () => {
-    render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
     openPasswordSection();
 
     await pressAndSettle('Update Password');
@@ -94,6 +121,14 @@ describe('AccountSettingsScreen', () => {
     expect(mockedAuthApi.changePassword).not.toHaveBeenCalled();
   });
 
+  it('pushes a real stack entry when a hub row is pressed', () => {
+    renderAccount();
+    fireEvent.press(screen.getByLabelText('Change Password'));
+    expect(navigation.push).toHaveBeenCalledWith('AccountSettings', {
+      section: 'password',
+    });
+  });
+
   it('changes the password, applies the fresh session, and clears the fields', async () => {
     mockedAuthApi.changePassword.mockResolvedValue({
       accessToken: 'fresh-token',
@@ -101,7 +136,6 @@ describe('AccountSettingsScreen', () => {
       org: null,
       guild: null,
     });
-    render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
     openPasswordSection();
 
     fireEvent.changeText(screen.getByPlaceholderText('Current password'), 'oldpass123');
@@ -125,7 +159,6 @@ describe('AccountSettingsScreen', () => {
       applyAuthResponse,
       refreshUser,
     });
-    render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
     openPasswordSection();
 
     expect(
@@ -135,25 +168,27 @@ describe('AccountSettingsScreen', () => {
   });
 
   it('opens hub rows into detail panels, with password hidden until selected', () => {
-    render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
+    renderAccount();
 
     expect(screen.getByLabelText('Change Password')).toBeTruthy();
     expect(screen.getByLabelText('Biometric Login')).toBeTruthy();
     expect(screen.queryByPlaceholderText('Current password')).toBeNull();
     expect(screen.queryByText('Enable 2FA')).toBeNull();
 
+    fireEvent.press(screen.getByLabelText('Change Password'));
+    expect(navigation.push).toHaveBeenCalledWith('AccountSettings', {
+      section: 'password',
+    });
+
     openPasswordSection();
     expect(screen.getByPlaceholderText('Current password')).toBeTruthy();
 
-    fireEvent.press(screen.getByLabelText('Back to Account Settings'));
     openTwoFactorTab();
-
     expect(screen.getByText('Enable 2FA')).toBeTruthy();
     expect(screen.queryByPlaceholderText('Current password')).toBeNull();
   });
 
   it('shows "Enable 2FA" navigating to setup when disabled', async () => {
-    render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
     openTwoFactorTab();
 
     fireEvent.press(screen.getByText('Enable 2FA'));
@@ -167,7 +202,6 @@ describe('AccountSettingsScreen', () => {
       refreshUser,
     });
     mockedAuthApi.disableTwoFactor.mockResolvedValue(undefined);
-    render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
     openTwoFactorTab();
 
     fireEvent.press(screen.getByText('Disable 2FA'));
@@ -187,7 +221,6 @@ describe('AccountSettingsScreen', () => {
     mockedAuthApi.disableTwoFactor.mockRejectedValue({
       response: { data: { message: 'Incorrect password' } },
     });
-    render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
     openTwoFactorTab();
 
     fireEvent.press(screen.getByText('Disable 2FA'));
@@ -200,7 +233,6 @@ describe('AccountSettingsScreen', () => {
   describe('Biometric Login tab', () => {
     it('shows the native "unavailable" hint and no toggle when there is no hardware/enrollment', async () => {
       mockedBiometrics.isBiometricAvailable.mockResolvedValue(false);
-      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openBiometricTab();
 
       await screen.findByText(
@@ -214,7 +246,6 @@ describe('AccountSettingsScreen', () => {
       const originalOS = Platform.OS;
       Platform.OS = 'web';
       mockedBiometrics.isBiometricAvailable.mockResolvedValue(false);
-      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openBiometricTab();
 
       await screen.findByText(
@@ -227,7 +258,6 @@ describe('AccountSettingsScreen', () => {
     it('shows a toggle reflecting the stored preference when biometrics are available', async () => {
       mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
       mockedTokenStorage.getBiometricEnabled.mockResolvedValue(true);
-      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openBiometricTab();
 
       await waitFor(() =>
@@ -239,7 +269,6 @@ describe('AccountSettingsScreen', () => {
       mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
       mockedTokenStorage.getBiometricEnabled.mockResolvedValue(false);
       mockedBiometrics.promptBiometricAuth.mockResolvedValue(true);
-      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openBiometricTab();
       await waitFor(() => expect(screen.UNSAFE_getByType(Switch)).toBeTruthy());
 
@@ -258,7 +287,6 @@ describe('AccountSettingsScreen', () => {
       mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
       mockedTokenStorage.getBiometricEnabled.mockResolvedValue(false);
       mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
-      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openBiometricTab();
       await waitFor(() => expect(screen.UNSAFE_getByType(Switch)).toBeTruthy());
 
@@ -274,7 +302,6 @@ describe('AccountSettingsScreen', () => {
       mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
       mockedTokenStorage.getBiometricEnabled.mockResolvedValue(true);
       mockedBiometrics.promptBiometricAuth.mockResolvedValue(true);
-      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openBiometricTab();
       await waitFor(() => expect(screen.UNSAFE_getByType(Switch).props.value).toBe(true));
 
@@ -293,7 +320,6 @@ describe('AccountSettingsScreen', () => {
       mockedBiometrics.isBiometricAvailable.mockResolvedValue(true);
       mockedTokenStorage.getBiometricEnabled.mockResolvedValue(true);
       mockedBiometrics.promptBiometricAuth.mockResolvedValue(false);
-      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openBiometricTab();
       await waitFor(() => expect(screen.UNSAFE_getByType(Switch).props.value).toBe(true));
 
@@ -358,7 +384,6 @@ describe('AccountSettingsScreen', () => {
     });
 
     it('loads visibility toggles and saves when phone is turned on', async () => {
-      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openPrivacyTab();
 
       await waitFor(() =>
@@ -417,8 +442,6 @@ describe('AccountSettingsScreen', () => {
         role: null,
         isOwner: false,
       });
-
-      render(<AccountSettingsScreen navigation={navigation} route={{} as any} />);
       openPrivacyTab();
 
       await waitFor(() =>

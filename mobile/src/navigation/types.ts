@@ -19,6 +19,16 @@ export type ProfileSetupStackParamList = {
   CompleteProfile: undefined;
 };
 
+/** Nested screens under Settings → Account Settings. */
+export type AccountSettingsSection =
+  | 'password'
+  | 'twoFactor'
+  | 'biometric'
+  | 'privacy'
+  | 'sessions'
+  | 'recovery'
+  | 'danger';
+
 export type MainStackParamList = {
   OrgHome: undefined;
   /** `edit: true` opens sections ready to save (Settings → Edit). */
@@ -29,7 +39,8 @@ export type MainStackParamList = {
   OrgSettings: undefined;
   /** Unified settings hub (gear) — profile, security, theme, logout. */
   Settings: undefined;
-  AccountSettings: undefined;
+  /** Hub when `section` omitted; each section is a pushed stack entry. */
+  AccountSettings: { section?: AccountSettingsSection } | undefined;
   /** Self-service deactivate / permanent delete. */
   AccountLifecycle: undefined;
   /** In-app FAQ for Sacred Team Coach. */
