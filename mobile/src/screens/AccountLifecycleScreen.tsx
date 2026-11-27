@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { ScrollView, Text, View, TextInput } from 'react-native';
+import { Linking, ScrollView, Text, View, TextInput } from 'react-native';
 import { Screen } from '../brand/Screen';
 import { useAuth } from '../auth/AuthContext';
 import * as usersApi from '../api/users';
+import { LEGAL_URLS } from '../legal/urls';
 import { ThemeColors } from '../theme';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
@@ -68,13 +69,15 @@ export function AccountLifecyclePanel({ embedded = false }: { embedded?: boolean
           <Text style={styles.title}>Delete Or Deactivate</Text>
           <Text style={styles.lead}>
             Deactivate pauses your account — sign in again anytime to reactivate.
-            Delete removes your account permanently.
+            Delete removes your account permanently. You can also request
+            deletion on the web at sacredesports.com/delete-account.
           </Text>
         </>
       ) : (
         <Text style={styles.lead}>
           Deactivate pauses your account — sign in again anytime to reactivate.
-          Delete removes your account permanently.
+          Delete removes your account permanently. You can also request deletion
+          on the web at sacredesports.com/delete-account.
         </Text>
       )}
 
@@ -145,6 +148,19 @@ export function AccountLifecyclePanel({ embedded = false }: { embedded?: boolean
             </ButtonLabel>
           </SoftPressable>
         )}
+        <SoftPressable
+          style={styles.secondaryBtn}
+          onPress={() => {
+            void Linking.openURL(LEGAL_URLS.deleteAccount).catch(() =>
+              emitToast('Could not open web deletion page'),
+            );
+          }}
+          pressScale={0.98}
+        >
+          <ButtonLabel icon="arrow-forward" color={colors.text}>
+            Open Web Deletion Page
+          </ButtonLabel>
+        </SoftPressable>
       </View>
     </View>
   );

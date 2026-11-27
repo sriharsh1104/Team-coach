@@ -54,18 +54,15 @@ SSL: cPanel → **SSL/TLS Status** → AutoSSL / Let’s Encrypt enable → http
 
 ## Option B — Free host (Vercel / Cloudflare Pages) + BigRock DNS only
 
-Hosting BigRock pe nahi, sirf domain BigRock pe:
+Hosting BigRock pe nahi, sirf domain BigRock pe.
 
-1. Repo ke `web/` folder ko Vercel / Cloudflare Pages pe deploy  
-   - Build command: `npm run build`  
-   - Output: `dist`  
-   - Root directory: `web`
-2. BigRock DNS mein:
-   - Vercel: unke diye CNAME / A records
-   - Cloudflare Pages: unke CNAME
-3. Custom domain add: `sacredesports.com` + `www`
+**API / Nest server Cloudflare ke peeche:**  
+[`DEPLOY-CLOUDFLARE.md`](../DEPLOY-CLOUDFLARE.md) — Contabo + DNS/proxy/tunnel (Workers pe Nest nahi).
 
-Yeh bhi **sirf web** live karta hai; mobile app store / Expo alag.
+**Sirf static web Pages pe:** Dashboard → Pages, root `web`, build `npm run build`, output `dist`  
+(ya `web/wrangler.toml`). Domain BigRock DNS se CNAME.
+
+Mobile / Nest backend Contabo pe hi (`DEPLOY.md`).
 
 ---
 

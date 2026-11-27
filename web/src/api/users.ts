@@ -19,6 +19,24 @@ export function removeDevice(deviceId: string) {
   return apiClient.delete(`/users/me/devices/${deviceId}`);
 }
 
+export function deactivateMyAccount(input: {
+  confirmEmail: string;
+  password?: string;
+}) {
+  return apiClient
+    .post<{ ok: true }>('/users/me/deactivate', input)
+    .then((res) => res.data);
+}
+
+export function deleteMyAccount(input: {
+  confirmEmail: string;
+  password?: string;
+}) {
+  return apiClient
+    .post<{ ok: true }>('/users/me/delete', input)
+    .then((res) => res.data);
+}
+
 export function getMemberProfile(userId: string) {
   return apiClient
     .get<Profile>(`/users/${userId}/profile`)

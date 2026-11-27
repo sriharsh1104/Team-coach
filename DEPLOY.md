@@ -1,6 +1,23 @@
 # Contabo VPS Deployment Guide
 
-This guide covers deploying the Team Coach backend (NestJS + PostgreSQL) to a fresh Ubuntu VPS.
+Google Play privacy / Data safety checklist: [`PLAY-CONSOLE.md`](./PLAY-CONSOLE.md)  
+(Public URLs: `/privacy`, `/terms`, `/delete-account` on the website.)
+
+**Recommended layout: ek hi server pe sab kuch.**
+
+| Cheez | Kahan (same VPS) |
+|-------|------------------|
+| Nest API + Socket.IO | Docker `backend` → `:3000` |
+| PostgreSQL | Docker `postgres` (internal network) |
+| Public website (`web/`) | Nginx serves `web/dist` on `yourdomain.com` |
+| API hostname | Nginx proxies `api.yourdomain.com` → `:3000` |
+| Voice (mediasoup) | Same VPS, UDP `40000–40200` |
+| Mobile app | APK users’ phones; talks to `https://api.yourdomain.com` |
+
+Cloudflare optional hai — sirf DNS/HTTPS shield us **ek** VPS ke aage  
+([`DEPLOY-CLOUDFLARE.md`](./DEPLOY-CLOUDFLARE.md)). Alag Pages / alag host ki zaroorat nahi.
+
+This guide: fresh Ubuntu VPS pe Docker backend, phir Nginx pe site + API.
 
 ---
 
@@ -124,25 +141,62 @@ Postgres data is in a named Docker volume and is **not affected** by rebuilds.
 
 ---
 
-## 5. Set up Nginx + HTTPS (recommended)
+## 5. Set up Nginx + HTTPS — site + API on the same VPS
+
+> Optional Cloudflare in front of **this same box**:
+> [`DEPLOY-CLOUDFLARE.md`](./DEPLOY-CLOUDFLARE.md).  
+> Voice UDP still hits the VPS IP (`MEDIASOUP_ANNOUNCED_IP`).
+
+### 5a. Build the website onto the VPS
+
+```bash
+cd /srv/team-coach/web
+npm ci
+# Point the site at your API on the same machine / domain
+echo 'VITE_API_BASE_URL=https://api.yourdomain.com' > .env.production
+npm run build
+# dist/ is what Nginx will serve
+sudo mkdir -p /var/www/sacred-esports
+sudo rsync -a --delete dist/ /var/www/sacred-esports/
+```
+
+After web code changes: `npm run build` + `rsync` again (API rebuild alag — §4).
+
+### 5b. Nginx: apex = static site, api = Nest
 
 ```bash
 sudo apt-get install -y nginx certbot python3-certbot-nginx
-
-# Create a site config
 sudo nano /etc/nginx/sites-available/team-coach
 ```
 
-Paste:
+Paste (replace `yourdomain.com`):
 
 ```nginx
+# ── Public website (same VPS) ─────────────────────────────────
+server {
+    listen 80;
+    server_name yourdomain.com www.yourdomain.com;
+
+    root /var/www/sacred-esports;
+    index index.html;
+
+    # SPA (React Router) — unknown paths → index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Optional: APK / static downloads under dist already
+    location /downloads/ {
+        try_files $uri =404;
+    }
+}
+
+# ── API + WebSocket / SSE (same VPS) ──────────────────────────
 server {
     listen 80;
     server_name api.yourdomain.com;
 
-    # REQUIRED for media uploads. nginx's default is 1 MB, so photos/videos
-    # bigger than that die with 413 / a dropped connection before reaching the
-    # API. Must be >= the largest API limit (POST /media = 100 MB).
+    # REQUIRED for media uploads. nginx default is 1 MB; API allows up to 100 MB.
     client_max_body_size 110m;
     client_body_timeout  300s;
     proxy_send_timeout   300s;
@@ -156,19 +210,44 @@ server {
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
-        proxy_read_timeout 86400;   # needed for WebSocket / SSE
+        proxy_read_timeout 86400;   # WebSocket / SSE
     }
 }
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/team-coach /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/team-coach /etc/nginx/sites-enabled/
+# default site hata do agar clash ho
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
 sudo systemctl reload nginx
 
-# Obtain SSL cert (auto-renews via cron)
-sudo certbot --nginx -d api.yourdomain.com
+# One cert for site + API (auto-renews)
+sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com -d api.yourdomain.com
 ```
+
+### 5c. DNS (domain → issi VPS)
+
+Registrar / Cloudflare DNS:
+
+| Type | Name | Value |
+|------|------|--------|
+| A | `@` | VPS public IP |
+| A | `www` | VPS public IP |
+| A | `api` | VPS public IP |
+
+### 5d. Backend env (same box)
+
+`backend/.env.production`:
+
+```env
+GOOGLE_CALLBACK_URL=https://api.yourdomain.com/auth/google/callback
+CORS_ORIGIN=https://yourdomain.com,https://www.yourdomain.com
+WEB_PUBLIC_URL=https://www.yourdomain.com
+MEDIASOUP_ANNOUNCED_IP=<VPS_PUBLIC_IP>
+```
+
+Mobile production API base URL bhi `https://api.yourdomain.com`.
 
 ### Firewall
 

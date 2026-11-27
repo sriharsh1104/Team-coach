@@ -84,6 +84,11 @@ export function SocialFooter() {
           </a>
         ))}
       </div>
+      <nav className="legal-footer-links" aria-label="Legal">
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms</a>
+        <a href="/delete-account">Delete Account</a>
+      </nav>
     </footer>
   );
 }

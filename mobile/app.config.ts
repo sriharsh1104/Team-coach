@@ -183,10 +183,6 @@ const expoConfig: ExpoConfig = {
     // "Could not get unknown property 'release' for SoftwareComponent container"
     // with Gradle 8.x + expo-modules-core <=2.2.3 (Expo SDK 52).
     './plugins/withPatchExpoModulesCore',
-    // Health Connect permissions / rationale (Tracker Health). The RN package
-    // itself is a normal dependency; this local plugin avoids requiring its
-    // config-plugin entry at `expo config` time.
-    './plugins/withHealthConnect',
   ],
   extra: {
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',

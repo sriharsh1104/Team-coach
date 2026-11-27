@@ -91,10 +91,15 @@ export function FloatingMainTabBar({
         { paddingBottom: bottomPad },
       ]}
     >
-      <View style={[styles.pill, { borderColor: colors.link }]}>
+      <View style={[styles.pill, { borderColor: colors.border }]}>
         {TABS.map((tab) => {
           const selected = tab.key === active;
           const isCenter = tab.key === 'goLive';
+          const iconColor = selected
+            ? colors.chromeInk
+            : isCenter
+              ? colors.chromeInk
+              : colors.icon;
           return (
             <SoftPressable
               key={tab.key}
@@ -108,19 +113,21 @@ export function FloatingMainTabBar({
               <View
                 style={[
                   isCenter ? staticStyles.centerWrap : staticStyles.iconWrap,
-                  selected && { backgroundColor: colors.link },
+                  selected && { backgroundColor: colors.chrome },
                   isCenter &&
                     !selected && {
                       backgroundColor: colors.chrome,
+                    },
+                  !selected &&
+                    !isCenter && {
+                      backgroundColor: 'transparent',
                     },
                 ]}
               >
                 <AppIcon
                   name={tab.icon}
                   size={isCenter ? 22 : 20}
-                  color={
-                    selected || isCenter ? colors.chromeInk : colors.textMuted
-                  }
+                  color={iconColor}
                 />
               </View>
             </SoftPressable>
@@ -179,11 +186,12 @@ function makeStyles(c: ThemeColors) {
       maxWidth: 420,
       borderRadius: 999,
       borderWidth: 1.5,
-      backgroundColor: c.surface,
+      // Theme surface + border so black / white / lavender each look native.
+      backgroundColor: c.bg,
       paddingHorizontal: 8,
       paddingVertical: 4,
       shadowColor: '#000',
-      shadowOpacity: 0.22,
+      shadowOpacity: c.statusBar === 'light' ? 0.28 : 0.12,
       shadowRadius: 18,
       shadowOffset: { width: 0, height: 8 },
       elevation: 12,

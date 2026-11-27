@@ -32,6 +32,9 @@ import { TwoFactorPage } from './pages/TwoFactorPage';
 import { TwoFactorSetupPage } from './pages/TwoFactorSetupPage';
 import { InviteJoinPage } from './pages/InviteJoinPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
+import { DeleteAccountPage } from './pages/legal/DeleteAccountPage';
+import { PrivacyPolicyPage } from './pages/legal/PrivacyPolicyPage';
+import { TermsOfServicePage } from './pages/legal/TermsOfServicePage';
 import { SesLoader } from './ui/SesLoader';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -116,6 +119,9 @@ export default function App() {
       />
       <Route path="/2fa" element={<TwoFactorPage />} />
       <Route path="/join/:token" element={<InviteJoinPage />} />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms" element={<TermsOfServicePage />} />
+      <Route path="/delete-account" element={<DeleteAccountPage />} />
 
       <Route
         path="/org"

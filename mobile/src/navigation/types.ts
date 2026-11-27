@@ -82,7 +82,7 @@ export type MainStackParamList = {
   GoLive: undefined;
   /** Placeholder under Streaming & Content Tools — feature TBD. */
   ContentEdit: undefined;
-  /** Personal habit tracker — steps / heart points from Health Connect. */
+  /** Personal habit tracker — steps from the phone step sensor. */
   Health: undefined;
   /** Timed daily tasks with device alarms + mark-done. */
   DailyRoutine: undefined;

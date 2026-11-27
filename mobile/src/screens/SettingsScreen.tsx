@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -11,6 +12,7 @@ import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
+import { LEGAL_URLS } from '../legal/urls';
 import { MainStackParamList } from '../navigation/types';
 import { Screen } from '../brand/Screen';
 import { ChannelAvatar } from './chat/ChannelAvatar';
@@ -30,6 +32,7 @@ import {
   TimeFormatId,
 } from '../datetime/formats';
 import { useDateTimeFormat } from '../datetime/DateTimeFormatContext';
+import { emitToast } from '../ui/toastBus';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'Settings'>;
 
@@ -175,6 +178,34 @@ export function SettingsScreen({ navigation }: Props) {
             icon="book-outline"
             label="Help & Support"
             onPress={() => navigation.navigate('HelpSupport')}
+          />
+          <SettingsRow
+            icon="shield-outline"
+            label="Privacy Policy"
+            onPress={() => {
+              void Linking.openURL(LEGAL_URLS.privacy).catch(() =>
+                emitToast('Could not open Privacy Policy'),
+              );
+            }}
+          />
+          <SettingsRow
+            icon="book-outline"
+            label="Terms of Service"
+            onPress={() => {
+              void Linking.openURL(LEGAL_URLS.terms).catch(() =>
+                emitToast('Could not open Terms'),
+              );
+            }}
+          />
+          <SettingsRow
+            icon="trash-outline"
+            label="Delete Account (Web)"
+            subtitle="Play Store web deletion link"
+            onPress={() => {
+              void Linking.openURL(LEGAL_URLS.deleteAccount).catch(() =>
+                emitToast('Could not open Delete Account page'),
+              );
+            }}
           />
           <SettingsRow
             icon="information-circle-outline"

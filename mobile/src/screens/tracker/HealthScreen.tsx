@@ -23,12 +23,10 @@ import { useThemedStyles } from '../../theme/useThemedStyles';
 import { SoftPressable } from '../../ui/SoftPressable';
 import { emitToast } from '../../ui/toastBus';
 import {
-  getHealthConnectStatus,
-  HealthConnectStatus,
-  openHealthConnectInstallOrSettings,
-  readTodayHealth,
-  requestHealthPermissions,
-} from '../../tracker/healthConnect';
+  isPhoneStepCounterAvailable,
+  readPhoneTodaySteps,
+  requestActivityRecognition,
+} from '../../tracker/phoneSteps';
 
 function ProgressBar({
   value,
@@ -54,42 +52,37 @@ function ProgressBar({
   );
 }
 
-/**
- * Personal Health tracker — pulls today's steps / heart-point proxy from
- * Health Connect (Android), syncs the sample to the account, and shows
- * remaining progress against daily goals.
- */
+/** Personal Health tracker — phone step sensor only. */
 export function HealthScreen() {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const [data, setData] = useState<HealthToday | null>(null);
-  const [hcStatus, setHcStatus] = useState<HealthConnectStatus>('unavailable');
+  const [phoneOk, setPhoneOk] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [connecting, setConnecting] = useState(false);
+  const [enablingPhone, setEnablingPhone] = useState(false);
 
   const refresh = useCallback(async () => {
     const day = localDay();
-    const status = await getHealthConnectStatus();
-    setHcStatus(status);
+    let steps: number | null = null;
 
-    let sample = null;
-    if (status === 'ready') {
-      sample = await readTodayHealth();
-      // Permission can be revoked in system settings between checks.
-      if (sample == null) setHcStatus('needs_permission');
+    const phoneSteps = await readPhoneTodaySteps();
+    if (phoneSteps != null) {
+      steps = phoneSteps;
+      setPhoneOk(true);
+    } else {
+      setPhoneOk(false);
     }
 
     try {
       let today: HealthToday;
-      if (sample) {
+      if (steps != null) {
         setSyncing(true);
         today = await upsertHealthDay({
           day,
-          steps: sample.steps,
-          heartPoints: sample.heartPoints ?? 0,
-          source: sample.source,
+          steps,
+          source: 'phone',
         });
       } else {
         today = await getHealthToday(day);
@@ -110,7 +103,6 @@ export function HealthScreen() {
     }, [refresh]),
   );
 
-  // Returning from Health Connect's setup / permission UI — re-check grants.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') void refresh();
@@ -124,26 +116,28 @@ export function HealthScreen() {
     setRefreshing(false);
   };
 
-  const connect = async () => {
-    if (hcStatus === 'needs_install' || hcStatus === 'unavailable') {
-      openHealthConnectInstallOrSettings();
+  const enablePhoneSteps = async () => {
+    if (!isPhoneStepCounterAvailable()) {
+      emitToast('This phone has no step sensor');
       return;
     }
-    setConnecting(true);
+    setEnablingPhone(true);
     try {
-      const ok = await requestHealthPermissions();
-      // Always re-read — the system may have granted while we were backgrounded.
-      await refresh();
-      const status = await getHealthConnectStatus();
-      if (status === 'ready' || ok) {
-        emitToast('Health Connect connected');
+      const granted = await requestActivityRecognition();
+      if (!granted) {
+        emitToast('Allow Physical activity / Steps to read today’s count');
         return;
       }
-      emitToast(
-        'Steps abhi allow nahi hua. Agar “Connect a second app” dikha tha to Set up later dabao, phir Grant Access dobara — Sacred ko Steps tick karo.',
-      );
+      const n = await readPhoneTodaySteps();
+      if (n == null) {
+        emitToast('Could not read steps yet — walk a bit and pull to refresh');
+        return;
+      }
+      emitToast(`Phone steps connected · ${n.toLocaleString()} today`);
+      setLoading(true);
+      await refresh();
     } finally {
-      setConnecting(false);
+      setEnablingPhone(false);
     }
   };
 
@@ -159,11 +153,7 @@ export function HealthScreen() {
 
   const steps = data?.steps ?? 0;
   const stepGoal = data?.stepGoal ?? 10000;
-  const heart = data?.heartPoints ?? 0;
-  const heartGoal = data?.heartGoal ?? 30;
   const stepsLeft = data?.stepsRemaining ?? Math.max(0, stepGoal - steps);
-  const heartLeft = data?.heartRemaining ?? Math.max(0, heartGoal - heart);
-  const syncedFromPhone = data?.source === 'health_connect';
 
   return (
     <Screen padBottom={false}>
@@ -177,67 +167,30 @@ export function HealthScreen() {
           />
         }
       >
-        {hcStatus !== 'ready' && hcStatus !== 'needs_permission' ? (
+        {!phoneOk ? (
           <View style={styles.banner}>
-            <Text style={styles.bannerTitle}>Connect Health Data</Text>
+            <Text style={styles.bannerTitle}>Read Phone Steps</Text>
             <Text style={styles.bannerBody}>
-              {hcStatus === 'unsupported'
-                ? 'Step tracking is available on Android with Health Connect.'
-                : hcStatus === 'needs_install'
-                  ? 'Install Health Connect, then come back and grant Steps access so Sacred can update your daily count.'
-                  : 'Health Connect is not available on this device.'}
-            </Text>
-            {hcStatus !== 'unsupported' ? (
-              <SoftPressable
-                style={styles.bannerBtn}
-                onPress={connect}
-                disabled={connecting}
-              >
-                <Text style={styles.bannerBtnText}>
-                  {hcStatus === 'needs_install' ? 'Open Install' : 'Open Settings'}
-                </Text>
-              </SoftPressable>
-            ) : null}
-          </View>
-        ) : null}
-
-        {hcStatus === 'needs_permission' ? (
-          <View style={styles.banner}>
-            <Text style={styles.bannerTitle}>Allow Step Access</Text>
-            <Text style={styles.bannerBody}>
-              Grant Access dabane ke baad agar “Connect a second app” (Fit /
-              ChatGPT list) aaye to woh HC setup hai — Set up later dabao. Phir
-              wapas yahan Grant Access — Sacred ke liye Steps (aur Exercise)
-              allow karo. Fit list mein hona zaroori nahi.
+              Sacred phone ke apne step sensor se aaj ka count padhega. Sirf
+              Physical activity / Steps permission allow karo.
             </Text>
             <SoftPressable
-              style={[styles.bannerBtn, connecting && styles.btnDisabled]}
-              onPress={connect}
-              disabled={connecting}
+              style={[styles.bannerBtn, enablingPhone && styles.btnDisabled]}
+              onPress={() => void enablePhoneSteps()}
+              disabled={enablingPhone}
             >
               <Text style={styles.bannerBtnText}>
-                {connecting ? 'Connecting…' : 'Grant Access'}
+                {enablingPhone ? 'Enabling…' : 'Enable Phone Steps'}
               </Text>
             </SoftPressable>
-            <SoftPressable
-              style={styles.secondaryBtn}
-              onPress={openHealthConnectInstallOrSettings}
-              disabled={connecting}
-            >
-              <Text style={styles.secondaryBtnText}>Open Health Connect</Text>
-            </SoftPressable>
           </View>
-        ) : null}
-
-        {hcStatus === 'ready' ? (
+        ) : (
           <View style={styles.readyPill}>
             <Text style={styles.readyText}>
-              {syncedFromPhone
-                ? 'Synced from Health Connect'
-                : 'Health Connect connected · pull to refresh'}
+              Synced from phone step sensor
             </Text>
           </View>
-        ) : null}
+        )}
 
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Steps Today</Text>
@@ -251,26 +204,6 @@ export function HealthScreen() {
             color={colors.chrome}
             track={colors.border}
           />
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Heart Points</Text>
-          <Text style={styles.cardValue}>
-            {syncedFromPhone || heart > 0 ? heart.toLocaleString() : '—'}
-          </Text>
-          <Text style={styles.cardMeta}>
-            Goal {heartGoal.toLocaleString()} · {heartLeft.toLocaleString()} left
-          </Text>
-          <ProgressBar
-            value={heart}
-            max={heartGoal}
-            color={colors.link}
-            track={colors.border}
-          />
-          <Text style={styles.hint}>
-            Estimated from Health Connect exercise sessions (moderate ≈ 1 /
-            vigorous ≈ 2 points per minute).
-          </Text>
         </View>
 
         <Pressable onPress={onRefresh} disabled={syncing}>
@@ -340,16 +273,6 @@ function makeStyles(c: ThemeColors) {
       fontWeight: '700' as const,
       fontSize: 14,
     },
-    secondaryBtn: {
-      alignSelf: 'flex-start' as const,
-      paddingHorizontal: 4,
-      paddingVertical: 4,
-    },
-    secondaryBtnText: {
-      color: c.link,
-      fontWeight: '600' as const,
-      fontSize: 14,
-    },
     btnDisabled: { opacity: 0.6 },
     readyPill: {
       alignSelf: 'flex-start' as const,
@@ -390,12 +313,6 @@ function makeStyles(c: ThemeColors) {
       color: c.textMuted,
       fontSize: 13,
       marginTop: 2,
-    },
-    hint: {
-      color: c.textDim,
-      fontSize: 12,
-      lineHeight: 17,
-      marginTop: 10,
     },
     syncLine: {
       color: c.textDim,

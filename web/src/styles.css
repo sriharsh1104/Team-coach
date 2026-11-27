@@ -5197,3 +5197,153 @@ button.invite-qr-open:hover {
   font-size: 12px;
   border-radius: 999px;
 }
+
+/* ——— Public legal docs (Play privacy / deletion) ——— */
+.legal-shell {
+  position: relative;
+  min-height: 100%;
+  z-index: 1;
+  padding: 24px 16px 48px;
+}
+
+.legal-doc {
+  position: relative;
+  z-index: 1;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 24px 20px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(18, 18, 22, 0.92);
+}
+
+.legal-eyebrow {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.legal-doc h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.5rem, 4vw, 1.85rem);
+  letter-spacing: -0.02em;
+}
+
+.legal-updated {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.legal-body {
+  display: grid;
+  gap: 12px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.legal-body h2 {
+  margin: 16px 0 0;
+  font-size: 1.1rem;
+}
+
+.legal-body h3 {
+  margin: 8px 0 0;
+  font-size: 1rem;
+}
+
+.legal-body p,
+.legal-body ul,
+.legal-body ol {
+  margin: 0;
+}
+
+.legal-body ul,
+.legal-body ol {
+  padding-inline-start: 1.25rem;
+  display: grid;
+  gap: 6px;
+}
+
+.legal-body .hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.legal-ok {
+  color: var(--ok);
+}
+
+.legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.legal-delete-form {
+  display: grid;
+  gap: 12px;
+  margin: 8px 0 4px;
+  padding: 14px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.legal-delete-form .field {
+  margin: 0;
+}
+
+.btn-danger {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.28);
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.legal-footnote {
+  margin-top: 8px;
+}
+
+button.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--link);
+  cursor: pointer;
+  font: inherit;
+}
+
+button.linkish:hover {
+  text-decoration: underline;
+}
+
+.legal-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 14px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.legal-footer-links a {
+  color: var(--text-dim);
+}
+
+.legal-footer-links a:hover {
+  color: var(--link);
+}

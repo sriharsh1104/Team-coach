@@ -1,0 +1,13 @@
+# Cloudflare Pages — marketing / public site (`web/`)
+# Docs: https://developers.cloudflare.com/pages/
+#
+# Deploy from repo root:
+#   cd web && npm ci && npm run build
+#   npx wrangler pages deploy dist --project-name=sacred-esports
+#
+# Or connect the GitHub repo in Cloudflare Dashboard → Workers & Pages
+# with Root directory = web, Build = npm run build, Output = dist.
+
+name = "sacred-esports"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "dist"
