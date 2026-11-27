@@ -75,6 +75,7 @@
     "screen-recorder": "file:modules/screen-recorder",
     "socket.io-client": "^4.8.4",
     "three": "^0.170.0",
+    "video-trim": "file:modules/video-trim",
     "voice-changer": "file:modules/voice-changer"
   },
   "devDependencies": {
@@ -111,6 +112,7 @@
           "routine-alarms",
           "screen-recorder",
           "socket.io-client",
+          "video-trim",
           "voice-changer"
         ]
       }

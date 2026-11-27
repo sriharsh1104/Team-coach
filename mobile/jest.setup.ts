@@ -236,6 +236,7 @@ beforeEach(() => {
 
 jest.mock('expo-image-manipulator', () => ({
   SaveFormat: { JPEG: 'jpeg', PNG: 'png' },
+  FlipType: { Horizontal: 'horizontal', Vertical: 'vertical' },
   manipulateAsync: jest.fn(async (uri: string) => ({
     uri,
     width: 100,

@@ -5,6 +5,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -37,8 +38,8 @@ export type CroppedImage = {
 
 /**
  * Crop the photo the user just picked, before it goes out. Drag the frame or
- * any corner; Free / 1:1 / 4:5 / 16:9 lock the shape; Rotate turns the photo
- * a quarter turn at a time.
+ * any corner; aspect chips lock the shape; Rotate turns a quarter turn;
+ * Flip H / V rewrites the working bitmap so the crop stays simple.
  *
  * Sending without touching anything skips the manipulator entirely, so the
  * common "just send it" path costs nothing — see `isFullFrame`.
@@ -50,6 +51,7 @@ export function ImageCropModal({
   onCancel,
   onDone,
   doneLabel = 'Send',
+  failToast = 'Could not crop that photo — sending it as it is.',
 }: {
   /** Local image URI; null hides the modal. */
   uri: string | null;
@@ -60,6 +62,8 @@ export function ImageCropModal({
   onDone: (result: CroppedImage) => void;
   /** Primary action label — "Send" in chat, "Save" in Editing. */
   doneLabel?: string;
+  /** Toast when manipulate fails and we fall back to the original. */
+  failToast?: string;
 }) {
   const { colors } = useTheme();
   const [box, setBox] = useState({ width: 0, height: 0 });
@@ -67,6 +71,10 @@ export function ImageCropModal({
   const [rotation, setRotation] = useState(0);
   const [busy, setBusy] = useState(false);
   const [crop, setCrop] = useState<Rect>({ x: 0, y: 0, width: 0, height: 0 });
+  // Flip rewrites pixels into a new file so crop math stays axis-aligned.
+  const [workUri, setWorkUri] = useState<string | null>(uri);
+  const [workW, setWorkW] = useState(width && width > 0 ? width : 1000);
+  const [workH, setWorkH] = useState(height && height > 0 ? height : 1000);
   const cropRef = useRef(crop);
   cropRef.current = crop;
   const dragStart = useRef<Rect>(crop);
@@ -78,8 +86,8 @@ export function ImageCropModal({
 
   // A quarter turn swaps the visible dimensions, so the frame has to be laid
   // out against the rotated size or the crop would map onto the wrong pixels.
-  const srcW = width && width > 0 ? width : 1000;
-  const srcH = height && height > 0 ? height : 1000;
+  const srcW = workW > 0 ? workW : 1000;
+  const srcH = workH > 0 ? workH : 1000;
   const turned = rotation % 180 !== 0;
   const viewW = turned ? srcH : srcW;
   const viewH = turned ? srcW : srcH;
@@ -97,15 +105,42 @@ export function ImageCropModal({
   }, [display.width, display.height, display.x, display.y, aspect]);
 
   useEffect(() => {
-    if (!uri) {
-      setRotation(0);
-      setAspectKey('free');
-    }
-  }, [uri]);
+    setWorkUri(uri);
+    setWorkW(width && width > 0 ? width : 1000);
+    setWorkH(height && height > 0 ? height : 1000);
+    setRotation(0);
+    setAspectKey('free');
+  }, [uri, width, height]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width: w, height: h } = e.nativeEvent.layout;
     setBox((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+  };
+
+  const applyFlip = async (axis: ImageManipulator.FlipType) => {
+    if (!workUri || busy) return;
+    setBusy(true);
+    try {
+      const out = await ImageManipulator.manipulateAsync(
+        workUri,
+        [{ flip: axis }],
+        {
+          compress: 1,
+          format: ImageManipulator.SaveFormat.JPEG,
+        },
+      );
+      haptic('selection');
+      setWorkUri(out.uri);
+      setWorkW(out.width);
+      setWorkH(out.height);
+      setRotation(0);
+    } catch (err) {
+      console.warn('flip failed:', err);
+      haptic('error');
+      emitToast('Could not flip that photo');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const bodyResponder = useMemo(
@@ -168,12 +203,12 @@ export function ImageCropModal({
   );
 
   const apply = async () => {
-    if (!uri || busy) return;
+    if (!workUri || busy) return;
     setBusy(true);
     try {
       const untouched = isFullFrame(crop, display) && rotation === 0;
       if (untouched) {
-        onDone({ uri, width: srcW, height: srcH });
+        onDone({ uri: workUri, width: srcW, height: srcH });
         return;
       }
       const actions: ImageManipulator.Action[] = [];
@@ -181,7 +216,7 @@ export function ImageCropModal({
       if (!isFullFrame(crop, display)) {
         actions.push({ crop: toSourceRect(crop, display, viewW, viewH) });
       }
-      const out = await ImageManipulator.manipulateAsync(uri, actions, {
+      const out = await ImageManipulator.manipulateAsync(workUri, actions, {
         compress: 0.92,
         format: ImageManipulator.SaveFormat.JPEG,
       });
@@ -190,9 +225,9 @@ export function ImageCropModal({
     } catch (err) {
       console.warn('crop failed:', err);
       haptic('error');
-      // Never strand the photo: fall back to sending it uncropped.
-      emitToast('Could not crop that photo — sending it as it is.');
-      onDone({ uri, width: srcW, height: srcH });
+      // Never strand the photo: fall back to the working (possibly flipped) file.
+      emitToast(failToast);
+      onDone({ uri: workUri, width: srcW, height: srcH });
     } finally {
       setBusy(false);
     }
@@ -217,9 +252,9 @@ export function ImageCropModal({
     >
       <View style={styles.root}>
         <View style={styles.stage} onLayout={onLayout}>
-          {uri ? (
+          {workUri ? (
             <Image
-              source={{ uri }}
+              source={{ uri: workUri }}
               style={[
                 styles.image,
                 {
@@ -304,7 +339,11 @@ export function ImageCropModal({
         </View>
 
         <View style={[styles.sheet, { backgroundColor: colors.bg, borderTopColor: colors.border }]}>
-          <View style={styles.presetRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.presetRow}
+          >
             {ASPECT_PRESETS.map((preset) => {
               const on = preset.key === aspectKey;
               return (
@@ -334,16 +373,39 @@ export function ImageCropModal({
                 </Pressable>
               );
             })}
+          </ScrollView>
+
+          <View style={styles.toolRow}>
             <Pressable
-              style={[styles.preset, { borderColor: colors.border }]}
+              style={[styles.tool, { borderColor: colors.border }]}
               onPress={() => {
                 haptic('selection');
                 setRotation((r) => (r + 90) % 360);
               }}
+              disabled={busy}
               accessibilityRole="button"
               accessibilityLabel="Rotate photo"
             >
               <AppIcon name="refresh" size={16} color={colors.textMuted} />
+              <Text style={[styles.toolText, { color: colors.textMuted }]}>Rotate</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.tool, { borderColor: colors.border }]}
+              onPress={() => void applyFlip(ImageManipulator.FlipType.Horizontal)}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Flip horizontal"
+            >
+              <Text style={[styles.toolText, { color: colors.textMuted }]}>Flip H</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.tool, { borderColor: colors.border }]}
+              onPress={() => void applyFlip(ImageManipulator.FlipType.Vertical)}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Flip vertical"
+            >
+              <Text style={[styles.toolText, { color: colors.textMuted }]}>Flip V</Text>
             </Pressable>
           </View>
 
@@ -451,16 +513,29 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     gap: 12,
   },
-  presetRow: { flexDirection: 'row', gap: 8 },
+  presetRow: { flexDirection: 'row', gap: 8, paddingRight: 4 },
   preset: {
-    flex: 1,
     height: 38,
+    minWidth: 52,
+    paddingHorizontal: 12,
     borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   presetText: { fontSize: 13, fontWeight: '700' },
+  toolRow: { flexDirection: 'row', gap: 8 },
+  tool: {
+    flex: 1,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  toolText: { fontSize: 13, fontWeight: '700' },
   actions: { flexDirection: 'row', gap: 10 },
   ghost: {
     flex: 1,

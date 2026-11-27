@@ -163,5 +163,7 @@ export const ASPECT_PRESETS: AspectPreset[] = [
   { key: 'free', label: 'Free', value: null },
   { key: 'square', label: '1:1', value: 1 },
   { key: 'portrait', label: '4:5', value: 4 / 5 },
+  { key: 'story', label: '9:16', value: 9 / 16 },
+  { key: 'photo', label: '4:3', value: 4 / 3 },
   { key: 'wide', label: '16:9', value: 16 / 9 },
 ];
